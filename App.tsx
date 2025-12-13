@@ -16,6 +16,8 @@ import {
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -192,13 +194,28 @@ function CategoryColumn({
   deleteShortcut,
   searchQuery
 }: CategoryColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver
+  } = useSortable({
     id: category.id,
     data: {
-      type: 'Container',
+      type: 'Category',
+      category,
       categoryId: category.id
     }
   });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
 
@@ -210,11 +227,16 @@ function CategoryColumn({
     >
       <div
         ref={setNodeRef}
+        style={style}
         data-category-id={category.id}
-        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col break-inside-avoid mb-6 ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'}`}
+        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'} ${isDragging ? 'shadow-2xl shadow-blue-500/20' : ''}`}
       >
         {/* Category Header */}
-        <div className="p-3 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/80">
+        <div
+          className={`p-3 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/80 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          {...attributes}
+          {...listeners}
+        >
           <div
             className="flex items-center gap-2 cursor-pointer select-none"
             onClick={() => toggleCollapse(category.id)}
@@ -552,6 +574,19 @@ export default function App() {
     })
   );
 
+  // Custom collision detection: use pointerWithin for categories, closestCenter for shortcuts
+  const customCollisionDetection = (args: any) => {
+    const activeType = args.active?.data?.current?.type;
+
+    if (activeType === 'Category') {
+      // For category dragging, use pointerWithin for wider detection area
+      return pointerWithin(args);
+    }
+
+    // For shortcut dragging, use closestCenter
+    return closestCenter(args);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   };
@@ -559,6 +594,9 @@ export default function App() {
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
+
+    // Skip if dragging a category
+    if (active.data.current?.type === 'Category') return;
 
     // Find the containers
     const activeSectionId = active.data.current?.categoryId;
@@ -619,21 +657,41 @@ export default function App() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    const activeSectionId = active.data.current?.categoryId;
-    const overSectionId = over?.data.current?.categoryId || over?.id;
+    if (!over) {
+      setActiveId(null);
+      return;
+    }
 
-    if (activeSectionId && overSectionId && activeSectionId === overSectionId) {
-      // Same container reorder
-      const categoryIndex = categories.findIndex((c) => c.id === activeSectionId);
-      const activeItemIndex = categories[categoryIndex].shortcuts.findIndex((s) => s.id === active.id);
-      const overItemIndex = categories[categoryIndex].shortcuts.findIndex((s) => s.id === over?.id);
+    const activeType = active.data.current?.type;
+    const overType = over.data.current?.type;
 
-      if (activeItemIndex !== overItemIndex) {
-        setCategories((prev) => {
-          const updated = [...prev];
-          updated[categoryIndex].shortcuts = arrayMove(updated[categoryIndex].shortcuts, activeItemIndex, overItemIndex);
-          return updated;
-        });
+    // Category reordering
+    if (activeType === 'Category' && overType === 'Category') {
+      const activeIndex = categories.findIndex((c) => c.id === active.id);
+      const overIndex = categories.findIndex((c) => c.id === over.id);
+
+      if (activeIndex !== overIndex) {
+        setCategories((prev) => arrayMove(prev, activeIndex, overIndex));
+      }
+    }
+    // Shortcut reordering within same category
+    else {
+      const activeSectionId = active.data.current?.categoryId;
+      const overSectionId = over.data.current?.categoryId || over.id;
+
+      if (activeSectionId && overSectionId && activeSectionId === overSectionId) {
+        // Same container reorder
+        const categoryIndex = categories.findIndex((c) => c.id === activeSectionId);
+        const activeItemIndex = categories[categoryIndex].shortcuts.findIndex((s) => s.id === active.id);
+        const overItemIndex = categories[categoryIndex].shortcuts.findIndex((s) => s.id === over.id);
+
+        if (activeItemIndex !== overItemIndex) {
+          setCategories((prev) => {
+            const updated = [...prev];
+            updated[categoryIndex].shortcuts = arrayMove(updated[categoryIndex].shortcuts, activeItemIndex, overItemIndex);
+            return updated;
+          });
+        }
       }
     }
 
@@ -703,27 +761,31 @@ export default function App() {
       {/* Main Grid */}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={customCollisionDetection}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <main className="max-w-7xl mx-auto">
-          <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
-            {filteredCategories.map(category => (
-              <CategoryColumn
-                key={category.id}
-                category={category}
-                toggleCollapse={toggleCollapse}
-                handleAddFolder={handleAddFolder}
-                openEditCategoryModal={openEditCategoryModal}
-                deleteCategory={deleteCategory}
-                handleOpenFolder={handleOpenFolder}
-                handleCopyPath={handleCopyPath}
-                deleteShortcut={deleteShortcut}
-                searchQuery={searchQuery}
-              />
-            ))}
+          <SortableContext
+            items={filteredCategories.map(c => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-start">
+              {filteredCategories.map(category => (
+                <CategoryColumn
+                  key={category.id}
+                  category={category}
+                  toggleCollapse={toggleCollapse}
+                  handleAddFolder={handleAddFolder}
+                  openEditCategoryModal={openEditCategoryModal}
+                  deleteCategory={deleteCategory}
+                  handleOpenFolder={handleOpenFolder}
+                  handleCopyPath={handleCopyPath}
+                  deleteShortcut={deleteShortcut}
+                  searchQuery={searchQuery}
+                />
+              ))}
 
             {/* Empty State Helper */}
             {filteredCategories.length === 0 && (
@@ -735,19 +797,38 @@ export default function App() {
                 </Button>
               </div>
             )}
-          </div>
+            </div>
+          </SortableContext>
         </main >
         <DragOverlay>
-          {activeId ? (
-            <div className="bg-slate-700 p-2 rounded-lg shadow-xl border border-blue-500/50 flex items-center gap-3">
-              <div className="p-1.5 rounded-md bg-slate-800 text-blue-400">
-                <Folder size={16} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-white truncate">Moving...</div>
-              </div>
-            </div>
-          ) : null}
+          {activeId ? (() => {
+            // Check if activeId is a category
+            const activeCategory = categories.find(c => c.id === activeId);
+
+            if (activeCategory) {
+              // Dragging a category
+              return (
+                <div className="bg-slate-800/90 border-2 border-blue-500 rounded-2xl p-3 shadow-2xl backdrop-blur-sm min-w-[200px]">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${activeCategory.color}`} />
+                    <h2 className="font-semibold text-white">{activeCategory.title}</h2>
+                  </div>
+                </div>
+              );
+            } else {
+              // Dragging a shortcut
+              return (
+                <div className="bg-slate-700 p-2 rounded-lg shadow-xl border border-blue-500/50 flex items-center gap-3">
+                  <div className="p-1.5 rounded-md bg-slate-800 text-blue-400">
+                    <Folder size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white truncate">Moving...</div>
+                  </div>
+                </div>
+              );
+            }
+          })() : null}
         </DragOverlay>
       </DndContext >
 
