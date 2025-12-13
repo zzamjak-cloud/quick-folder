@@ -1,0 +1,5 @@
+{
+  "name": "QuickFolder Widget",
+  "description": "A customizable desktop-style widget dashboard for managing and quickly accessing local folder paths via clipboard integration.",
+  "requestFramePermissions": []
+}
