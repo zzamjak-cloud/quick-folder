@@ -41,6 +41,8 @@ import { Category, FolderShortcut, ToastMessage } from './types';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 // --- Types & Constants ---
 const STORAGE_KEY = 'quickfolder_widget_data';
@@ -200,40 +202,6 @@ function CategoryColumn({
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
 
-  const handleNativeDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Check if files are being dropped
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-
-      let path: string | undefined;
-
-      if (window.electron) {
-        try {
-          path = window.electron.getPathForFile(file);
-        } catch (err) {
-          console.error("Failed to get path for file:", err);
-        }
-      } else {
-        // Fallback or dev mode (mostly won't work for real OS drop without Electron)
-        // @ts-ignore
-        path = file.path;
-      }
-
-      if (path) {
-        // It's likely a folder or file.
-        // For now, we assume it's a folder or we add it anyway.
-        handleAddFolder(category.id, path, file.name);
-      }
-    }
-  };
-
-  const handleNativeDragOver = (e: React.DragEvent) => {
-    e.preventDefault(); // Necessary to allow dropping
-  };
-
   return (
     <SortableContext
       id={category.id}
@@ -242,9 +210,8 @@ function CategoryColumn({
     >
       <div
         ref={setNodeRef}
+        data-category-id={category.id}
         className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col break-inside-avoid mb-6 ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'}`}
-        onDragOver={handleNativeDragOver}
-        onDrop={handleNativeDrop}
       >
         {/* Category Header */}
         <div className="p-3 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/80">
@@ -354,6 +321,60 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
     }
   }, [categories, isLoaded]);
+
+  // Tauri 드래그앤드롭 리스너
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let isMounted = true;
+
+    const setupDragDrop = async () => {
+      const unlistenFn = await getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type === 'drop') {
+          const paths = event.payload.paths;
+          const position = event.payload.position;
+
+          if (paths && paths.length > 0) {
+            const path = paths[0];
+            const name = path.split(/[\\/]/).pop() || 'Unknown';
+
+            // 마우스 위치로 카테고리 찾기
+            const element = document.elementFromPoint(position.x, position.y);
+            const categoryElement = element?.closest('[data-category-id]');
+            const categoryId = categoryElement?.getAttribute('data-category-id');
+
+            if (categoryId) {
+              handleAddFolder(categoryId, path, name);
+            } else {
+              // 폴백: 최신 categories에서 첫 번째 카테고리 찾기
+              setCategories(currentCategories => {
+                if (currentCategories.length > 0) {
+                  handleAddFolder(currentCategories[0].id, path, name);
+                }
+                return currentCategories;
+              });
+            }
+          }
+        }
+      });
+
+      // 컴포넌트가 여전히 마운트되어 있을 때만 unlisten 할당
+      if (isMounted) {
+        unlisten = unlistenFn;
+      } else {
+        // 이미 언마운트된 경우 즉시 cleanup
+        unlistenFn();
+      }
+    };
+
+    setupDragDrop();
+
+    return () => {
+      isMounted = false;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []); // 의존성 배열을 비워서 한 번만 등록
 
   // --- Actions ---
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -465,35 +486,27 @@ export default function App() {
       return;
     }
 
-    if (window.electron) {
-      try {
-        const result = await window.electron.selectFolder();
-        if (!result.canceled && result.path && result.name) {
-          const newShortcut: FolderShortcut = {
-            id: uuidv4(),
-            name: result.name,
-            path: result.path,
-            createdAt: Date.now()
-          };
+    try {
+      const result = await invoke<{ path: string; name: string } | null>('select_folder');
+      if (result && result.path && result.name) {
+        const newShortcut: FolderShortcut = {
+          id: uuidv4(),
+          name: result.name,
+          path: result.path,
+          createdAt: Date.now()
+        };
 
-          setCategories(prev => prev.map(c => {
-            if (c.id === catId) {
-              return { ...c, shortcuts: [...c.shortcuts, newShortcut] };
-            }
-            return c;
-          }));
-          addToast("폴더가 추가되었습니다.", "success");
-        }
-      } catch (error) {
-        console.error("Folder selection failed:", error);
-        addToast("폴더 선택 중 오류가 발생했습니다.", "error");
+        setCategories(prev => prev.map(c => {
+          if (c.id === catId) {
+            return { ...c, shortcuts: [...c.shortcuts, newShortcut] };
+          }
+          return c;
+        }));
+        addToast("폴더가 추가되었습니다.", "success");
       }
-    } else {
-      // Fallback for web: open manual modal
-      setTargetCategoryId(catId);
-      setFolderFormName('');
-      setFolderFormPath('');
-      setIsFolderModalOpen(true);
+    } catch (error) {
+      console.error("Folder selection failed:", error);
+      addToast("폴더 선택 중 오류가 발생했습니다.", "error");
     }
   };
 
@@ -508,34 +521,21 @@ export default function App() {
   };
 
   const handleCopyPath = async (path: string) => {
-    if (window.electron) {
-      const { success, error } = await window.electron.copyPath(path);
-      if (success) {
-        addToast("경로가 클립보드에 복사되었습니다!", "success");
-      } else {
-        console.error(error);
-        addToast("복사에 실패했습니다.", "error");
-      }
-    } else {
-      // Fallback for browser mode (dev without electron)
-      navigator.clipboard.writeText(path).then(() => {
-        addToast("경로가 클립보드에 복사되었습니다!", "success");
-      }).catch(() => {
-        addToast("복사에 실패했습니다.", "error");
-      });
+    try {
+      await invoke('copy_path', { path });
+      addToast("경로가 클립보드에 복사되었습니다!", "success");
+    } catch (error) {
+      console.error(error);
+      addToast("복사에 실패했습니다.", "error");
     }
   };
 
   const handleOpenFolder = async (path: string) => {
-    if (window.electron) {
-      const { success, error } = await window.electron.openFolder(path);
-      if (!success) {
-        console.error(error);
-        addToast("폴더를 열 수 없습니다.", "error");
-      }
-    } else {
-      addToast("브라우저에서는 폴더를 열 수 없습니다.", "info");
-      console.log("Open folder:", path);
+    try {
+      await invoke('open_folder', { path });
+    } catch (error) {
+      console.error(error);
+      addToast("폴더를 열 수 없습니다.", "error");
     }
   };
 
