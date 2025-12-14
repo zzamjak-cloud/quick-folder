@@ -57,10 +57,11 @@ interface SortableShortcutItemProps {
   handleOpenFolder: (path: string) => void;
   handleCopyPath: (path: string) => void;
   deleteShortcut: (catId: string, sId: string) => void;
+  openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
   key?: React.Key;
 }
 
-function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCopyPath, deleteShortcut }: SortableShortcutItemProps) {
+function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCopyPath, deleteShortcut, openEditFolderModal }: SortableShortcutItemProps) {
   const {
     attributes,
     listeners,
@@ -100,7 +101,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
           <Folder size={16} />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-medium text-slate-200 group-hover/item:text-white truncate">
+          <div className={`text-sm font-medium ${shortcut.color || 'text-slate-200'} group-hover/item:opacity-80 truncate`}>
             {shortcut.name}
           </div>
           {/* Path hidden as per user feedback */}
@@ -108,6 +109,17 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
       </div>
 
       <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity pl-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            openEditFolderModal(categoryId, shortcut);
+          }}
+          className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-md"
+          title="수정"
+          onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+        >
+          <Edit2 size={12} />
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -166,8 +178,21 @@ const COLORS = [
   { name: 'Purple', value: 'bg-purple-500' },
   { name: 'Amber', value: 'bg-amber-500' },
   { name: 'Rose', value: 'bg-rose-500' },
-  { name: 'Rose', value: 'bg-rose-500' },
   { name: 'Slate', value: 'bg-slate-500' },
+];
+
+// 폴더 텍스트 색상 옵션
+const FOLDER_TEXT_COLORS = [
+  { name: '기본', textClass: 'text-slate-200', bgClass: 'bg-slate-200' },
+  { name: '파란색', textClass: 'text-blue-400', bgClass: 'bg-blue-400' },
+  { name: '초록색', textClass: 'text-emerald-400', bgClass: 'bg-emerald-400' },
+  { name: '보라색', textClass: 'text-purple-400', bgClass: 'bg-purple-400' },
+  { name: '노란색', textClass: 'text-amber-400', bgClass: 'bg-amber-400' },
+  { name: '분홍색', textClass: 'text-rose-400', bgClass: 'bg-rose-400' },
+  { name: '빨간색', textClass: 'text-red-400', bgClass: 'bg-red-400' },
+  { name: '주황색', textClass: 'text-orange-400', bgClass: 'bg-orange-400' },
+  { name: '하늘색', textClass: 'text-cyan-400', bgClass: 'bg-cyan-400' },
+  { name: '연보라색', textClass: 'text-violet-400', bgClass: 'bg-violet-400' },
 ];
 
 // --- Category Component ---
@@ -180,6 +205,7 @@ interface CategoryColumnProps {
   handleOpenFolder: (path: string) => void;
   handleCopyPath: (path: string) => void;
   deleteShortcut: (catId: string, sId: string) => void;
+  openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
   searchQuery: string;
   key?: React.Key;
 }
@@ -193,6 +219,7 @@ function CategoryColumn({
   handleOpenFolder,
   handleCopyPath,
   deleteShortcut,
+  openEditFolderModal,
   searchQuery
 }: CategoryColumnProps) {
   const {
@@ -230,7 +257,7 @@ function CategoryColumn({
         ref={setNodeRef}
         style={style}
         data-category-id={category.id}
-        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full inline-block break-inside-avoid mb-6 ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'} ${isDragging ? 'shadow-2xl shadow-blue-500/20' : ''}`}
+        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'} ${isDragging ? 'shadow-2xl shadow-blue-500/20' : ''}`}
       >
         {/* Category Header */}
         <div
@@ -292,6 +319,7 @@ function CategoryColumn({
                     handleOpenFolder={handleOpenFolder}
                     handleCopyPath={handleCopyPath}
                     deleteShortcut={deleteShortcut}
+                    openEditFolderModal={openEditFolderModal}
                   />
                 ))}
               </ul>
@@ -308,6 +336,10 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [columnCount, setColumnCount] = useState(1);
+  const [masonryKey, setMasonryKey] = useState(0);
+  const [isMasonryVisible, setIsMasonryVisible] = useState(true);
+  const masonryRef = React.useRef<HTMLDivElement>(null);
 
   // Modals
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -319,6 +351,8 @@ export default function App() {
   const [targetCategoryId, setTargetCategoryId] = useState<string | null>(null);
   const [folderFormName, setFolderFormName] = useState('');
   const [folderFormPath, setFolderFormPath] = useState('');
+  const [folderFormColor, setFolderFormColor] = useState(FOLDER_TEXT_COLORS[0].textClass);
+  const [editingShortcut, setEditingShortcut] = useState<FolderShortcut | null>(null);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -344,6 +378,93 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
     }
   }, [categories, isLoaded]);
+
+  // 창 크기에 따라 열 수 계산
+  useEffect(() => {
+    const updateColumnCount = () => {
+      // 실제 컨테이너 너비를 측정
+      const container = document.querySelector('main');
+      const width = container ? container.clientWidth : window.innerWidth;
+      
+      let newCount: number;
+      // 브레이크포인트 조정 (컨테이너 너비 기준, 카드 너비 약 200-250px 기준)
+      // 현재 컨테이너가 466px이므로 2열을 표시하려면 더 낮은 브레이크포인트 필요
+      if (width >= 1400) {
+        newCount = 5; // 2xl
+      } else if (width >= 1100) {
+        newCount = 4; // xl
+      } else if (width >= 800) {
+        newCount = 3; // lg
+      } else if (width >= 400) {
+        newCount = 2; // sm (400px 이상이면 2열)
+      } else {
+        newCount = 1; // 기본 (400px 미만)
+      }
+      
+      setColumnCount(prev => {
+        if (prev !== newCount) {
+          return newCount;
+        }
+        return prev;
+      });
+    };
+
+    // DOM이 준비된 후 실행
+    const initTimer = setTimeout(() => {
+      updateColumnCount();
+    }, 100);
+    
+    // 리사이즈 이벤트 핸들러
+    const handleResize = () => {
+      updateColumnCount();
+    };
+    
+    // window resize 이벤트
+    window.addEventListener('resize', handleResize, { passive: true });
+    
+    // ResizeObserver를 사용하여 컨테이너 크기 변화 감지
+    let resizeObserver: ResizeObserver | null = null;
+    const connectObserver = () => {
+      const mainElement = document.querySelector('main');
+      if (mainElement) {
+        resizeObserver = new ResizeObserver(() => {
+          updateColumnCount();
+        });
+        resizeObserver.observe(mainElement);
+      }
+    };
+    
+    // DOM 준비 후 observer 연결
+    setTimeout(connectObserver, 200);
+    
+    // 주기적으로 체크 (Tauri 앱에서 이벤트가 누락될 수 있음)
+    const intervalId = setInterval(updateColumnCount, 500);
+    
+    return () => {
+      clearTimeout(initTimer);
+      clearInterval(intervalId);
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, []);
+  
+  // columnCount 변경 시 CSS 변수 업데이트 및 컨테이너 완전 재생성
+  useEffect(() => {
+    document.documentElement.style.setProperty('--masonry-columns', String(columnCount));
+    
+    // 컨테이너를 완전히 재생성하기 위해 잠시 숨겼다가 다시 표시
+    setIsMasonryVisible(false);
+    
+    // 다음 프레임에 key를 변경하고 다시 표시하여 완전히 재생성
+    requestAnimationFrame(() => {
+      setMasonryKey(prev => prev + 1);
+      requestAnimationFrame(() => {
+        setIsMasonryVisible(true);
+      });
+    });
+  }, [columnCount]);
 
   // Tauri 드래그앤드롭 리스너
   useEffect(() => {
@@ -464,6 +585,17 @@ export default function App() {
     setTargetCategoryId(catId);
     setFolderFormName('');
     setFolderFormPath('');
+    setFolderFormColor(FOLDER_TEXT_COLORS[0].textClass);
+    setEditingShortcut(null);
+    setIsFolderModalOpen(true);
+  };
+
+  const openEditFolderModal = (catId: string, shortcut: FolderShortcut) => {
+    setTargetCategoryId(catId);
+    setFolderFormName(shortcut.name);
+    setFolderFormPath(shortcut.path);
+    setFolderFormColor(shortcut.color || FOLDER_TEXT_COLORS[0].textClass);
+    setEditingShortcut(shortcut);
     setIsFolderModalOpen(true);
   };
 
@@ -471,21 +603,41 @@ export default function App() {
     e.preventDefault();
     if (!targetCategoryId || !folderFormName.trim() || !folderFormPath.trim()) return;
 
-    const newShortcut: FolderShortcut = {
-      id: uuidv4(),
-      name: folderFormName,
-      path: folderFormPath.replace(/"/g, ''), // Clean up common copy-paste artifacts
-      createdAt: Date.now()
-    };
+    if (editingShortcut) {
+      // 수정 모드
+      setCategories(prev => prev.map(c => {
+        if (c.id === targetCategoryId) {
+          return {
+            ...c,
+            shortcuts: c.shortcuts.map(s =>
+              s.id === editingShortcut.id
+                ? { ...s, name: folderFormName, path: folderFormPath.replace(/"/g, ''), color: folderFormColor }
+                : s
+            )
+          };
+        }
+        return c;
+      }));
+      addToast("바로가기가 수정되었습니다.", "success");
+    } else {
+      // 추가 모드
+      const newShortcut: FolderShortcut = {
+        id: uuidv4(),
+        name: folderFormName,
+        path: folderFormPath.replace(/"/g, ''), // Clean up common copy-paste artifacts
+        color: folderFormColor,
+        createdAt: Date.now()
+      };
 
-    setCategories(prev => prev.map(c => {
-      if (c.id === targetCategoryId) {
-        return { ...c, shortcuts: [...c.shortcuts, newShortcut] };
-      }
-      return c;
-    }));
+      setCategories(prev => prev.map(c => {
+        if (c.id === targetCategoryId) {
+          return { ...c, shortcuts: [...c.shortcuts, newShortcut] };
+        }
+        return c;
+      }));
 
-    addToast("바로가기가 추가되었습니다.", "success");
+      addToast("바로가기가 추가되었습니다.", "success");
+    }
     setIsFolderModalOpen(false);
   };
 
@@ -496,6 +648,7 @@ export default function App() {
         id: uuidv4(),
         name: name,
         path: path,
+        color: FOLDER_TEXT_COLORS[0].textClass, // 기본 색상
         createdAt: Date.now()
       };
 
@@ -516,6 +669,7 @@ export default function App() {
           id: uuidv4(),
           name: result.name,
           path: result.path,
+          color: FOLDER_TEXT_COLORS[0].textClass, // 기본 색상
           createdAt: Date.now()
         };
 
@@ -772,9 +926,20 @@ export default function App() {
             items={filteredCategories.map(c => c.id)}
             strategy={rectSortingStrategy}
           >
-            {/* Masonry(열 기준) 레이아웃: 카드가 각자 높이 그대로 열 안에서 순서대로 쌓임 */}
-            {/* 첫 요소에 상단 gap이 생기지 않도록 세로 간격은 개별 카드의 margin-bottom으로 처리 */}
-            <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 [column-gap:1.5rem] [column-fill:auto]">
+            {/* CSS Grid 레이아웃: 각 카테고리가 독립적인 높이를 가지며, 창 크기에 따라 열 수가 동적으로 조정됨 */}
+            {isMasonryVisible && (
+              <div 
+                ref={masonryRef}
+                key={`grid-${columnCount}-${masonryKey}`}
+                style={{ 
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${columnCount}, 1fr)`,
+                  gap: '1.5rem',
+                  width: '100%',
+                  gridAutoRows: 'min-content', // 각 행이 독립적인 높이를 가지도록
+                  alignItems: 'start' // 상단 정렬
+                }}
+              >
               {filteredCategories.map(category => (
                 <CategoryColumn
                   key={category.id}
@@ -786,13 +951,14 @@ export default function App() {
                   handleOpenFolder={handleOpenFolder}
                   handleCopyPath={handleCopyPath}
                   deleteShortcut={deleteShortcut}
+                  openEditFolderModal={openEditFolderModal}
                   searchQuery={searchQuery}
                 />
               ))}
 
             {/* Empty State Helper */}
             {filteredCategories.length === 0 && (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-500">
+              <div className="flex flex-col items-center justify-center py-20 text-slate-500" style={{ columnSpan: 'all', breakInside: 'avoid' }}>
                 <Search size={48} className="mb-4 opacity-50" />
                 <p className="text-lg font-medium">검색 결과가 없거나 등록된 카테고리가 없습니다.</p>
                 <Button onClick={openAddCategoryModal} className="mt-4" variant="secondary">
@@ -800,7 +966,8 @@ export default function App() {
                 </Button>
               </div>
             )}
-            </div>
+              </div>
+            )}
           </SortableContext>
         </main >
         <DragOverlay>
@@ -883,7 +1050,7 @@ export default function App() {
       <Modal
         isOpen={isFolderModalOpen}
         onClose={() => setIsFolderModalOpen(false)}
-        title="폴더 바로가기 추가"
+        title={editingShortcut ? "폴더 바로가기 수정" : "폴더 바로가기 추가"}
       >
         <form onSubmit={handleSaveFolder} className="space-y-4">
           <div>
@@ -916,9 +1083,27 @@ export default function App() {
               * 탐색기 주소창의 경로를 복사해서 붙여넣으세요.
             </p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">텍스트 색상</label>
+            <div className="flex flex-wrap gap-2">
+              {FOLDER_TEXT_COLORS.map((color) => (
+                <button
+                  key={color.textClass}
+                  type="button"
+                  onClick={() => setFolderFormColor(color.textClass)}
+                  className={`w-8 h-8 rounded-full ${color.bgClass} transition-transform ${
+                    folderFormColor === color.textClass
+                      ? 'ring-2 ring-offset-2 ring-offset-slate-800 ring-white scale-110'
+                      : 'hover:scale-110 opacity-70 hover:opacity-100'
+                  }`}
+                  title={color.name}
+                />
+              ))}
+            </div>
+          </div>
           <div className="pt-4 flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setIsFolderModalOpen(false)}>취소</Button>
-            <Button type="submit">추가하기</Button>
+            <Button type="submit">{editingShortcut ? "수정 완료" : "추가하기"}</Button>
           </div>
         </form>
       </Modal>

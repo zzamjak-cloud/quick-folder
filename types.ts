@@ -2,6 +2,7 @@ export interface FolderShortcut {
   id: string;
   name: string;
   path: string;
+  color?: string; // 텍스트 색상 (Tailwind 클래스 또는 hex 코드)
   createdAt: number;
 }
 
