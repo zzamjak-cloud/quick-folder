@@ -35,6 +35,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  rectSortingStrategy,
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -229,7 +230,7 @@ function CategoryColumn({
         ref={setNodeRef}
         style={style}
         data-category-id={category.id}
-        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'} ${isDragging ? 'shadow-2xl shadow-blue-500/20' : ''}`}
+        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full inline-block break-inside-avoid mb-6 ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'} ${isDragging ? 'shadow-2xl shadow-blue-500/20' : ''}`}
       >
         {/* Category Header */}
         <div
@@ -579,8 +580,8 @@ export default function App() {
     const activeType = args.active?.data?.current?.type;
 
     if (activeType === 'Category') {
-      // For category dragging, use pointerWithin for wider detection area
-      return pointerWithin(args);
+      // Masonry(컬럼) 레이아웃에서는 rect 기반이 더 자연스럽게 동작함
+      return rectIntersection(args);
     }
 
     // For shortcut dragging, use closestCenter
@@ -769,9 +770,11 @@ export default function App() {
         <main className="max-w-7xl mx-auto">
           <SortableContext
             items={filteredCategories.map(c => c.id)}
-            strategy={verticalListSortingStrategy}
+            strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-start">
+            {/* Masonry(열 기준) 레이아웃: 카드가 각자 높이 그대로 열 안에서 순서대로 쌓임 */}
+            {/* 첫 요소에 상단 gap이 생기지 않도록 세로 간격은 개별 카드의 margin-bottom으로 처리 */}
+            <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 [column-gap:1.5rem] [column-fill:auto]">
               {filteredCategories.map(category => (
                 <CategoryColumn
                   key={category.id}
