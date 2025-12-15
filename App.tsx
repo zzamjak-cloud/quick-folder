@@ -340,6 +340,7 @@ export default function App() {
   const [masonryKey, setMasonryKey] = useState(0);
   const [isMasonryVisible, setIsMasonryVisible] = useState(true);
   const masonryRef = React.useRef<HTMLDivElement>(null);
+  const hoveredCategoryIdRef = React.useRef<string | null>(null);
 
   // Modals
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -466,6 +467,29 @@ export default function App() {
     });
   }, [columnCount]);
 
+  const isExternalFileDragEvent = (e: React.DragEvent) => {
+    const types = e.dataTransfer?.types;
+    if (!types) return false;
+    return Array.from(types).includes('Files');
+  };
+
+  const updateHoveredCategoryFromDragEvent = (e: React.DragEvent) => {
+    if (!isExternalFileDragEvent(e)) return;
+    // 외부(탐색기) 드래그 시에만 현재 호버된 카테고리를 DOM 타겟 기반으로 추적
+    const target = e.target as HTMLElement | null;
+    const categoryEl = target?.closest?.('[data-category-id]') as HTMLElement | null;
+    const id = categoryEl?.getAttribute('data-category-id') ?? null;
+    hoveredCategoryIdRef.current = id;
+  };
+
+  const clearHoveredCategoryIfLeftMain = (e: React.DragEvent) => {
+    if (!isExternalFileDragEvent(e)) return;
+    const related = e.relatedTarget as Node | null;
+    // main 영역 밖으로 완전히 벗어났을 때만 초기화
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+    hoveredCategoryIdRef.current = null;
+  };
+
   // Tauri 드래그앤드롭 리스너
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -481,10 +505,19 @@ export default function App() {
             const path = paths[0];
             const name = path.split(/[\\/]/).pop() || 'Unknown';
 
-            // 마우스 위치로 카테고리 찾기
-            const element = document.elementFromPoint(position.x, position.y);
-            const categoryElement = element?.closest('[data-category-id]');
-            const categoryId = categoryElement?.getAttribute('data-category-id');
+            // 1) 가장 안정적인 방식: 외부 드래그 중 DOM 타겟 기반으로 추적해 둔 카테고리 사용
+            let categoryId: string | null = hoveredCategoryIdRef.current;
+
+            // 2) 폴백: 좌표 기반(환경에 따라 좌표계가 달라질 수 있어 두 번 시도)
+            if (!categoryId) {
+              const element1 = document.elementFromPoint(position.x, position.y);
+              categoryId = element1?.closest('[data-category-id]')?.getAttribute('data-category-id') ?? null;
+            }
+            if (!categoryId) {
+              const dpr = window.devicePixelRatio || 1;
+              const element2 = document.elementFromPoint(position.x / dpr, position.y / dpr);
+              categoryId = element2?.closest('[data-category-id]')?.getAttribute('data-category-id') ?? null;
+            }
 
             if (categoryId) {
               handleAddFolder(categoryId, path, name);
@@ -497,6 +530,9 @@ export default function App() {
                 return currentCategories;
               });
             }
+
+            // 드롭 처리 후에는 호버 상태 초기화
+            hoveredCategoryIdRef.current = null;
           }
         }
       });
@@ -921,7 +957,23 @@ export default function App() {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <main className="max-w-7xl mx-auto">
+        <main
+          className="max-w-7xl mx-auto"
+          onDragEnterCapture={(e) => {
+            // 외부(탐색기) 드래그 시 호버된 카테고리 추적
+            updateHoveredCategoryFromDragEvent(e);
+          }}
+          onDragOverCapture={(e) => {
+            if (isExternalFileDragEvent(e)) {
+              // dragover를 받아야 target 추적이 안정적으로 됨
+              e.preventDefault();
+            }
+            updateHoveredCategoryFromDragEvent(e);
+          }}
+          onDragLeaveCapture={(e) => {
+            clearHoveredCategoryIfLeftMain(e);
+          }}
+        >
           <SortableContext
             items={filteredCategories.map(c => c.id)}
             strategy={rectSortingStrategy}
