@@ -7,8 +7,9 @@ import {
   Trash2,
   Edit2,
   ExternalLink,
-  LayoutGrid,
+  Palette,
   Search,
+  ZoomIn,
   MoreVertical,
   ChevronDown,
   ChevronRight
@@ -49,6 +50,28 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 // --- Types & Constants ---
 const STORAGE_KEY = 'quickfolder_widget_data';
+const SETTINGS_KEY = 'quickfolder_widget_settings';
+
+type Theme = {
+  id: string;
+  name: string;
+  bg: string; // #RRGGBB
+  accent: string; // #RRGGBB
+};
+
+type ThemeVars = {
+  bg: string;
+  surface: string;
+  surface2: string;
+  surfaceHover: string;
+  border: string;
+  text: string;
+  muted: string;
+  accent: string;
+  accentHover: string;
+  accent20: string;
+  accent50: string;
+};
 
 // --- Sortable Item Component ---
 interface SortableShortcutItemProps {
@@ -88,7 +111,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
     <li
       ref={setNodeRef}
       style={style}
-      className="group/item flex items-center justify-between p-2 rounded-lg hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-600/50 bg-slate-800/20"
+      className="group/item flex items-center justify-between p-2 rounded-lg transition-colors border border-transparent bg-[var(--qf-surface)] hover:bg-[var(--qf-surface-hover)] hover:border-[var(--qf-border)]"
       {...attributes}
       {...listeners}
     >
@@ -97,11 +120,11 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
         onClick={() => handleOpenFolder(shortcut.path)}
         title={`${shortcut.path} (클릭하여 열기)`}
       >
-        <div className={`p-1.5 rounded-md bg-slate-800 text-blue-400 group-hover/item:text-blue-300 transition-colors`}>
+        <div className="text-[var(--qf-accent)] transition-colors">
           <Folder size={16} />
         </div>
         <div className="min-w-0">
-          <div className={`text-sm font-medium ${shortcut.color || 'text-slate-200'} group-hover/item:opacity-80 truncate`}>
+          <div className={`text-sm font-medium ${shortcut.color || 'text-[var(--qf-text)]'} group-hover/item:opacity-80 truncate`}>
             {shortcut.name}
           </div>
           {/* Path hidden as per user feedback */}
@@ -114,7 +137,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
             e.stopPropagation();
             openEditFolderModal(categoryId, shortcut);
           }}
-          className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-md"
+          className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-accent)] hover:bg-[var(--qf-surface-hover)] rounded-md"
           title="수정"
           onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
         >
@@ -125,7 +148,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
             e.stopPropagation();
             handleCopyPath(shortcut.path);
           }}
-          className="p-1.5 text-slate-400 hover:text-green-400 hover:bg-slate-700 rounded-md"
+          className="p-1.5 text-[var(--qf-muted)] hover:text-emerald-400 hover:bg-[var(--qf-surface-hover)] rounded-md"
           title="경로 복사"
           onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
         >
@@ -136,7 +159,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
             e.stopPropagation();
             deleteShortcut(categoryId, shortcut.id);
           }}
-          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-md"
+          className="p-1.5 text-[var(--qf-muted)] hover:text-red-400 hover:bg-[var(--qf-surface-hover)] rounded-md"
           title="삭제"
           onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
         >
@@ -153,7 +176,7 @@ const DEFAULT_CATEGORIES: Category[] = [
   {
     id: '1',
     title: '작업 공간',
-    color: 'bg-blue-500',
+    color: 'text-blue-400',
     createdAt: Date.now(),
     shortcuts: [
       { id: '101', name: '프로젝트 A', path: 'D:\\Projects\\ProjectA', createdAt: Date.now() },
@@ -163,7 +186,7 @@ const DEFAULT_CATEGORIES: Category[] = [
   {
     id: '2',
     title: '다운로드 & 문서',
-    color: 'bg-emerald-500',
+    color: 'text-emerald-400',
     createdAt: Date.now(),
     shortcuts: [
       { id: '201', name: 'Downloads', path: 'C:\\Users\\User\\Downloads', createdAt: Date.now() },
@@ -173,17 +196,17 @@ const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 const COLORS = [
-  { name: 'Blue', value: 'bg-blue-500' },
-  { name: 'Emerald', value: 'bg-emerald-500' },
-  { name: 'Purple', value: 'bg-purple-500' },
-  { name: 'Amber', value: 'bg-amber-500' },
-  { name: 'Rose', value: 'bg-rose-500' },
-  { name: 'Slate', value: 'bg-slate-500' },
+  { name: 'Blue', value: 'text-blue-400', swatch: 'bg-blue-500' },
+  { name: 'Emerald', value: 'text-emerald-400', swatch: 'bg-emerald-500' },
+  { name: 'Purple', value: 'text-purple-400', swatch: 'bg-purple-500' },
+  { name: 'Amber', value: 'text-amber-400', swatch: 'bg-amber-500' },
+  { name: 'Rose', value: 'text-rose-400', swatch: 'bg-rose-500' },
+  { name: 'Slate', value: 'text-slate-300', swatch: 'bg-slate-500' },
 ];
 
 // 폴더 텍스트 색상 옵션
 const FOLDER_TEXT_COLORS = [
-  { name: '기본', textClass: 'text-slate-200', bgClass: 'bg-slate-200' },
+  { name: '기본', textClass: 'text-[var(--qf-text)]', bgClass: 'bg-slate-200' },
   { name: '파란색', textClass: 'text-blue-400', bgClass: 'bg-blue-400' },
   { name: '초록색', textClass: 'text-emerald-400', bgClass: 'bg-emerald-400' },
   { name: '보라색', textClass: 'text-purple-400', bgClass: 'bg-purple-400' },
@@ -193,6 +216,16 @@ const FOLDER_TEXT_COLORS = [
   { name: '주황색', textClass: 'text-orange-400', bgClass: 'bg-orange-400' },
   { name: '하늘색', textClass: 'text-cyan-400', bgClass: 'bg-cyan-400' },
   { name: '연보라색', textClass: 'text-violet-400', bgClass: 'bg-violet-400' },
+];
+
+// 배경 컬러 프리셋
+const THEME_PRESETS: Theme[] = [
+  { id: 'navy', name: '기본(네이비)', bg: '#0f172a', accent: '#3b82f6' },
+  { id: 'graphite', name: '그라파이트', bg: '#0b0f19', accent: '#22c55e' },
+  { id: 'slate', name: '슬레이트', bg: '#111827', accent: '#a855f7' },
+  { id: 'purple', name: '다크 퍼플', bg: '#120a2a', accent: '#ec4899' },
+  { id: 'forest', name: '다크 그린', bg: '#081c15', accent: '#10b981' },
+  { id: 'brown', name: '다크 브라운', bg: '#1b120a', accent: '#f59e0b' },
 ];
 
 // --- Category Component ---
@@ -246,6 +279,16 @@ function CategoryColumn({
   };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
+  const categoryTitleColor =
+    category.color?.startsWith('bg-')
+      ? (category.color
+          .replace('bg-blue-500', 'text-blue-400')
+          .replace('bg-emerald-500', 'text-emerald-400')
+          .replace('bg-purple-500', 'text-purple-400')
+          .replace('bg-amber-500', 'text-amber-400')
+          .replace('bg-rose-500', 'text-rose-400')
+          .replace('bg-slate-500', 'text-slate-300'))
+      : category.color;
 
   return (
     <SortableContext
@@ -257,11 +300,11 @@ function CategoryColumn({
         ref={setNodeRef}
         style={style}
         data-category-id={category.id}
-        className={`bg-slate-800/50 border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full ${isOver ? 'border-blue-500/50 bg-slate-800/80' : 'border-slate-700/50 hover:border-slate-600'} ${isDragging ? 'shadow-2xl shadow-blue-500/20' : ''}`}
+        className={`border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full bg-[var(--qf-surface)] border-[var(--qf-border)] ${isOver ? 'border-[var(--qf-accent-50)] bg-[var(--qf-surface-2)]' : 'hover:border-[var(--qf-border)]'} ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
       >
         {/* Category Header */}
         <div
-          className={`p-3 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/80 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`p-3 border-b flex items-center justify-between bg-[var(--qf-surface-2)] border-[var(--qf-border)] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           {...attributes}
           {...listeners}
         >
@@ -269,30 +312,29 @@ function CategoryColumn({
             className="flex items-center gap-2 cursor-pointer select-none"
             onClick={() => toggleCollapse(category.id)}
           >
-            {isExpanded ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
-            <div className={`w-2.5 h-2.5 rounded-full ${category.color} shadow-lg shadow-${category.color.replace('bg-', '')}/50`} />
-            <h2 className="font-semibold text-white truncate max-w-[120px]" title={category.title}>
+            {isExpanded ? <ChevronDown size={18} className="text-[var(--qf-muted)]" /> : <ChevronRight size={18} className="text-[var(--qf-muted)]" />}
+            <h2 className={`font-semibold truncate max-w-[140px] ${categoryTitleColor || 'text-[var(--qf-text)]'}`} title={category.title}>
               {category.title}
             </h2>
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => handleAddFolder(category.id)}
-              className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-md transition-colors"
+              className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-accent)] hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
               title="폴더 추가"
             >
               <Plus size={14} />
             </button>
             <button
               onClick={() => openEditCategoryModal(category)}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-md transition-colors"
+              className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-text)] hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
               title="카테고리 수정"
             >
               <Settings size={14} />
             </button>
             <button
               onClick={() => deleteCategory(category.id)}
-              className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-md transition-colors"
+              className="p-1.5 text-[var(--qf-muted)] hover:text-red-400 hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
               title="카테고리 삭제"
             >
               <Trash2 size={14} />
@@ -304,7 +346,7 @@ function CategoryColumn({
         {isExpanded && (
           <div className="p-3 flex-1 overflow-y-auto max-h-[300px]">
             {category.shortcuts.length === 0 ? (
-              <div className="text-center py-6 text-slate-500 text-xs italic">
+              <div className="text-center py-6 text-[var(--qf-muted)] text-xs italic">
                 등록된 폴더가 없습니다
                 <br />
                 <span className="text-[10px] opacity-70 mt-1 block">폴더를 이곳으로 드래그하세요</span>
@@ -342,6 +384,17 @@ export default function App() {
   const masonryRef = React.useRef<HTMLDivElement>(null);
   const hoveredCategoryIdRef = React.useRef<string | null>(null);
 
+  // Settings
+  const [isBgModalOpen, setIsBgModalOpen] = useState(false);
+  const [themeId, setThemeId] = useState<Theme['id']>(THEME_PRESETS[0].id);
+  const [customBg, setCustomBg] = useState('#0f172a');
+  const [customAccent, setCustomAccent] = useState('#3b82f6');
+  const [bgInputValue, setBgInputValue] = useState('#0f172a');
+  const [accentInputValue, setAccentInputValue] = useState('#3b82f6');
+  const [themeVars, setThemeVars] = useState<ThemeVars | null>(null);
+  const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
+  const [zoomPercent, setZoomPercent] = useState(100); // 50, 60, ... 150
+
   // Modals
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -360,10 +413,47 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
+    // Settings load (배경색 등)
+    const savedSettings = localStorage.getItem(SETTINGS_KEY);
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        const savedThemeId = typeof parsed?.themeId === 'string' ? parsed.themeId : THEME_PRESETS[0].id;
+        const bg = typeof parsed?.customBg === 'string' ? parsed.customBg : '#0f172a';
+        const accent = typeof parsed?.customAccent === 'string' ? parsed.customAccent : '#3b82f6';
+        const z = typeof parsed?.zoomPercent === 'number' ? parsed.zoomPercent : 100;
+        setThemeId(savedThemeId);
+        setCustomBg(bg);
+        setCustomAccent(accent);
+        setBgInputValue(bg);
+        setAccentInputValue(accent);
+        setZoomPercent(Math.min(150, Math.max(50, Math.round(z / 10) * 10)));
+      } catch (e) {
+        console.error("Failed to parse saved settings", e);
+      }
+    }
+
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setCategories(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        // 마이그레이션: 예전 bg-* 컬러를 text-*로 변환 (원 아이콘 제거 → 제목 텍스트 컬러 방식)
+        const migrateCategoryColor = (c: any) => {
+          const col: unknown = c?.color;
+          if (typeof col === 'string' && col.startsWith('bg-')) {
+            const mapped =
+              col
+                .replace('bg-blue-500', 'text-blue-400')
+                .replace('bg-emerald-500', 'text-emerald-400')
+                .replace('bg-purple-500', 'text-purple-400')
+                .replace('bg-amber-500', 'text-amber-400')
+                .replace('bg-rose-500', 'text-rose-400')
+                .replace('bg-slate-500', 'text-slate-300');
+            return { ...c, color: mapped };
+          }
+          return c;
+        };
+        setCategories(Array.isArray(parsed) ? parsed.map(migrateCategoryColor) : parsed);
       } catch (e) {
         console.error("Failed to parse saved data", e);
         setCategories(DEFAULT_CATEGORIES);
@@ -379,6 +469,110 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
     }
   }, [categories, isLoaded]);
+
+  useEffect(() => {
+    // settings persist
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        themeId,
+        customBg,
+        customAccent,
+        zoomPercent,
+      })
+    );
+  }, [themeId, customBg, customAccent, zoomPercent]);
+
+  const normalizeHexColor = (value: string) => {
+    const v = value.trim();
+    if (/^#([0-9a-fA-F]{6})$/.test(v)) return v.toLowerCase();
+    return null;
+  };
+
+  const hexToRgb = (hex: string) => {
+    const normalized = normalizeHexColor(hex);
+    if (!normalized) return null;
+    const h = normalized.slice(1);
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return { r, g, b };
+  };
+
+  const rgbToHex = (r: number, g: number, b: number) => {
+    const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
+    const toHex = (n: number) => clamp(n).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  const mix = (a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }, t: number) => {
+    const lerp = (x: number, y: number) => x + (y - x) * t;
+    return {
+      r: lerp(a.r, b.r),
+      g: lerp(a.g, b.g),
+      b: lerp(a.b, b.b),
+    };
+  };
+
+  const relativeLuminance = (rgb: { r: number; g: number; b: number }) => {
+    const srgb = [rgb.r, rgb.g, rgb.b].map(v => v / 255);
+    const lin = srgb.map(c => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  };
+
+  const computeThemeVars = (bgHex: string, accentHex: string): ThemeVars | null => {
+    const bgRgb = hexToRgb(bgHex);
+    const accentRgb = hexToRgb(accentHex);
+    if (!bgRgb || !accentRgb) return null;
+
+    // 기본은 다크 테마를 가정하되, bg가 밝으면 텍스트를 다크로 전환
+    const isDark = relativeLuminance(bgRgb) < 0.35;
+    const white = { r: 255, g: 255, b: 255 };
+    const black = { r: 0, g: 0, b: 0 };
+    const toward = isDark ? white : black;
+
+    const mSurface = mix(bgRgb, toward, isDark ? 0.06 : 0.10);
+    const mSurface2 = mix(bgRgb, toward, isDark ? 0.10 : 0.16);
+    const mSurfaceHover = mix(bgRgb, toward, isDark ? 0.14 : 0.20);
+    const mBorder = mix(bgRgb, toward, isDark ? 0.18 : 0.25);
+
+    const surface = rgbToHex(mSurface.r, mSurface.g, mSurface.b);
+    const surface2 = rgbToHex(mSurface2.r, mSurface2.g, mSurface2.b);
+    const surfaceHover = rgbToHex(mSurfaceHover.r, mSurfaceHover.g, mSurfaceHover.b);
+    const border = rgbToHex(mBorder.r, mBorder.g, mBorder.b);
+
+    const text = isDark ? '#e5e7eb' : '#0f172a';
+    const muted = isDark ? '#94a3b8' : '#475569';
+
+    const accent20 = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.20)`;
+    const accent50 = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.50)`;
+    const accentHoverRgb = mix(accentRgb, isDark ? white : black, isDark ? 0.10 : 0.12);
+    const accentHover = rgbToHex(accentHoverRgb.r, accentHoverRgb.g, accentHoverRgb.b);
+
+    return {
+      bg: bgHex,
+      surface,
+      surface2,
+      surfaceHover,
+      border,
+      text,
+      muted,
+      accent: accentHex,
+      accentHover,
+      accent20,
+      accent50,
+    };
+  };
+
+  useEffect(() => {
+    const preset = THEME_PRESETS.find(t => t.id === themeId) ?? THEME_PRESETS[0];
+    const bg = themeId === 'custom' ? customBg : preset.bg;
+    const accent = themeId === 'custom' ? customAccent : preset.accent;
+    const vars = computeThemeVars(bg, accent);
+    setThemeVars(vars);
+  }, [themeId, customBg, customAccent]);
+
+  const zoomScale = zoomPercent / 100;
 
   // 창 크기에 따라 열 수 계산
   useEffect(() => {
@@ -913,41 +1107,80 @@ export default function App() {
     ));
   };
 
-  return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-6 sm:p-10">
-      {/* Header */}
-      <header className="max-w-7xl mx-auto mb-10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-              <LayoutGrid className="text-blue-500" size={32} />
-              QuickFolder
-            </h1>
-            <p className="text-slate-400 mt-2 text-sm">
-              자주 사용하는 로컬 폴더를 위젯으로 관리하세요.
-            </p>
-          </div>
+  const applyCustomTheme = (bgValue: string, accentValue: string) => {
+    const bg = normalizeHexColor(bgValue);
+    const accent = normalizeHexColor(accentValue);
+    if (!bg || !accent) {
+      addToast("색상 값은 #RRGGBB 형식이어야 합니다.", "error");
+      return;
+    }
+    setThemeId('custom');
+    setCustomBg(bg);
+    setCustomAccent(accent);
+    setBgInputValue(bg);
+    setAccentInputValue(accent);
+    addToast("테마가 적용되었습니다.", "success");
+  };
 
-          <div className="flex items-center gap-3">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search size={16} className="text-slate-500 group-focus-within:text-blue-400 transition-colors" />
-              </div>
-              <input
-                type="text"
-                placeholder="검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-white rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64 transition-all"
-              />
-            </div>
-            <Button onClick={openAddCategoryModal}>
-              <Plus size={18} className="mr-2" />
-              카테고리 추가
-            </Button>
-          </div>
-        </div>
-      </header>
+  return (
+    <div
+      className="min-h-screen p-6 sm:p-10 text-[var(--qf-text)]"
+      style={{
+        backgroundColor: themeVars?.bg ?? '#0f172a',
+        // CSS 변수로 전체 톤을 일관되게 적용
+        ['--qf-bg' as any]: themeVars?.bg ?? '#0f172a',
+        ['--qf-surface' as any]: themeVars?.surface ?? '#111827',
+        ['--qf-surface-2' as any]: themeVars?.surface2 ?? '#1f2937',
+        ['--qf-surface-hover' as any]: themeVars?.surfaceHover ?? '#334155',
+        ['--qf-border' as any]: themeVars?.border ?? '#334155',
+        ['--qf-text' as any]: themeVars?.text ?? '#e5e7eb',
+        ['--qf-muted' as any]: themeVars?.muted ?? '#94a3b8',
+        ['--qf-accent' as any]: themeVars?.accent ?? '#3b82f6',
+        ['--qf-accent-hover' as any]: themeVars?.accentHover ?? '#60a5fa',
+        ['--qf-accent-20' as any]: themeVars?.accent20 ?? 'rgba(59,130,246,0.20)',
+        ['--qf-accent-50' as any]: themeVars?.accent50 ?? 'rgba(59,130,246,0.50)',
+      }}
+    >
+      {/* Toolbar: [검색][돋보기(줌)][팔레트][+] */}
+      <div className="max-w-7xl mx-auto mb-6 flex items-center gap-2">
+        <input
+          type="text"
+          placeholder="검색..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="bg-[var(--qf-surface)] border border-[var(--qf-border)] text-[var(--qf-text)] rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--qf-accent)] w-full max-w-[520px] transition-all placeholder:text-[var(--qf-muted)]"
+        />
+
+        <button
+          type="button"
+          onClick={() => setIsZoomModalOpen(true)}
+          className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors"
+          title="확대/축소"
+          aria-label="확대/축소"
+        >
+          <ZoomIn size={18} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsBgModalOpen(true)}
+          className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors"
+          title="테마 설정"
+          aria-label="테마 설정"
+        >
+          <Palette size={18} />
+        </button>
+
+        <button
+          type="button"
+          onClick={openAddCategoryModal}
+          className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors"
+          title="카테고리 추가"
+          aria-label="카테고리 추가"
+        >
+          <Plus size={18} />
+        </button>
+      </div>
 
       {/* Main Grid */}
       <DndContext
@@ -974,6 +1207,14 @@ export default function App() {
             clearHoveredCategoryIfLeftMain(e);
           }}
         >
+          {/* Zoom wrapper (전체 표시 크기 조절) */}
+          <div
+            style={{
+              transform: `scale(${zoomScale})`,
+              transformOrigin: 'top left',
+              width: `${100 / zoomScale}%`,
+            }}
+          >
           <SortableContext
             items={filteredCategories.map(c => c.id)}
             strategy={rectSortingStrategy}
@@ -1010,7 +1251,7 @@ export default function App() {
 
             {/* Empty State Helper */}
             {filteredCategories.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-500" style={{ columnSpan: 'all', breakInside: 'avoid' }}>
+              <div className="flex flex-col items-center justify-center py-20 text-[var(--qf-muted)]" style={{ columnSpan: 'all', breakInside: 'avoid' }}>
                 <Search size={48} className="mb-4 opacity-50" />
                 <p className="text-lg font-medium">검색 결과가 없거나 등록된 카테고리가 없습니다.</p>
                 <Button onClick={openAddCategoryModal} className="mt-4" variant="secondary">
@@ -1020,7 +1261,8 @@ export default function App() {
             )}
               </div>
             )}
-          </SortableContext>
+           </SortableContext>
+          </div>
         </main >
         <DragOverlay>
           {activeId ? (() => {
@@ -1030,22 +1272,21 @@ export default function App() {
             if (activeCategory) {
               // Dragging a category
               return (
-                <div className="bg-slate-800/90 border-2 border-blue-500 rounded-2xl p-3 shadow-2xl backdrop-blur-sm min-w-[200px]">
+                <div className="bg-[var(--qf-surface-2)] border-2 border-[var(--qf-accent)] rounded-2xl p-3 shadow-2xl backdrop-blur-sm min-w-[200px]">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${activeCategory.color}`} />
-                    <h2 className="font-semibold text-white">{activeCategory.title}</h2>
+                    <h2 className={`font-semibold ${activeCategory.color || 'text-[var(--qf-text)]'}`}>{activeCategory.title}</h2>
                   </div>
                 </div>
               );
             } else {
               // Dragging a shortcut
               return (
-                <div className="bg-slate-700 p-2 rounded-lg shadow-xl border border-blue-500/50 flex items-center gap-3">
-                  <div className="p-1.5 rounded-md bg-slate-800 text-blue-400">
+                <div className="bg-[var(--qf-surface-2)] p-2 rounded-lg shadow-xl border border-[var(--qf-accent-50)] flex items-center gap-3">
+                  <div className="p-1.5 rounded-md bg-[var(--qf-surface)] text-[var(--qf-accent)]">
                     <Folder size={16} />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-white truncate">Moving...</div>
+                    <div className="text-sm font-medium text-[var(--qf-text)] truncate">Moving...</div>
                   </div>
                 </div>
               );
@@ -1056,6 +1297,160 @@ export default function App() {
 
       {/* --- Modals --- */}
 
+      {/* Theme Settings Modal */}
+      <Modal
+        isOpen={isBgModalOpen}
+        onClose={() => setIsBgModalOpen(false)}
+        title="테마 설정"
+      >
+        <div className="space-y-5">
+          <div>
+            <div className="text-sm font-medium text-[var(--qf-muted)] mb-2">프리셋 테마</div>
+            <div className="grid grid-cols-2 gap-2">
+              {THEME_PRESETS.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setThemeId(t.id);
+                    setBgInputValue(t.bg);
+                    setAccentInputValue(t.accent);
+                  }}
+                  className={`flex items-center gap-2 p-2 rounded-lg border transition-colors bg-[var(--qf-surface)] hover:bg-[var(--qf-surface-hover)] border-[var(--qf-border)] ${themeId === t.id ? 'ring-2 ring-[var(--qf-accent)]' : ''}`}
+                  title={`${t.bg} / ${t.accent}`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="w-5 h-5 rounded-md border border-white/10"
+                      style={{ backgroundColor: t.bg }}
+                    />
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border border-white/10"
+                      style={{ backgroundColor: t.accent }}
+                    />
+                  </span>
+                  <span className="text-xs text-[var(--qf-text)] truncate">{t.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm font-medium text-[var(--qf-muted)] mb-2">커스텀 (배경 + 강조색)</div>
+            <div className="flex items-center gap-3 mb-3">
+              <input
+                type="color"
+                value={normalizeHexColor(bgInputValue) ?? customBg}
+                onChange={(e) => {
+                  setBgInputValue(e.target.value);
+                }}
+                className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1"
+                aria-label="배경색 선택"
+              />
+              <input
+                type="text"
+                value={bgInputValue}
+                onChange={(e) => setBgInputValue(e.target.value)}
+                placeholder="#0f172a"
+                className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={normalizeHexColor(accentInputValue) ?? customAccent}
+                onChange={(e) => {
+                  setAccentInputValue(e.target.value);
+                }}
+                className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1"
+                aria-label="강조색 선택"
+              />
+              <input
+                type="text"
+                value={accentInputValue}
+                onChange={(e) => setAccentInputValue(e.target.value)}
+                placeholder="#3b82f6"
+                className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs"
+              />
+              <Button type="button" variant="secondary" onClick={() => applyCustomTheme(bgInputValue, accentInputValue)}>
+                적용
+              </Button>
+            </div>
+            <div className="text-[11px] text-[var(--qf-muted)] mt-2">
+              * `#RRGGBB` 형식만 지원합니다.
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-between items-center">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setThemeId(THEME_PRESETS[0].id);
+                setBgInputValue(THEME_PRESETS[0].bg);
+                setAccentInputValue(THEME_PRESETS[0].accent);
+              }}
+            >
+              기본값으로
+            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => setIsBgModalOpen(false)}>
+                닫기
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Zoom Modal */}
+      <Modal
+        isOpen={isZoomModalOpen}
+        onClose={() => setIsZoomModalOpen(false)}
+        title="확대/축소"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-[var(--qf-muted)]">현재</div>
+            <div className="text-sm font-semibold text-[var(--qf-text)]">{zoomPercent}%</div>
+          </div>
+
+          <input
+            type="range"
+            min={50}
+            max={150}
+            step={10}
+            value={zoomPercent}
+            onChange={(e) => setZoomPercent(Number(e.target.value))}
+            className="w-full"
+            aria-label="확대/축소 슬라이더"
+          />
+
+          <div className="flex items-center justify-between">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setZoomPercent((p) => Math.max(50, p - 10))}
+            >
+              －
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setZoomPercent(100)}
+            >
+              100%로
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setZoomPercent((p) => Math.min(150, p + 10))}
+            >
+              ＋
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Category Modal */}
       <Modal
         isOpen={isCatModalOpen}
@@ -1064,26 +1459,26 @@ export default function App() {
       >
         <form onSubmit={handleSaveCategory} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">카테고리 이름</label>
+            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-1">카테고리 이름</label>
             <input
               type="text"
               required
               value={catFormTitle}
               onChange={(e) => setCatFormTitle(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none"
               placeholder="예: 업무용, 개인용..."
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">색상 태그</label>
+            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-2">색상 태그</label>
             <div className="flex flex-wrap gap-2">
               {COLORS.map((color) => (
                 <button
                   key={color.value}
                   type="button"
                   onClick={() => setCatFormColor(color.value)}
-                  className={`w-8 h-8 rounded-full ${color.value} transition-transform ${catFormColor === color.value
-                    ? 'ring-2 ring-offset-2 ring-offset-slate-800 ring-white scale-110'
+                  className={`w-8 h-8 rounded-full ${color.swatch} transition-transform ${catFormColor === color.value
+                    ? 'ring-2 ring-offset-2 ring-offset-[var(--qf-surface)] ring-white scale-110'
                     : 'hover:scale-110 opacity-70 hover:opacity-100'
                     }`}
                   title={color.name}
@@ -1106,37 +1501,37 @@ export default function App() {
       >
         <form onSubmit={handleSaveFolder} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">바로가기 이름</label>
+            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-1">바로가기 이름</label>
             <input
               type="text"
               required
               value={folderFormName}
               onChange={(e) => setFolderFormName(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none"
               placeholder="예: 프로젝트 문서"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">폴더 경로</label>
+            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-1">폴더 경로</label>
             <div className="relative">
               <input
                 type="text"
                 required
                 value={folderFormPath}
                 onChange={(e) => setFolderFormPath(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-3 pr-10 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-xs"
+                className="w-full bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg pl-3 pr-10 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs"
                 placeholder="C:\Users\Name\Documents..."
               />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-[var(--qf-muted)]">
                 <Folder size={14} />
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-[var(--qf-muted)] mt-1">
               * 탐색기 주소창의 경로를 복사해서 붙여넣으세요.
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">텍스트 색상</label>
+            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-2">텍스트 색상</label>
             <div className="flex flex-wrap gap-2">
               {FOLDER_TEXT_COLORS.map((color) => (
                 <button
@@ -1145,7 +1540,7 @@ export default function App() {
                   onClick={() => setFolderFormColor(color.textClass)}
                   className={`w-8 h-8 rounded-full ${color.bgClass} transition-transform ${
                     folderFormColor === color.textClass
-                      ? 'ring-2 ring-offset-2 ring-offset-slate-800 ring-white scale-110'
+                      ? 'ring-2 ring-offset-2 ring-offset-[var(--qf-surface)] ring-white scale-110'
                       : 'hover:scale-110 opacity-70 hover:opacity-100'
                   }`}
                   title={color.name}

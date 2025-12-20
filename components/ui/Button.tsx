@@ -12,13 +12,13 @@ export const Button: React.FC<ButtonProps> = ({
   className = '', 
   ...props 
 }) => {
-  const baseStyles = "inline-flex items-center justify-center rounded-lg transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed";
+  const baseStyles = "inline-flex items-center justify-center rounded-lg transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[var(--qf-bg)] disabled:opacity-50 disabled:cursor-not-allowed";
   
   const variants = {
-    primary: "bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500",
-    secondary: "bg-slate-700 hover:bg-slate-600 text-slate-100 focus:ring-slate-500",
+    primary: "bg-[var(--qf-accent)] hover:bg-[var(--qf-accent-hover)] text-white focus:ring-[var(--qf-accent)]",
+    secondary: "bg-[var(--qf-surface-2)] hover:bg-[var(--qf-surface-hover)] text-[var(--qf-text)] focus:ring-[var(--qf-accent)]",
     danger: "bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 focus:ring-red-500",
-    ghost: "hover:bg-slate-800 text-slate-400 hover:text-slate-200 focus:ring-slate-500",
+    ghost: "hover:bg-[var(--qf-surface-hover)] text-[var(--qf-muted)] hover:text-[var(--qf-text)] focus:ring-[var(--qf-accent)]",
   };
 
   const sizes = {

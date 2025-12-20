@@ -52,16 +52,18 @@ Tauri는 Rust 백엔드와 웹 프론트엔드를 결합한 하이브리드 아�
 ### 3.3 네이티브 드래그앤드롭
 - **Tauri의 전역 드래그앤드롭 이벤트** (`getCurrentWebview().onDragDropEvent()`)
 - OS 파일 탐색기에서 폴더를 직접 앱으로 드래그 가능
-- 마우스 위치를 기반으로 타겟 카테고리 자동 감지
+- **호버 기반 타겟 카테고리 감지(권장)**: 외부 드래그 중 `dragover/dragenter`의 DOM 타겟으로 현재 호버된 카테고리를 추적하여 안정적으로 추가
+- 폴백: (환경별 좌표계 차이를 고려해) 좌표 기반 `elementFromPoint`를 보조적으로 사용
 - 구현 위치: `App.tsx` (useEffect 훅)
   ```typescript
   getCurrentWebview().onDragDropEvent((event) => {
     if (event.payload.type === 'drop') {
       const paths = event.payload.paths;
       const position = event.payload.position;
-      // 마우스 위치로 카테고리 찾기
-      const element = document.elementFromPoint(position.x, position.y);
-      const categoryId = element?.closest('[data-category-id]')?.getAttribute('data-category-id');
+      // 1) 외부 드래그 중 호버된 카테고리(가장 안정적)
+      const categoryId = hoveredCategoryIdRef.current
+        // 2) 폴백: 좌표 기반 (원본/DPR 보정 등)
+        ?? document.elementFromPoint(position.x, position.y)?.closest('[data-category-id]')?.getAttribute('data-category-id');
       // 폴더 추가
     }
   });
@@ -90,8 +92,9 @@ Tauri는 Rust 백엔드와 웹 프론트엔드를 결합한 하이브리드 아�
   - `data-category-id` 속성을 통한 카테고리 식별
 
 ### 4.3 레이아웃 및 검색
-- **Grid 레이아웃**: CSS Grid (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`)로 반응형 레이아웃 구현
-- **상단 정렬**: `items-start` 클래스로 모든 카테고리가 컬럼 상단에 정렬
+- **Grid 레이아웃(동적 열 수)**: 창/컨테이너 폭에 따라 열 수를 계산하여 CSS Grid로 배치
+- **상단 정렬**: 카드들은 각자 고유 높이를 유지하며 상단부터 쌓임
+- **확대/축소(Zoom)**: 50%~150%(10% 단위)로 전체 UI 스케일을 조절하고 로컬에 저장
 - **검색 (Search)**:
   - 실시간으로 카테고리 제목 및 폴더 이름 필터링
   - **자동 펼침**: 검색어 입력 시 접혀있는 카테고리도 강제로 펼침
@@ -223,6 +226,14 @@ tauri-plugin-xxxxx = "2.0"
 
 ## 10. 버전 히스토리
 
+### 0.1.1 (2025-12-20)
+- 외부(탐색기) 폴더 드롭 타겟팅 안정화: **호버 기반 카테고리 감지 + 좌표 폴백**
+- UI/UX 개편: 미니 툴바([검색][줌][테마][+]) 및 아이콘-only 액션
+- **줌 기능 추가**(50~150%) 및 설정 저장 유지
+- **테마 시스템 추가**: 프리셋/커스텀(배경+강조색) + 전 UI 컬러 일관 적용
+- 카테고리 색상 표시 방식 변경: 원 아이콘 제거 → **제목 텍스트 색상**으로 표시(구형 데이터 자동 마이그레이션)
+- 폴더 바로가기 편집/텍스트 색상 옵션 등 UI 개선
+
 ### 0.1.0 (2025-12-13)
 - Electron에서 Tauri 2.x로 완전 마이그레이션
 - 카테고리 드래그앤드롭 순서 변경 기능 추가
@@ -231,7 +242,7 @@ tauri-plugin-xxxxx = "2.0"
 - 번들 크기 96% 감소 (100MB → 3.7MB)
 - 폴더 열기 동작 개선 (선택 → 진입)
 - 드래그앤드롭 중복 등록 문제 수정
-- Grid(행 기준) → Mansonry(열 기준)으로 변경하면서 열 최상단에 gap이 들어오지 않도록 처리
+- (이전 작업) Grid(행 기준) 레이아웃의 공간 낭비 이슈 개선 작업 진행
 
 ### 0.0.1 (2025-12-13)
 - 초기 Electron 버전 릴리스 (현재 Tauri로 대체됨)
