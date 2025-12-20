@@ -124,7 +124,15 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
           <Folder size={16} />
         </div>
         <div className="min-w-0">
-          <div className={`text-sm font-medium ${shortcut.color || 'text-[var(--qf-text)]'} group-hover/item:opacity-80 truncate`}>
+          <div
+            className="text-sm font-medium group-hover/item:opacity-80 truncate"
+            style={{
+              color:
+                shortcut.color?.startsWith('#')
+                  ? shortcut.color
+                  : (shortcut.color && LEGACY_TEXT_CLASS_TO_HEX[shortcut.color]) || undefined,
+            }}
+          >
             {shortcut.name}
           </div>
           {/* Path hidden as per user feedback */}
@@ -176,7 +184,7 @@ const DEFAULT_CATEGORIES: Category[] = [
   {
     id: '1',
     title: '작업 공간',
-    color: 'text-blue-400',
+    color: '#60a5fa',
     createdAt: Date.now(),
     shortcuts: [
       { id: '101', name: '프로젝트 A', path: 'D:\\Projects\\ProjectA', createdAt: Date.now() },
@@ -186,7 +194,7 @@ const DEFAULT_CATEGORIES: Category[] = [
   {
     id: '2',
     title: '다운로드 & 문서',
-    color: 'text-emerald-400',
+    color: '#34d399',
     createdAt: Date.now(),
     shortcuts: [
       { id: '201', name: 'Downloads', path: 'C:\\Users\\User\\Downloads', createdAt: Date.now() },
@@ -195,28 +203,63 @@ const DEFAULT_CATEGORIES: Category[] = [
   }
 ];
 
-const COLORS = [
-  { name: 'Blue', value: 'text-blue-400', swatch: 'bg-blue-500' },
-  { name: 'Emerald', value: 'text-emerald-400', swatch: 'bg-emerald-500' },
-  { name: 'Purple', value: 'text-purple-400', swatch: 'bg-purple-500' },
-  { name: 'Amber', value: 'text-amber-400', swatch: 'bg-amber-500' },
-  { name: 'Rose', value: 'text-rose-400', swatch: 'bg-rose-500' },
-  { name: 'Slate', value: 'text-slate-300', swatch: 'bg-slate-500' },
+type TextColorPreset = { name: string; value: string }; // value: #RRGGBB
+
+// 카테고리/폴더 텍스트 컬러 프리셋 (20개, 흰색 포함)
+const TEXT_COLOR_PRESETS: TextColorPreset[] = [
+  { name: '화이트', value: '#ffffff' },
+  { name: '라이트 그레이', value: '#e5e7eb' },
+  { name: '그레이', value: '#94a3b8' },
+  { name: '블랙', value: '#0b0f19' },
+  { name: '레드', value: '#f87171' },
+  { name: '오렌지', value: '#fb923c' },
+  { name: '앰버', value: '#fbbf24' },
+  { name: '라임', value: '#a3e635' },
+  { name: '그린', value: '#4ade80' },
+  { name: '에메랄드', value: '#34d399' },
+  { name: '틸', value: '#2dd4bf' },
+  { name: '시안', value: '#22d3ee' },
+  { name: '스카이', value: '#38bdf8' },
+  { name: '블루', value: '#60a5fa' },
+  { name: '인디고', value: '#818cf8' },
+  { name: '바이올렛', value: '#a78bfa' },
+  { name: '퍼플', value: '#c084fc' },
+  { name: '핑크', value: '#fb7185' },
+  { name: '로즈', value: '#f43f5e' },
+  { name: '브라운', value: '#d97706' },
 ];
 
-// 폴더 텍스트 색상 옵션
-const FOLDER_TEXT_COLORS = [
-  { name: '기본', textClass: 'text-[var(--qf-text)]', bgClass: 'bg-slate-200' },
-  { name: '파란색', textClass: 'text-blue-400', bgClass: 'bg-blue-400' },
-  { name: '초록색', textClass: 'text-emerald-400', bgClass: 'bg-emerald-400' },
-  { name: '보라색', textClass: 'text-purple-400', bgClass: 'bg-purple-400' },
-  { name: '노란색', textClass: 'text-amber-400', bgClass: 'bg-amber-400' },
-  { name: '분홍색', textClass: 'text-rose-400', bgClass: 'bg-rose-400' },
-  { name: '빨간색', textClass: 'text-red-400', bgClass: 'bg-red-400' },
-  { name: '주황색', textClass: 'text-orange-400', bgClass: 'bg-orange-400' },
-  { name: '하늘색', textClass: 'text-cyan-400', bgClass: 'bg-cyan-400' },
-  { name: '연보라색', textClass: 'text-violet-400', bgClass: 'bg-violet-400' },
+// 카테고리 색상 옵션(기존 코드 호환을 위해 이름 유지)
+const COLORS = TEXT_COLOR_PRESETS;
+
+// 폴더 텍스트 색상 옵션 (기본 + 프리셋 20)
+const FOLDER_TEXT_COLORS: { name: string; value: string }[] = [
+  { name: '기본(테마)', value: '' },
+  ...TEXT_COLOR_PRESETS,
 ];
+
+const LEGACY_TEXT_CLASS_TO_HEX: Record<string, string> = {
+  'text-blue-400': '#60a5fa',
+  'text-emerald-400': '#34d399',
+  'text-purple-400': '#c084fc',
+  'text-amber-400': '#fbbf24',
+  'text-rose-400': '#fb7185',
+  'text-slate-300': '#e5e7eb',
+  'text-red-400': '#f87171',
+  'text-orange-400': '#fb923c',
+  'text-cyan-400': '#22d3ee',
+  'text-violet-400': '#a78bfa',
+  'text-[var(--qf-text)]': '', // 기본값
+};
+
+const LEGACY_BG_CLASS_TO_HEX: Record<string, string> = {
+  'bg-blue-500': '#60a5fa',
+  'bg-emerald-500': '#34d399',
+  'bg-purple-500': '#c084fc',
+  'bg-amber-500': '#fbbf24',
+  'bg-rose-500': '#fb7185',
+  'bg-slate-500': '#e5e7eb',
+};
 
 // 배경 컬러 프리셋
 const THEME_PRESETS: Theme[] = [
@@ -279,16 +322,10 @@ function CategoryColumn({
   };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
-  const categoryTitleColor =
-    category.color?.startsWith('bg-')
-      ? (category.color
-          .replace('bg-blue-500', 'text-blue-400')
-          .replace('bg-emerald-500', 'text-emerald-400')
-          .replace('bg-purple-500', 'text-purple-400')
-          .replace('bg-amber-500', 'text-amber-400')
-          .replace('bg-rose-500', 'text-rose-400')
-          .replace('bg-slate-500', 'text-slate-300'))
-      : category.color;
+  const categoryTitleHex =
+    category.color?.startsWith('#')
+      ? category.color
+      : (category.color && (LEGACY_TEXT_CLASS_TO_HEX[category.color] || LEGACY_BG_CLASS_TO_HEX[category.color])) || '';
 
   return (
     <SortableContext
@@ -313,7 +350,11 @@ function CategoryColumn({
             onClick={() => toggleCollapse(category.id)}
           >
             {isExpanded ? <ChevronDown size={18} className="text-[var(--qf-muted)]" /> : <ChevronRight size={18} className="text-[var(--qf-muted)]" />}
-            <h2 className={`font-semibold truncate max-w-[140px] ${categoryTitleColor || 'text-[var(--qf-text)]'}`} title={category.title}>
+            <h2
+              className="font-semibold truncate max-w-[140px]"
+              style={{ color: categoryTitleHex || undefined }}
+              title={category.title}
+            >
               {category.title}
             </h2>
           </div>
@@ -399,13 +440,13 @@ export default function App() {
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [catFormTitle, setCatFormTitle] = useState('');
-  const [catFormColor, setCatFormColor] = useState(COLORS[0].value);
+  const [catFormColor, setCatFormColor] = useState('#60a5fa');
 
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [targetCategoryId, setTargetCategoryId] = useState<string | null>(null);
   const [folderFormName, setFolderFormName] = useState('');
   const [folderFormPath, setFolderFormPath] = useState('');
-  const [folderFormColor, setFolderFormColor] = useState(FOLDER_TEXT_COLORS[0].textClass);
+  const [folderFormColor, setFolderFormColor] = useState<string>(''); // '' = 기본(테마)
   const [editingShortcut, setEditingShortcut] = useState<FolderShortcut | null>(null);
 
   // Toasts
@@ -413,7 +454,7 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    // Settings load (배경색 등)
+    // Settings load (테마/줌 등)
     const savedSettings = localStorage.getItem(SETTINGS_KEY);
     if (savedSettings) {
       try {
@@ -437,23 +478,40 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // 마이그레이션: 예전 bg-* 컬러를 text-*로 변환 (원 아이콘 제거 → 제목 텍스트 컬러 방식)
         const migrateCategoryColor = (c: any) => {
           const col: unknown = c?.color;
-          if (typeof col === 'string' && col.startsWith('bg-')) {
-            const mapped =
-              col
-                .replace('bg-blue-500', 'text-blue-400')
-                .replace('bg-emerald-500', 'text-emerald-400')
-                .replace('bg-purple-500', 'text-purple-400')
-                .replace('bg-amber-500', 'text-amber-400')
-                .replace('bg-rose-500', 'text-rose-400')
-                .replace('bg-slate-500', 'text-slate-300');
-            return { ...c, color: mapped };
+          if (typeof col === 'string') {
+            if (col.startsWith('#')) return c;
+            if (col.startsWith('bg-')) return { ...c, color: LEGACY_BG_CLASS_TO_HEX[col] ?? c.color };
+            if (col.startsWith('text-')) return { ...c, color: LEGACY_TEXT_CLASS_TO_HEX[col] ?? c.color };
           }
           return c;
         };
-        setCategories(Array.isArray(parsed) ? parsed.map(migrateCategoryColor) : parsed);
+
+        const migrateShortcutColor = (s: any) => {
+          const col: unknown = s?.color;
+          if (typeof col === 'string') {
+            if (col.startsWith('#')) return s;
+            if (col.startsWith('text-')) {
+              const mapped = LEGACY_TEXT_CLASS_TO_HEX[col];
+              // 기본값(테마)은 빈 문자열/undefined로 정규화
+              return { ...s, color: mapped === '' ? undefined : mapped ?? s.color };
+            }
+          }
+          return s;
+        };
+
+        const migrated = Array.isArray(parsed)
+          ? parsed.map((c: any) => {
+              const mc = migrateCategoryColor(c);
+              return {
+                ...mc,
+                shortcuts: Array.isArray(mc.shortcuts) ? mc.shortcuts.map(migrateShortcutColor) : mc.shortcuts,
+              };
+            })
+          : parsed;
+
+        setCategories(migrated);
       } catch (e) {
         console.error("Failed to parse saved data", e);
         setCategories(DEFAULT_CATEGORIES);
@@ -767,25 +825,34 @@ export default function App() {
   const openAddCategoryModal = () => {
     setEditingCategory(null);
     setCatFormTitle('');
-    setCatFormColor(COLORS[0].value);
+    setCatFormColor('#60a5fa');
     setIsCatModalOpen(true);
   };
 
   const openEditCategoryModal = (cat: Category) => {
     setEditingCategory(cat);
     setCatFormTitle(cat.title);
-    setCatFormColor(cat.color);
+    setCatFormColor(
+      cat.color?.startsWith('#')
+        ? cat.color
+        : (LEGACY_TEXT_CLASS_TO_HEX[cat.color] ?? LEGACY_BG_CLASS_TO_HEX[cat.color] ?? '#60a5fa')
+    );
     setIsCatModalOpen(true);
   };
 
   const handleSaveCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!catFormTitle.trim()) return;
+    const normalizedColor = normalizeHexColor(catFormColor);
+    if (!normalizedColor) {
+      addToast("카테고리 색상은 #RRGGBB 형식이어야 합니다.", "error");
+      return;
+    }
 
     if (editingCategory) {
       setCategories(prev => prev.map(c =>
         c.id === editingCategory.id
-          ? { ...c, title: catFormTitle, color: catFormColor }
+          ? { ...c, title: catFormTitle, color: normalizedColor }
           : c
       ));
       addToast("카테고리가 수정되었습니다.", "success");
@@ -793,7 +860,7 @@ export default function App() {
       const newCat: Category = {
         id: uuidv4(),
         title: catFormTitle,
-        color: catFormColor,
+        color: normalizedColor,
         shortcuts: [],
         createdAt: Date.now()
       };
@@ -815,7 +882,7 @@ export default function App() {
     setTargetCategoryId(catId);
     setFolderFormName('');
     setFolderFormPath('');
-    setFolderFormColor(FOLDER_TEXT_COLORS[0].textClass);
+    setFolderFormColor('');
     setEditingShortcut(null);
     setIsFolderModalOpen(true);
   };
@@ -824,7 +891,11 @@ export default function App() {
     setTargetCategoryId(catId);
     setFolderFormName(shortcut.name);
     setFolderFormPath(shortcut.path);
-    setFolderFormColor(shortcut.color || FOLDER_TEXT_COLORS[0].textClass);
+    setFolderFormColor(
+      shortcut.color?.startsWith('#')
+        ? shortcut.color
+        : (LEGACY_TEXT_CLASS_TO_HEX[shortcut.color ?? ''] ?? '')
+    );
     setEditingShortcut(shortcut);
     setIsFolderModalOpen(true);
   };
@@ -832,6 +903,11 @@ export default function App() {
   const handleSaveFolder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetCategoryId || !folderFormName.trim() || !folderFormPath.trim()) return;
+    const normalizedFolderColor = folderFormColor ? normalizeHexColor(folderFormColor) : '';
+    if (folderFormColor && !normalizedFolderColor) {
+      addToast("폴더 텍스트 색상은 #RRGGBB 형식이어야 합니다.", "error");
+      return;
+    }
 
     if (editingShortcut) {
       // 수정 모드
@@ -841,7 +917,7 @@ export default function App() {
             ...c,
             shortcuts: c.shortcuts.map(s =>
               s.id === editingShortcut.id
-                ? { ...s, name: folderFormName, path: folderFormPath.replace(/"/g, ''), color: folderFormColor }
+                ? { ...s, name: folderFormName, path: folderFormPath.replace(/"/g, ''), color: normalizedFolderColor || undefined }
                 : s
             )
           };
@@ -855,7 +931,7 @@ export default function App() {
         id: uuidv4(),
         name: folderFormName,
         path: folderFormPath.replace(/"/g, ''), // Clean up common copy-paste artifacts
-        color: folderFormColor,
+        color: normalizedFolderColor || undefined,
         createdAt: Date.now()
       };
 
@@ -878,7 +954,6 @@ export default function App() {
         id: uuidv4(),
         name: name,
         path: path,
-        color: FOLDER_TEXT_COLORS[0].textClass, // 기본 색상
         createdAt: Date.now()
       };
 
@@ -899,7 +974,6 @@ export default function App() {
           id: uuidv4(),
           name: result.name,
           path: result.path,
-          color: FOLDER_TEXT_COLORS[0].textClass, // 기본 색상
           createdAt: Date.now()
         };
 
@@ -1274,7 +1348,20 @@ export default function App() {
               return (
                 <div className="bg-[var(--qf-surface-2)] border-2 border-[var(--qf-accent)] rounded-2xl p-3 shadow-2xl backdrop-blur-sm min-w-[200px]">
                   <div className="flex items-center gap-2">
-                    <h2 className={`font-semibold ${activeCategory.color || 'text-[var(--qf-text)]'}`}>{activeCategory.title}</h2>
+                    <h2
+                      className="font-semibold"
+                      style={{
+                        color:
+                          activeCategory.color?.startsWith('#')
+                            ? activeCategory.color
+                            : (activeCategory.color &&
+                                (LEGACY_TEXT_CLASS_TO_HEX[activeCategory.color] ||
+                                  LEGACY_BG_CLASS_TO_HEX[activeCategory.color])) ||
+                              undefined,
+                      }}
+                    >
+                      {activeCategory.title}
+                    </h2>
                   </div>
                 </div>
               );
@@ -1477,13 +1564,42 @@ export default function App() {
                   key={color.value}
                   type="button"
                   onClick={() => setCatFormColor(color.value)}
-                  className={`w-8 h-8 rounded-full ${color.swatch} transition-transform ${catFormColor === color.value
+                  className={`w-8 h-8 rounded-full transition-transform ${catFormColor === color.value
                     ? 'ring-2 ring-offset-2 ring-offset-[var(--qf-surface)] ring-white scale-110'
                     : 'hover:scale-110 opacity-70 hover:opacity-100'
                     }`}
+                  style={{ backgroundColor: color.value }}
                   title={color.name}
                 />
               ))}
+            </div>
+            {/* Custom color */}
+            <div className="mt-3 flex items-center gap-3">
+              <input
+                type="color"
+                value={normalizeHexColor(catFormColor) ?? '#60a5fa'}
+                onChange={(e) => setCatFormColor(e.target.value)}
+                className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1"
+                aria-label="카테고리 텍스트 커스텀 컬러 선택"
+              />
+              <input
+                type="text"
+                value={catFormColor}
+                onChange={(e) => setCatFormColor(e.target.value)}
+                placeholder="#60a5fa"
+                className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  const v = normalizeHexColor(catFormColor);
+                  if (v) setCatFormColor(v);
+                  else addToast("색상 값은 #RRGGBB 형식이어야 합니다.", "error");
+                }}
+              >
+                적용
+              </Button>
             </div>
           </div>
           <div className="pt-4 flex justify-end gap-2">
@@ -1535,17 +1651,50 @@ export default function App() {
             <div className="flex flex-wrap gap-2">
               {FOLDER_TEXT_COLORS.map((color) => (
                 <button
-                  key={color.textClass}
+                  key={color.value || color.name}
                   type="button"
-                  onClick={() => setFolderFormColor(color.textClass)}
-                  className={`w-8 h-8 rounded-full ${color.bgClass} transition-transform ${
-                    folderFormColor === color.textClass
+                  onClick={() => setFolderFormColor(color.value)}
+                  className={`w-8 h-8 rounded-full transition-transform ${
+                    folderFormColor === color.value
                       ? 'ring-2 ring-offset-2 ring-offset-[var(--qf-surface)] ring-white scale-110'
                       : 'hover:scale-110 opacity-70 hover:opacity-100'
                   }`}
+                  style={{
+                    backgroundColor: color.value || (themeVars?.text ?? '#e5e7eb'),
+                    border: color.value ? undefined : '1px solid rgba(255,255,255,0.18)',
+                  }}
                   title={color.name}
                 />
               ))}
+            </div>
+            {/* Custom color */}
+            <div className="mt-3 flex items-center gap-3">
+              <input
+                type="color"
+                value={normalizeHexColor(folderFormColor) ?? '#ffffff'}
+                onChange={(e) => setFolderFormColor(e.target.value)}
+                className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1"
+                aria-label="폴더 텍스트 커스텀 컬러 선택"
+              />
+              <input
+                type="text"
+                value={folderFormColor}
+                onChange={(e) => setFolderFormColor(e.target.value)}
+                placeholder="#ffffff"
+                className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  if (!folderFormColor) return; // 기본(테마)
+                  const v = normalizeHexColor(folderFormColor);
+                  if (v) setFolderFormColor(v);
+                  else addToast("색상 값은 #RRGGBB 형식이어야 합니다.", "error");
+                }}
+              >
+                적용
+              </Button>
             </div>
           </div>
           <div className="pt-4 flex justify-end gap-2">
