@@ -47,10 +47,12 @@ import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 
 // --- Types & Constants ---
 const STORAGE_KEY = 'quickfolder_widget_data';
 const SETTINGS_KEY = 'quickfolder_widget_settings';
+const WINDOW_STATE_KEY = 'quickfolder_window_state';
 
 type Theme = {
   id: string;
@@ -320,7 +322,9 @@ function CategoryColumn({
     transition,
     opacity: isDragging ? 0.5 : 1,
     breakInside: 'avoid' as const, // masonry 레이아웃에서 카테고리가 컬럼 사이에서 잘리지 않도록
-    marginBottom: '1.5rem', // 카테고리 간 간격
+    display: 'inline-block', // CSS columns 상단 정렬 문제 해결
+    width: '100%',
+    marginTop: '1.5rem', // 상단 마진 사용 (컨테이너의 음수 마진과 조합)
   };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
@@ -387,7 +391,7 @@ function CategoryColumn({
 
         {/* Shortcuts List */}
         {isExpanded && (
-          <div className="p-3 flex-1 overflow-y-auto max-h-[50vh] lg:max-h-none">
+          <div className="p-3 flex-1">
             {category.shortcuts.length === 0 ? (
               <div className="text-center py-6 text-[var(--qf-muted)] text-xs italic">
                 등록된 폴더가 없습니다
@@ -522,6 +526,117 @@ export default function App() {
       setCategories(DEFAULT_CATEGORIES);
     }
     setIsLoaded(true);
+  }, []);
+
+  // 창 크기/위치 저장 및 복원
+  useEffect(() => {
+    let unlistenResize: (() => void) | undefined;
+    let unlistenMove: (() => void) | undefined;
+    let saveTimeout: ReturnType<typeof setTimeout> | undefined;
+    let isMounted = true;
+
+    const saveWindowState = async () => {
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(async () => {
+        if (!isMounted) return;
+        try {
+          const appWindow = getCurrentWindow();
+          const size = await appWindow.innerSize();
+          const position = await appWindow.outerPosition();
+          const scaleFactor = await appWindow.scaleFactor();
+
+          // 논리적 크기로 변환하여 저장 (DPI 스케일링 고려)
+          const state = {
+            width: Math.round(size.width / scaleFactor),
+            height: Math.round(size.height / scaleFactor),
+            x: Math.round(position.x / scaleFactor),
+            y: Math.round(position.y / scaleFactor),
+          };
+          localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify(state));
+        } catch (e) {
+          console.error('Failed to save window state', e);
+        }
+      }, 500);
+    };
+
+    const isPositionOnScreen = async (x: number, y: number, width: number, height: number): Promise<boolean> => {
+      try {
+        const monitors = await availableMonitors();
+        if (monitors.length === 0) return true; // 모니터 정보 없으면 허용
+
+        // 창의 일부라도 어떤 모니터에 보이는지 확인
+        const windowRight = x + width;
+        const windowBottom = y + height;
+
+        for (const monitor of monitors) {
+          const monitorX = monitor.position.x;
+          const monitorY = monitor.position.y;
+          const monitorRight = monitorX + monitor.size.width;
+          const monitorBottom = monitorY + monitor.size.height;
+
+          // 창이 이 모니터와 겹치는지 확인 (최소 100px는 보여야 함)
+          const overlapX = Math.min(windowRight, monitorRight) - Math.max(x, monitorX);
+          const overlapY = Math.min(windowBottom, monitorBottom) - Math.max(y, monitorY);
+
+          if (overlapX >= 100 && overlapY >= 50) {
+            return true;
+          }
+        }
+        return false;
+      } catch (e) {
+        console.error('Failed to check monitor bounds', e);
+        return true; // 에러 시 허용
+      }
+    };
+
+    const setupWindowState = async () => {
+      const appWindow = getCurrentWindow();
+
+      // 앱 창이 완전히 준비될 때까지 대기
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (!isMounted) return;
+
+      // 저장된 창 상태 복원
+      const savedState = localStorage.getItem(WINDOW_STATE_KEY);
+      if (savedState) {
+        try {
+          const { width, height, x, y } = JSON.parse(savedState);
+
+          // 유효한 크기인지 확인 (최소 크기)
+          const validWidth = width && width >= 400 ? width : 800;
+          const validHeight = height && height >= 300 ? height : 600;
+
+          // 크기 먼저 설정
+          await appWindow.setSize(new LogicalSize(validWidth, validHeight));
+
+          // 위치가 유효한지 확인 (듀얼 모니터 대응)
+          if (typeof x === 'number' && typeof y === 'number') {
+            const isOnScreen = await isPositionOnScreen(x, y, validWidth, validHeight);
+            if (isOnScreen) {
+              await appWindow.setPosition(new LogicalPosition(x, y));
+            } else {
+              // 화면 밖이면 중앙으로 이동
+              await appWindow.center();
+            }
+          }
+        } catch (e) {
+          console.error('Failed to restore window state', e);
+        }
+      }
+
+      // 창 크기/위치 변경 시 저장 (디바운스 적용)
+      unlistenResize = await appWindow.onResized(saveWindowState);
+      unlistenMove = await appWindow.onMoved(saveWindowState);
+    };
+
+    setupWindowState();
+
+    return () => {
+      isMounted = false;
+      if (unlistenResize) unlistenResize();
+      if (unlistenMove) unlistenMove();
+      if (saveTimeout) clearTimeout(saveTimeout);
+    };
   }, []);
 
   useEffect(() => {
@@ -1304,6 +1419,7 @@ export default function App() {
                   columnCount: columnCount,
                   columnGap: '1.5rem',
                   width: '100%',
+                  marginTop: '-1.5rem', // 첫 번째 행의 상단 마진 상쇄
                 }}
               >
               {filteredCategories.map(category => (
