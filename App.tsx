@@ -315,10 +315,12 @@ function CategoryColumn({
     }
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    breakInside: 'avoid' as const, // masonry 레이아웃에서 카테고리가 컬럼 사이에서 잘리지 않도록
+    marginBottom: '1.5rem', // 카테고리 간 간격
   };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
@@ -385,7 +387,7 @@ function CategoryColumn({
 
         {/* Shortcuts List */}
         {isExpanded && (
-          <div className="p-3 flex-1 overflow-y-auto max-h-[300px]">
+          <div className="p-3 flex-1 overflow-y-auto max-h-[50vh] lg:max-h-none">
             {category.shortcuts.length === 0 ? (
               <div className="text-center py-6 text-[var(--qf-muted)] text-xs italic">
                 등록된 폴더가 없습니다
@@ -1293,18 +1295,15 @@ export default function App() {
             items={filteredCategories.map(c => c.id)}
             strategy={rectSortingStrategy}
           >
-            {/* CSS Grid 레이아웃: 각 카테고리가 독립적인 높이를 가지며, 창 크기에 따라 열 수가 동적으로 조정됨 */}
+            {/* CSS Columns 기반 Masonry 레이아웃: 카테고리가 컬럼 순서대로 쌓여 공간 낭비 최소화 */}
             {isMasonryVisible && (
-              <div 
+              <div
                 ref={masonryRef}
-                key={`grid-${columnCount}-${masonryKey}`}
-                style={{ 
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${columnCount}, 1fr)`,
-                  gap: '1.5rem',
+                key={`masonry-${columnCount}-${masonryKey}`}
+                style={{
+                  columnCount: columnCount,
+                  columnGap: '1.5rem',
                   width: '100%',
-                  gridAutoRows: 'min-content', // 각 행이 독립적인 높이를 가지도록
-                  alignItems: 'start' // 상단 정렬
                 }}
               >
               {filteredCategories.map(category => (
@@ -1325,7 +1324,7 @@ export default function App() {
 
             {/* Empty State Helper */}
             {filteredCategories.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-[var(--qf-muted)]" style={{ columnSpan: 'all', breakInside: 'avoid' }}>
+              <div className="flex flex-col items-center justify-center py-20 text-[var(--qf-muted)]" style={{ breakInside: 'avoid' }}>
                 <Search size={48} className="mb-4 opacity-50" />
                 <p className="text-lg font-medium">검색 결과가 없거나 등록된 카테고리가 없습니다.</p>
                 <Button onClick={openAddCategoryModal} className="mt-4" variant="secondary">
