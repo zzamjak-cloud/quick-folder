@@ -22,3 +22,16 @@ export interface ToastMessage {
   message: string;
   type: ToastType;
 }
+
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  date?: string;
+  body?: string;
+}
+
+export interface UpdateStatus {
+  available: boolean;
+  info?: UpdateInfo;
+  error?: string;
+}

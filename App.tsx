@@ -45,6 +45,8 @@ import { Category, FolderShortcut, ToastMessage } from './types';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
+import { UpdateModal } from './components/UpdateModal';
+import { useAutoUpdate } from './hooks/useAutoUpdate';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
@@ -457,6 +459,9 @@ export default function App() {
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Update Modal
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   // --- Effects ---
   useEffect(() => {
@@ -936,6 +941,43 @@ export default function App() {
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Auto Update Hook
+  const {
+    updateStatus,
+    isChecking,
+    isDownloading,
+    downloadProgress,
+    checkForUpdate,
+    downloadAndInstall,
+  } = useAutoUpdate(true, (error) => {
+    addToast(error, 'error');
+  });
+
+  // Update Detection Effect
+  useEffect(() => {
+    if (updateStatus.available && updateStatus.info) {
+      setShowUpdateModal(true);
+      addToast(
+        `새 버전 ${updateStatus.info.version}이 출시되었습니다!`,
+        'info'
+      );
+    }
+  }, [updateStatus]);
+
+  // Update Handlers
+  const handleInstallUpdate = async () => {
+    try {
+      await downloadAndInstall();
+    } catch (error) {
+      addToast('업데이트 설치 중 오류가 발생했습니다', 'error');
+    }
+  };
+
+  const handleSkipUpdate = () => {
+    setShowUpdateModal(false);
+    addToast('업데이트를 건너뛰었습니다', 'info');
   };
 
   // Category Actions
@@ -1818,6 +1860,19 @@ export default function App() {
           </div>
         </form>
       </Modal>
+
+      {/* Update Modal */}
+      {updateStatus.info && (
+        <UpdateModal
+          isOpen={showUpdateModal}
+          onClose={handleSkipUpdate}
+          updateInfo={updateStatus.info}
+          isDownloading={isDownloading}
+          downloadProgress={downloadProgress}
+          onInstall={handleInstallUpdate}
+          onSkip={handleSkipUpdate}
+        />
+      )}
 
       {/* Notifications */}
       <ToastContainer toasts={toasts} removeToast={removeToast} />

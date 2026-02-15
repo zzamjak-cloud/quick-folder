@@ -35,5 +35,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/zzamjak-cloud/quick-folder/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_GENERATED_PUBLIC_KEY",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

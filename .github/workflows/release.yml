@@ -45,23 +45,24 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
-      - name: Build Tauri app
-        run: npm run tauri build -- --target ${{ matrix.target }}
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Build Tauri app with updater
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          name: ${{ matrix.platform }}-build
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-          retention-days: 30
+          tagName: ${{ github.ref_name }}
+          releaseName: 'QuickFolder v__VERSION__'
+          releaseBody: |
+            새로운 QuickFolder 버전이 출시되었습니다! 🎉
 
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-          generate_release_notes: true
+            앱 내에서 자동 업데이트를 확인하거나 아래에서 직접 다운로드하세요.
+
+            ## 설치 방법
+            - **Windows**: QuickFolder_x.x.x_x64_setup.exe 다운로드 후 실행
+            - **macOS**: QuickFolder_x.x.x_aarch64.dmg 다운로드 후 설치
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: --target ${{ matrix.target }}
