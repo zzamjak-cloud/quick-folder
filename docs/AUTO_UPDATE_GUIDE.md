@@ -2,6 +2,24 @@
 
 QuickFolder 프로젝트에 구현된 자동 업데이트 시스템을 다른 Tauri 프로젝트에 적용하는 방법을 설명합니다.
 
+## 빠른 시작 (Quick Start)
+
+```bash
+# QuickFolder 프로젝트에서 스크립트 복사
+cp /path/to/quick-folder/scripts/setup-auto-update.sh .
+cp -r /path/to/quick-folder/hooks .
+cp /path/to/quick-folder/components/UpdateModal.tsx ./components/
+
+# 자동 설정 실행
+bash setup-auto-update.sh "MyApp" "GitHubUsername" "RepoName"
+
+# 수동 단계 (스크립트 완료 후)
+# 1. src-tauri/src/lib.rs에 플러그인 추가
+# 2. App.tsx에 useAutoUpdate 훅 통합
+# 3. GitHub Secrets 설정
+# 4. 첫 릴리스 테스트
+```
+
 ## 목차
 1. [사전 요구사항](#사전-요구사항)
 2. [설치 및 설정](#설치-및-설정)
@@ -326,6 +344,62 @@ git push origin main --tags
 - 모달 표시 → 다운로드 → 설치 → 재시작
 
 ## 트러블슈팅
+
+### **중요: 버전 불일치 오류** ⚠️
+
+**에러 메시지:**
+```
+Found version mismatched Tauri packages. Make sure the NPM package and Rust crate versions are on the same major/minor releases:
+tauri (v2.9.5) : @tauri-apps/api (v2.10.1)
+tauri-plugin-updater (v2.9.0) : @tauri-apps/plugin-updater (v2.10.0)
+```
+
+**원인:**
+- npm 패키지와 Rust crate의 major/minor 버전이 일치하지 않음
+- 일부 패키지만 업데이트되어 버전이 뒤섞임
+
+**해결 방법 1: 모든 패키지 최신 버전으로 업데이트 (권장)**
+
+```bash
+# npm 패키지 업데이트
+npm install @tauri-apps/api@latest \
+            @tauri-apps/cli@latest \
+            @tauri-apps/plugin-updater@latest \
+            @tauri-apps/plugin-dialog@latest \
+            @tauri-apps/plugin-opener@latest \
+            @tauri-apps/plugin-clipboard-manager@latest
+
+# Cargo 의존성 업데이트
+cd src-tauri
+cargo update
+cd ..
+```
+
+**해결 방법 2: Cargo.toml에서 버전 명시적 지정**
+
+`src-tauri/Cargo.toml`:
+```toml
+[dependencies]
+tauri = { version = "2.10", features = [] }  # npm @tauri-apps/api 버전과 일치
+tauri-plugin-updater = "2.10"  # npm 버전과 일치
+```
+
+**해결 방법 3: 자동화 스크립트 사용**
+
+```bash
+# setup-auto-update.sh 스크립트가 자동으로 버전 동기화
+bash setup-auto-update.sh "MyApp" "username" "repo"
+```
+
+**버전 확인 명령어:**
+
+```bash
+# npm 패키지 버전 확인
+npm list --depth=0 | grep @tauri-apps
+
+# Cargo 패키지 버전 확인
+cd src-tauri && cargo tree | grep tauri
+```
 
 ### "No updates available" 오류
 

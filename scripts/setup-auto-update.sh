@@ -20,8 +20,36 @@ fi
 
 # 1. 플러그인 설치
 echo "📦 플러그인 설치 중..."
-npm add @tauri-apps/plugin-updater @tauri-apps/plugin-process
+echo "   - npm 패키지 설치..."
+npm add @tauri-apps/plugin-updater@latest @tauri-apps/plugin-process@latest
+
+echo "   - Cargo 의존성 추가..."
 cd src-tauri && cargo add tauri-plugin-updater@2 && cd ..
+
+# 1-1. 버전 동기화 확인 및 자동 수정
+echo ""
+echo "🔄 Tauri 패키지 버전 동기화 중..."
+echo "   모든 @tauri-apps 패키지를 최신 버전으로 업데이트..."
+
+# 모든 Tauri 관련 패키지 최신 버전으로 업데이트
+npm install @tauri-apps/api@latest @tauri-apps/cli@latest
+
+# 다른 플러그인들도 업데이트 (있는 경우)
+if grep -q "@tauri-apps/plugin-dialog" package.json; then
+  npm install @tauri-apps/plugin-dialog@latest
+fi
+if grep -q "@tauri-apps/plugin-opener" package.json; then
+  npm install @tauri-apps/plugin-opener@latest
+fi
+if grep -q "@tauri-apps/plugin-clipboard-manager" package.json; then
+  npm install @tauri-apps/plugin-clipboard-manager@latest
+fi
+
+# Cargo 의존성 업데이트
+echo "   - Cargo 의존성 업데이트..."
+cd src-tauri && cargo update && cd ..
+
+echo "   ✅ 버전 동기화 완료!"
 
 # 2. 서명 키 생성 안내
 echo ""
