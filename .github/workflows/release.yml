@@ -45,6 +45,25 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION#v}  # v 접두사 제거
+
+          # CHANGELOG.md에서 해당 버전의 내용 추출
+          CHANGELOG=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | sed '$d' | tail -n +2)
+
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="변경사항은 CHANGELOG.md를 참조하세요."
+          fi
+
+          # 멀티라인 출력을 위한 처리
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Build Tauri app with updater
         uses: tauri-apps/tauri-action@v0
         env:
@@ -57,11 +76,14 @@ jobs:
           releaseBody: |
             새로운 QuickFolder 버전이 출시되었습니다! 🎉
 
-            앱 내에서 자동 업데이트를 확인하거나 아래에서 직접 다운로드하세요.
+            ## 변경사항
+            ${{ steps.changelog.outputs.content }}
 
             ## 설치 방법
             - **Windows**: QuickFolder_x.x.x_x64_setup.exe 다운로드 후 실행
             - **macOS**: QuickFolder_x.x.x_aarch64.dmg 다운로드 후 설치
+
+            앱 내에서 자동 업데이트를 확인하거나 위에서 직접 다운로드하세요.
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
