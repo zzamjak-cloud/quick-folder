@@ -48,7 +48,9 @@
       "Bash(pbcopy:*)",
       "Bash(echo:*)",
       "Bash(/tmp/create-rolling-release.sh:*)",
-      "Bash(bash /tmp/create-rolling-release.sh)"
+      "Bash(bash /tmp/create-rolling-release.sh)",
+      "Bash(/tmp/skill_changelog.md:*)",
+      "Bash(open \"https://github.com/zzamjak-cloud/quick-folder/settings/secrets/actions\")"
     ],
     "deny": [],
     "ask": []

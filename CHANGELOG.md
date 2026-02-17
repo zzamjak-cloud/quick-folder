@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-02-17
+
+### Fixed
+- 멀티 플랫폼 병렬 빌드 충돌 해결
+- macOS 단독 빌드로 updater JSON 생성 확인
+- 서명 파일 생성 문제 해결
+
+### Changed
+- 테스트를 위해 macOS만 빌드하도록 변경
+
 ## [0.1.7] - 2026-02-17
 
 ### Fixed
