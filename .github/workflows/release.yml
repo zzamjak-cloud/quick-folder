@@ -84,7 +84,7 @@ jobs:
             - **macOS**: QuickFolder_x.x.x_aarch64.dmg 다운로드 후 설치
 
             앱 내에서 자동 업데이트를 확인하거나 위에서 직접 다운로드하세요.
-          releaseDraft: false
+          releaseDraft: ${{ matrix.platform == 'windows-latest' }}
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: ${{ matrix.platform == 'macos-latest' }}
           args: --target ${{ matrix.target }}

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-02-17
+
+### Fixed
+- 멀티 플랫폼 빌드 시 latest.json 생성 문제 수정
+- Windows는 draft, macOS는 publish + updater JSON 생성으로 변경
+
+### Changed
+- CI/CD 워크플로우 개선: 단계별 릴리스 전략 적용
+
 ## [0.1.4] - 2026-02-17
 
 ### Fixed
