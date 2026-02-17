@@ -51,6 +51,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
 
 // --- Types & Constants ---
 const STORAGE_KEY = 'quickfolder_widget_data';
@@ -466,6 +467,12 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; body: string } | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [currentAppVersion, setCurrentAppVersion] = useState('');
+
+  // 앱 버전 가져오기
+  useEffect(() => {
+    getVersion().then(v => setCurrentAppVersion(v)).catch(() => setCurrentAppVersion('Unknown'));
+  }, []);
 
   // --- Effects ---
 
@@ -1901,7 +1908,7 @@ export default function App() {
           onClose={() => setIsUpdateModalOpen(false)}
           onUpdate={handleUpdate}
           version={updateInfo.version}
-          currentVersion="1.0.1"
+          currentVersion={currentAppVersion}
           releaseNotes={updateInfo.body}
           isDownloading={isDownloading}
           downloadProgress={downloadProgress}
