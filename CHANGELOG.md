@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-02-18
+
+### Changed
+- 자동 업데이트 시스템 테스트를 위한 버전 업데이트
+
 ## [1.0.8] - 2026-02-18
 
 ### Fixed
