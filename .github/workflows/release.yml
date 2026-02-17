@@ -116,8 +116,18 @@ jobs:
             --notes "항상 최신 버전의 QuickFolder를 제공합니다. 자동 업데이트는 이 릴리스를 참조합니다." \
             --latest=false
 
-          # 원본 릴리스에서 파일 다운로드 및 재업로드
-          gh release download ${{ github.ref_name }} --pattern "*.dmg" --pattern "*.exe" --pattern "*.sig" --pattern "latest.json"
-          gh release upload quickfolder-latest *.dmg *.exe *.sig latest.json --clobber
+          # 원본 릴리스에서 파일 다운로드
+          gh release download ${{ github.ref_name }} --pattern "*.dmg" --pattern "*.exe"
+
+          # latest.json과 .sig 파일이 있으면 다운로드 (옵션)
+          gh release download ${{ github.ref_name }} --pattern "*.sig" || true
+          gh release download ${{ github.ref_name }} --pattern "latest.json" || true
+
+          # 다운로드된 파일들을 quickfolder-latest에 업로드
+          for file in *.dmg *.exe *.sig latest.json; do
+            if [ -f "$file" ]; then
+              gh release upload quickfolder-latest "$file" --clobber
+            fi
+          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
