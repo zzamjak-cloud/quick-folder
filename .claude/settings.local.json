@@ -19,7 +19,12 @@
       "Bash(git rm:*)",
       "Bash(git commit:*)",
       "Bash(git push)",
-      "Bash(gh run list:*)"
+      "Bash(gh run list:*)",
+      "Bash(\"/Applications/QuickFolder Widget.app/Contents/MacOS/app\")",
+      "Bash(/tmp/test-updater.js:*)",
+      "Bash(node:*)",
+      "Bash(sudo xattr:*)",
+      "Bash(xattr:*)"
     ],
     "deny": [],
     "ask": []

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-02-17
+
+### Fixed
+- tauri-action 최신 버전으로 업데이트 (v0 → v0.5)
+- 서명 환경변수 이름 수정 (TAURI_PRIVATE_KEY, TAURI_KEY_PASSWORD)
+- 업데이트 기능 완전 수정
+
 ## [1.0.3] - 2026-02-17
 
 ### Fixed
