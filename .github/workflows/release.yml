@@ -88,3 +88,36 @@ jobs:
           prerelease: false
           includeUpdaterJson: ${{ matrix.platform == 'macos-latest' }}
           args: --target ${{ matrix.target }}
+
+  update-latest-tag:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Delete old quickfolder-latest release and tag
+        run: |
+          gh release delete quickfolder-latest --yes || true
+          git push origin :refs/tags/quickfolder-latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create quickfolder-latest tag and release
+        run: |
+          git tag quickfolder-latest
+          git push origin quickfolder-latest
+
+          # macOS와 Windows 빌드가 포함된 원본 릴리스에서 asset 복사
+          gh release create quickfolder-latest \
+            --title "QuickFolder (Rolling Release)" \
+            --notes "항상 최신 버전의 QuickFolder를 제공합니다. 자동 업데이트는 이 릴리스를 참조합니다." \
+            --latest=false
+
+          # 원본 릴리스에서 파일 다운로드 및 재업로드
+          gh release download ${{ github.ref_name }} --pattern "*.dmg" --pattern "*.exe" --pattern "*.sig" --pattern "latest.json"
+          gh release upload quickfolder-latest *.dmg *.exe *.sig latest.json --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

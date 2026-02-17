@@ -31,7 +31,22 @@
       "Bash(npm add:*)",
       "Bash(cargo add:*)",
       "Bash(git remote get-url:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(cargo update:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(cargo tree:*)",
+      "Bash(pkill:*)",
+      "Bash(grep:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(git -C /Users/woody/Desktop/AI/QuickFolder/quick-folder tag -l)",
+      "Bash(git -C /Users/woody/Desktop/AI/QuickFolder/quick-folder log --oneline --decorate -20)",
+      "Bash(git restore:*)",
+      "Bash(gh release view:*)",
+      "Bash(curl:*)",
+      "Bash(pbcopy:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

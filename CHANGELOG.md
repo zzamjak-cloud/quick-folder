@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-02-17
+
+### Fixed
+- 롤링 릴리스 전략 도입 (고정 태그 `quickfolder-latest` 사용)
+- Style Studio 방식 적용으로 자동 업데이트 안정화
+
+### Changed
+- 업데이트 엔드포인트를 고정 태그로 변경
+- 릴리스 후 `quickfolder-latest` 태그 자동 갱신
+
 ## [0.1.5] - 2026-02-17
 
 ### Fixed
