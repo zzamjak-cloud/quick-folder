@@ -45,6 +45,7 @@ import { Category, FolderShortcut, ToastMessage } from './types';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
+import { UpdateModal } from './components/UpdateModal';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
@@ -460,6 +461,12 @@ export default function App() {
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  // Update
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; body: string } | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
   // --- Effects ---
 
   // 자동 업데이트 체크
@@ -468,30 +475,12 @@ export default function App() {
       try {
         const update = await check();
         if (update?.available) {
-          const shouldUpdate = window.confirm(
-            `새 버전 ${update.version}이 있습니다.\n지금 업데이트하시겠습니까?`
-          );
-
-          if (shouldUpdate) {
-            addToast('업데이트를 다운로드하고 있습니다...', 'info');
-
-            await update.downloadAndInstall((event) => {
-              switch (event.event) {
-                case 'Started':
-                  console.log('다운로드 시작:', event.data.contentLength);
-                  break;
-                case 'Progress':
-                  console.log(`다운로드 중: ${event.data.chunkLength} bytes`);
-                  break;
-                case 'Finished':
-                  console.log('다운로드 완료');
-                  break;
-              }
-            });
-
-            addToast('업데이트가 완료되었습니다. 앱을 재시작합니다.', 'success');
-            await relaunch();
-          }
+          // 업데이트 정보 설정 및 모달 열기
+          setUpdateInfo({
+            version: update.version || 'Unknown',
+            body: update.body || '새로운 버전이 출시되었습니다.',
+          });
+          setIsUpdateModalOpen(true);
         }
       } catch (error) {
         console.error('업데이트 확인 실패:', error);
@@ -502,6 +491,48 @@ export default function App() {
     const timer = setTimeout(checkForUpdates, 5000);
     return () => clearTimeout(timer);
   }, []);
+
+  // 업데이트 실행
+  const handleUpdate = async () => {
+    if (!updateInfo) return;
+
+    try {
+      setIsDownloading(true);
+      setDownloadProgress(0);
+
+      const update = await check();
+      if (update?.available) {
+        addToast('업데이트를 다운로드하고 있습니다...', 'info');
+
+        await update.downloadAndInstall((event) => {
+          switch (event.event) {
+            case 'Started':
+              console.log('다운로드 시작:', event.data.contentLength);
+              setDownloadProgress(0);
+              break;
+            case 'Progress':
+              const { chunkLength } = event.data;
+              console.log(`다운로드 중: ${chunkLength} bytes`);
+              // 간단한 진행률 계산 (실제로는 total을 알아야 정확함)
+              setDownloadProgress((prev) => Math.min(prev + 10, 90));
+              break;
+            case 'Finished':
+              console.log('다운로드 완료');
+              setDownloadProgress(100);
+              break;
+          }
+        });
+
+        addToast('업데이트가 완료되었습니다. 앱을 재시작합니다.', 'success');
+        await relaunch();
+      }
+    } catch (error) {
+      console.error('업데이트 실패:', error);
+      addToast('업데이트에 실패했습니다.', 'error');
+      setIsDownloading(false);
+      setIsUpdateModalOpen(false);
+    }
+  };
 
   useEffect(() => {
     // Settings load (테마/줌 등)
@@ -1862,6 +1893,20 @@ export default function App() {
           </div>
         </form>
       </Modal>
+
+      {/* Update Modal */}
+      {updateInfo && (
+        <UpdateModal
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+          onUpdate={handleUpdate}
+          version={updateInfo.version}
+          currentVersion="1.0.1"
+          releaseNotes={updateInfo.body}
+          isDownloading={isDownloading}
+          downloadProgress={downloadProgress}
+        />
+      )}
 
       {/* Notifications */}
       <ToastContainer toasts={toasts} removeToast={removeToast} />
