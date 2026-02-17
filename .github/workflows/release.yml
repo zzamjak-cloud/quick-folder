@@ -80,16 +80,39 @@ jobs:
           VERSION="${{ github.ref_name }}"
           VERSION_NUM="${VERSION#v}"  # v1.0.0 -> 1.0.0
 
-          # GitHub Release에서 asset 정보 가져오기
+          # 잠시 대기 (release asset 업로드 완료 대기)
+          sleep 30
+
+          # GitHub Release에서 asset 정보 가져오기 (draft 포함)
           RELEASE_DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${VERSION}")
+            "https://api.github.com/repos/${{ github.repository }}/releases")
 
-          # DMG 및 NSIS 파일 URL과 서명 추출
-          DMG_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".dmg.tar.gz")) | .browser_download_url')
-          DMG_SIG=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".dmg.tar.gz.sig")) | .browser_download_url' | xargs curl -sL)
+          # 해당 태그의 release 찾기 (draft 포함)
+          RELEASE=$(echo "$RELEASE_DATA" | jq -r --arg tag "${VERSION}" '.[] | select(.tag_name == $tag)')
 
-          NSIS_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".nsis.zip")) | .browser_download_url')
-          NSIS_SIG=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".nsis.zip.sig")) | .browser_download_url' | xargs curl -sL)
+          # 디버깅: Release 정보 출력
+          echo "=== Release Info ==="
+          echo "$RELEASE" | jq -r '.name, .tag_name, .draft'
+
+          # 디버깅: Asset 목록 출력
+          echo "=== Available Assets ==="
+          echo "$RELEASE" | jq -r '.assets[].name'
+
+          # DMG 및 서명 파일 찾기
+          DMG_URL=$(echo "$RELEASE" | jq -r '.assets[] | select(.name | contains(".dmg") and (endswith(".tar.gz") or endswith(".dmg"))) | .browser_download_url' | head -1)
+          DMG_SIG_URL=$(echo "$RELEASE" | jq -r '.assets[] | select(.name | contains(".dmg") and endswith(".sig")) | .browser_download_url' | head -1)
+          DMG_SIG=$(curl -sL "$DMG_SIG_URL" 2>/dev/null || echo "")
+
+          # NSIS 및 서명 파일 찾기
+          NSIS_URL=$(echo "$RELEASE" | jq -r '.assets[] | select(.name | contains("setup") and (endswith(".exe") or endswith(".nsis.zip"))) | .browser_download_url' | head -1)
+          NSIS_SIG_URL=$(echo "$RELEASE" | jq -r '.assets[] | select(.name | contains("setup") and endswith(".sig")) | .browser_download_url' | head -1)
+          NSIS_SIG=$(curl -sL "$NSIS_SIG_URL" 2>/dev/null || echo "")
+
+          echo "=== Extracted URLs ==="
+          echo "DMG_URL: $DMG_URL"
+          echo "DMG_SIG_URL: $DMG_SIG_URL"
+          echo "NSIS_URL: $NSIS_URL"
+          echo "NSIS_SIG_URL: $NSIS_SIG_URL"
 
           # update.json 생성
           cat > update.json << EOF
