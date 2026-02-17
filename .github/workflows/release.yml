@@ -33,6 +33,11 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      # 2-1. macOS universal binary를 위한 Rust 타겟 추가
+      - name: install Rust targets for macOS
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       # 3. Rust 빌드 캐시 (빌드 속도 향상)
       - name: Rust cache
         uses: swatinem/rust-cache@v2
