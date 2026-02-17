@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-02-17
+
+### Fixed
+- 자동 업데이트 서명 키 설정 완료
+- latest.json 파일 생성 및 배포 수정
+
+### Changed
+- GitHub Secrets에 서명 키 추가하여 updater 활성화
+
 ## [0.1.3] - 2026-02-17
 
 ### Fixed
