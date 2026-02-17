@@ -48,6 +48,8 @@ import { ToastContainer } from './components/ToastContainer';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 // --- Types & Constants ---
 const STORAGE_KEY = 'quickfolder_widget_data';
@@ -459,6 +461,48 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // --- Effects ---
+
+  // 자동 업데이트 체크
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        const update = await check();
+        if (update?.available) {
+          const shouldUpdate = window.confirm(
+            `새 버전 ${update.version}이 있습니다.\n지금 업데이트하시겠습니까?`
+          );
+
+          if (shouldUpdate) {
+            addToast('업데이트를 다운로드하고 있습니다...', 'info');
+
+            await update.downloadAndInstall((event) => {
+              switch (event.event) {
+                case 'Started':
+                  console.log('다운로드 시작:', event.data.contentLength);
+                  break;
+                case 'Progress':
+                  console.log(`다운로드 중: ${event.data.chunkLength} bytes`);
+                  break;
+                case 'Finished':
+                  console.log('다운로드 완료');
+                  break;
+              }
+            });
+
+            addToast('업데이트가 완료되었습니다. 앱을 재시작합니다.', 'success');
+            await relaunch();
+          }
+        }
+      } catch (error) {
+        console.error('업데이트 확인 실패:', error);
+      }
+    };
+
+    // 앱 시작 5초 후 업데이트 체크
+    const timer = setTimeout(checkForUpdates, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     // Settings load (테마/줌 등)
     const savedSettings = localStorage.getItem(SETTINGS_KEY);

@@ -48,15 +48,74 @@ jobs:
       - name: install frontend dependencies
         run: npm install # 혹은 yarn install, pnpm install
 
-      # 5. Tauri 빌드 및 GitHub Release 생성
+      # 5. Tauri 빌드 및 GitHub Release 생성 (서명 포함)
       - name: build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }} # 태그 이름을 버전으로 사용
-          releaseName: "App Name v__VERSION__"
+          releaseName: "QuickFolder Widget v__VERSION__"
           releaseBody: "See the assets to download and install this version."
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # 모든 빌드 완료 후 update.json 자동 생성
+  update-json:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate update.json
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NUM="${VERSION#v}"  # v1.0.0 -> 1.0.0
+
+          # GitHub Release에서 asset 정보 가져오기
+          RELEASE_DATA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${VERSION}")
+
+          # DMG 및 NSIS 파일 URL과 서명 추출
+          DMG_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".dmg.tar.gz")) | .browser_download_url')
+          DMG_SIG=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".dmg.tar.gz.sig")) | .browser_download_url' | xargs curl -sL)
+
+          NSIS_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".nsis.zip")) | .browser_download_url')
+          NSIS_SIG=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".nsis.zip.sig")) | .browser_download_url' | xargs curl -sL)
+
+          # update.json 생성
+          cat > update.json << EOF
+          {
+            "version": "${VERSION_NUM}",
+            "notes": "Release ${VERSION}",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-universal": {
+                "signature": "${DMG_SIG}",
+                "url": "${DMG_URL}"
+              },
+              "windows-x86_64": {
+                "signature": "${NSIS_SIG}",
+                "url": "${NSIS_URL}"
+              }
+            }
+          }
+          EOF
+
+          cat update.json
+
+      - name: Commit and push update.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          git commit -m "chore: update update.json for ${{ github.ref_name }}" || echo "No changes to commit"
+          git push origin main
