@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-02-18
+
+### Fixed
+- 자동 업데이트 시스템 근본 문제 해결
+  - `createUpdaterArtifacts: true` 설정 추가 (.app.tar.gz, .sig 파일 생성)
+  - updater endpoint를 tauri-action 자동 생성 latest.json으로 변경
+  - 환경변수 이름을 Tauri v2 공식 명칭으로 수정
+  - Draft → Published release로 변경하여 공개 URL 보장
+  - 커스텀 update-json job 제거 (tauri-action 내장 기능 활용)
+
 ## [1.0.5] - 2026-02-17
 
 ### Fixed
