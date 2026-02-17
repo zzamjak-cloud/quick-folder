@@ -1,15 +1,15 @@
 {
-  "version": "1.0.1",
-  "notes": "Release v1.0.1",
-  "pub_date": "2026-02-17T09:19:28Z",
+  "version": "1.0.2",
+  "notes": "Release v1.0.2",
+  "pub_date": "2026-02-17T09:36:52Z",
   "platforms": {
     "darwin-universal": {
       "signature": "",
-      "url": "https://github.com/zzamjak-cloud/quick-folder/releases/download/untagged-fec98f7d45455f363ee4/QuickFolder.Widget_1.0.1_universal.dmg"
+      "url": "https://github.com/zzamjak-cloud/quick-folder/releases/download/untagged-0a2ca3a74d83d66caeb8/QuickFolder.Widget_1.0.2_universal.dmg"
     },
     "windows-x86_64": {
       "signature": "",
-      "url": "https://github.com/zzamjak-cloud/quick-folder/releases/download/untagged-fec98f7d45455f363ee4/QuickFolder.Widget_1.0.1_x64-setup.exe"
+      "url": "https://github.com/zzamjak-cloud/quick-folder/releases/download/untagged-0a2ca3a74d83d66caeb8/QuickFolder.Widget_1.0.2_x64-setup.exe"
     }
   }
 }
