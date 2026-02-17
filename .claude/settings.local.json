@@ -46,7 +46,9 @@
       "Bash(gh release view:*)",
       "Bash(curl:*)",
       "Bash(pbcopy:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(/tmp/create-rolling-release.sh:*)",
+      "Bash(bash /tmp/create-rolling-release.sh)"
     ],
     "deny": [],
     "ask": []

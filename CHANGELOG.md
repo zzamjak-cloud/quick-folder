@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-02-17
+
+### Fixed
+- 롤링 릴리스 워크플로우 파일 체크 개선
+- 파일이 없어도 실패하지 않도록 처리
+
+### Changed
+- 조건부 파일 업로드로 안정성 향상
+
 ## [0.1.6] - 2026-02-17
 
 ### Fixed
