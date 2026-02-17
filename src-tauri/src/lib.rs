@@ -81,7 +81,15 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin({
+      let mut updater = tauri_plugin_updater::Builder::new();
+      // macOS universal binary용 타겟 설정 (latest.json의 플랫폼 키와 매칭)
+      #[cfg(target_os = "macos")]
+      {
+        updater = updater.target("darwin-universal");
+      }
+      updater.build()
+    })
     .plugin(tauri_plugin_process::init())
     .invoke_handler(tauri::generate_handler![
         open_folder,

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-02-18
+
+### Fixed
+- macOS 업데이터 아티팩트 미생성 문제 해결
+  - `bundle.targets`에 `"app"` 추가 (.app.tar.gz 생성에 필수)
+  - updater 플러그인에 `darwin-universal` 타겟 명시 (latest.json 플랫폼 키 매칭)
+
 ## [1.0.7] - 2026-02-18
 
 ### Changed
