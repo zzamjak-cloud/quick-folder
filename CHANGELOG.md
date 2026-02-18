@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] - 2026-02-18
+
+### Fixed
+- updater 플랫폼 키 불일치 수정: darwin-universal 오버라이드 제거
+  - tauri-action이 darwin-aarch64/darwin-x86_64로 등록하므로 기본 타겟 사용
+
 ## [1.0.9] - 2026-02-18
 
 ### Changed
