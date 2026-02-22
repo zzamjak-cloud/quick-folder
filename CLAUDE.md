@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-QuickFolder Widget is a **Tauri 2.x** desktop application for managing local folder shortcuts. It provides a categorized widget interface for quick access to frequently used directories on Windows and macOS.
+QuickFolder Widget is a **Tauri 2.x** desktop application for managing local folder shortcuts with an integrated file explorer. It provides a categorized widget interface for quick access to frequently used directories on Windows and macOS.
 
 ## Tech Stack
 
@@ -12,6 +12,7 @@ QuickFolder Widget is a **Tauri 2.x** desktop application for managing local fol
 - **React 19** - UI library with TypeScript
 - **Vite** - Build tool and dev server
 - **@dnd-kit** - Internal drag and drop functionality
+- **tauri-plugin-drag** - OS-level file drag export
 - **TailwindCSS** - Styling via utility classes
 - **Lucide React** - Icon library
 
@@ -40,9 +41,19 @@ npm run preview
 
 - **index.html** - HTML entry point loaded by Tauri
 - **index.tsx** - React app initialization
-- **App.tsx** - Main application component with all state and logic
+- **App.tsx** - Main application component (~900줄, 리팩토링 후)
 - **src-tauri/src/lib.rs** - Tauri backend (Rust commands and plugins)
 - **src-tauri/src/main.rs** - Entry point (calls lib.rs)
+
+### App.tsx 커스텀 훅 (hooks/)
+
+App.tsx에서 분리된 도메인별 훅:
+
+- **`hooks/useThemeManagement.ts`** - 테마 프리셋, 커스텀 색상, 줌 레벨
+- **`hooks/useCategoryManagement.ts`** - 카테고리·즐겨찾기 CRUD, localStorage 영속화
+- **`hooks/useWindowState.ts`** - 창 위치·크기 저장/복원
+- **`hooks/useTauriDragDrop.ts`** - 외부(OS) 폴더 드래그앤드롭 리스너
+- **`hooks/useAutoUpdate.ts`** - 자동 업데이트 확인·다운로드
 
 ### Process Communication
 
@@ -52,12 +63,16 @@ The app uses Tauri's command pattern:
    - `open_folder` - Opens folder in OS file explorer
    - `copy_path` - Copies path to clipboard
    - `select_folder` - Opens native folder picker dialog
-2. **Frontend** (`App.tsx`) calls these via `invoke()` from `@tauri-apps/api/core`:
-   ```typescript
-   await invoke('open_folder', { path })
-   await invoke('copy_path', { path })
-   const result = await invoke('select_folder')
-   ```
+   - `list_directory` - Lists directory contents as `FileEntry`
+   - `get_file_thumbnail` - Generates image thumbnail (disk cached)
+   - `get_psd_thumbnail` - Generates PSD thumbnail (disk cached)
+   - `rename_item` - Renames file or directory
+   - `delete_items` - Deletes files/directories (trash)
+   - `copy_items` / `move_items` - Copies or moves files
+   - `create_directory` - Creates new directory
+   - `is_directory` - Checks if path is a directory
+
+2. **Frontend** calls these via `invoke()` from `@tauri-apps/api/core`
 
 ### Tauri Plugins
 
@@ -65,16 +80,33 @@ Required plugins (configured in `src-tauri/Cargo.toml`):
 - **tauri-plugin-opener** - Open folders in system file explorer
 - **tauri-plugin-clipboard-manager** - Clipboard operations
 - **tauri-plugin-dialog** - Native file/folder picker dialogs
+- **tauri-plugin-drag** - Drag files out to OS applications
+- **tauri-plugin-updater** - Auto-update support
+
+### Rust Backend Notes
+
+- `FileType` enum with `#[serde(rename_all = "lowercase")]` maps to TypeScript union type
+- Image thumbnails cached to `app_cache_dir/img_thumbnails/` (파일경로+수정시각+크기 해시)
+- PSD thumbnails cached to `app_cache_dir/psd_thumbnails/`
 
 ### State Management
 
-All state lives in App.tsx and is persisted to `localStorage` under key `quickfolder_widget_data`:
+App state is split between:
+- **App.tsx** - Layout split state, file explorer open/closed, active tab
+- **hooks/** - Domain-specific state hooks (theme, categories, window, updater)
+- **FileExplorer/index.tsx** - File explorer navigation, selection, renaming state
+- **localStorage** (`quickfolder_widget_data`) - Categories and shortcuts persistence
 
-- **Categories** - Top-level organizational units with title, color, and shortcuts
-- **FolderShortcuts** - Individual folder entries with name and path
-- **Toasts** - Temporary notification messages
+### File Explorer Architecture (`components/FileExplorer/`)
 
-Data syncs to localStorage on every state change (via `useEffect`).
+- **`index.tsx`** - 메인 컨트롤러: 키보드 단축키, 탐색 히스토리, 탭 관리
+- **`NavigationBar.tsx`** - 브레드크럼, 정렬, 썸네일 크기, 뷰 모드 전환
+- **`FileGrid.tsx`** - 파일 목록 렌더링 (grid/list/details 뷰)
+- **`FileCard.tsx`** - 개별 파일 카드 (lazy 썸네일, 인라인 이름변경)
+- **`ContextMenu.tsx`** - 우클릭 메뉴 (뷰포트 안전 포탈 렌더링)
+- **`StatusBar.tsx`** - 선택 항목 정보
+- **`hooks/useDragToOS.ts`** - OS로 파일 드래그 내보내기
+- **`hooks/useRenameInput.ts`** - 이름변경 입력 상태·핸들러
 
 ### Drag & Drop
 
@@ -82,22 +114,28 @@ Data syncs to localStorage on every state change (via `useEffect`).
 - Shortcuts are sortable within categories
 - Shortcuts can be dragged between different categories
 - `SortableShortcutItem` component wraps each shortcut for drag behavior
-- `CategoryColumn` uses `useDroppable` to accept internal drops
 
-**Native OS Drag & Drop** (Tauri):
-- Folders can be dragged from OS file explorer into the app
-- Uses `getCurrentWebview().onDragDropEvent()` global listener
-- Detects drop position and finds target category via `data-category-id` attribute
-- Configured via `dragDropEnabled: true` in `src-tauri/tauri.conf.json`
-- Implementation in App.tsx (useEffect hook around line 326)
+**Native OS Drag & Drop (즐겨찾기 등록)**:
+- Folders dragged from OS file explorer → `hooks/useTauriDragDrop.ts`
+- `onDragDropEvent()` global listener
+- `is_directory` Rust command로 폴더만 필터링
+- `data-category-id` 속성 + 바운딩 렉트 기반 카테고리 감지
 
-### Data Types
+**OS로 파일 드래그 내보내기** (`tauri-plugin-drag`):
+- `components/FileExplorer/hooks/useDragToOS.ts`
+- 캔버스 기반 커스텀 드래그 아이콘 (`fileUtils.tsx::DRAG_IMAGE`)
 
-Core interfaces defined in `types.ts`:
+### Data Types (`types.ts`)
+
+Core interfaces:
 
 - `FolderShortcut` - id, name, path, createdAt
 - `Category` - id, title, color (Tailwind class), shortcuts array, createdAt, isCollapsed
 - `ToastMessage` - id, message, type
+- `FileEntry` - name, path, is_dir, size, modified, file_type
+- `ThemeVars` - 테마 CSS 변수 (accent, bg, text, surface 등)
+- `ClipboardData` - 클립보드 복사/이동 데이터
+- `Tab` - 파일 탐색기 탭 (id, path, label, pinned)
 
 ### Styling
 
@@ -152,3 +190,19 @@ Core interfaces defined in `types.ts`:
 - All features maintained, including critical OS file explorer drag-and-drop
 
 **Migration completed**: 2025-12-13
+
+### 파일 탐색기 통합 + 대규모 리팩토링 (February 2026)
+
+**주요 추가 기능**:
+- 통합 파일 탐색기 (그리드/리스트/세부정보 뷰, 탭, 키보드 단축키)
+- 이미지·PSD 썸네일 자동 로딩 (Rust 디스크 캐시)
+- OS로 파일 드래그 내보내기 (`tauri-plugin-drag`)
+- 즐겨찾기·탐색기 패널 연동
+
+**리팩토링**:
+- App.tsx 2,044줄 → ~900줄 (커스텀 훅 분리)
+- React.memo, useCallback, useMemo 전면 적용
+- Rust FileType enum 도입 (타입 안전성)
+- ThemeVars 타입 중앙화
+
+**Completed**: 2026-02-22
