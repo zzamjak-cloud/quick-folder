@@ -183,6 +183,24 @@ async fn rename_item(old_path: String, new_path: String) -> Result<(), String> {
         .map_err(|e| format!("이름 변경 실패: {}", e))
 }
 
+// macOS Quick Look 실행 (qlmanage -p <path>)
+#[tauri::command]
+fn quick_look(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("qlmanage")
+            .args(["-p", &path])
+            .spawn()
+            .map_err(|e| format!("Quick Look 실행 실패: {}", e))?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Quick Look은 macOS 전용 기능
+        drop(path);
+    }
+    Ok(())
+}
+
 // 폴더 선택 결과 구조체
 #[derive(serde::Serialize)]
 struct FolderSelection {
@@ -278,7 +296,8 @@ pub fn run() {
         move_items,
         delete_items,
         create_directory,
-        rename_item
+        rename_item,
+        quick_look,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
