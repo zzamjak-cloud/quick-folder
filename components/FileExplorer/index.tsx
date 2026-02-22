@@ -568,6 +568,8 @@ export default function FileExplorer({
             loading={loading}
             error={error}
             onSelect={selectEntry}
+            onSelectMany={(paths) => setSelectedPaths(paths)}
+            onDeselectAll={() => setSelectedPaths([])}
             onOpen={openEntry}
             onContextMenu={handleContextMenu}
             onRenameCommit={handleRenameCommit}

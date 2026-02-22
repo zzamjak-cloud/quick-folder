@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
@@ -139,10 +139,15 @@ export default function FileCard({
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
         try {
-          // tauri-plugin-drag: plugin:drag|drag_files 명령으로 OS 드래그 시작
-          await invoke('plugin:drag|drag_files', { paths: dragPaths });
+          // tauri-plugin-drag: start_drag 명령으로 OS 드래그 시작
+          const onEvent = new Channel<unknown>();
+          await invoke('plugin:drag|start_drag', {
+            item: dragPaths,
+            image: { Raw: [] },
+            onEvent,
+          });
         } catch {
-          // 드래그 실패 무시 (앱 내부 클릭인 경우)
+          // 드래그 실패 무시
         }
       }
     };
@@ -208,6 +213,7 @@ export default function FileCard({
             alt={entry.name}
             className="w-full h-full object-contain"
             loading="lazy"
+            draggable={false}
           />
         ) : isPsd && showPsdPreview && psdThumbnail ? (
           /* PSD 미리보기 */
@@ -216,6 +222,7 @@ export default function FileCard({
             alt={entry.name}
             className="w-full h-full object-contain"
             loading="lazy"
+            draggable={false}
           />
         ) : isPsd && showPsdPreview && psdLoading ? (
           /* PSD 로딩 중 */
