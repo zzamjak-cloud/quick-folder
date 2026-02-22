@@ -115,6 +115,68 @@ fn get_file_thumbnail(path: String, size: u32) -> Result<Option<String>, String>
     ))
 }
 
+// PSD 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
+#[tauri::command]
+fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    use base64::Engine;
+    use tauri::Manager;
+
+    // 파일 수정 시각으로 캐시 키 구성
+    let modified = std::fs::metadata(&path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    modified.hash(&mut hasher);
+    size.hash(&mut hasher);
+    let cache_key = format!("{:x}", hasher.finish());
+
+    // 캐시 디렉토리 경로
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e: tauri::Error| e.to_string())?
+        .join("psd_thumbnails");
+    std::fs::create_dir_all(&cache_dir).ok();
+    let cache_file = cache_dir.join(format!("{}.png", cache_key));
+
+    // 캐시 히트
+    if cache_file.exists() {
+        let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
+        return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
+    }
+
+    // PSD 파싱 → 합성 이미지 픽셀
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let psd = psd::Psd::from_bytes(&bytes).map_err(|e| format!("PSD 파싱 실패: {}", e))?;
+
+    let rgba_pixels = psd.rgba();
+    let width = psd.width();
+    let height = psd.height();
+
+    // image 크레이트로 리사이즈
+    let img = image::RgbaImage::from_raw(width, height, rgba_pixels)
+        .ok_or_else(|| "PSD 픽셀 변환 실패".to_string())?;
+    let dynamic = image::DynamicImage::ImageRgba8(img);
+    let thumb = dynamic.thumbnail(size, size);
+
+    let mut buf = vec![];
+    thumb
+        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+
+    // 디스크 캐시 저장
+    std::fs::write(&cache_file, &buf).ok();
+
+    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&buf)))
+}
+
 // 파일/폴더 복사 (재귀 지원)
 #[tauri::command]
 async fn copy_items(sources: Vec<String>, dest: String) -> Result<(), String> {
@@ -318,6 +380,7 @@ pub fn run() {
         list_directory,
         get_image_dimensions,
         get_file_thumbnail,
+        get_psd_thumbnail,
         copy_items,
         move_items,
         delete_items,

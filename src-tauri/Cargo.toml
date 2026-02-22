@@ -31,3 +31,4 @@ tauri-plugin-process = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
 base64 = "0.22"
 trash = "5"
+psd = "0.3"
