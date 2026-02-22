@@ -311,6 +311,12 @@ async fn create_directory(path: String) -> Result<(), String> {
     std::fs::create_dir_all(&path).map_err(|e| format!("폴더 생성 실패: {}", e))
 }
 
+// 경로가 디렉토리인지 확인
+#[tauri::command]
+fn is_directory(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
 // 이름 바꾸기
 #[tauri::command]
 async fn rename_item(old_path: String, new_path: String) -> Result<(), String> {
@@ -419,6 +425,7 @@ pub fn run() {
         create_directory,
         rename_item,
         quick_look,
+        is_directory,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

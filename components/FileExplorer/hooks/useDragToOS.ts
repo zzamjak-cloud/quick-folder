@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
+import { DRAG_IMAGE } from '../fileUtils';
 
 // 외부 앱으로 파일 드래그 (마우스 6px 이동 시 OS 드래그 시작)
 export function useDragToOS(dragPaths: string[]) {
@@ -18,11 +19,11 @@ export function useDragToOS(dragPaths: string[]) {
           const onEvent = new Channel<unknown>();
           await invoke('plugin:drag|start_drag', {
             item: dragPaths,
-            image: { Raw: [] },
+            image: DRAG_IMAGE,
             onEvent,
           });
-        } catch {
-          // 드래그 실패 무시
+        } catch (err) {
+          console.error('OS 드래그 실패:', err);
         }
       }
     };

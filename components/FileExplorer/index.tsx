@@ -567,12 +567,12 @@ export default function FileExplorer({
             renamingPath={renamingPath}
             thumbnailSize={thumbnailSize}
             viewMode={viewMode}
+            sortBy={sortBy}
             focusedIndex={focusedIndex}
             gridRef={gridRef}
             loading={loading}
             error={error}
             onSelect={selectEntry}
-            onSelectMany={setSelectedPaths}
             onDeselectAll={deselectAll}
             onOpen={openEntry}
             onContextMenu={handleContextMenu}

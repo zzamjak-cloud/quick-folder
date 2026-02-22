@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Settings,
@@ -6,7 +7,6 @@ import {
   Copy,
   Trash2,
   Edit2,
-  ExternalLink,
   Palette,
   Search,
   ZoomIn,
@@ -23,12 +23,9 @@ import {
   useSensor,
   useSensors,
   DragOverlay,
-  defaultDropAnimationSideEffects,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
-  DropAnimation,
-  useDroppable,
   CollisionDetection,
 } from '@dnd-kit/core';
 import {
@@ -102,11 +99,28 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
 
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = React.useState<{ top: number; left: number } | null>(null);
 
+  // 메뉴 열릴 때 버튼 위치 기반으로 fixed 좌표 계산
+  React.useEffect(() => {
+    if (!menuOpen || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const menuHeight = 120; // 대략적인 메뉴 높이
+    const spaceBelow = window.innerHeight - rect.bottom;
+    // 아래 공간 부족하면 위로 표시
+    const top = spaceBelow < menuHeight ? rect.top - menuHeight : rect.bottom + 4;
+    setMenuPos({ top, left: rect.right - 130 }); // min-w-[130px] 기준 우측 정렬
+  }, [menuOpen]);
+
+  // 외부 클릭 시 메뉴 닫기
   React.useEffect(() => {
     if (!menuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
         setMenuOpen(false);
       }
     };
@@ -147,10 +161,10 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
 
       {/* MoreVertical 드롭다운 */}
       <div
-        className="relative opacity-0 group-hover/item:opacity-100 transition-opacity"
-        ref={menuRef}
+        className="opacity-0 group-hover/item:opacity-100 transition-opacity"
       >
         <button
+          ref={btnRef}
           onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v); }}
           onPointerDown={(e) => e.stopPropagation()}
           className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-text)] hover:bg-[var(--qf-surface-hover)] rounded-md"
@@ -158,10 +172,13 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
         >
           <MoreVertical size={13} />
         </button>
-        {menuOpen && (
+        {menuOpen && menuPos && createPortal(
           <div
-            className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[130px]"
+            ref={menuRef}
+            className="fixed z-[9999] rounded-lg shadow-xl overflow-hidden min-w-[130px]"
             style={{
+              top: menuPos.top,
+              left: menuPos.left,
               backgroundColor: 'var(--qf-surface-2)',
               border: '1px solid var(--qf-border)',
             }}
@@ -193,7 +210,8 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
                 {item.label}
               </button>
             ))}
-          </div>
+          </div>,
+          document.getElementById('qf-root') || document.body
         )}
       </div>
     </li>
@@ -623,6 +641,7 @@ export default function App() {
 
   return (
     <div
+      id="qf-root"
       className="h-screen overflow-hidden flex flex-col text-[var(--qf-text)]"
       style={{
         backgroundColor: themeVars?.bg ?? '#0f172a',
