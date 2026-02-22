@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { FileEntry, ClipboardData } from '../../types';
+import { FileEntry, ClipboardData, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
@@ -13,6 +13,8 @@ interface FileExplorerProps {
   onAddToFavorites: (path: string, name: string) => void;
   themeVars: ThemeVars | null;
 }
+
+const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240];
 
 export default function FileExplorer({
   currentPath,
@@ -28,7 +30,7 @@ export default function FileExplorer({
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [thumbnailSize, setThumbnailSize] = useState<80 | 120 | 160>(120);
+  const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(120);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -328,12 +330,18 @@ export default function FileExplorer({
       // --- 탐색기 줌 (Ctrl +/-) ---
       if (ctrl && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
-        setThumbnailSize(prev => (prev === 80 ? 120 : prev === 120 ? 160 : 160) as 80 | 120 | 160);
+        setThumbnailSize(prev => {
+          const idx = THUMBNAIL_SIZES.indexOf(prev);
+          return THUMBNAIL_SIZES[Math.min(THUMBNAIL_SIZES.length - 1, idx + 1)];
+        });
         return;
       }
       if (ctrl && e.key === '-') {
         e.preventDefault();
-        setThumbnailSize(prev => (prev === 160 ? 120 : prev === 120 ? 80 : 80) as 80 | 120 | 160);
+        setThumbnailSize(prev => {
+          const idx = THUMBNAIL_SIZES.indexOf(prev);
+          return THUMBNAIL_SIZES[Math.max(0, idx - 1)];
+        });
         return;
       }
       if (ctrl && e.key === '0') {

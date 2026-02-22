@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { FileEntry } from '../../types';
+import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
 import FileCard from './FileCard';

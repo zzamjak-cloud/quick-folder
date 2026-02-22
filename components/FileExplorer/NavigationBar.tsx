@@ -9,6 +9,7 @@ import {
   List,
   Table2,
 } from 'lucide-react';
+import { ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 
 interface NavigationBarProps {
@@ -23,8 +24,8 @@ interface NavigationBarProps {
   sortBy: 'name' | 'size' | 'modified' | 'type';
   sortDir: 'asc' | 'desc';
   onSortChange: (by: 'name' | 'size' | 'modified' | 'type', dir: 'asc' | 'desc') => void;
-  thumbnailSize: 80 | 120 | 160;
-  onThumbnailSizeChange: (size: 80 | 120 | 160) => void;
+  thumbnailSize: ThumbnailSize;
+  onThumbnailSizeChange: (size: ThumbnailSize) => void;
   viewMode: 'grid' | 'list' | 'details';
   onViewModeChange: (mode: 'grid' | 'list' | 'details') => void;
   themeVars: ThemeVars | null;
@@ -132,10 +133,8 @@ export default function NavigationBar({
     type: '종류',
   };
 
-  const sizeLabels = {
-    80: '소',
-    120: '중',
-    160: '대',
+  const sizeLabels: Record<ThumbnailSize, string> = {
+    40: 'XS', 60: 'S', 80: 'M', 100: 'L', 120: 'XL', 160: '2X', 200: '3X', 240: '4X',
   };
 
   const btnCls = (active: boolean) =>
@@ -326,7 +325,7 @@ export default function NavigationBar({
                 border: `1px solid ${themeVars?.border ?? '#334155'}`,
               }}
             >
-              {([80, 120, 160] as const).map(size => (
+              {([40, 60, 80, 100, 120, 160, 200, 240] as const).map(size => (
                 <button
                   key={size}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)]"

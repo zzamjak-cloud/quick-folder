@@ -32,6 +32,8 @@ export interface ClipboardData {
   action: 'copy' | 'cut';
 }
 
+export type ThumbnailSize = 40 | 60 | 80 | 100 | 120 | 160 | 200 | 240;
+
 export type ToastType = 'success' | 'error' | 'info';
 
 export interface ToastMessage {

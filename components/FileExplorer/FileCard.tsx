@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { FileEntry } from '../../types';
+import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
 
@@ -9,7 +9,7 @@ interface FileCardProps {
   isSelected: boolean;
   isFocused: boolean;
   isRenaming: boolean;
-  thumbnailSize: 80 | 120 | 160;
+  thumbnailSize: ThumbnailSize;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
