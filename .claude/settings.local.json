@@ -24,7 +24,13 @@
       "Bash(/tmp/test-updater.js:*)",
       "Bash(node:*)",
       "Bash(sudo xattr:*)",
-      "Bash(xattr:*)"
+      "Bash(xattr:*)",
+      "Bash(git merge refactor/optimization 2>&1)",
+      "Bash(npm run build 2>&1)",
+      "Bash(git branch -d refactor/optimization 2>&1)",
+      "Bash(git worktree remove /Users/woody/Desktop/AI/QuickFolder/quick-folder/.worktrees/refactor-optimization 2>&1)",
+      "Bash(git stash drop stash@{0} 2>&1)",
+      "Bash(git status -u 2>&1)"
     ],
     "deny": [],
     "ask": []
