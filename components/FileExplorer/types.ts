@@ -13,3 +13,12 @@ export interface ThemeVars {
   accent20: string;
   accent50: string;
 }
+
+// 탭 인터페이스
+export interface Tab {
+  id: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+  title: string;
+}
