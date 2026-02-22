@@ -114,6 +114,21 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
     opacity: isDragging ? 0.3 : 1,
   };
 
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  // 외부 클릭 시 메뉴 닫기
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
   return (
     <li
       ref={setNodeRef}
@@ -125,7 +140,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
       <div
         className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
         onClick={() => handleOpenFolder(shortcut.path)}
-        title={`${shortcut.path} (클릭하여 열기)`}
+        title={`${shortcut.path} (클릭하여 탐색기에서 열기)`}
       >
         <div className="text-[var(--qf-accent)] transition-colors">
           <Folder size={16} />
@@ -142,44 +157,59 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
           >
             {shortcut.name}
           </div>
-          {/* Path hidden as per user feedback */}
         </div>
       </div>
 
-      <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity pl-2">
+      {/* MoreVertical 드롭다운 */}
+      <div
+        className="relative opacity-0 group-hover/item:opacity-100 transition-opacity"
+        ref={menuRef}
+      >
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            openEditFolderModal(categoryId, shortcut);
-          }}
-          className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-accent)] hover:bg-[var(--qf-surface-hover)] rounded-md"
-          title="수정"
-          onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+          onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-text)] hover:bg-[var(--qf-surface-hover)] rounded-md"
+          title="더 보기"
         >
-          <Edit2 size={12} />
+          <MoreVertical size={13} />
         </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleCopyPath(shortcut.path);
-          }}
-          className="p-1.5 text-[var(--qf-muted)] hover:text-emerald-400 hover:bg-[var(--qf-surface-hover)] rounded-md"
-          title="경로 복사"
-          onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
-        >
-          <Copy size={12} />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            deleteShortcut(categoryId, shortcut.id);
-          }}
-          className="p-1.5 text-[var(--qf-muted)] hover:text-red-400 hover:bg-[var(--qf-surface-hover)] rounded-md"
-          title="삭제"
-          onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
-        >
-          <Trash2 size={12} />
-        </button>
+        {menuOpen && (
+          <div
+            className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[130px]"
+            style={{
+              backgroundColor: 'var(--qf-surface-2)',
+              border: '1px solid var(--qf-border)',
+            }}
+          >
+            {[
+              {
+                icon: <Edit2 size={12} />,
+                label: '수정',
+                onClick: () => { openEditFolderModal(categoryId, shortcut); setMenuOpen(false); },
+              },
+              {
+                icon: <Copy size={12} />,
+                label: '경로 복사',
+                onClick: () => { handleCopyPath(shortcut.path); setMenuOpen(false); },
+              },
+              {
+                icon: <Trash2 size={12} style={{ color: '#f87171' }} />,
+                label: '삭제',
+                onClick: () => { deleteShortcut(categoryId, shortcut.id); setMenuOpen(false); },
+              },
+            ].map(item => (
+              <button
+                key={item.label}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); item.onClick(); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--qf-surface-hover)] text-[var(--qf-text)]"
+              >
+                <span className="text-[var(--qf-muted)]">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </li>
   );
@@ -1458,51 +1488,53 @@ export default function App() {
         ['--qf-accent-50' as any]: themeVars?.accent50 ?? 'rgba(59,130,246,0.50)',
       }}
     >
-      {/* Toolbar: [검색][돋보기(줌)][팔레트][+] */}
-      <div className="flex-shrink-0 px-4 py-2 flex items-center gap-2 border-b border-[var(--qf-border)]">
-        <input
-          type="text"
-          placeholder="검색..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-[var(--qf-surface)] border border-[var(--qf-border)] text-[var(--qf-text)] rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--qf-accent)] w-full max-w-[520px] transition-all placeholder:text-[var(--qf-muted)]"
-        />
-
-        <button
-          type="button"
-          onClick={() => setIsZoomModalOpen(true)}
-          className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors"
-          title="확대/축소"
-          aria-label="확대/축소"
-        >
-          <ZoomIn size={18} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setIsBgModalOpen(true)}
-          className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors"
-          title="테마 설정"
-          aria-label="테마 설정"
-        >
-          <Palette size={18} />
-        </button>
-
-        <button
-          type="button"
-          onClick={openAddCategoryModal}
-          className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors"
-          title="카테고리 추가"
-          aria-label="카테고리 추가"
-        >
-          <Plus size={18} />
-        </button>
-      </div>
-
       {/* Split Panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Favorites Panel */}
-        <div style={{ width: leftPanelWidth }} className="flex-shrink-0 overflow-y-auto p-4">
+        <div style={{ width: leftPanelWidth }} className="flex-shrink-0 flex flex-col overflow-hidden">
+          {/* 좌측 패널 상단 헤더 */}
+          <div className="flex-shrink-0 px-3 pt-3 pb-2 flex flex-col gap-2 border-b border-[var(--qf-border)]">
+            {/* 검색 */}
+            <input
+              type="text"
+              placeholder="검색..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-[var(--qf-surface)] border border-[var(--qf-border)] text-[var(--qf-text)] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--qf-accent)] w-full transition-all placeholder:text-[var(--qf-muted)]"
+            />
+            {/* 줌/테마/카테고리 추가 */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[var(--qf-muted)] font-medium">즐겨찾기</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsZoomModalOpen(true)}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
+                  title="확대/축소"
+                >
+                  <ZoomIn size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBgModalOpen(true)}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
+                  title="테마 설정"
+                >
+                  <Palette size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={openAddCategoryModal}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
+                  title="카테고리 추가"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+          {/* 스크롤 가능한 카테고리 목록 */}
+          <div className="flex-1 overflow-y-auto p-4">
           {/* Main Grid */}
           <DndContext
         sensors={sensors}
@@ -1626,6 +1658,7 @@ export default function App() {
           })() : null}
         </DragOverlay>
           </DndContext>
+          </div>
         </div>
 
         {/* 드래그 구분선 */}

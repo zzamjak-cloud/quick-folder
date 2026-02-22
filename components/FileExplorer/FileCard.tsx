@@ -181,7 +181,7 @@ export default function FileCard({
           <img
             src={thumbnail}
             alt={entry.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             loading="lazy"
           />
         ) : (
