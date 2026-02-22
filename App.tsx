@@ -1652,7 +1652,7 @@ export default function App() {
         {/* Right: File Explorer */}
         <div className="flex-1 min-w-0 overflow-hidden">
           <FileExplorer
-            currentPath={explorerPath}
+            initialPath={explorerPath}
             onPathChange={setExplorerPath}
             onAddToFavorites={handleAddFavoriteFromExplorer}
             themeVars={themeVars}

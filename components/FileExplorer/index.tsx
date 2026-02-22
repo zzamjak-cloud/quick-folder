@@ -1,23 +1,31 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize } from '../../types';
-import { ThemeVars } from './types';
+import { ThemeVars, Tab } from './types';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import StatusBar from './StatusBar';
+import TabBar from './TabBar';
 
 interface FileExplorerProps {
-  currentPath: string;
+  initialPath: string;
   onPathChange: (path: string) => void;
   onAddToFavorites: (path: string, name: string) => void;
   themeVars: ThemeVars | null;
 }
 
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240];
+const TABS_KEY = 'qf_explorer_tabs';
+const ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
+
+// 경로의 마지막 세그먼트를 탭 제목으로 사용
+function pathTitle(path: string): string {
+  return path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path;
+}
 
 export default function FileExplorer({
-  currentPath,
+  initialPath,
   onPathChange,
   onAddToFavorites,
   themeVars,
@@ -25,8 +33,6 @@ export default function FileExplorer({
   // --- 상태 ---
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -37,8 +43,33 @@ export default function FileExplorer({
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'details'>('grid');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+
+  // --- 탭 상태 (localStorage 영속) ---
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    try { return JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]'); }
+    catch { return []; }
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    return localStorage.getItem(ACTIVE_TAB_KEY) ?? '';
+  });
+
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // 활성 탭에서 파생된 값
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
+  const currentPath = activeTab?.path ?? '';
+  const canGoBack = !!(activeTab && activeTab.historyIndex > 0);
+  const canGoForward = !!(activeTab && activeTab.historyIndex < activeTab.history.length - 1);
+
+  // --- 탭 localStorage 동기화 ---
+  useEffect(() => {
+    localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
+  }, [tabs]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
+  }, [activeTabId]);
 
   // --- 디렉토리 로딩 ---
   const loadDirectory = useCallback(async (path: string) => {
@@ -61,25 +92,14 @@ export default function FileExplorer({
   // --- 정렬 ---
   function sortEntries(list: FileEntry[], by: string, dir: string): FileEntry[] {
     return [...list].sort((a, b) => {
-      // 폴더 먼저
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-
       let cmp = 0;
       switch (by) {
-        case 'name':
-          cmp = a.name.localeCompare(b.name, 'ko');
-          break;
-        case 'size':
-          cmp = a.size - b.size;
-          break;
-        case 'modified':
-          cmp = a.modified - b.modified;
-          break;
-        case 'type':
-          cmp = a.file_type.localeCompare(b.file_type);
-          break;
-        default:
-          cmp = a.name.localeCompare(b.name, 'ko');
+        case 'name': cmp = a.name.localeCompare(b.name, 'ko'); break;
+        case 'size': cmp = a.size - b.size; break;
+        case 'modified': cmp = a.modified - b.modified; break;
+        case 'type': cmp = a.file_type.localeCompare(b.file_type); break;
+        default: cmp = a.name.localeCompare(b.name, 'ko');
       }
       return dir === 'asc' ? cmp : -cmp;
     });
@@ -90,36 +110,73 @@ export default function FileExplorer({
     setEntries(prev => sortEntries(prev, sortBy, sortDir));
   }, [sortBy, sortDir]);
 
-  // currentPath 변경 시 디렉토리 로딩
+  // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
   useEffect(() => {
-    if (currentPath) {
-      loadDirectory(currentPath);
+    if (!initialPath) return;
+    const existing = tabs.find(t => t.path === initialPath);
+    if (existing) {
+      setActiveTabId(existing.id);
+      loadDirectory(initialPath);
+    } else {
+      const newTab: Tab = {
+        id: crypto.randomUUID(),
+        path: initialPath,
+        history: [initialPath],
+        historyIndex: 0,
+        title: pathTitle(initialPath),
+      };
+      setTabs(prev => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+      loadDirectory(initialPath);
     }
-  }, [currentPath]);
+  }, [initialPath]);
 
-  // --- 내비게이션 ---
+  // 앱 시작 시 저장된 탭이 있으면 마지막 활성 탭 로드
+  useEffect(() => {
+    if (activeTab && !initialPath) {
+      loadDirectory(activeTab.path);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- 내비게이션 (탭 기반) ---
   const navigateTo = useCallback((path: string) => {
-    const newHistory = history.slice(0, historyIndex + 1);
-    setHistory([...newHistory, path]);
-    setHistoryIndex(newHistory.length);
+    const title = pathTitle(path);
+    setTabs(prev => prev.map(tab => {
+      if (tab.id !== activeTabId) return tab;
+      const newHistory = tab.history.slice(0, tab.historyIndex + 1);
+      return {
+        ...tab,
+        path,
+        title,
+        history: [...newHistory, path],
+        historyIndex: newHistory.length,
+      };
+    }));
     onPathChange(path);
-  }, [history, historyIndex, onPathChange]);
+    loadDirectory(path);
+  }, [activeTabId, onPathChange, loadDirectory]);
 
   const goBack = useCallback(() => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      onPathChange(history[newIndex]);
-    }
-  }, [history, historyIndex, onPathChange]);
+    if (!activeTab || activeTab.historyIndex <= 0) return;
+    const newPath = activeTab.history[activeTab.historyIndex - 1];
+    const title = pathTitle(newPath);
+    setTabs(prev => prev.map(t =>
+      t.id === activeTabId ? { ...t, path: newPath, title, historyIndex: t.historyIndex - 1 } : t
+    ));
+    onPathChange(newPath);
+    loadDirectory(newPath);
+  }, [activeTab, activeTabId, onPathChange, loadDirectory]);
 
   const goForward = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      onPathChange(history[newIndex]);
-    }
-  }, [history, historyIndex, onPathChange]);
+    if (!activeTab || activeTab.historyIndex >= activeTab.history.length - 1) return;
+    const newPath = activeTab.history[activeTab.historyIndex + 1];
+    const title = pathTitle(newPath);
+    setTabs(prev => prev.map(t =>
+      t.id === activeTabId ? { ...t, path: newPath, title, historyIndex: t.historyIndex + 1 } : t
+    ));
+    onPathChange(newPath);
+    loadDirectory(newPath);
+  }, [activeTab, activeTabId, onPathChange, loadDirectory]);
 
   const goUp = useCallback(() => {
     if (!currentPath) return;
@@ -131,14 +188,28 @@ export default function FileExplorer({
     navigateTo(parent);
   }, [currentPath, navigateTo]);
 
-  // currentPath가 외부(App.tsx)에서 변경될 때 히스토리 동기화
-  useEffect(() => {
-    if (currentPath && (historyIndex < 0 || history[historyIndex] !== currentPath)) {
-      const newHistory = history.slice(0, historyIndex + 1);
-      setHistory([...newHistory, currentPath]);
-      setHistoryIndex(newHistory.length);
-    }
-  }, [currentPath]);
+  // --- 탭 관리 ---
+  const handleTabSelect = useCallback((tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    setActiveTabId(tabId);
+    loadDirectory(tab.path);
+  }, [tabs, loadDirectory]);
+
+  const handleTabClose = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const newTabs = prev.filter(t => t.id !== tabId);
+      if (tabId === activeTabId && newTabs.length > 0) {
+        const closedIdx = prev.findIndex(t => t.id === tabId);
+        const nextTab = newTabs[Math.min(closedIdx, newTabs.length - 1)];
+        setActiveTabId(nextTab.id);
+        loadDirectory(nextTab.path);
+      } else if (newTabs.length === 0) {
+        setActiveTabId('');
+      }
+      return newTabs;
+    });
+  }, [activeTabId, loadDirectory]);
 
   // --- 파일/폴더 열기 ---
   const openEntry = useCallback(async (entry: FileEntry) => {
@@ -153,7 +224,6 @@ export default function FileExplorer({
     }
   }, [navigateTo]);
 
-  // OS 파일 탐색기에서 열기
   const openInOsExplorer = useCallback(async (path: string) => {
     try {
       await invoke('open_folder', { path });
@@ -283,7 +353,6 @@ export default function FileExplorer({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (renamingPath) return;
-      // 입력 필드 안에서는 무시 (단, Escape는 허용)
       const active = document.activeElement;
       const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
       if (isInput && e.key !== 'Escape') return;
@@ -291,9 +360,43 @@ export default function FileExplorer({
       const ctrl = e.ctrlKey || e.metaKey;
       const isMac = navigator.platform.startsWith('Mac');
 
+      // --- 탭 단축키 ---
+      // Ctrl+T: 현재 탭 복제
+      if (ctrl && e.key === 't') {
+        e.preventDefault();
+        if (!activeTab) return;
+        const newTab: Tab = {
+          id: crypto.randomUUID(),
+          path: activeTab.path,
+          history: [activeTab.path],
+          historyIndex: 0,
+          title: activeTab.title,
+        };
+        setTabs(prev => {
+          const idx = prev.findIndex(t => t.id === activeTabId);
+          return [...prev.slice(0, idx + 1), newTab, ...prev.slice(idx + 1)];
+        });
+        setActiveTabId(newTab.id);
+        return;
+      }
+
+      // Tab / Shift+Tab: 탭 순환
+      if (e.key === 'Tab' && !isInput) {
+        e.preventDefault();
+        if (tabs.length <= 1) return;
+        const currentIdx = tabs.findIndex(t => t.id === activeTabId);
+        if (e.shiftKey) {
+          const prevIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+          handleTabSelect(tabs[prevIdx].id);
+        } else {
+          const nextIdx = (currentIdx + 1) % tabs.length;
+          handleTabSelect(tabs[nextIdx].id);
+        }
+        return;
+      }
+
       // --- 내비게이션 ---
       if (isMac) {
-        // macOS 시스템 단축키
         if (ctrl && e.key === '[') { e.preventDefault(); goBack(); return; }
         if (ctrl && e.key === ']') { e.preventDefault(); goForward(); return; }
         if (ctrl && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
@@ -304,7 +407,6 @@ export default function FileExplorer({
           }
         }
       } else {
-        // Windows/Linux
         if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); return; }
         if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); return; }
         if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
@@ -376,10 +478,9 @@ export default function FileExplorer({
         e.preventDefault();
         if (entries.length === 0) return;
 
-        // 그리드 너비 기반 열 수 계산
         const cols = (() => {
           if (!gridRef.current) return 4;
-          const cardWidth = thumbnailSize + 16 + 8; // width + padding + gap
+          const cardWidth = thumbnailSize + 16 + 8;
           return Math.max(1, Math.floor(gridRef.current.clientWidth / cardWidth));
         })();
 
@@ -405,6 +506,7 @@ export default function FileExplorer({
     handleCreateDirectory, handleRenameStart, handleDelete,
     goBack, goForward, goUp, selectedPaths, entries, openEntry,
     thumbnailSize, focusedIndex,
+    tabs, activeTabId, activeTab, handleTabSelect,
   ]);
 
   // 외부 클릭 시 선택 해제
@@ -415,19 +517,6 @@ export default function FileExplorer({
     closeContextMenu();
   }, [closeContextMenu]);
 
-  // --- 초기 상태 (경로 없을 때) ---
-  if (!currentPath) {
-    return (
-      <div
-        className="h-full flex flex-col items-center justify-center gap-3"
-        style={{ color: themeVars?.muted ?? '#94a3b8' }}
-      >
-        <div className="text-5xl opacity-30">📁</div>
-        <p className="text-sm">왼쪽 즐겨찾기에서 폴더를 클릭하면 여기에 파일 목록이 표시됩니다</p>
-      </div>
-    );
-  }
-
   return (
     <div
       ref={containerRef}
@@ -436,50 +525,71 @@ export default function FileExplorer({
       onClick={handleContainerClick}
       style={{ backgroundColor: themeVars?.bg ?? '#0f172a' }}
     >
-      {/* 내비게이션 바 */}
-      <NavigationBar
-        currentPath={currentPath}
-        canGoBack={historyIndex > 0}
-        canGoForward={historyIndex < history.length - 1}
-        onBack={goBack}
-        onForward={goForward}
-        onUp={goUp}
-        onNavigate={navigateTo}
-        onCreateDirectory={handleCreateDirectory}
-        sortBy={sortBy}
-        sortDir={sortDir}
-        onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir); }}
-        thumbnailSize={thumbnailSize}
-        onThumbnailSizeChange={setThumbnailSize}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
+      {/* 탭 바 */}
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onTabSelect={handleTabSelect}
+        onTabClose={handleTabClose}
         themeVars={themeVars}
       />
 
-      {/* 파일 그리드 */}
-      <FileGrid
-        entries={entries}
-        selectedPaths={selectedPaths}
-        renamingPath={renamingPath}
-        thumbnailSize={thumbnailSize}
-        viewMode={viewMode}
-        focusedIndex={focusedIndex}
-        gridRef={gridRef}
-        loading={loading}
-        error={error}
-        onSelect={selectEntry}
-        onOpen={openEntry}
-        onContextMenu={handleContextMenu}
-        onRenameCommit={handleRenameCommit}
-        themeVars={themeVars}
-      />
+      {currentPath ? (
+        <>
+          {/* 내비게이션 바 */}
+          <NavigationBar
+            currentPath={currentPath}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onBack={goBack}
+            onForward={goForward}
+            onUp={goUp}
+            onNavigate={navigateTo}
+            onCreateDirectory={handleCreateDirectory}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir); }}
+            thumbnailSize={thumbnailSize}
+            onThumbnailSizeChange={setThumbnailSize}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            themeVars={themeVars}
+          />
 
-      {/* 상태 바 */}
-      <StatusBar
-        entries={entries}
-        selectedPaths={selectedPaths}
-        themeVars={themeVars}
-      />
+          {/* 파일 그리드 */}
+          <FileGrid
+            entries={entries}
+            selectedPaths={selectedPaths}
+            renamingPath={renamingPath}
+            thumbnailSize={thumbnailSize}
+            viewMode={viewMode}
+            focusedIndex={focusedIndex}
+            gridRef={gridRef}
+            loading={loading}
+            error={error}
+            onSelect={selectEntry}
+            onOpen={openEntry}
+            onContextMenu={handleContextMenu}
+            onRenameCommit={handleRenameCommit}
+            themeVars={themeVars}
+          />
+
+          {/* 상태 바 */}
+          <StatusBar
+            entries={entries}
+            selectedPaths={selectedPaths}
+            themeVars={themeVars}
+          />
+        </>
+      ) : (
+        <div
+          className="flex-1 flex flex-col items-center justify-center gap-3"
+          style={{ color: themeVars?.muted ?? '#94a3b8' }}
+        >
+          <div className="text-5xl opacity-30">📁</div>
+          <p className="text-sm">왼쪽 즐겨찾기에서 폴더를 클릭하면 여기에 파일 목록이 표시됩니다</p>
+        </div>
+      )}
 
       {/* 컨텍스트 메뉴 */}
       {contextMenu && (
