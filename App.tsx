@@ -475,7 +475,7 @@ export default function App() {
   const [accentInputValue, setAccentInputValue] = useState('#3b82f6');
   const [themeVars, setThemeVars] = useState<ThemeVars | null>(null);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
-  const [zoomPercent, setZoomPercent] = useState(100); // 50, 60, ... 150
+  const [zoomPercent, setZoomPercent] = useState(80); // 50, 60, ... 150
 
   // Modals
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -1326,60 +1326,65 @@ export default function App() {
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
-
-    // Skip if dragging a category
     if (active.data.current?.type === 'Category') return;
 
-    // Find the containers
-    const activeSectionId = active.data.current?.categoryId;
-    const overSectionId = over.data.current?.categoryId || over.id; // If over category itself
+    const activeSectionId = active.data.current?.categoryId as string | undefined;
+    const overSectionId = (over.data.current?.categoryId ?? over.id) as string;
+    if (!activeSectionId || !overSectionId) return;
 
-    if (!activeSectionId || !overSectionId || activeSectionId === overSectionId) {
+    // 같은 카테고리 내 재정렬 (DragOver에서 즉시 반영 → 정확한 위치 추적)
+    if (activeSectionId === overSectionId) {
+      if (over.id === overSectionId) return; // 컨테이너 위 → 무시
+      setCategories(prev => {
+        const catIdx = prev.findIndex(c => c.id === activeSectionId);
+        if (catIdx === -1) return prev;
+        const activeIdx = prev[catIdx].shortcuts.findIndex(s => s.id === active.id);
+        const overIdx = prev[catIdx].shortcuts.findIndex(s => s.id === over.id);
+        if (activeIdx === -1 || overIdx === -1 || activeIdx === overIdx) return prev;
+        const updated = [...prev];
+        updated[catIdx] = {
+          ...updated[catIdx],
+          shortcuts: arrayMove(updated[catIdx].shortcuts, activeIdx, overIdx),
+        };
+        return updated;
+      });
       return;
     }
 
+    // 카테고리 간 이동
     setCategories((prev) => {
       const activeCategory = prev.find((c) => c.id === activeSectionId);
       const overCategory = prev.find((c) => c.id === overSectionId);
-
       if (!activeCategory || !overCategory) return prev;
 
       const activeItems = activeCategory.shortcuts;
       const overItems = overCategory.shortcuts;
-
       const activeIndex = activeItems.findIndex((i) => i.id === active.id);
       const overIndex = overItems.findIndex((i) => i.id === over.id);
 
-      let newIndex;
+      let newIndex: number;
       if (over.id === overSectionId) {
-        // We are over the category container, placed at the end
         newIndex = overItems.length + 1;
       } else {
         const isBelowOverItem =
           over &&
           active.rect.current.translated &&
-          active.rect.current.translated.top >
-          over.rect.top + over.rect.height;
-
+          active.rect.current.translated.top > over.rect.top + over.rect.height;
         const modifier = isBelowOverItem ? 1 : 0;
         newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
       }
 
       return prev.map((c) => {
         if (c.id === activeSectionId) {
-          return {
-            ...c,
-            shortcuts: c.shortcuts.filter((item) => item.id !== active.id),
-          };
+          return { ...c, shortcuts: c.shortcuts.filter((item) => item.id !== active.id) };
         } else if (c.id === overSectionId) {
-          const newShortcuts = [
-            ...c.shortcuts.slice(0, newIndex),
-            activeItems[activeIndex],
-            ...c.shortcuts.slice(newIndex, c.shortcuts.length),
-          ];
           return {
             ...c,
-            shortcuts: newShortcuts,
+            shortcuts: [
+              ...c.shortcuts.slice(0, newIndex),
+              activeItems[activeIndex],
+              ...c.shortcuts.slice(newIndex),
+            ],
           };
         }
         return c;
@@ -1389,43 +1394,20 @@ export default function App() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over) {
-      setActiveId(null);
-      return;
-    }
+    if (!over) { setActiveId(null); return; }
 
     const activeType = active.data.current?.type;
     const overType = over.data.current?.type;
 
-    // Category reordering
+    // 카테고리 재정렬
     if (activeType === 'Category' && overType === 'Category') {
       const activeIndex = categories.findIndex((c) => c.id === active.id);
       const overIndex = categories.findIndex((c) => c.id === over.id);
-
       if (activeIndex !== overIndex) {
         setCategories((prev) => arrayMove(prev, activeIndex, overIndex));
       }
     }
-    // Shortcut reordering within same category
-    else {
-      const activeSectionId = active.data.current?.categoryId;
-      const overSectionId = over.data.current?.categoryId || over.id;
-
-      if (activeSectionId && overSectionId && activeSectionId === overSectionId) {
-        // Same container reorder
-        const categoryIndex = categories.findIndex((c) => c.id === activeSectionId);
-        const activeItemIndex = categories[categoryIndex].shortcuts.findIndex((s) => s.id === active.id);
-        const overItemIndex = categories[categoryIndex].shortcuts.findIndex((s) => s.id === over.id);
-
-        if (activeItemIndex !== overItemIndex) {
-          setCategories((prev) => {
-            const updated = [...prev];
-            updated[categoryIndex].shortcuts = arrayMove(updated[categoryIndex].shortcuts, activeItemIndex, overItemIndex);
-            return updated;
-          });
-        }
-      }
-    }
+    // 단축키 동일 카테고리 재정렬은 handleDragOver에서 이미 처리됨
 
     setActiveId(null);
   };
