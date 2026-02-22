@@ -32,3 +32,4 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 base64 = "0.22"
 trash = "5"
 psd = "0.3"
+tauri-plugin-drag = "2"

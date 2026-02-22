@@ -10,6 +10,7 @@ interface FileCardProps {
   isFocused: boolean;
   isRenaming: boolean;
   thumbnailSize: ThumbnailSize;
+  dragPaths: string[];
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -23,6 +24,7 @@ export default function FileCard({
   isFocused,
   isRenaming,
   thumbnailSize,
+  dragPaths,
   onSelect,
   onOpen,
   onContextMenu,
@@ -124,6 +126,36 @@ export default function FileCard({
     onContextMenu(e, [entry.path]);
   };
 
+  // 외부 앱으로 파일 드래그 (마우스 6px 이동 시 OS 드래그 시작)
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const onMouseMove = async (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (Math.sqrt(dx * dx + dy * dy) > 6) {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        try {
+          // tauri-plugin-drag: plugin:drag|drag_files 명령으로 OS 드래그 시작
+          await invoke('plugin:drag|drag_files', { paths: dragPaths });
+        } catch {
+          // 드래그 실패 무시 (앱 내부 클릭인 경우)
+        }
+      }
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
   const handleRenameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -157,6 +189,7 @@ export default function FileCard({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
+      onMouseDown={handleMouseDown}
       title={entry.path}
     >
       {/* 썸네일/아이콘 영역 */}

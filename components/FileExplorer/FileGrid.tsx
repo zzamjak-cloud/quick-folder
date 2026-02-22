@@ -9,7 +9,7 @@ interface FileGridProps {
   entries: FileEntry[];
   selectedPaths: string[];
   renamingPath: string | null;
-  thumbnailSize: 80 | 120 | 160;
+  thumbnailSize: ThumbnailSize;
   viewMode: 'grid' | 'list' | 'details';
   focusedIndex: number;
   gridRef: React.RefObject<HTMLDivElement>;
@@ -257,6 +257,11 @@ export default function FileGrid({
                 isFocused={focusedIndex === idx}
                 isRenaming={renamingPath === entry.path}
                 thumbnailSize={thumbnailSize}
+                dragPaths={
+                  selectedPaths.includes(entry.path) && selectedPaths.length > 1
+                    ? selectedPaths
+                    : [entry.path]
+                }
                 onSelect={onSelect}
                 onOpen={onOpen}
                 onContextMenu={onContextMenu}
