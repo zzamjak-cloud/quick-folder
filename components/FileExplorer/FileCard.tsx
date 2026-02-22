@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { invoke, Channel } from '@tauri-apps/api/core';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
+import { useDragToOS } from './hooks/useDragToOS';
+import { usePsdPreview } from './hooks/usePsdPreview';
+import { useRenameInput } from './hooks/useRenameInput';
 
 interface FileCardProps {
   entry: FileEntry;
@@ -18,7 +21,7 @@ interface FileCardProps {
   themeVars: ThemeVars | null;
 }
 
-export default function FileCard({
+export default memo(function FileCard({
   entry,
   isSelected,
   isFocused,
@@ -33,16 +36,26 @@ export default function FileCard({
 }: FileCardProps) {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
-  const [renameValue, setRenameValue] = useState(entry.name);
   const [imageDims, setImageDims] = useState<[number, number] | null>(null);
-  const [psdThumbnail, setPsdThumbnail] = useState<string | null>(null);
-  const [showPsdPreview, setShowPsdPreview] = useState(false);
-  const [psdLoading, setPsdLoading] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // PSD 파일 여부 확인
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
+
+  // 공유 훅
+  const startDrag = useDragToOS(dragPaths);
+  const { psdThumbnail, showPsdPreview, psdLoading, toggle: handlePsdToggle } = usePsdPreview(entry.path, thumbnailSize);
+  const {
+    renameValue, setRenameValue, inputRef: renameInputRef,
+    handleKeyDown: handleRenameKeyDown, handleBlur: handleRenameBlur,
+  } = useRenameInput({
+    name: entry.name,
+    isDir: entry.is_dir,
+    isRenaming,
+    onRenameCommit,
+    path: entry.path,
+    selectBeforeExtension: true,
+  });
 
   // IntersectionObserver로 lazy 썸네일 로딩
   useEffect(() => {
@@ -72,103 +85,23 @@ export default function FileCard({
     }
   }, [isVisible, entry.file_type, entry.path, isPsd]);
 
-  // PSD 미리보기 토글 핸들러
-  const handlePsdToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (showPsdPreview) {
-      setShowPsdPreview(false);
-      return;
-    }
-    setShowPsdPreview(true);
-    if (!psdThumbnail) {
-      setPsdLoading(true);
-      invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: thumbnailSize })
-        .then(b64 => { if (b64) setPsdThumbnail(`data:image/png;base64,${b64}`); })
-        .catch(() => {/* PSD 썸네일 생성 실패 무시 */})
-        .finally(() => setPsdLoading(false));
-    }
-  };
-
-  // 이름 변경 시 입력 초기화
-  useEffect(() => {
-    setRenameValue(entry.name);
-  }, [entry.name]);
-
-  // 이름 변경 모드 진입 시 포커스
-  useEffect(() => {
-    if (isRenaming && renameInputRef.current) {
-      renameInputRef.current.focus();
-      // 확장자 제외하고 선택
-      const dotIdx = entry.name.lastIndexOf('.');
-      if (dotIdx > 0 && !entry.is_dir) {
-        renameInputRef.current.setSelectionRange(0, dotIdx);
-      } else {
-        renameInputRef.current.select();
-      }
-    }
-  }, [isRenaming]);
-
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey);
-  };
+  }, [entry.path, onSelect]);
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onOpen(entry);
-  };
+  }, [entry, onOpen]);
 
-  const handleContextMenu = (e: React.MouseEvent) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isSelected) {
       onSelect(entry.path, false, false);
     }
     onContextMenu(e, [entry.path]);
-  };
-
-  // 외부 앱으로 파일 드래그 (마우스 6px 이동 시 OS 드래그 시작)
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    const onMouseMove = async (moveEvent: MouseEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      if (Math.sqrt(dx * dx + dy * dy) > 6) {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        try {
-          // tauri-plugin-drag: start_drag 명령으로 OS 드래그 시작
-          const onEvent = new Channel<unknown>();
-          await invoke('plugin:drag|start_drag', {
-            item: dragPaths,
-            image: { Raw: [] },
-            onEvent,
-          });
-        } catch {
-          // 드래그 실패 무시
-        }
-      }
-    };
-
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  };
-
-  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      onRenameCommit(entry.path, renameValue);
-    } else if (e.key === 'Escape') {
-      onRenameCommit(entry.path, entry.name); // 변경 없이 커밋
-    }
-  };
+  }, [entry.path, isSelected, onSelect, onContextMenu]);
 
   // 카드 크기 계산
   const cardWidth = thumbnailSize + 16;
@@ -194,7 +127,7 @@ export default function FileCard({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      onMouseDown={handleMouseDown}
+      onMouseDown={startDrag}
       title={entry.path}
     >
       {/* 썸네일/아이콘 영역 */}
@@ -265,7 +198,7 @@ export default function FileCard({
           value={renameValue}
           onChange={e => setRenameValue(e.target.value)}
           onKeyDown={handleRenameKeyDown}
-          onBlur={() => onRenameCommit(entry.path, renameValue)}
+          onBlur={handleRenameBlur}
           onClick={e => e.stopPropagation()}
           className="w-full text-center text-xs px-1 rounded outline-none"
           style={{
@@ -296,4 +229,4 @@ export default function FileCard({
       </div>
     </div>
   );
-}
+});

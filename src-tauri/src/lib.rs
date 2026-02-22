@@ -1,3 +1,16 @@
+// 파일 타입 enum (프론트엔드 FileType 유니온과 1:1 매핑)
+#[derive(serde::Serialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum FileType {
+    Image,
+    Video,
+    Document,
+    Code,
+    Archive,
+    Directory,
+    Other,
+}
+
 // 파일 항목 구조체 (파일 탐색기용)
 #[derive(serde::Serialize)]
 struct FileEntry {
@@ -6,20 +19,20 @@ struct FileEntry {
     is_dir: bool,
     size: u64,
     modified: u64,      // epoch ms
-    file_type: String,
+    file_type: FileType,
 }
 
 // 파일 타입 분류 헬퍼
-fn classify_file(name: &str) -> &str {
+fn classify_file(name: &str) -> FileType {
     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
-        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" => "image",
-        "mp4" | "mov" | "avi" | "mkv" | "webm" => "video",
-        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md" => "document",
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" => FileType::Image,
+        "mp4" | "mov" | "avi" | "mkv" | "webm" => FileType::Video,
+        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md" => FileType::Document,
         "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h"
-        | "css" | "html" | "json" | "toml" | "yaml" | "yml" => "code",
-        "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" => "archive",
-        _ => "other",
+        | "css" | "html" | "json" | "toml" | "yaml" | "yml" => FileType::Code,
+        "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" => FileType::Archive,
+        _ => FileType::Other,
     }
 }
 
@@ -45,7 +58,7 @@ async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
             continue;
         }
         let file_type = if meta.is_dir() {
-            "directory"
+            FileType::Directory
         } else {
             classify_file(&name)
         };
@@ -54,16 +67,11 @@ async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
             is_dir: meta.is_dir(),
             size: if meta.is_dir() { 0 } else { meta.len() },
             modified,
-            file_type: file_type.to_string(),
+            file_type,
             name,
         });
     }
-    // 폴더 먼저, 그 다음 파일 (이름 순)
-    result.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    // 정렬은 프론트엔드에서 수행 (sortEntries)
     Ok(result)
 }
 
@@ -92,14 +100,51 @@ fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String> {
     }
 }
 
-// 이미지 썸네일 생성 (base64 PNG 반환)
+// 이미지 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
 #[tauri::command]
-fn get_file_thumbnail(path: String, size: u32) -> Result<Option<String>, String> {
+fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    use base64::Engine;
+    use tauri::Manager;
+
     let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
     let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
     if !supported.contains(&ext.as_str()) {
         return Ok(None);
     }
+
+    // 파일 수정 시각 + 크기로 캐시 키 구성
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    modified.hash(&mut hasher);
+    size.hash(&mut hasher);
+    let cache_key = format!("{:x}", hasher.finish());
+
+    // 캐시 디렉토리 경로
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e: tauri::Error| e.to_string())?
+        .join("img_thumbnails");
+    std::fs::create_dir_all(&cache_dir).ok();
+    let cache_file = cache_dir.join(format!("{}.png", cache_key));
+
+    // 캐시 히트
+    if cache_file.exists() {
+        let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
+        return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
+    }
+
+    // 썸네일 생성
     let img = image::open(&path).map_err(|e| e.to_string())?;
     let thumb = img.thumbnail(size, size);
     let mut buf = vec![];
@@ -109,7 +154,10 @@ fn get_file_thumbnail(path: String, size: u32) -> Result<Option<String>, String>
             image::ImageFormat::Png,
         )
         .map_err(|e| e.to_string())?;
-    use base64::Engine;
+
+    // 디스크 캐시 저장
+    std::fs::write(&cache_file, &buf).ok();
+
     Ok(Some(
         base64::engine::general_purpose::STANDARD.encode(&buf),
     ))
@@ -272,7 +320,7 @@ async fn rename_item(old_path: String, new_path: String) -> Result<(), String> {
 
 // macOS Quick Look 실행 (qlmanage -p <path>)
 #[tauri::command]
-fn quick_look(path: String) -> Result<(), String> {
+async fn quick_look(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("qlmanage")
@@ -300,26 +348,9 @@ struct FolderSelection {
 async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 
-    let opener = app.opener();
-
-    // 플랫폼별 처리
-    #[cfg(target_os = "windows")]
-    {
-        opener.open_path(&path, None::<&str>)
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        opener.open_path(&path, None::<&str>)
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        opener.open_path(&path, None::<&str>)
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| format!("Failed to open folder: {}", e))?;
 
     Ok(())
 }

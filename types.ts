@@ -34,6 +34,21 @@ export interface ClipboardData {
 
 export type ThumbnailSize = 40 | 60 | 80 | 100 | 120 | 160 | 200 | 240;
 
+// 테마 CSS 변수 (App, FileExplorer 공용)
+export interface ThemeVars {
+  bg: string;
+  surface: string;
+  surface2: string;
+  surfaceHover: string;
+  border: string;
+  text: string;
+  muted: string;
+  accent: string;
+  accentHover: string;
+  accent20: string;
+  accent50: string;
+}
+
 export type ToastType = 'success' | 'error' | 'info';
 
 export interface ToastMessage {

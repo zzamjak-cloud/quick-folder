@@ -1,18 +1,12 @@
 import React from 'react';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
+import { formatSize } from './fileUtils';
 
 interface StatusBarProps {
   entries: FileEntry[];
   selectedPaths: string[];
   themeVars: ThemeVars | null;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 export default function StatusBar({ entries, selectedPaths, themeVars }: StatusBarProps) {
@@ -48,7 +42,7 @@ export default function StatusBar({ entries, selectedPaths, themeVars }: StatusB
       {selectedCount > 0 && (
         <span>
           {selectedCount}개 선택됨
-          {selectedSize > 0 && ` · ${formatSize(selectedSize)}`}
+          {selectedSize > 0 && ` · ${formatSize(selectedSize, false)}`}
         </span>
       )}
     </div>

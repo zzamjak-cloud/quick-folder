@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { invoke, Channel } from '@tauri-apps/api/core';
+import React, { useState, useRef, memo } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
 import FileCard from './FileCard';
+import { useDragToOS } from './hooks/useDragToOS';
+import { usePsdPreview } from './hooks/usePsdPreview';
+import { useRenameInput } from './hooks/useRenameInput';
 
 interface FileGridProps {
   entries: FileEntry[];
@@ -25,71 +27,8 @@ interface FileGridProps {
   themeVars: ThemeVars | null;
 }
 
-// --- OS 드래그 훅 ---
-function useDragToOS(dragPaths: string[]) {
-  const startDrag = (e: React.MouseEvent<HTMLElement>) => {
-    if (e.button !== 0) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-
-    const onMouseMove = async (moveEvt: MouseEvent) => {
-      const dx = moveEvt.clientX - startX;
-      const dy = moveEvt.clientY - startY;
-      if (Math.sqrt(dx * dx + dy * dy) > 6) {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        try {
-          const onEvent = new Channel<unknown>();
-          await invoke('plugin:drag|start_drag', {
-            item: dragPaths,
-            image: { Raw: [] },
-            onEvent,
-          });
-        } catch {
-          // 드래그 실패 무시
-        }
-      }
-    };
-
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  };
-
-  return startDrag;
-}
-
-// --- PSD 미리보기 훅 ---
-function usePsdPreview(path: string) {
-  const [psdThumbnail, setPsdThumbnail] = useState<string | null>(null);
-  const [showPsdPreview, setShowPsdPreview] = useState(false);
-  const [psdLoading, setPsdLoading] = useState(false);
-
-  const toggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (showPsdPreview) {
-      setShowPsdPreview(false);
-      return;
-    }
-    setShowPsdPreview(true);
-    if (!psdThumbnail) {
-      setPsdLoading(true);
-      invoke<string | null>('get_psd_thumbnail', { path, size: 80 })
-        .then(b64 => { if (b64) setPsdThumbnail(`data:image/png;base64,${b64}`); })
-        .catch(() => {/* PSD 썸네일 생성 실패 무시 */})
-        .finally(() => setPsdLoading(false));
-    }
-  };
-
-  return { psdThumbnail, showPsdPreview, psdLoading, toggle };
-}
-
 // --- ListRow 컴포넌트 ---
-function ListRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -101,16 +40,19 @@ function ListRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
 }) {
-  const [renameValue, setRenameValue] = useState(entry.name);
-  const inputRef = useRef<HTMLInputElement>(null);
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
   const { psdThumbnail, showPsdPreview, psdLoading, toggle: handlePsdToggle } = usePsdPreview(entry.path);
   const startDrag = useDragToOS(dragPaths);
-
-  useEffect(() => { setRenameValue(entry.name); }, [entry.name]);
-  useEffect(() => {
-    if (isRenaming && inputRef.current) { inputRef.current.select(); }
-  }, [isRenaming]);
+  const {
+    renameValue, setRenameValue, inputRef,
+    handleKeyDown, handleBlur,
+  } = useRenameInput({
+    name: entry.name,
+    isDir: entry.is_dir,
+    isRenaming,
+    onRenameCommit,
+    path: entry.path,
+  });
 
   const bg = isSelected
     ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)')
@@ -137,11 +79,8 @@ function ListRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect
             ref={inputRef}
             value={renameValue}
             onChange={e => setRenameValue(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') onRenameCommit(entry.path, renameValue);
-              if (e.key === 'Escape') onRenameCommit(entry.path, entry.name);
-            }}
-            onBlur={() => onRenameCommit(entry.path, renameValue)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
             onClick={e => e.stopPropagation()}
             className="flex-1 min-w-0 text-xs px-1 rounded outline-none"
             style={{ backgroundColor: themeVars?.surface2, color: themeVars?.text, border: `1px solid ${themeVars?.accent}` }}
@@ -187,10 +126,10 @@ function ListRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect
       )}
     </>
   );
-}
+});
 
 // --- DetailsRow 컴포넌트 ---
-function DetailsRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -202,12 +141,19 @@ function DetailsRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSel
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
 }) {
-  const [renameValue, setRenameValue] = useState(entry.name);
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
   const { psdThumbnail, showPsdPreview, psdLoading, toggle: handlePsdToggle } = usePsdPreview(entry.path);
   const startDrag = useDragToOS(dragPaths);
-
-  useEffect(() => { setRenameValue(entry.name); }, [entry.name]);
+  const {
+    renameValue, setRenameValue,
+    handleKeyDown, handleBlur,
+  } = useRenameInput({
+    name: entry.name,
+    isDir: entry.is_dir,
+    isRenaming,
+    onRenameCommit,
+    path: entry.path,
+  });
 
   const typeLabels: Record<string, string> = {
     directory: '폴더', image: '이미지', video: '비디오',
@@ -242,11 +188,8 @@ function DetailsRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSel
                 autoFocus
                 value={renameValue}
                 onChange={e => setRenameValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') onRenameCommit(entry.path, renameValue);
-                  if (e.key === 'Escape') onRenameCommit(entry.path, entry.name);
-                }}
-                onBlur={() => onRenameCommit(entry.path, renameValue)}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
                 onClick={e => e.stopPropagation()}
                 className="flex-1 min-w-0 px-1 rounded outline-none"
                 style={{ backgroundColor: themeVars?.surface2, color: themeVars?.text, border: `1px solid ${themeVars?.accent}` }}
@@ -300,7 +243,7 @@ function DetailsRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSel
       )}
     </>
   );
-}
+});
 
 // --- DetailsTable 컴포넌트 ---
 function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {

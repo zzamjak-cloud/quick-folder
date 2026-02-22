@@ -259,6 +259,10 @@ export default function FileExplorer({
     setSelectedPaths(entries.map(e => e.path));
   }, [entries]);
 
+  const deselectAll = useCallback(() => {
+    setSelectedPaths([]);
+  }, []);
+
   // --- 파일 조작 ---
   const handleCopy = useCallback(() => {
     if (selectedPaths.length === 0) return;
@@ -568,8 +572,8 @@ export default function FileExplorer({
             loading={loading}
             error={error}
             onSelect={selectEntry}
-            onSelectMany={(paths) => setSelectedPaths(paths)}
-            onDeselectAll={() => setSelectedPaths([])}
+            onSelectMany={setSelectedPaths}
+            onDeselectAll={deselectAll}
             onOpen={openEntry}
             onContextMenu={handleContextMenu}
             onRenameCommit={handleRenameCommit}
