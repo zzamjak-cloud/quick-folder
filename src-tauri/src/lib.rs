@@ -1,3 +1,188 @@
+// 파일 항목 구조체 (파일 탐색기용)
+#[derive(serde::Serialize)]
+struct FileEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+    modified: u64,      // epoch ms
+    file_type: String,
+}
+
+// 파일 타입 분류 헬퍼
+fn classify_file(name: &str) -> &str {
+    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+    match ext.as_str() {
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" => "image",
+        "mp4" | "mov" | "avi" | "mkv" | "webm" => "video",
+        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md" => "document",
+        "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h"
+        | "css" | "html" | "json" | "toml" | "yaml" | "yml" => "code",
+        "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" => "archive",
+        _ => "other",
+    }
+}
+
+// 디렉토리 목록 조회
+#[tauri::command]
+async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
+    let entries = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
+    let mut result = vec![];
+    for entry in entries.flatten() {
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let name = entry.file_name().to_string_lossy().to_string();
+        // 숨김 파일 제외 (점으로 시작하는 파일)
+        if name.starts_with('.') {
+            continue;
+        }
+        let file_type = if meta.is_dir() {
+            "directory"
+        } else {
+            classify_file(&name)
+        };
+        result.push(FileEntry {
+            path: entry.path().to_string_lossy().to_string(),
+            is_dir: meta.is_dir(),
+            size: if meta.is_dir() { 0 } else { meta.len() },
+            modified,
+            file_type: file_type.to_string(),
+            name,
+        });
+    }
+    // 폴더 먼저, 그 다음 파일 (이름 순)
+    result.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(result)
+}
+
+// 이미지 썸네일 생성 (base64 PNG 반환)
+#[tauri::command]
+fn get_file_thumbnail(path: String, size: u32) -> Result<Option<String>, String> {
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+    let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+    if !supported.contains(&ext.as_str()) {
+        return Ok(None);
+    }
+    let img = image::open(&path).map_err(|e| e.to_string())?;
+    let thumb = img.thumbnail(size, size);
+    let mut buf = vec![];
+    thumb
+        .write_to(
+            &mut std::io::Cursor::new(&mut buf),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| e.to_string())?;
+    use base64::Engine;
+    Ok(Some(
+        base64::engine::general_purpose::STANDARD.encode(&buf),
+    ))
+}
+
+// 파일/폴더 복사 (재귀 지원)
+#[tauri::command]
+async fn copy_items(sources: Vec<String>, dest: String) -> Result<(), String> {
+    for source in &sources {
+        let src_path = std::path::Path::new(source);
+        let file_name = src_path
+            .file_name()
+            .ok_or_else(|| format!("잘못된 경로: {}", source))?;
+        let dest_path = std::path::Path::new(&dest).join(file_name);
+
+        if src_path.is_dir() {
+            copy_dir_recursive(src_path, &dest_path)?;
+        } else {
+            std::fs::copy(src_path, &dest_path)
+                .map_err(|e| format!("복사 실패 {}: {}", source, e))?;
+        }
+    }
+    Ok(())
+}
+
+// 재귀 디렉토리 복사 헬퍼
+fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())?.flatten() {
+        let dest_child = dest.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir_recursive(&entry.path(), &dest_child)?;
+        } else {
+            std::fs::copy(entry.path(), &dest_child)
+                .map_err(|e| format!("복사 실패: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+// 파일/폴더 이동
+#[tauri::command]
+async fn move_items(sources: Vec<String>, dest: String) -> Result<(), String> {
+    for source in &sources {
+        let src_path = std::path::Path::new(source);
+        let file_name = src_path
+            .file_name()
+            .ok_or_else(|| format!("잘못된 경로: {}", source))?;
+        let dest_path = std::path::Path::new(&dest).join(file_name);
+
+        // 같은 볼륨이면 rename, 다른 볼륨이면 복사 후 삭제
+        if std::fs::rename(src_path, &dest_path).is_err() {
+            if src_path.is_dir() {
+                copy_dir_recursive(src_path, &dest_path)?;
+                std::fs::remove_dir_all(src_path)
+                    .map_err(|e| format!("원본 삭제 실패: {}", e))?;
+            } else {
+                std::fs::copy(src_path, &dest_path)
+                    .map_err(|e| format!("이동 실패 {}: {}", source, e))?;
+                std::fs::remove_file(src_path)
+                    .map_err(|e| format!("원본 삭제 실패: {}", e))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+// 파일/폴더 삭제 (use_trash=true면 휴지통)
+#[tauri::command]
+async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<(), String> {
+    for path in &paths {
+        let p = std::path::Path::new(path);
+        if use_trash {
+            trash::delete(p).map_err(|e| format!("휴지통 이동 실패 {}: {}", path, e))?;
+        } else if p.is_dir() {
+            std::fs::remove_dir_all(p)
+                .map_err(|e| format!("삭제 실패 {}: {}", path, e))?;
+        } else {
+            std::fs::remove_file(p)
+                .map_err(|e| format!("삭제 실패 {}: {}", path, e))?;
+        }
+    }
+    Ok(())
+}
+
+// 새 폴더 생성
+#[tauri::command]
+async fn create_directory(path: String) -> Result<(), String> {
+    std::fs::create_dir_all(&path).map_err(|e| format!("폴더 생성 실패: {}", e))
+}
+
+// 이름 바꾸기
+#[tauri::command]
+async fn rename_item(old_path: String, new_path: String) -> Result<(), String> {
+    std::fs::rename(&old_path, &new_path)
+        .map_err(|e| format!("이름 변경 실패: {}", e))
+}
+
 // 폴더 선택 결과 구조체
 #[derive(serde::Serialize)]
 struct FolderSelection {
@@ -86,7 +271,14 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
         open_folder,
         copy_path,
-        select_folder
+        select_folder,
+        list_directory,
+        get_file_thumbnail,
+        copy_items,
+        move_items,
+        delete_items,
+        create_directory,
+        rename_item
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

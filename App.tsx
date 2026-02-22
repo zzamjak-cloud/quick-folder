@@ -46,6 +46,7 @@ import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
+import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
@@ -473,6 +474,13 @@ export default function App() {
   useEffect(() => {
     getVersion().then(v => setCurrentAppVersion(v)).catch(() => setCurrentAppVersion('Unknown'));
   }, []);
+
+  // 분할 패널 상태
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('qf_left_panel_width');
+    return saved ? JSON.parse(saved) : 280;
+  });
+  const [explorerPath, setExplorerPath] = useState('');
 
   // --- Effects ---
 
@@ -1219,6 +1227,42 @@ export default function App() {
     }
   };
 
+  // 우측 파일 탐색기로 경로 열기
+  const handleOpenInExplorer = (path: string) => {
+    setExplorerPath(path);
+  };
+
+  // 파일 탐색기에서 즐겨찾기 추가
+  const handleAddFavoriteFromExplorer = (path: string, name: string) => {
+    if (categories.length === 0) {
+      addToast('즐겨찾기에 추가하려면 먼저 카테고리를 만들어 주세요.', 'error');
+      return;
+    }
+    handleAddFolder(categories[0].id, path, name);
+  };
+
+  // 분할 패널 드래그 핸들러
+  const handleDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+    let currentWidth = startWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      currentWidth = Math.max(200, Math.min(600, startWidth + moveEvent.clientX - startX));
+      setLeftPanelWidth(currentWidth);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      localStorage.setItem('qf_left_panel_width', JSON.stringify(currentWidth));
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   // --- Drag & Drop ---
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
@@ -1397,7 +1441,7 @@ export default function App() {
 
   return (
     <div
-      className="min-h-screen p-6 sm:p-10 text-[var(--qf-text)]"
+      className="h-screen overflow-hidden flex flex-col text-[var(--qf-text)]"
       style={{
         backgroundColor: themeVars?.bg ?? '#0f172a',
         // CSS 변수로 전체 톤을 일관되게 적용
@@ -1415,7 +1459,7 @@ export default function App() {
       }}
     >
       {/* Toolbar: [검색][돋보기(줌)][팔레트][+] */}
-      <div className="max-w-7xl mx-auto mb-6 flex items-center gap-2">
+      <div className="flex-shrink-0 px-4 py-2 flex items-center gap-2 border-b border-[var(--qf-border)]">
         <input
           type="text"
           placeholder="검색..."
@@ -1455,8 +1499,12 @@ export default function App() {
         </button>
       </div>
 
-      {/* Main Grid */}
-      <DndContext
+      {/* Split Panel */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: Favorites Panel */}
+        <div style={{ width: leftPanelWidth }} className="flex-shrink-0 overflow-y-auto p-4">
+          {/* Main Grid */}
+          <DndContext
         sensors={sensors}
         collisionDetection={customCollisionDetection}
         onDragStart={handleDragStart}
@@ -1464,7 +1512,7 @@ export default function App() {
         onDragEnd={handleDragEnd}
       >
         <main
-          className="max-w-7xl mx-auto"
+          className="w-full"
           onDragEnterCapture={(e) => {
             // 외부(탐색기) 드래그 시 호버된 카테고리 추적
             updateHoveredCategoryFromDragEvent(e);
@@ -1512,7 +1560,7 @@ export default function App() {
                   handleAddFolder={handleAddFolder}
                   openEditCategoryModal={openEditCategoryModal}
                   deleteCategory={deleteCategory}
-                  handleOpenFolder={handleOpenFolder}
+                  handleOpenFolder={handleOpenInExplorer}
                   handleCopyPath={handleCopyPath}
                   deleteShortcut={deleteShortcut}
                   openEditFolderModal={openEditFolderModal}
@@ -1577,7 +1625,25 @@ export default function App() {
             }
           })() : null}
         </DragOverlay>
-      </DndContext >
+          </DndContext>
+        </div>
+
+        {/* 드래그 구분선 */}
+        <div
+          className="w-1 flex-shrink-0 cursor-col-resize bg-[var(--qf-border)] hover:bg-[var(--qf-accent)] transition-colors"
+          onMouseDown={handleDividerMouseDown}
+        />
+
+        {/* Right: File Explorer */}
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <FileExplorer
+            currentPath={explorerPath}
+            onPathChange={setExplorerPath}
+            onAddToFavorites={handleAddFavoriteFromExplorer}
+            themeVars={themeVars}
+          />
+        </div>
+      </div>
 
       {/* --- Modals --- */}
 

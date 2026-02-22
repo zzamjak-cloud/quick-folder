@@ -15,6 +15,23 @@ export interface Category {
   isCollapsed?: boolean;
 }
 
+// 파일 탐색기 관련 타입
+export type FileType = 'image' | 'video' | 'document' | 'code' | 'archive' | 'other' | 'directory';
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;       // 바이트 단위 (폴더는 0)
+  modified: number;   // unix timestamp (ms)
+  file_type: FileType;
+}
+
+export interface ClipboardData {
+  paths: string[];
+  action: 'copy' | 'cut';
+}
+
 export type ToastType = 'success' | 'error' | 'info';
 
 export interface ToastMessage {
