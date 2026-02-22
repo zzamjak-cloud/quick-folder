@@ -1,20 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  Folder,
-  File,
-  FileImage,
-  FileVideo,
-  FileText,
-  FileCode,
-  Archive,
-} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
+import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
 
 interface FileCardProps {
   entry: FileEntry;
   isSelected: boolean;
+  isFocused: boolean;
   isRenaming: boolean;
   thumbnailSize: 80 | 120 | 160;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
@@ -24,45 +17,10 @@ interface FileCardProps {
   themeVars: ThemeVars | null;
 }
 
-// 파일 타입별 아이콘
-function FileTypeIcon({ fileType, size }: { fileType: string; size: number }) {
-  const iconProps = { size, className: 'flex-shrink-0' };
-  switch (fileType) {
-    case 'directory': return <Folder {...iconProps} />;
-    case 'image':     return <FileImage {...iconProps} />;
-    case 'video':     return <FileVideo {...iconProps} />;
-    case 'document':  return <FileText {...iconProps} />;
-    case 'code':      return <FileCode {...iconProps} />;
-    case 'archive':   return <Archive {...iconProps} />;
-    default:          return <File {...iconProps} />;
-  }
-}
-
-// 파일 타입별 아이콘 색상
-function iconColor(fileType: string): string {
-  switch (fileType) {
-    case 'directory': return '#60a5fa'; // blue
-    case 'image':     return '#34d399'; // emerald
-    case 'video':     return '#a78bfa'; // violet
-    case 'document':  return '#fbbf24'; // amber
-    case 'code':      return '#22d3ee'; // cyan
-    case 'archive':   return '#fb923c'; // orange
-    default:          return '#94a3b8'; // slate
-  }
-}
-
-// 파일 크기 포맷
-function formatSize(bytes: number, isDir: boolean): string {
-  if (isDir) return '폴더';
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
 export default function FileCard({
   entry,
   isSelected,
+  isFocused,
   isRenaming,
   thumbnailSize,
   onSelect,
@@ -148,10 +106,10 @@ export default function FileCard({
 
   const bg = isSelected
     ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)')
-    : 'transparent';
+    : isFocused ? (themeVars?.surfaceHover ?? '#334155') : 'transparent';
   const border = isSelected
     ? (themeVars?.accent50 ?? 'rgba(59,130,246,0.5)')
-    : 'transparent';
+    : isFocused ? (themeVars?.border ?? '#334155') : 'transparent';
 
   return (
     <div

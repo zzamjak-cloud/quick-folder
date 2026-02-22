@@ -33,7 +33,10 @@ export default function FileExplorer({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'details'>('grid');
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   // --- 디렉토리 로딩 ---
   const loadDirectory = useCallback(async (path: string) => {
@@ -41,6 +44,7 @@ export default function FileExplorer({
     setLoading(true);
     setError(null);
     setSelectedPaths([]);
+    setFocusedIndex(-1);
     try {
       const result = await invoke<FileEntry[]>('list_directory', { path });
       setEntries(sortEntries(result, sortBy, sortDir));
@@ -276,64 +280,123 @@ export default function FileExplorer({
   // --- 키보드 단축키 ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 이름 변경 중이면 단축키 무시
       if (renamingPath) return;
-      // 컨테이너가 포커스를 가지고 있거나 그 하위일 때만 처리
-      if (!containerRef.current?.contains(document.activeElement) &&
-          document.activeElement !== document.body) return;
+      // 입력 필드 안에서는 무시 (단, Escape는 허용)
+      const active = document.activeElement;
+      const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+      if (isInput && e.key !== 'Escape') return;
 
       const ctrl = e.ctrlKey || e.metaKey;
+      const isMac = navigator.platform.startsWith('Mac');
 
-      if (ctrl && e.key === 'a') {
+      // --- 내비게이션 ---
+      if (isMac) {
+        // macOS 시스템 단축키
+        if (ctrl && e.key === '[') { e.preventDefault(); goBack(); return; }
+        if (ctrl && e.key === ']') { e.preventDefault(); goForward(); return; }
+        if (ctrl && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
+        if (ctrl && e.key === 'ArrowDown') {
+          if (selectedPaths.length === 1) {
+            const entry = entries.find(en => en.path === selectedPaths[0]);
+            if (entry) { e.preventDefault(); openEntry(entry); return; }
+          }
+        }
+      } else {
+        // Windows/Linux
+        if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); return; }
+        if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); return; }
+        if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
+      }
+
+      if (e.key === 'Backspace') { e.preventDefault(); goBack(); return; }
+
+      if (e.key === 'Enter') {
+        if (selectedPaths.length === 1) {
+          const entry = entries.find(en => en.path === selectedPaths[0]);
+          if (entry) { e.preventDefault(); openEntry(entry); return; }
+        }
+        return;
+      }
+
+      // --- Quick Look (Spacebar) ---
+      if (e.key === ' ' && selectedPaths.length === 1) {
         e.preventDefault();
-        selectAll();
-      } else if (ctrl && e.key === 'c') {
-        handleCopy();
-      } else if (ctrl && e.key === 'x') {
-        handleCut();
-      } else if (ctrl && e.key === 'v') {
-        handlePaste();
-      } else if (ctrl && e.shiftKey && e.key === 'N') {
+        invoke('quick_look', { path: selectedPaths[0] }).catch(console.error);
+        return;
+      }
+
+      // --- 탐색기 줌 (Ctrl +/-) ---
+      if (ctrl && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
-        handleCreateDirectory();
-      } else if (e.key === 'F2') {
+        setThumbnailSize(prev => (prev === 80 ? 120 : prev === 120 ? 160 : 160) as 80 | 120 | 160);
+        return;
+      }
+      if (ctrl && e.key === '-') {
+        e.preventDefault();
+        setThumbnailSize(prev => (prev === 160 ? 120 : prev === 120 ? 80 : 80) as 80 | 120 | 160);
+        return;
+      }
+      if (ctrl && e.key === '0') {
+        e.preventDefault();
+        setThumbnailSize(120);
+        return;
+      }
+
+      // --- 파일 조작 ---
+      if (ctrl && e.key === 'a') { e.preventDefault(); selectAll(); return; }
+      if (ctrl && e.key === 'c') { handleCopy(); return; }
+      if (ctrl && e.key === 'x') { handleCut(); return; }
+      if (ctrl && e.key === 'v') { handlePaste(); return; }
+      if (ctrl && e.shiftKey && e.key === 'N') { e.preventDefault(); handleCreateDirectory(); return; }
+
+      if (e.key === 'F2') {
         if (selectedPaths.length === 1) handleRenameStart(selectedPaths[0]);
-      } else if (e.key === 'Delete') {
+        return;
+      }
+
+      if (e.key === 'Delete' || (isMac && ctrl && e.key === 'Backspace')) {
         if (e.shiftKey) {
           handleDelete(selectedPaths, true);
         } else {
           handleDelete(selectedPaths, false);
         }
-      } else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) {
+        return;
+      }
+
+      // --- 방향키 포커스 이동 ---
+      if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
         e.preventDefault();
-        goBack();
-      } else if (e.altKey && e.key === 'ArrowRight') {
-        e.preventDefault();
-        goForward();
-      } else if (e.key === 'Enter') {
-        if (selectedPaths.length === 1) {
-          const entry = entries.find(en => en.path === selectedPaths[0]);
-          if (entry) openEntry(entry);
-        }
+        if (entries.length === 0) return;
+
+        // 그리드 너비 기반 열 수 계산
+        const cols = (() => {
+          if (!gridRef.current) return 4;
+          const cardWidth = thumbnailSize + 16 + 8; // width + padding + gap
+          return Math.max(1, Math.floor(gridRef.current.clientWidth / cardWidth));
+        })();
+
+        const current = focusedIndex < 0 ? -1 : focusedIndex;
+        let next = current;
+
+        if (e.key === 'ArrowRight') next = Math.min(entries.length - 1, current + 1);
+        else if (e.key === 'ArrowLeft') next = Math.max(0, current - 1);
+        else if (e.key === 'ArrowDown') next = Math.min(entries.length - 1, current + cols);
+        else if (e.key === 'ArrowUp') next = Math.max(0, current - cols);
+
+        if (next < 0) next = 0;
+        setFocusedIndex(next);
+        setSelectedPaths([entries[next].path]);
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    renamingPath,
-    selectAll,
-    handleCopy,
-    handleCut,
-    handlePaste,
-    handleCreateDirectory,
-    handleRenameStart,
-    handleDelete,
-    goBack,
-    goForward,
-    selectedPaths,
-    entries,
-    openEntry,
+    renamingPath, selectAll, handleCopy, handleCut, handlePaste,
+    handleCreateDirectory, handleRenameStart, handleDelete,
+    goBack, goForward, goUp, selectedPaths, entries, openEntry,
+    thumbnailSize, focusedIndex,
   ]);
 
   // 외부 클릭 시 선택 해제
@@ -380,6 +443,8 @@ export default function FileExplorer({
         onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir); }}
         thumbnailSize={thumbnailSize}
         onThumbnailSizeChange={setThumbnailSize}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         themeVars={themeVars}
       />
 
@@ -389,6 +454,9 @@ export default function FileExplorer({
         selectedPaths={selectedPaths}
         renamingPath={renamingPath}
         thumbnailSize={thumbnailSize}
+        viewMode={viewMode}
+        focusedIndex={focusedIndex}
+        gridRef={gridRef}
         loading={loading}
         error={error}
         onSelect={selectEntry}

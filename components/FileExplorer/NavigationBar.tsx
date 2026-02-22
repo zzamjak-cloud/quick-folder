@@ -6,6 +6,8 @@ import {
   FolderPlus,
   ArrowUpDown,
   LayoutGrid,
+  List,
+  Table2,
 } from 'lucide-react';
 import { ThemeVars } from './types';
 
@@ -23,6 +25,8 @@ interface NavigationBarProps {
   onSortChange: (by: 'name' | 'size' | 'modified' | 'type', dir: 'asc' | 'desc') => void;
   thumbnailSize: 80 | 120 | 160;
   onThumbnailSizeChange: (size: 80 | 120 | 160) => void;
+  viewMode: 'grid' | 'list' | 'details';
+  onViewModeChange: (mode: 'grid' | 'list' | 'details') => void;
   themeVars: ThemeVars | null;
 }
 
@@ -40,6 +44,8 @@ export default function NavigationBar({
   onSortChange,
   thumbnailSize,
   onThumbnailSizeChange,
+  viewMode,
+  onViewModeChange,
   themeVars,
 }: NavigationBarProps) {
   const [isEditingPath, setIsEditingPath] = useState(false);
@@ -235,6 +241,28 @@ export default function NavigationBar({
         <FolderPlus size={15} />
       </button>
 
+      {/* 뷰 전환 버튼 */}
+      <div className="flex items-center gap-0.5 rounded-md overflow-hidden" style={{ border: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+        {([
+          { mode: 'grid' as const, icon: <LayoutGrid size={13} />, title: '그리드 뷰' },
+          { mode: 'list' as const, icon: <List size={13} />, title: '리스트 뷰' },
+          { mode: 'details' as const, icon: <Table2 size={13} />, title: '세부사항 뷰' },
+        ]).map(({ mode, icon, title }) => (
+          <button
+            key={mode}
+            className="p-1.5 transition-colors"
+            style={{
+              backgroundColor: viewMode === mode ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'transparent',
+              color: viewMode === mode ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
+            }}
+            onClick={() => onViewModeChange(mode)}
+            title={title}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+
       {/* 정렬 드롭다운 */}
       <div className="relative" ref={sortMenuRef}>
         <button
@@ -277,39 +305,41 @@ export default function NavigationBar({
         )}
       </div>
 
-      {/* 크기 드롭다운 */}
-      <div className="relative" ref={sizeMenuRef}>
-        <button
-          className={btnCls(false)}
-          onClick={() => { setShowSizeMenu(v => !v); setShowSortMenu(false); }}
-          title="썸네일 크기"
-        >
-          <div className="flex items-center gap-1 text-xs">
-            <LayoutGrid size={13} />
-            <span className="hidden sm:inline">{sizeLabels[thumbnailSize]}</span>
-          </div>
-        </button>
-        {showSizeMenu && (
-          <div
-            className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[80px]"
-            style={{
-              backgroundColor: themeVars?.surface2 ?? '#1f2937',
-              border: `1px solid ${themeVars?.border ?? '#334155'}`,
-            }}
+      {/* 크기 드롭다운 (Grid 뷰일 때만 표시) */}
+      {viewMode === 'grid' && (
+        <div className="relative" ref={sizeMenuRef}>
+          <button
+            className={btnCls(false)}
+            onClick={() => { setShowSizeMenu(v => !v); setShowSortMenu(false); }}
+            title="썸네일 크기"
           >
-            {([80, 120, 160] as const).map(size => (
-              <button
-                key={size}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)]"
-                style={{ color: thumbnailSize === size ? themeVars?.accent : themeVars?.text }}
-                onClick={() => { onThumbnailSizeChange(size); setShowSizeMenu(false); }}
-              >
-                {sizeLabels[size]}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+            <div className="flex items-center gap-1 text-xs">
+              <LayoutGrid size={13} />
+              <span className="hidden sm:inline">{sizeLabels[thumbnailSize]}</span>
+            </div>
+          </button>
+          {showSizeMenu && (
+            <div
+              className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[80px]"
+              style={{
+                backgroundColor: themeVars?.surface2 ?? '#1f2937',
+                border: `1px solid ${themeVars?.border ?? '#334155'}`,
+              }}
+            >
+              {([80, 120, 160] as const).map(size => (
+                <button
+                  key={size}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)]"
+                  style={{ color: thumbnailSize === size ? themeVars?.accent : themeVars?.text }}
+                  onClick={() => { onThumbnailSizeChange(size); setShowSizeMenu(false); }}
+                >
+                  {sizeLabels[size]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
