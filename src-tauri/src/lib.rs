@@ -67,6 +67,31 @@ async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(result)
 }
 
+// 이미지 규격 조회 (헤더만 읽어 빠르게 반환)
+#[tauri::command]
+fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String> {
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+    let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd"];
+    if !supported.contains(&ext.as_str()) {
+        return Ok(None);
+    }
+    if ext == "psd" {
+        // PSD는 image::image_dimensions 미지원 → 바이트 파싱
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        if bytes.len() < 26 {
+            return Ok(None);
+        }
+        // PSD 헤더: 시그니처(4) + 버전(2) + 예약(6) + 채널(2) + 높이(4) + 너비(4)
+        let h = u32::from_be_bytes([bytes[14], bytes[15], bytes[16], bytes[17]]);
+        let w = u32::from_be_bytes([bytes[18], bytes[19], bytes[20], bytes[21]]);
+        return Ok(Some((w, h)));
+    }
+    match image::image_dimensions(&path) {
+        Ok((w, h)) => Ok(Some((w, h))),
+        Err(_) => Ok(None),
+    }
+}
+
 // 이미지 썸네일 생성 (base64 PNG 반환)
 #[tauri::command]
 fn get_file_thumbnail(path: String, size: u32) -> Result<Option<String>, String> {
@@ -291,6 +316,7 @@ pub fn run() {
         copy_path,
         select_folder,
         list_directory,
+        get_image_dimensions,
         get_file_thumbnail,
         copy_items,
         move_items,

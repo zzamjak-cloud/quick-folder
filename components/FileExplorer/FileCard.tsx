@@ -32,6 +32,7 @@ export default function FileCard({
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [renameValue, setRenameValue] = useState(entry.name);
+  const [imageDims, setImageDims] = useState<[number, number] | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -53,6 +54,15 @@ export default function FileCard({
         .catch(() => {/* 썸네일 생성 실패 무시 */});
     }
   }, [isVisible, entry.file_type, entry.path, thumbnailSize]);
+
+  // 화면에 보일 때 이미지 규격 조회 (이미지 파일만)
+  useEffect(() => {
+    if (isVisible && entry.file_type === 'image' && !imageDims) {
+      invoke<[number, number] | null>('get_image_dimensions', { path: entry.path })
+        .then(dims => { if (dims) setImageDims(dims); })
+        .catch(() => {/* 규격 조회 실패 무시 */});
+    }
+  }, [isVisible, entry.file_type, entry.path]);
 
   // 이름 변경 시 입력 초기화
   useEffect(() => {
@@ -178,12 +188,15 @@ export default function FileCard({
         </div>
       )}
 
-      {/* 크기 */}
+      {/* 크기 + 이미지 규격 */}
       <div
-        className="text-[10px] leading-none"
+        className="text-[10px] leading-none text-center"
         style={{ color: themeVars?.muted ?? '#94a3b8' }}
       >
         {formatSize(entry.size, entry.is_dir)}
+        {imageDims && (
+          <span className="ml-1 opacity-75">{imageDims[0]}×{imageDims[1]}</span>
+        )}
       </div>
     </div>
   );
