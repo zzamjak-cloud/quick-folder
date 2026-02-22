@@ -33,8 +33,14 @@ export default function FileCard({
   const [isVisible, setIsVisible] = useState(false);
   const [renameValue, setRenameValue] = useState(entry.name);
   const [imageDims, setImageDims] = useState<[number, number] | null>(null);
+  const [psdThumbnail, setPsdThumbnail] = useState<string | null>(null);
+  const [showPsdPreview, setShowPsdPreview] = useState(false);
+  const [psdLoading, setPsdLoading] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // PSD 파일 여부 확인
+  const isPsd = entry.name.toLowerCase().endsWith('.psd');
 
   // IntersectionObserver로 lazy 썸네일 로딩
   useEffect(() => {
@@ -55,14 +61,31 @@ export default function FileCard({
     }
   }, [isVisible, entry.file_type, entry.path, thumbnailSize]);
 
-  // 화면에 보일 때 이미지 규격 조회 (이미지 파일만)
+  // 화면에 보일 때 이미지 규격 조회 (이미지 + PSD)
   useEffect(() => {
-    if (isVisible && entry.file_type === 'image' && !imageDims) {
+    if (isVisible && (entry.file_type === 'image' || isPsd) && !imageDims) {
       invoke<[number, number] | null>('get_image_dimensions', { path: entry.path })
         .then(dims => { if (dims) setImageDims(dims); })
         .catch(() => {/* 규격 조회 실패 무시 */});
     }
-  }, [isVisible, entry.file_type, entry.path]);
+  }, [isVisible, entry.file_type, entry.path, isPsd]);
+
+  // PSD 미리보기 토글 핸들러
+  const handlePsdToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (showPsdPreview) {
+      setShowPsdPreview(false);
+      return;
+    }
+    setShowPsdPreview(true);
+    if (!psdThumbnail) {
+      setPsdLoading(true);
+      invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: thumbnailSize })
+        .then(b64 => { if (b64) setPsdThumbnail(`data:image/png;base64,${b64}`); })
+        .catch(() => {/* PSD 썸네일 생성 실패 무시 */})
+        .finally(() => setPsdLoading(false));
+    }
+  };
 
   // 이름 변경 시 입력 초기화
   useEffect(() => {
@@ -138,20 +161,37 @@ export default function FileCard({
     >
       {/* 썸네일/아이콘 영역 */}
       <div
-        className="rounded-md overflow-hidden flex items-center justify-center flex-shrink-0"
+        className="relative rounded-md overflow-hidden flex items-center justify-center flex-shrink-0"
         style={{
           width: thumbnailSize,
           height: imgHeight,
           backgroundColor: themeVars?.surface ?? '#111827',
         }}
       >
-        {thumbnail ? (
+        {/* 일반 이미지 썸네일 */}
+        {thumbnail && !isPsd ? (
           <img
             src={thumbnail}
             alt={entry.name}
             className="w-full h-full object-contain"
             loading="lazy"
           />
+        ) : isPsd && showPsdPreview && psdThumbnail ? (
+          /* PSD 미리보기 */
+          <img
+            src={psdThumbnail}
+            alt={entry.name}
+            className="w-full h-full object-contain"
+            loading="lazy"
+          />
+        ) : isPsd && showPsdPreview && psdLoading ? (
+          /* PSD 로딩 중 */
+          <div className="flex items-center justify-center w-full h-full">
+            <svg className="animate-spin" style={{ width: 20, height: 20, color: themeVars?.accent ?? '#3b82f6' }} viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          </div>
         ) : (
           <div style={{ color: iconColor(entry.file_type) }}>
             <FileTypeIcon
@@ -159,6 +199,22 @@ export default function FileCard({
               size={thumbnailSize >= 120 ? 40 : 28}
             />
           </div>
+        )}
+
+        {/* PSD 미리보기 토글 버튼 */}
+        {isPsd && thumbnailSize >= 60 && (
+          <button
+            className="absolute bottom-1 right-1 text-[9px] px-1 py-0.5 rounded opacity-80 hover:opacity-100 transition-opacity"
+            style={{
+              backgroundColor: showPsdPreview ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.surface2 ?? '#1f2937'),
+              color: showPsdPreview ? '#fff' : (themeVars?.muted ?? '#94a3b8'),
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+            onClick={handlePsdToggle}
+            title={showPsdPreview ? 'PSD 미리보기 숨기기' : 'PSD 미리보기 표시'}
+          >
+            PSD
+          </button>
         )}
       </div>
 
