@@ -8,6 +8,9 @@ import {
   LayoutGrid,
   List,
   Table2,
+  Search,
+  X,
+  Filter,
 } from 'lucide-react';
 import { ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
@@ -28,6 +31,17 @@ interface NavigationBarProps {
   onThumbnailSizeChange: (size: ThumbnailSize) => void;
   viewMode: 'grid' | 'list' | 'details';
   onViewModeChange: (mode: 'grid' | 'list' | 'details') => void;
+  isSearchActive: boolean;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+  onSearchToggle: () => void;
+  searchInputRef: React.RefObject<HTMLInputElement>;
+  activeExtFilters: Set<string>;
+  availableExtensions: Set<string>;
+  onExtFilterToggle: (ext: string) => void;
+  onExtFilterClear: () => void;
+  splitMode?: 'single' | 'horizontal' | 'vertical';
+  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
   themeVars: ThemeVars | null;
 }
 
@@ -47,15 +61,28 @@ export default function NavigationBar({
   onThumbnailSizeChange,
   viewMode,
   onViewModeChange,
+  isSearchActive,
+  searchQuery,
+  onSearchQueryChange,
+  onSearchToggle,
+  searchInputRef,
+  activeExtFilters,
+  availableExtensions,
+  onExtFilterToggle,
+  onExtFilterClear,
+  splitMode,
+  onSplitModeChange,
   themeVars,
 }: NavigationBarProps) {
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [pathInput, setPathInput] = useState(currentPath);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
   const pathInputRef = useRef<HTMLInputElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const sizeMenuRef = useRef<HTMLDivElement>(null);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isEditingPath) {
@@ -78,6 +105,9 @@ export default function NavigationBar({
       }
       if (sizeMenuRef.current && !sizeMenuRef.current.contains(e.target as Node)) {
         setShowSizeMenu(false);
+      }
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setShowFilterMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -240,6 +270,37 @@ export default function NavigationBar({
         <FolderPlus size={15} />
       </button>
 
+      {/* 검색 */}
+      {isSearchActive ? (
+        <div className="flex items-center gap-1 rounded-md px-1.5 py-0.5" style={{ backgroundColor: themeVars?.surface ?? '#111827', border: `1px solid ${themeVars?.accent ?? '#3b82f6'}` }}>
+          <Search size={13} style={{ color: themeVars?.muted, flexShrink: 0 }} />
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={e => onSearchQueryChange(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onSearchToggle(); } }}
+            placeholder="파일명 검색..."
+            className="bg-transparent text-xs outline-none w-28"
+            style={{ color: themeVars?.text }}
+          />
+          <button
+            className="p-0.5 rounded hover:bg-[var(--qf-surface-hover)]"
+            onClick={onSearchToggle}
+            title="검색 닫기"
+          >
+            <X size={12} style={{ color: themeVars?.muted }} />
+          </button>
+        </div>
+      ) : (
+        <button
+          className={btnCls(false)}
+          onClick={onSearchToggle}
+          title="검색 (Ctrl+F)"
+        >
+          <Search size={15} />
+        </button>
+      )}
+
       {/* 뷰 전환 버튼 */}
       <div className="flex items-center gap-0.5 rounded-md overflow-hidden" style={{ border: `1px solid ${themeVars?.border ?? '#334155'}` }}>
         {([
@@ -260,6 +321,71 @@ export default function NavigationBar({
             {icon}
           </button>
         ))}
+      </div>
+
+      {/* 확장자 필터 드롭다운 */}
+      <div className="relative" ref={filterMenuRef}>
+        <button
+          className={btnCls(activeExtFilters.size > 0)}
+          onClick={() => { setShowFilterMenu(v => !v); setShowSortMenu(false); setShowSizeMenu(false); }}
+          title="파일 필터"
+        >
+          <div className="flex items-center gap-1 text-xs">
+            <Filter size={13} />
+            {activeExtFilters.size > 0 && (
+              <span className="rounded-full px-1 text-[10px] leading-none" style={{ backgroundColor: themeVars?.accent20, color: themeVars?.accent }}>
+                {activeExtFilters.size}
+              </span>
+            )}
+          </div>
+        </button>
+        {showFilterMenu && (() => {
+          // 확장자 목록을 정렬: 폴더 먼저, 나머지 알파벳순
+          const sorted = Array.from(availableExtensions).sort((a, b) => {
+            if (a === 'folder') return -1;
+            if (b === 'folder') return 1;
+            return a.localeCompare(b);
+          });
+          return (
+            <div
+              className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[120px] max-h-[300px] overflow-y-auto"
+              style={{
+                backgroundColor: themeVars?.surface2 ?? '#1f2937',
+                border: `1px solid ${themeVars?.border ?? '#334155'}`,
+              }}
+            >
+              {sorted.map(ext => {
+                const label = ext === 'folder' ? '폴더' : ext === 'other' ? '기타' : ext.toUpperCase();
+                const checked = activeExtFilters.has(ext);
+                return (
+                  <button
+                    key={ext}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)] flex items-center gap-2"
+                    style={{ color: themeVars?.text }}
+                    onClick={() => onExtFilterToggle(ext)}
+                  >
+                    <span className="w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px]" style={{ borderColor: themeVars?.border, backgroundColor: checked ? themeVars?.accent : 'transparent', color: checked ? '#fff' : 'transparent' }}>
+                      ✓
+                    </span>
+                    {label}
+                  </button>
+                );
+              })}
+              {activeExtFilters.size > 0 && (
+                <>
+                  <div className="border-t" style={{ borderColor: themeVars?.border }} />
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)]"
+                    style={{ color: themeVars?.muted }}
+                    onClick={() => { onExtFilterClear(); setShowFilterMenu(false); }}
+                  >
+                    필터 초기화
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* 정렬 드롭다운 */}
@@ -338,6 +464,59 @@ export default function NavigationBar({
             </div>
           )}
         </div>
+      )}
+
+      {/* 분할 뷰 토글 (splitMode prop이 전달된 경우에만 표시) */}
+      {splitMode !== undefined && onSplitModeChange && (
+        <>
+          <div className="w-px h-4 bg-[var(--qf-border)] mx-0.5" />
+          <div className="flex items-center gap-0.5 rounded-md overflow-hidden" style={{ border: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+            {/* 단일 뷰 */}
+            <button
+              className="p-1.5 transition-colors"
+              style={{
+                backgroundColor: splitMode === 'single' ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'transparent',
+                color: splitMode === 'single' ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
+              }}
+              onClick={() => onSplitModeChange('single')}
+              title="단일 뷰 (Ctrl+\)"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="2" width="12" height="12" rx="1.5" />
+              </svg>
+            </button>
+            {/* 수평 분할 (좌우) */}
+            <button
+              className="p-1.5 transition-colors"
+              style={{
+                backgroundColor: splitMode === 'horizontal' ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'transparent',
+                color: splitMode === 'horizontal' ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
+              }}
+              onClick={() => onSplitModeChange('horizontal')}
+              title="좌우 분할 (Ctrl+\)"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="2" width="12" height="12" rx="1.5" />
+                <line x1="8" y1="2" x2="8" y2="14" />
+              </svg>
+            </button>
+            {/* 수직 분할 (상하) */}
+            <button
+              className="p-1.5 transition-colors"
+              style={{
+                backgroundColor: splitMode === 'vertical' ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'transparent',
+                color: splitMode === 'vertical' ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
+              }}
+              onClick={() => onSplitModeChange('vertical')}
+              title="상하 분할 (Ctrl+\)"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="2" width="12" height="12" rx="1.5" />
+                <line x1="2" y1="8" x2="14" y2="8" />
+              </svg>
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

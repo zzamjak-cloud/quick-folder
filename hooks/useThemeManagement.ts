@@ -19,6 +19,10 @@ export const THEME_PRESETS: Theme[] = [
   { id: 'purple', name: '다크 퍼플', bg: '#120a2a', accent: '#ec4899' },
   { id: 'forest', name: '다크 그린', bg: '#081c15', accent: '#10b981' },
   { id: 'brown', name: '다크 브라운', bg: '#1b120a', accent: '#f59e0b' },
+  { id: 'macos-light', name: 'macOS 라이트', bg: '#f5f5f5', accent: '#007aff' },
+  { id: 'macos-dark', name: 'macOS 다크', bg: '#1e1e1e', accent: '#0a84ff' },
+  { id: 'windows-light', name: 'Windows 라이트', bg: '#f3f3f3', accent: '#005fb8' },
+  { id: 'windows-dark', name: 'Windows 다크', bg: '#202020', accent: '#60cdff' },
 ];
 
 type TextColorPreset = { name: string; value: string };
@@ -52,6 +56,14 @@ export const FOLDER_TEXT_COLORS: { name: string; value: string }[] = [
   { name: '기본(테마)', value: '' },
   ...TEXT_COLOR_PRESETS,
 ];
+
+// OS 기반 추천 테마 (신규 사용자 기본값)
+function getRecommendedThemeId(): string {
+  const isMac = navigator.platform.startsWith('Mac');
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (isMac) return isDark ? 'macos-dark' : 'macos-light';
+  return isDark ? 'windows-dark' : 'windows-light';
+}
 
 // --- 헬퍼 함수 ---
 export function normalizeHexColor(value: string): string | null {
@@ -121,7 +133,7 @@ function computeThemeVars(bgHex: string, accentHex: string): ThemeVars | null {
 
 // --- 훅 ---
 export function useThemeManagement(addToast: (msg: string, type: 'success' | 'error' | 'info') => void) {
-  const [themeId, setThemeId] = useState<string>(THEME_PRESETS[0].id);
+  const [themeId, setThemeId] = useState<string>(getRecommendedThemeId());
   const [customBg, setCustomBg] = useState('#0f172a');
   const [customAccent, setCustomAccent] = useState('#3b82f6');
   const [bgInputValue, setBgInputValue] = useState('#0f172a');

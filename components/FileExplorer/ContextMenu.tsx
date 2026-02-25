@@ -3,12 +3,14 @@ import {
   ExternalLink,
   Folder,
   Copy,
+  CopyPlus,
   Scissors,
   Clipboard,
   Edit2,
   Trash2,
   Hash,
   Star,
+  FileArchive,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
 
@@ -25,9 +27,11 @@ interface ContextMenuProps {
   onCut: () => void;
   onPaste: () => void;
   onDelete: (paths: string[]) => void;
+  onDuplicate: () => void;
   onRename: (path: string) => void;
   onCopyPath: (path: string) => void;
   onAddToFavorites: (path: string) => void;
+  onCompressZip: (paths: string[]) => void;
 }
 
 export default function ContextMenu({
@@ -43,9 +47,11 @@ export default function ContextMenu({
   onCut,
   onPaste,
   onDelete,
+  onDuplicate,
   onRename,
   onCopyPath,
   onAddToFavorites,
+  onCompressZip,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -142,6 +148,7 @@ export default function ContextMenu({
         {item(<Copy size={13} />, '복사', onCopy, paths.length === 0, 'Ctrl+C')}
         {item(<Scissors size={13} />, '잘라내기', onCut, paths.length === 0, 'Ctrl+X')}
         {item(<Clipboard size={13} />, '붙여넣기', onPaste, !clipboard, 'Ctrl+V')}
+        {item(<CopyPlus size={13} />, '복제', onDuplicate, paths.length === 0, 'Ctrl+D')}
 
         {divider('d2')}
 
@@ -158,6 +165,16 @@ export default function ContextMenu({
         )}
 
         {divider('d3')}
+
+        {/* ZIP 압축 */}
+        {item(
+          <FileArchive size={13} />,
+          'ZIP으로 압축',
+          () => onCompressZip(paths),
+          paths.length === 0,
+        )}
+
+        {divider('d4')}
 
         {/* 경로 복사 */}
         {isSingle && item(<Hash size={13} />, '경로 복사', () => onCopyPath(singlePath))}

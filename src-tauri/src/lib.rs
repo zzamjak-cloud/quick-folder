@@ -260,6 +260,46 @@ fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(
     Ok(())
 }
 
+// 파일/폴더 복제 (같은 디렉토리에 " (복사)" 접미사)
+#[tauri::command]
+async fn duplicate_items(paths: Vec<String>) -> Result<Vec<String>, String> {
+    let mut new_paths = vec![];
+    for source in &paths {
+        let src = std::path::Path::new(source);
+        let parent = src.parent().ok_or_else(|| format!("상위 디렉토리 없음: {}", source))?;
+        let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let is_dir = src.is_dir();
+
+        // 충돌 방지: " (복사)", " (복사 2)", " (복사 3)" ...
+        let mut dest_path;
+        if is_dir {
+            dest_path = parent.join(format!("{} (복사)", stem));
+            let mut counter = 2u32;
+            while dest_path.exists() {
+                dest_path = parent.join(format!("{} (복사 {})", stem, counter));
+                counter += 1;
+            }
+        } else {
+            dest_path = parent.join(format!("{} (복사){}", stem, ext));
+            let mut counter = 2u32;
+            while dest_path.exists() {
+                dest_path = parent.join(format!("{} (복사 {}){}", stem, counter, ext));
+                counter += 1;
+            }
+        }
+
+        if is_dir {
+            copy_dir_recursive(src, &dest_path)?;
+        } else {
+            std::fs::copy(src, &dest_path)
+                .map_err(|e| format!("복제 실패 {}: {}", source, e))?;
+        }
+        new_paths.push(dest_path.to_string_lossy().to_string());
+    }
+    Ok(new_paths)
+}
+
 // 파일/폴더 이동
 #[tauri::command]
 async fn move_items(sources: Vec<String>, dest: String) -> Result<(), String> {
@@ -342,6 +382,247 @@ async fn quick_look(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// --- OS 네이티브 파일 아이콘 (확장자별 캐시) ---
+use std::sync::{OnceLock, Mutex};
+use std::collections::HashMap;
+
+fn icon_cache() -> &'static Mutex<HashMap<String, String>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[tauri::command]
+fn get_file_icon(path: String, size: u32) -> Result<Option<String>, String> {
+    use base64::Engine;
+
+    let p = std::path::Path::new(&path);
+    let cache_key = if p.is_dir() {
+        format!("__folder___{}", size)
+    } else {
+        let ext = p.extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        format!("{}_{}", ext, size)
+    };
+
+    // 캐시 히트
+    {
+        let cache = icon_cache().lock().map_err(|e| e.to_string())?;
+        if let Some(b64) = cache.get(&cache_key) {
+            return Ok(Some(b64.clone()));
+        }
+    }
+
+    // 플랫폼별 아이콘 추출
+    if let Some(bytes) = get_native_icon_bytes(&path, size) {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let mut cache = icon_cache().lock().map_err(|e| e.to_string())?;
+        cache.insert(cache_key, b64.clone());
+        Ok(Some(b64))
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::CString;
+
+    #[repr(C)]
+    struct NSSize { width: f64, height: f64 }
+
+    unsafe {
+        let ws_class = Class::get("NSWorkspace")?;
+        let workspace: *mut Object = msg_send![ws_class, sharedWorkspace];
+        if workspace.is_null() { return None; }
+
+        let str_class = Class::get("NSString")?;
+        let c_path = CString::new(path).ok()?;
+        let ns_path: *mut Object = msg_send![str_class, stringWithUTF8String: c_path.as_ptr()];
+        if ns_path.is_null() { return None; }
+
+        // iconForFile: → NSImage
+        let icon: *mut Object = msg_send![workspace, iconForFile: ns_path];
+        if icon.is_null() { return None; }
+
+        let target_size = NSSize { width: size as f64, height: size as f64 };
+        let _: () = msg_send![icon, setSize: target_size];
+
+        // TIFF → NSBitmapImageRep → PNG
+        let tiff_data: *mut Object = msg_send![icon, TIFFRepresentation];
+        if tiff_data.is_null() { return None; }
+
+        let rep_class = Class::get("NSBitmapImageRep")?;
+        let bitmap_rep: *mut Object = msg_send![rep_class, imageRepWithData: tiff_data];
+        if bitmap_rep.is_null() { return None; }
+
+        let png_type: usize = 4; // NSBitmapImageFileTypePNG
+        let null_dict: *const std::ffi::c_void = std::ptr::null();
+        let png_data: *mut Object = msg_send![bitmap_rep, representationUsingType: png_type properties: null_dict];
+        if png_data.is_null() { return None; }
+
+        let length: usize = msg_send![png_data, length];
+        let bytes_ptr: *const u8 = msg_send![png_data, bytes];
+        if bytes_ptr.is_null() || length == 0 { return None; }
+
+        Some(std::slice::from_raw_parts(bytes_ptr, length).to_vec())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_native_icon_bytes(_path: &str, _size: u32) -> Option<Vec<u8>> {
+    None
+}
+
+// --- ffmpeg 설치 여부 캐시 ---
+fn is_ffmpeg_available() -> bool {
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
+}
+
+// --- 동영상 썸네일 (ffmpeg CLI 기반, 디스크 캐시) ---
+#[tauri::command]
+fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    use base64::Engine;
+    use tauri::Manager;
+
+    if !is_ffmpeg_available() {
+        return Ok(None);
+    }
+
+    // 캐시 키 구성
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let modified = meta.modified().ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    modified.hash(&mut hasher);
+    size.hash(&mut hasher);
+    let cache_key = format!("{:x}", hasher.finish());
+
+    let cache_dir = app.path().app_cache_dir()
+        .map_err(|e: tauri::Error| e.to_string())?
+        .join("video_thumbnails");
+    std::fs::create_dir_all(&cache_dir).ok();
+    let cache_file = cache_dir.join(format!("{}.png", cache_key));
+
+    // 캐시 히트
+    if cache_file.exists() {
+        let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
+        return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
+    }
+
+    // ffmpeg로 1초 지점 프레임 추출 → PNG 파이프 출력
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-i", &path,
+            "-ss", "00:00:01",
+            "-frames:v", "1",
+            "-vf", &format!("scale={}:-1", size),
+            "-f", "image2pipe",
+            "-vcodec", "png",
+            "pipe:1",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() || output.stdout.is_empty() {
+        return Ok(None);
+    }
+
+    // 디스크 캐시 저장
+    std::fs::write(&cache_file, &output.stdout).ok();
+
+    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&output.stdout)))
+}
+
+// --- ZIP 압축 ---
+#[tauri::command]
+async fn compress_to_zip(paths: Vec<String>, dest: String) -> Result<String, String> {
+    let file = std::fs::File::create(&dest).map_err(|e| format!("ZIP 파일 생성 실패: {}", e))?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    for source in &paths {
+        let src = std::path::Path::new(source);
+        let base_name = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+
+        if src.is_dir() {
+            add_directory_to_zip(&mut zip, src, &base_name, options)?;
+        } else {
+            zip.start_file(&base_name, options).map_err(|e| e.to_string())?;
+            let content = std::fs::read(src).map_err(|e| e.to_string())?;
+            std::io::Write::write_all(&mut zip, &content).map_err(|e| e.to_string())?;
+        }
+    }
+
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(dest)
+}
+
+fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
+    zip: &mut zip::ZipWriter<W>,
+    dir: &std::path::Path,
+    prefix: &str,
+    options: zip::write::SimpleFileOptions,
+) -> Result<(), String> {
+    zip.add_directory(format!("{}/", prefix), options).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten() {
+        let entry_name = entry.file_name().to_string_lossy().to_string();
+        let full_name = format!("{}/{}", prefix, entry_name);
+        if entry.path().is_dir() {
+            add_directory_to_zip(zip, &entry.path(), &full_name, options)?;
+        } else {
+            zip.start_file(&full_name, options).map_err(|e| e.to_string())?;
+            let content = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+            std::io::Write::write_all(zip, &content).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+// --- 다른 앱으로 열기 ---
+#[tauri::command]
+async fn open_with_app(path: String, app: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", &app, &path])
+            .spawn()
+            .map_err(|e| format!("앱 실행 실패: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &path])
+            .spawn()
+            .map_err(|e| format!("앱 실행 실패: {}", e))?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (&path, &app);
+    }
+    Ok(())
+}
+
 // 폴더 선택 결과 구조체
 #[derive(serde::Serialize)]
 struct FolderSelection {
@@ -419,13 +700,18 @@ pub fn run() {
         get_image_dimensions,
         get_file_thumbnail,
         get_psd_thumbnail,
+        get_file_icon,
         copy_items,
+        duplicate_items,
         move_items,
         delete_items,
         create_directory,
         rename_item,
         quick_look,
         is_directory,
+        get_video_thumbnail,
+        compress_to_zip,
+        open_with_app,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

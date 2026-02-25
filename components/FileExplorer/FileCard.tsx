@@ -2,17 +2,19 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
-import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
-import { useDragToOS } from './hooks/useDragToOS';
+import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
 import { useRenameInput } from './hooks/useRenameInput';
+import { useNativeIcon } from './hooks/useNativeIcon';
 
 interface FileCardProps {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
   isRenaming: boolean;
+  isCut: boolean;
+  isDropTarget: boolean;
   thumbnailSize: ThumbnailSize;
-  dragPaths: string[];
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -25,8 +27,10 @@ export default memo(function FileCard({
   isSelected,
   isFocused,
   isRenaming,
+  isCut,
+  isDropTarget,
   thumbnailSize,
-  dragPaths,
+  onDragMouseDown,
   onSelect,
   onOpen,
   onContextMenu,
@@ -41,8 +45,10 @@ export default memo(function FileCard({
   // PSD 파일 여부 확인
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
 
+  // 네이티브 아이콘 (공유 캐시 훅)
+  const nativeIcon = useNativeIcon(entry, thumbnailSize, isVisible);
+
   // 공유 훅
-  const startDrag = useDragToOS(dragPaths);
   const {
     renameValue, setRenameValue, inputRef: renameInputRef,
     handleKeyDown: handleRenameKeyDown, handleBlur: handleRenameBlur,
@@ -77,6 +83,11 @@ export default memo(function FileCard({
       invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: thumbnailSize })
         .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
         .catch(() => {/* PSD 썸네일 생성 실패 무시 */});
+    } else if (entry.file_type === 'video') {
+      // 동영상 썸네일 (ffmpeg 설치 필요, 미설치 시 네이티브 아이콘 폴백)
+      invoke<string | null>('get_video_thumbnail', { path: entry.path, size: thumbnailSize })
+        .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
+        .catch(() => {/* 동영상 썸네일 생성 실패 무시 */});
     }
   }, [isVisible, entry.file_type, entry.path, thumbnailSize, isPsd]);
 
@@ -114,26 +125,30 @@ export default memo(function FileCard({
   const bg = isSelected
     ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)')
     : isFocused ? (themeVars?.surfaceHover ?? '#334155') : 'transparent';
-  const border = isSelected
-    ? (themeVars?.accent50 ?? 'rgba(59,130,246,0.5)')
-    : isFocused ? (themeVars?.border ?? '#334155') : 'transparent';
+  const border = isDropTarget
+    ? (themeVars?.accent ?? '#3b82f6')
+    : isSelected
+      ? (themeVars?.accent50 ?? 'rgba(59,130,246,0.5)')
+      : isFocused ? (themeVars?.border ?? '#334155') : 'transparent';
 
   return (
     <div
       ref={cardRef}
       data-file-path={entry.path}
+      {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
       className="flex flex-col items-center gap-1 p-2 rounded-lg cursor-pointer select-none transition-all"
       style={{
         width: cardWidth,
         backgroundColor: bg,
         border: `1px solid ${border}`,
         outline: 'none',
+        opacity: isCut ? 0.4 : 1,
       }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      onMouseDown={startDrag}
-      title={entry.path}
+      onMouseDown={(e) => onDragMouseDown(e, entry.path)}
+      title={formatTooltip(entry, imageDims)}
     >
       {/* 썸네일/아이콘 영역 */}
       <div
@@ -141,16 +156,24 @@ export default memo(function FileCard({
         style={{
           width: thumbnailSize,
           height: imgHeight,
-          backgroundColor: themeVars?.surface ?? '#111827',
+          backgroundColor: 'transparent',
         }}
       >
-        {/* 썸네일 (일반 이미지 + PSD 모두 자동 표시) */}
+        {/* 표시 우선순위: 이미지 썸네일 > 네이티브 아이콘 > lucide 아이콘 */}
         {thumbnail ? (
           <img
             src={thumbnail}
             alt={entry.name}
             className="w-full h-full object-contain"
             loading="lazy"
+            draggable={false}
+          />
+        ) : nativeIcon ? (
+          <img
+            src={nativeIcon}
+            alt={entry.name}
+            className="object-contain"
+            style={{ width: thumbnailSize * 0.6, height: thumbnailSize * 0.6 }}
             draggable={false}
           />
         ) : (

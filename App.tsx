@@ -44,6 +44,7 @@ import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
 import FileExplorer from './components/FileExplorer';
+import { useFolderIcon } from './components/FileExplorer/hooks/useNativeIcon';
 import { invoke } from '@tauri-apps/api/core';
 
 // 커스텀 훅
@@ -97,6 +98,7 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
     opacity: isDragging ? 0.3 : 1,
   };
 
+  const folderIcon = useFolderIcon(shortcut.path, 16);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const btnRef = React.useRef<HTMLButtonElement>(null);
@@ -142,7 +144,11 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
         title={`${shortcut.path} (클릭하여 탐색기에서 열기)`}
       >
         <div className="text-[var(--qf-accent)] transition-colors">
-          <Folder size={16} />
+          {folderIcon ? (
+            <img src={folderIcon} alt="" style={{ width: 16, height: 16 }} draggable={false} />
+          ) : (
+            <Folder size={16} />
+          )}
         </div>
         <div className="min-w-0">
           <div
@@ -269,7 +275,7 @@ function CategoryColumn({
     breakInside: 'avoid' as const,
     display: 'inline-block',
     width: '100%',
-    marginTop: '1.5rem',
+    marginTop: '0.75rem',
   };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
@@ -291,7 +297,7 @@ function CategoryColumn({
         className={`border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full bg-[var(--qf-surface)] border-[var(--qf-border)] ${isOver ? 'border-[var(--qf-accent-50)] bg-[var(--qf-surface-2)]' : 'hover:border-[var(--qf-border)]'} ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
       >
         <div
-          className={`p-3 border-b flex items-center justify-between bg-[var(--qf-surface-2)] border-[var(--qf-border)] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`px-2.5 py-1.5 border-b flex items-center justify-between bg-[var(--qf-surface-2)] border-[var(--qf-border)] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           {...attributes}
           {...listeners}
         >
@@ -299,9 +305,9 @@ function CategoryColumn({
             className="flex items-center gap-2 cursor-pointer select-none"
             onClick={() => toggleCollapse(category.id)}
           >
-            {isExpanded ? <ChevronDown size={18} className="text-[var(--qf-muted)]" /> : <ChevronRight size={18} className="text-[var(--qf-muted)]" />}
+            {isExpanded ? <ChevronDown size={14} className="text-[var(--qf-muted)]" /> : <ChevronRight size={14} className="text-[var(--qf-muted)]" />}
             <h2
-              className="font-semibold truncate max-w-[140px]"
+              className="text-sm font-medium truncate max-w-[140px]"
               style={{ color: categoryTitleHex || undefined }}
               title={category.title}
             >
@@ -334,15 +340,15 @@ function CategoryColumn({
         </div>
 
         {isExpanded && (
-          <div className="p-3 flex-1">
+          <div className="p-2 flex-1">
             {category.shortcuts.length === 0 ? (
-              <div className="text-center py-6 text-[var(--qf-muted)] text-xs italic">
+              <div className="text-center py-3 text-[var(--qf-muted)] text-xs italic">
                 등록된 폴더가 없습니다
                 <br />
                 <span className="text-[10px] opacity-70 mt-1 block">폴더를 이곳으로 드래그하세요</span>
               </div>
             ) : (
-              <ul className="space-y-1.5 min-h-[50px]">
+              <ul className="space-y-1 min-h-[50px]">
                 {category.shortcuts.map(shortcut => (
                   <SortableShortcutItem
                     key={shortcut.id}
@@ -397,12 +403,49 @@ export default function App() {
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const masonryRef = React.useRef<HTMLDivElement>(null);
 
-  // 분할 패널 상태
+  // 좌측 패널 너비
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     const saved = localStorage.getItem('qf_left_panel_width');
     return saved ? JSON.parse(saved) : 280;
   });
   const [explorerPath, setExplorerPath] = useState('');
+
+  // --- 분할 뷰 상태 ---
+  const [splitMode, setSplitMode] = useState<'single' | 'horizontal' | 'vertical'>(() => {
+    return (localStorage.getItem('qf_split_mode') as 'single' | 'horizontal' | 'vertical') || 'single';
+  });
+  const [explorerPath2, setExplorerPath2] = useState('');
+  const [focusedPane, setFocusedPane] = useState<0 | 1>(0);
+  const [splitRatio, setSplitRatio] = useState(() => {
+    const saved = localStorage.getItem('qf_split_ratio');
+    return saved ? Number(saved) : 0.5;
+  });
+  const splitContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // --- 분할 뷰 localStorage 동기화 ---
+  useEffect(() => {
+    localStorage.setItem('qf_split_mode', splitMode);
+  }, [splitMode]);
+
+  useEffect(() => {
+    localStorage.setItem('qf_split_ratio', String(splitRatio));
+  }, [splitRatio]);
+
+  // --- 분할 뷰 키보드 단축키 (Ctrl+\) ---
+  useEffect(() => {
+    const handleSplitKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+        e.preventDefault();
+        setSplitMode(prev => {
+          if (prev === 'single') return 'horizontal';
+          if (prev === 'horizontal') return 'vertical';
+          return 'single';
+        });
+      }
+    };
+    window.addEventListener('keydown', handleSplitKeyDown);
+    return () => window.removeEventListener('keydown', handleSplitKeyDown);
+  }, []);
 
   // --- Tauri 드래그앤드롭 ---
   const {
@@ -435,8 +478,12 @@ export default function App() {
   }, [addToast]);
 
   const handleOpenInExplorer = useCallback((path: string) => {
-    setExplorerPath(path);
-  }, []);
+    if (splitMode === 'single' || focusedPane === 0) {
+      setExplorerPath(path);
+    } else {
+      setExplorerPath2(path);
+    }
+  }, [splitMode, focusedPane]);
 
   const handleAddFavoriteFromExplorer = useCallback((path: string, name: string) => {
     if (categories.length === 0) {
@@ -467,6 +514,30 @@ export default function App() {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   }, [leftPanelWidth]);
+
+  // --- 분할 뷰 구분선 드래그 핸들러 ---
+  const handleSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const isHorizontal = splitMode === 'horizontal';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const ratio = isHorizontal
+        ? (moveEvent.clientX - rect.left) / rect.width
+        : (moveEvent.clientY - rect.top) / rect.height;
+      setSplitRatio(Math.max(0.2, Math.min(0.8, ratio)));
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [splitMode]);
 
   // --- 열 수 계산 ---
   useEffect(() => {
@@ -734,9 +805,9 @@ export default function App() {
                     key={`masonry-${columnCount}-${masonryKey}`}
                     style={{
                       columnCount: columnCount,
-                      columnGap: '1.5rem',
+                      columnGap: '0.75rem',
                       width: '100%',
-                      marginTop: '-1.5rem',
+                      marginTop: '-0.75rem',
                     }}
                   >
                   {filteredCategories.map(category => (
@@ -817,14 +888,66 @@ export default function App() {
           onMouseDown={handleDividerMouseDown}
         />
 
-        {/* Right: File Explorer */}
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <FileExplorer
-            initialPath={explorerPath}
-            onPathChange={setExplorerPath}
-            onAddToFavorites={handleAddFavoriteFromExplorer}
-            themeVars={themeVars}
-          />
+        {/* Right: File Explorer(s) — 분할 뷰 지원 */}
+        <div
+          ref={splitContainerRef}
+          className={`flex-1 min-w-0 overflow-hidden flex ${splitMode === 'vertical' ? 'flex-col' : 'flex-row'}`}
+        >
+          {/* 패널 0 (메인) */}
+          <div
+            className="min-w-0 min-h-0 overflow-hidden"
+            style={{
+              flex: splitMode === 'single' ? '1 1 0%' : `0 0 ${splitRatio * 100}%`,
+              borderTop: splitMode !== 'single' && focusedPane === 0
+                ? `2px solid ${themeVars?.accent ?? '#3b82f6'}` : '2px solid transparent',
+            }}
+            onMouseDownCapture={() => { if (splitMode !== 'single') setFocusedPane(0); }}
+          >
+            <FileExplorer
+              instanceId="default"
+              isFocused={splitMode === 'single' || focusedPane === 0}
+              splitMode={splitMode}
+              onSplitModeChange={setSplitMode}
+              initialPath={explorerPath}
+              onPathChange={setExplorerPath}
+              onAddToFavorites={handleAddFavoriteFromExplorer}
+              themeVars={themeVars}
+            />
+          </div>
+
+          {/* 분할 구분선 + 패널 1 */}
+          {splitMode !== 'single' && (
+            <>
+              <div
+                className={`flex-shrink-0 transition-colors ${
+                  splitMode === 'horizontal'
+                    ? 'w-1 cursor-col-resize'
+                    : 'h-1 cursor-row-resize'
+                }`}
+                style={{ backgroundColor: 'var(--qf-border)' }}
+                onMouseDown={handleSplitDividerMouseDown}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `var(--qf-accent)`)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = `var(--qf-border)`)}
+              />
+              <div
+                className="min-w-0 min-h-0 overflow-hidden flex-1"
+                style={{
+                  borderTop: focusedPane === 1
+                    ? `2px solid ${themeVars?.accent ?? '#3b82f6'}` : '2px solid transparent',
+                }}
+                onMouseDownCapture={() => setFocusedPane(1)}
+              >
+                <FileExplorer
+                  instanceId="pane-1"
+                  isFocused={focusedPane === 1}
+                  initialPath={explorerPath2}
+                  onPathChange={setExplorerPath2}
+                  onAddToFavorites={handleAddFavoriteFromExplorer}
+                  themeVars={themeVars}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 

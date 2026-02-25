@@ -1,15 +1,16 @@
 import React, { memo } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { FileEntry, ThumbnailSize } from '../../types';
+import { FileEntry, ThumbnailSize, ClipboardData } from '../../types';
 import { ThemeVars } from './types';
-import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
+import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
 import FileCard from './FileCard';
-import { useDragToOS } from './hooks/useDragToOS';
 import { useRenameInput } from './hooks/useRenameInput';
+import { useNativeIcon } from './hooks/useNativeIcon';
 
 interface FileGridProps {
   entries: FileEntry[];
   selectedPaths: string[];
+  clipboard: ClipboardData | null;
   renamingPath: string | null;
   thumbnailSize: ThumbnailSize;
   viewMode: 'grid' | 'list' | 'details';
@@ -18,6 +19,8 @@ interface FileGridProps {
   gridRef: React.RefObject<HTMLDivElement>;
   loading: boolean;
   error: string | null;
+  dropTargetPath: string | null;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onDeselectAll: () => void;
   onOpen: (entry: FileEntry) => void;
@@ -27,19 +30,21 @@ interface FileGridProps {
 }
 
 // --- ListRow 컴포넌트 ---
-const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
   isRenaming: boolean;
-  dragPaths: string[];
+  isCut: boolean;
+  isDropTarget: boolean;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
 }) {
-  const startDrag = useDragToOS(dragPaths);
+  const nativeIcon = useNativeIcon(entry, 16);
   const {
     renameValue, setRenameValue, inputRef,
     handleKeyDown, handleBlur,
@@ -54,21 +59,28 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
   const bg = isSelected
     ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)')
     : isFocused ? (themeVars?.surfaceHover ?? '#334155') : 'transparent';
+  const border = isDropTarget ? `1px solid ${themeVars?.accent ?? '#3b82f6'}` : '1px solid transparent';
 
   return (
     <div
       data-file-path={entry.path}
+      {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
       className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer select-none"
-      style={{ backgroundColor: bg }}
+      style={{ backgroundColor: bg, opacity: isCut ? 0.4 : 1, border }}
+      title={formatTooltip(entry)}
       onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={() => onOpen(entry)}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
-      onMouseDown={startDrag}
+      onMouseDown={(e) => onDragMouseDown(e, entry.path)}
     >
-      {/* 아이콘 */}
-      <span style={{ color: iconColor(entry.file_type), flexShrink: 0 }}>
-        <FileTypeIcon fileType={entry.file_type} size={16} />
-      </span>
+      {/* 아이콘 (네이티브 우선, lucide 폴백) */}
+      {nativeIcon ? (
+        <img src={nativeIcon} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} draggable={false} />
+      ) : (
+        <span style={{ color: iconColor(entry.file_type), flexShrink: 0 }}>
+          <FileTypeIcon fileType={entry.file_type} size={16} />
+        </span>
+      )}
       {/* 이름 */}
       {isRenaming ? (
         <input
@@ -91,19 +103,21 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
 });
 
 // --- DetailsRow 컴포넌트 ---
-const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, dragPaths, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
   isRenaming: boolean;
-  dragPaths: string[];
+  isCut: boolean;
+  isDropTarget: boolean;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
 }) {
-  const startDrag = useDragToOS(dragPaths);
+  const nativeIcon = useNativeIcon(entry, 14);
   const {
     renameValue, setRenameValue,
     handleKeyDown, handleBlur,
@@ -126,22 +140,30 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
   }
 
   const bg = isSelected ? themeVars?.accent20 : isFocused ? themeVars?.surfaceHover : 'transparent';
+  const outline = isDropTarget ? `2px solid ${themeVars?.accent ?? '#3b82f6'}` : undefined;
 
   return (
     <tr
       data-file-path={entry.path}
-      style={{ backgroundColor: bg ?? undefined }}
+      {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
+      style={{ backgroundColor: bg ?? undefined, opacity: isCut ? 0.4 : 1, outline }}
       className="cursor-pointer hover:opacity-80"
+      title={formatTooltip(entry)}
       onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={() => onOpen(entry)}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
-      onMouseDown={startDrag}
+      onMouseDown={(e) => onDragMouseDown(e, entry.path)}
     >
       <td className="px-3 py-1">
         <div className="flex items-center gap-2">
-          <span style={{ color: iconColor(entry.file_type), flexShrink: 0 }}>
-            <FileTypeIcon fileType={entry.file_type} size={14} />
-          </span>
+          {/* 아이콘 (네이티브 우선, lucide 폴백) */}
+          {nativeIcon ? (
+            <img src={nativeIcon} alt="" style={{ width: 14, height: 14, flexShrink: 0 }} draggable={false} />
+          ) : (
+            <span style={{ color: iconColor(entry.file_type), flexShrink: 0 }}>
+              <FileTypeIcon fileType={entry.file_type} size={14} />
+            </span>
+          )}
           {isRenaming ? (
             <input
               autoFocus
@@ -168,12 +190,15 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
   renamingPath: string | null;
   sortBy: string;
+  clipboard: ClipboardData | null;
+  dropTargetPath: string | null;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -208,11 +233,9 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
               isSelected={selectedPaths.includes(entry.path)}
               isFocused={focusedIndex === idx}
               isRenaming={renamingPath === entry.path}
-              dragPaths={
-                selectedPaths.includes(entry.path) && selectedPaths.length > 1
-                  ? selectedPaths
-                  : [entry.path]
-              }
+              isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
+              isDropTarget={dropTargetPath === entry.path && entry.is_dir}
+              onDragMouseDown={onDragMouseDown}
               onSelect={onSelect}
               onOpen={onOpen}
               onContextMenu={onContextMenu}
@@ -231,6 +254,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
 export default function FileGrid({
   entries,
   selectedPaths,
+  clipboard,
   renamingPath,
   thumbnailSize,
   viewMode,
@@ -239,6 +263,8 @@ export default function FileGrid({
   gridRef,
   loading,
   error,
+  dropTargetPath,
+  onDragMouseDown,
   onSelect,
   onDeselectAll,
   onOpen,
@@ -317,12 +343,10 @@ export default function FileGrid({
                   isSelected={selectedPaths.includes(entry.path)}
                   isFocused={focusedIndex === idx}
                   isRenaming={renamingPath === entry.path}
+                  isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
+                  isDropTarget={dropTargetPath === entry.path && entry.is_dir}
                   thumbnailSize={thumbnailSize}
-                  dragPaths={
-                    selectedPaths.includes(entry.path) && selectedPaths.length > 1
-                      ? selectedPaths
-                      : [entry.path]
-                  }
+                  onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
                   onContextMenu={onContextMenu}
@@ -353,11 +377,9 @@ export default function FileGrid({
                   isSelected={selectedPaths.includes(entry.path)}
                   isFocused={focusedIndex === idx}
                   isRenaming={renamingPath === entry.path}
-                  dragPaths={
-                    selectedPaths.includes(entry.path) && selectedPaths.length > 1
-                      ? selectedPaths
-                      : [entry.path]
-                  }
+                  isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
+                  isDropTarget={dropTargetPath === entry.path && entry.is_dir}
+                  onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
                   onContextMenu={onContextMenu}
@@ -378,6 +400,9 @@ export default function FileGrid({
           focusedIndex={focusedIndex}
           renamingPath={renamingPath}
           sortBy={sortBy}
+          clipboard={clipboard}
+          dropTargetPath={dropTargetPath}
+          onDragMouseDown={onDragMouseDown}
           onSelect={onSelect}
           onOpen={onOpen}
           onContextMenu={onContextMenu}

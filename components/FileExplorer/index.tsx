@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize } from '../../types';
 import { ThemeVars, Tab } from './types';
@@ -7,8 +7,14 @@ import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
+import VideoPlayer from './VideoPlayer';
+import { useInternalDragDrop } from './hooks/useInternalDragDrop';
 
 interface FileExplorerProps {
+  instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
+  isFocused?: boolean;   // 포커스된 패널만 키보드 단축키 응답 (기본: true)
+  splitMode?: 'single' | 'horizontal' | 'vertical';
+  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
   initialPath: string;
   onPathChange: (path: string) => void;
   onAddToFavorites: (path: string, name: string) => void;
@@ -25,11 +31,19 @@ function pathTitle(path: string): string {
 }
 
 export default function FileExplorer({
+  instanceId = 'default',
+  isFocused = true,
+  splitMode,
+  onSplitModeChange,
   initialPath,
   onPathChange,
   onAddToFavorites,
   themeVars,
 }: FileExplorerProps) {
+  // --- localStorage 키 (instanceId로 분할 뷰 시 분리) ---
+  const tabsKey = instanceId === 'default' ? TABS_KEY : `${TABS_KEY}_${instanceId}`;
+  const activeTabKey = instanceId === 'default' ? ACTIVE_TAB_KEY : `${ACTIVE_TAB_KEY}_${instanceId}`;
+
   // --- 상태 ---
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
@@ -46,12 +60,21 @@ export default function FileExplorer({
 
   // --- 탭 상태 (localStorage 영속) ---
   const [tabs, setTabs] = useState<Tab[]>(() => {
-    try { return JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]'); }
+    try { return JSON.parse(localStorage.getItem(tabsKey) ?? '[]'); }
     catch { return []; }
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
-    return localStorage.getItem(ACTIVE_TAB_KEY) ?? '';
+    return localStorage.getItem(activeTabKey) ?? '';
   });
+
+  // --- 검색/필터 상태 ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [activeExtFilters, setActiveExtFilters] = useState<Set<string>>(new Set());
+
+  // --- 비디오 플레이어 상태 ---
+  const [videoPlayerPath, setVideoPlayerPath] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -64,12 +87,12 @@ export default function FileExplorer({
 
   // --- 탭 localStorage 동기화 ---
   useEffect(() => {
-    localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
-  }, [tabs]);
+    localStorage.setItem(tabsKey, JSON.stringify(tabs));
+  }, [tabs, tabsKey]);
 
   useEffect(() => {
-    localStorage.setItem(ACTIVE_TAB_KEY, activeTabId);
-  }, [activeTabId]);
+    localStorage.setItem(activeTabKey, activeTabId);
+  }, [activeTabId, activeTabKey]);
 
   // --- 디렉토리 로딩 ---
   const loadDirectory = useCallback(async (path: string) => {
@@ -110,6 +133,33 @@ export default function FileExplorer({
     setEntries(prev => sortEntries(prev, sortBy, sortDir));
   }, [sortBy, sortDir]);
 
+  // 파일 확장자 추출 유틸
+  const getExt = useCallback((entry: FileEntry): string => {
+    if (entry.is_dir) return 'folder';
+    const dot = entry.name.lastIndexOf('.');
+    return dot > 0 ? entry.name.slice(dot + 1).toLowerCase() : 'other';
+  }, []);
+
+  // 현재 디렉토리에 존재하는 확장자 목록 (폴더 포함)
+  const availableExtensions = useMemo(() => {
+    const exts = new Set<string>();
+    entries.forEach(e => exts.add(getExt(e)));
+    return exts;
+  }, [entries, getExt]);
+
+  // --- 검색 + 확장자 필터로 표시할 항목 파생 ---
+  const displayEntries = useMemo(() => {
+    let result = entries;
+    if (activeExtFilters.size > 0) {
+      result = result.filter(e => activeExtFilters.has(getExt(e)));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(e => e.name.toLowerCase().includes(q));
+    }
+    return result;
+  }, [entries, activeExtFilters, searchQuery, getExt]);
+
   // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
   useEffect(() => {
     if (!initialPath) return;
@@ -140,6 +190,8 @@ export default function FileExplorer({
 
   // --- 내비게이션 (탭 기반) ---
   const navigateTo = useCallback((path: string) => {
+    setSearchQuery('');
+    setIsSearchActive(false);
     const title = pathTitle(path);
     setTabs(prev => prev.map(tab => {
       if (tab.id !== activeTabId) return tab;
@@ -215,6 +267,9 @@ export default function FileExplorer({
   const openEntry = useCallback(async (entry: FileEntry) => {
     if (entry.is_dir) {
       navigateTo(entry.path);
+    } else if (entry.file_type === 'video') {
+      // 동영상은 내장 플레이어로 재생
+      setVideoPlayerPath(entry.path);
     } else {
       try {
         await invoke('open_folder', { path: entry.path });
@@ -300,6 +355,17 @@ export default function FileExplorer({
     }
   }, [currentPath, loadDirectory]);
 
+  const handleDuplicate = useCallback(async () => {
+    if (selectedPaths.length === 0 || !currentPath) return;
+    try {
+      const newPaths = await invoke<string[]>('duplicate_items', { paths: selectedPaths });
+      await loadDirectory(currentPath);
+      setSelectedPaths(newPaths);
+    } catch (e) {
+      console.error('복제 실패:', e);
+    }
+  }, [selectedPaths, currentPath, loadDirectory]);
+
   const handleCreateDirectory = useCallback(async () => {
     if (!currentPath) return;
     const name = window.prompt('새 폴더 이름을 입력하세요:', '새 폴더');
@@ -343,6 +409,21 @@ export default function FileExplorer({
     }
   }, []);
 
+  // --- ZIP 압축 ---
+  const handleCompressZip = useCallback(async (paths: string[]) => {
+    if (paths.length === 0 || !currentPath) return;
+    const sep = currentPath.includes('/') ? '/' : '\\';
+    const firstName = paths[0].split(/[/\\]/).pop() ?? 'archive';
+    const baseName = paths.length === 1 ? firstName.replace(/\.[^.]+$/, '') : (currentPath.split(/[/\\]/).pop() ?? 'archive');
+    const zipPath = `${currentPath}${sep}${baseName}.zip`;
+    try {
+      await invoke('compress_to_zip', { paths, dest: zipPath });
+      loadDirectory(currentPath);
+    } catch (e) {
+      console.error('압축 실패:', e);
+    }
+  }, [currentPath, loadDirectory]);
+
   // --- 컨텍스트 메뉴 ---
   const handleContextMenu = useCallback((e: React.MouseEvent, paths: string[]) => {
     e.preventDefault();
@@ -356,6 +437,8 @@ export default function FileExplorer({
   // --- 키보드 단축키 ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 분할 뷰: 포커스된 패널만 키보드 단축키 응답
+      if (!isFocused) return;
       if (renamingPath) return;
       const active = document.activeElement;
       const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
@@ -416,7 +499,34 @@ export default function FileExplorer({
         if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
       }
 
-      if (e.key === 'Backspace') { e.preventDefault(); goBack(); return; }
+      // Ctrl+F: 검색 토글
+      if (ctrl && e.key === 'f') {
+        e.preventDefault();
+        setIsSearchActive(prev => {
+          if (prev) { setSearchQuery(''); return false; }
+          setTimeout(() => searchInputRef.current?.focus(), 0);
+          return true;
+        });
+        return;
+      }
+
+      // ESC: 검색 닫기 → 클립보드 해제 → 선택 해제
+      if (e.key === 'Escape') {
+        if (isSearchActive) { setSearchQuery(''); setIsSearchActive(false); return; }
+        if (clipboard) { setClipboard(null); return; }
+        deselectAll();
+        return;
+      }
+
+      // Mac: ⌫ 키로 파일 삭제 (선택 있을 때), 미선택 시 뒤로 이동
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (isMac && selectedPaths.length > 0) {
+          handleDelete(selectedPaths, e.shiftKey);
+          return;
+        }
+        if (!ctrl) { goBack(); return; }
+      }
 
       if (e.key === 'Enter') {
         if (selectedPaths.length === 1) {
@@ -426,10 +536,15 @@ export default function FileExplorer({
         return;
       }
 
-      // --- Quick Look (Spacebar) ---
+      // --- Quick Look / 비디오 미리보기 (Spacebar) ---
       if (e.key === ' ' && selectedPaths.length === 1) {
         e.preventDefault();
-        invoke('quick_look', { path: selectedPaths[0] }).catch(console.error);
+        const entry = entries.find(en => en.path === selectedPaths[0]);
+        if (entry?.file_type === 'video') {
+          setVideoPlayerPath(entry.path);
+        } else {
+          invoke('quick_look', { path: selectedPaths[0] }).catch(console.error);
+        }
         return;
       }
 
@@ -461,6 +576,7 @@ export default function FileExplorer({
       if (ctrl && e.key === 'c') { handleCopy(); return; }
       if (ctrl && e.key === 'x') { handleCut(); return; }
       if (ctrl && e.key === 'v') { handlePaste(); return; }
+      if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
       if (ctrl && e.shiftKey && e.key === 'N') { e.preventDefault(); handleCreateDirectory(); return; }
 
       if (e.key === 'F2') {
@@ -468,11 +584,10 @@ export default function FileExplorer({
         return;
       }
 
-      if (e.key === 'Delete' || (isMac && ctrl && e.key === 'Backspace')) {
-        if (e.shiftKey) {
-          handleDelete(selectedPaths, true);
-        } else {
-          handleDelete(selectedPaths, false);
+      // Windows: Delete 키로 파일 삭제
+      if (e.key === 'Delete') {
+        if (selectedPaths.length > 0) {
+          handleDelete(selectedPaths, e.shiftKey);
         }
         return;
       }
@@ -506,12 +621,56 @@ export default function FileExplorer({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    renamingPath, selectAll, handleCopy, handleCut, handlePaste,
+    isFocused, renamingPath, selectAll, deselectAll, handleCopy, handleCut, handlePaste, handleDuplicate,
     handleCreateDirectory, handleRenameStart, handleDelete,
     goBack, goForward, goUp, selectedPaths, entries, openEntry,
-    thumbnailSize, focusedIndex,
+    thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect,
   ]);
+
+  // --- 창 포커스 시 현재 디렉토리 자동 새로고침 ---
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const handleFocus = () => {
+      if (currentPath && !renamingPath) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => loadDirectory(currentPath), 300);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => { window.removeEventListener('focus', handleFocus); clearTimeout(timeoutId); };
+  }, [currentPath, loadDirectory, renamingPath]);
+
+  // --- 다른 패널에서 파일 이동 시 새로고침 ---
+  useEffect(() => {
+    const handler = () => { if (currentPath) loadDirectory(currentPath); };
+    window.addEventListener('qf-files-changed', handler);
+    return () => window.removeEventListener('qf-files-changed', handler);
+  }, [currentPath, loadDirectory]);
+
+  // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const direction = e.deltaY < 0 ? 1 : -1;
+      setThumbnailSize(prev => {
+        const idx = THUMBNAIL_SIZES.indexOf(prev);
+        return THUMBNAIL_SIZES[Math.max(0, Math.min(THUMBNAIL_SIZES.length - 1, idx + direction))];
+      });
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
+  // --- 내부 드래그 → 폴더 이동 ---
+  const { isDragging: isInternalDragging, dropTargetPath, handleDragMouseDown } = useInternalDragDrop({
+    selectedPaths,
+    currentPath,
+    onMoveComplete: () => loadDirectory(currentPath),
+  });
 
   // 외부 클릭 시 선택 해제
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
@@ -524,6 +683,7 @@ export default function FileExplorer({
   return (
     <div
       ref={containerRef}
+      data-pane-drop-target={currentPath || undefined}
       className="h-full flex flex-col outline-none"
       tabIndex={0}
       onClick={handleContainerClick}
@@ -557,13 +717,38 @@ export default function FileExplorer({
             onThumbnailSizeChange={setThumbnailSize}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
+            isSearchActive={isSearchActive}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            onSearchToggle={() => {
+              setIsSearchActive(prev => {
+                if (prev) { setSearchQuery(''); return false; }
+                setTimeout(() => searchInputRef.current?.focus(), 0);
+                return true;
+              });
+            }}
+            searchInputRef={searchInputRef}
+            activeExtFilters={activeExtFilters}
+            availableExtensions={availableExtensions}
+            onExtFilterToggle={(ext: string) => {
+              setActiveExtFilters(prev => {
+                const next = new Set(prev);
+                if (next.has(ext)) next.delete(ext);
+                else next.add(ext);
+                return next;
+              });
+            }}
+            onExtFilterClear={() => setActiveExtFilters(new Set())}
+            splitMode={splitMode}
+            onSplitModeChange={onSplitModeChange}
             themeVars={themeVars}
           />
 
           {/* 파일 그리드 */}
           <FileGrid
-            entries={entries}
+            entries={displayEntries}
             selectedPaths={selectedPaths}
+            clipboard={clipboard}
             renamingPath={renamingPath}
             thumbnailSize={thumbnailSize}
             viewMode={viewMode}
@@ -572,6 +757,8 @@ export default function FileExplorer({
             gridRef={gridRef}
             loading={loading}
             error={error}
+            dropTargetPath={dropTargetPath}
+            onDragMouseDown={handleDragMouseDown}
             onSelect={selectEntry}
             onDeselectAll={deselectAll}
             onOpen={openEntry}
@@ -582,7 +769,7 @@ export default function FileExplorer({
 
           {/* 상태 바 */}
           <StatusBar
-            entries={entries}
+            entries={displayEntries}
             selectedPaths={selectedPaths}
             themeVars={themeVars}
           />
@@ -595,6 +782,15 @@ export default function FileExplorer({
           <div className="text-5xl opacity-30">📁</div>
           <p className="text-sm">왼쪽 즐겨찾기에서 폴더를 클릭하면 여기에 파일 목록이 표시됩니다</p>
         </div>
+      )}
+
+      {/* 비디오 플레이어 모달 */}
+      {videoPlayerPath && (
+        <VideoPlayer
+          path={videoPlayerPath}
+          onClose={() => setVideoPlayerPath(null)}
+          themeVars={themeVars}
+        />
       )}
 
       {/* 컨텍스트 메뉴 */}
@@ -615,12 +811,14 @@ export default function FileExplorer({
           onCut={handleCut}
           onPaste={handlePaste}
           onDelete={(paths) => handleDelete(paths, false)}
+          onDuplicate={handleDuplicate}
           onRename={handleRenameStart}
           onCopyPath={handleCopyPath}
           onAddToFavorites={(path) => {
             const name = path.split(/[/\\]/).pop() ?? path;
             onAddToFavorites(path, name);
           }}
+          onCompressZip={handleCompressZip}
         />
       )}
     </div>

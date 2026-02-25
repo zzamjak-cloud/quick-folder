@@ -48,3 +48,17 @@ export function formatSize(bytes: number, isDir: boolean): string {
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
+
+// 파일 호버 툴팁 포맷
+export function formatTooltip(entry: { name: string; path: string; is_dir: boolean; size: number; modified: number; file_type: string }, imageDims?: [number, number] | null): string {
+  const parts: string[] = [entry.name];
+  if (!entry.is_dir) parts.push(`크기: ${formatSize(entry.size, false)}`);
+  if (entry.modified) parts.push(`수정일: ${new Date(entry.modified).toLocaleString('ko-KR')}`);
+  if (imageDims) parts.push(`해상도: ${imageDims[0]} × ${imageDims[1]}`);
+  const labels: Record<string, string> = {
+    directory: '폴더', image: '이미지', video: '비디오',
+    document: '문서', code: '코드', archive: '압축', other: '기타',
+  };
+  parts.push(`유형: ${labels[entry.file_type] ?? '기타'}`);
+  return parts.join('\n');
+}
