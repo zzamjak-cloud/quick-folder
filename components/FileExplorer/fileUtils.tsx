@@ -30,14 +30,21 @@ export function iconColor(fileType: string): string {
 
 // OS 드래그 이미지 (24x24 반투명 파란색 아이콘, PNG data URI)
 // tauri-plugin-drag의 Base64Image 변형으로 역직렬화됨
+// 1x1 투명 PNG 폴백 (canvas 2D context 미지원 환경)
+const FALLBACK_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAAlwSFlzAAAWJQAAFiUBSVIk8AAAAA0lEQVQI12P4z8BQDwAEgAF/QualzQAAAABJRU5ErkJggg==';
 export const DRAG_IMAGE = (() => {
-  const canvas = document.createElement('canvas');
-  canvas.width = 24;
-  canvas.height = 24;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = 'rgba(59, 130, 246, 0.7)';
-  ctx.fillRect(0, 0, 24, 24);
-  return canvas.toDataURL('image/png');
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 24;
+    canvas.height = 24;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return FALLBACK_PNG;
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.7)';
+    ctx.fillRect(0, 0, 24, 24);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return FALLBACK_PNG;
+  }
 })();
 
 // 파일 크기 포맷

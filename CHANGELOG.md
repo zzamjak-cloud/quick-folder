@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-02-25
+
+### Fixed
+- **Windows 네이티브 아이콘 미적용 수정**: Windows Shell API(`SHGetFileInfoW`) 기반 파일/폴더 아이콘 추출 구현
+  - BGRA→RGBA 변환, 구형 아이콘 알파 채널 호환 처리, GDI SelectObject 추가
+  - `catch_unwind`로 GDI 패닉 방지
+- **Windows 앱 시작 후 종료 문제 수정**:
+  - `DRAG_IMAGE` canvas 2D context null 가드 추가 (WebView2 호환)
+  - `assetProtocol.enable: true` 설정 + `protocol-asset` feature 추가
+
 ## [1.2.0] - 2026-02-25
 
 ### Added

@@ -471,7 +471,133 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
+    // GDI 패닉 방지: catch_unwind로 감싸서 앱 크래시 방지
+    std::panic::catch_unwind(|| get_native_icon_bytes_inner(path, size)).ok().flatten()
+}
+
+#[cfg(target_os = "windows")]
+fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
+    use std::mem;
+    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_SMALLICON};
+    use winapi::um::winuser::{GetIconInfo, DestroyIcon, ICONINFO, GetDC, ReleaseDC};
+    use winapi::um::wingdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject,
+        BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
+    };
+
+    unsafe {
+        // 1. Shell 아이콘 가져오기
+        let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut shfi: SHFILEINFOW = mem::zeroed();
+        let flags = SHGFI_ICON | if size >= 32 { SHGFI_LARGEICON } else { SHGFI_SMALLICON };
+
+        let result = SHGetFileInfoW(
+            wide_path.as_ptr(),
+            0,
+            &mut shfi,
+            mem::size_of::<SHFILEINFOW>() as u32,
+            flags,
+        );
+
+        if result == 0 || shfi.hIcon.is_null() {
+            return None;
+        }
+
+        // 2. 아이콘 정보에서 비트맵 핸들 추출
+        let mut icon_info: ICONINFO = mem::zeroed();
+        if GetIconInfo(shfi.hIcon, &mut icon_info) == 0 {
+            DestroyIcon(shfi.hIcon);
+            return None;
+        }
+
+        let hbm_color = icon_info.hbmColor;
+        if hbm_color.is_null() {
+            if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+            DestroyIcon(shfi.hIcon);
+            return None;
+        }
+
+        // 3. 비트맵 크기 조회
+        let mut bmp: BITMAP = mem::zeroed();
+        GetObjectW(
+            hbm_color as _,
+            mem::size_of::<BITMAP>() as i32,
+            &mut bmp as *mut _ as *mut _,
+        );
+
+        let width = bmp.bmWidth as u32;
+        let height = bmp.bmHeight as u32;
+
+        if width == 0 || height == 0 {
+            DeleteObject(icon_info.hbmColor as _);
+            if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+            DestroyIcon(shfi.hIcon);
+            return None;
+        }
+
+        // 4. BITMAPINFOHEADER 준비 (top-down DIB)
+        let bmi_size = mem::size_of::<BITMAPINFOHEADER>();
+        let mut bmi_buf = vec![0u8; bmi_size + 4 * 256]; // BITMAPINFO + 여분
+        let bmi = &mut *(bmi_buf.as_mut_ptr() as *mut winapi::um::wingdi::BITMAPINFO);
+        bmi.bmiHeader.biSize = bmi_size as u32;
+        bmi.bmiHeader.biWidth = width as i32;
+        bmi.bmiHeader.biHeight = -(height as i32); // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+
+        // 5. 픽셀 데이터 추출 (SelectObject로 비트맵을 DC에 연결 필수)
+        let hdc_screen = GetDC(std::ptr::null_mut());
+        let hdc_mem = CreateCompatibleDC(hdc_screen);
+        let old_bmp = SelectObject(hdc_mem, hbm_color as _);
+
+        let mut pixels: Vec<u8> = vec![0u8; (width * height * 4) as usize];
+
+        GetDIBits(
+            hdc_mem,
+            hbm_color,
+            0,
+            height,
+            pixels.as_mut_ptr() as *mut _,
+            bmi,
+            DIB_RGB_COLORS,
+        );
+
+        // SelectObject 복원
+        SelectObject(hdc_mem, old_bmp);
+
+        // 6. BGRA → RGBA 변환
+        for chunk in pixels.chunks_exact_mut(4) {
+            chunk.swap(0, 2); // B ↔ R
+        }
+
+        // 7. 알파 채널이 모두 0인 경우 불투명으로 설정 (구형 아이콘 호환)
+        let has_alpha = pixels.chunks_exact(4).any(|c| c[3] != 0);
+        if !has_alpha {
+            for chunk in pixels.chunks_exact_mut(4) {
+                chunk[3] = 255;
+            }
+        }
+
+        // 8. GDI 리소스 정리
+        DeleteDC(hdc_mem);
+        ReleaseDC(std::ptr::null_mut(), hdc_screen);
+        DeleteObject(icon_info.hbmColor as _);
+        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+        DestroyIcon(shfi.hIcon);
+
+        // 9. image 크레이트로 PNG 인코딩
+        let img = image::RgbaImage::from_raw(width, height, pixels)?;
+        let mut png_buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut png_buf, image::ImageFormat::Png).ok()?;
+
+        Some(png_buf.into_inner())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn get_native_icon_bytes(_path: &str, _size: u32) -> Option<Vec<u8>> {
     None
 }
