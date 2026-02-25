@@ -596,8 +596,8 @@ export default function FileExplorer({
         if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); return; }
         if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); return; }
         if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
-        // Windows: Ctrl+↓ 로 폴더/파일 진입
-        if (ctrl && e.key === 'ArrowDown') {
+        // Windows: Alt+↓ 로 폴더/파일 진입
+        if (e.altKey && e.key === 'ArrowDown') {
           if (selectedPaths.length === 1) {
             const entry = entries.find(en => en.path === selectedPaths[0]);
             if (entry) { e.preventDefault(); openEntry(entry); return; }

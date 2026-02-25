@@ -1,18 +1,46 @@
 import React from 'react';
-import { Folder, File, FileImage, FileVideo, FileText, FileCode, Archive } from 'lucide-react';
+import {
+  Folder, File, FileImage, FileVideo, FileText, FileCode, Archive,
+  Presentation, FileType2, Pen, Download, Box, FileDown,
+} from 'lucide-react';
 
-// PSD 확장자 판별 헬퍼
-function isPsd(fileName?: string): boolean {
-  return !!fileName && fileName.toLowerCase().endsWith('.psd');
+// 파일명에서 확장자 추출 (소문자)
+function getExt(fileName?: string): string {
+  if (!fileName) return '';
+  const dot = fileName.lastIndexOf('.');
+  return dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
 }
+
+// 확장자별 전용 아이콘 매핑
+const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> = {
+  psd: FileImage,        // Adobe PSD
+  ai: Pen,               // Adobe Illustrator
+  pdf: FileDown,         // PDF 문서
+  gslides: Presentation, // Google Slides
+  exe: Download,         // 실행/설치 파일
+  unitypackage: Box,     // Unity 패키지
+  md: FileType2,         // 마크다운
+};
+
+// 확장자별 전용 색상 매핑
+const EXT_COLOR: Record<string, string> = {
+  psd: '#a855f7',        // Adobe 퍼플
+  ai: '#ff7c00',         // Adobe Illustrator 오렌지
+  pdf: '#ef4444',        // PDF 레드
+  gslides: '#fbbf24',    // Google Slides 옐로
+  exe: '#60a5fa',        // 설치 파일 블루
+  unitypackage: '#94a3b8', // Unity 그레이
+  md: '#94a3b8',         // 마크다운 그레이
+};
 
 // 파일 타입별 아이콘 컴포넌트
 export function FileTypeIcon({ fileType, size, fileName }: { fileType: string; size: number; fileName?: string }) {
   const iconProps = { size, className: 'flex-shrink-0' };
-  // PSD 파일은 file_type이 'other'이므로 파일명으로 별도 분기
-  if (fileType === 'other' && isPsd(fileName)) {
-    return <FileImage {...iconProps} />;
-  }
+  // 확장자별 전용 아이콘 우선 적용
+  const ext = getExt(fileName);
+  const ExtIcon = EXT_ICON[ext];
+  if (ExtIcon) return <ExtIcon {...iconProps} />;
+
   switch (fileType) {
     case 'directory': return <Folder {...iconProps} />;
     case 'image':     return <FileImage {...iconProps} />;
@@ -26,8 +54,11 @@ export function FileTypeIcon({ fileType, size, fileName }: { fileType: string; s
 
 // 파일 타입별 아이콘 색상
 export function iconColor(fileType: string, fileName?: string): string {
-  // PSD 파일 전용 색상 (Adobe 브랜딩 퍼플)
-  if (fileType === 'other' && isPsd(fileName)) return '#a855f7';
+  // 확장자별 전용 색상 우선 적용
+  const ext = getExt(fileName);
+  const extColor = EXT_COLOR[ext];
+  if (extColor) return extColor;
+
   switch (fileType) {
     case 'directory': return '#60a5fa';
     case 'image':     return '#34d399';

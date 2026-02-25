@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-26
+
+### Added
+- **확장자별 전용 아이콘**: .gslides, .pdf, .ai, .exe, .unitypackage, .md 파일에 고유 아이콘 및 색상 표시
+- **Google Workspace 파일 분류**: .gslides, .gdoc, .gsheet → Document 타입 분류
+- **Unity 패키지 분류**: .unitypackage → Archive 타입 분류
+
+### Changed
+- **Windows 폴더 진입 단축키**: Ctrl+↓ → Alt+↓ 로 변경 (macOS Cmd+↓ 유지)
+- **아이콘 시스템 리팩토링**: PSD 전용 분기를 확장자 기반 매핑 시스템으로 일반화
+
 ## [1.2.9] - 2026-02-25
 
 ### Added

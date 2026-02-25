@@ -28,10 +28,11 @@ fn classify_file(name: &str) -> FileType {
     match ext.as_str() {
         "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" => FileType::Image,
         "mp4" | "mov" | "avi" | "mkv" | "webm" => FileType::Video,
-        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md" => FileType::Document,
+        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md"
+        | "gslides" | "gdoc" | "gsheet" => FileType::Document,
         "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h"
         | "css" | "html" | "json" | "toml" | "yaml" | "yml" => FileType::Code,
-        "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" => FileType::Archive,
+        "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" | "unitypackage" => FileType::Archive,
         _ => FileType::Other,
     }
 }
