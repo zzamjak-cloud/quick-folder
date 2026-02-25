@@ -1,15 +1,16 @@
 /**
  * Rust invoke 동시성 제한 큐
  * - 프론트엔드: 최대 MAX_CONCURRENT개만 동시 Rust 호출
- * - Rust 백엔드: HeavyOpPermit으로 추가 동시성 제한 (2개)
+ * - Rust 백엔드: HeavyOpPermit으로 추가 동시성 제한 (PSD 제거 후 4개로 완화)
  * - 대기 큐 최대 크기 제한: 넘치면 오래된 요청부터 자동 취소
  * - cancelAll()로 대기 중인 모든 요청 즉시 취소 (줌/디렉토리 이동 시)
  */
 
 import { invoke } from '@tauri-apps/api/core';
 
-const MAX_CONCURRENT = 3;
-const MAX_QUEUE_SIZE = 20; // 대기 큐 최대 크기 (넘치면 오래된 것부터 취소)
+// PSD 썸네일 제거로 메모리 부담 감소 → 동시성 한도 12개로 완화, 대기 큐 200개로 확대
+const MAX_CONCURRENT = 12;
+const MAX_QUEUE_SIZE = 200; // 대기 큐 최대 크기 (넘치면 오래된 것부터 취소)
 
 interface QueueItem {
   cmd: string;

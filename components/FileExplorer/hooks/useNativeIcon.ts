@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
-import { queuedInvoke } from './invokeQueue';
 
 // 확장자별 네이티브 아이콘 캐시 (모듈 레벨, 모든 인스턴스 공유)
 // 항상 고정 해상도(ICON_FETCH_SIZE)로 요청하여 확대해도 선명하게 표시
@@ -16,15 +16,15 @@ function getCacheKey(isDir: boolean, name: string): string {
 
 /**
  * OS 네이티브 파일 아이콘 훅 (확장자별 캐시)
- * 이미지/PSD는 썸네일을 사용하므로 건너뜀
+ * 이미지(jpg/png 등)는 썸네일을 사용하므로 건너뜀
+ * PSD는 썸네일 기능 제거로 네이티브 아이콘 표시 대상에 포함
  */
 export function useNativeIcon(
   entry: FileEntry,
   size: number,
   isVisible: boolean = true,
 ): string | null {
-  const isPsd = entry.name.toLowerCase().endsWith('.psd');
-  const skip = entry.file_type === 'image' || isPsd;
+  const skip = entry.file_type === 'image';
 
   const [nativeIcon, setNativeIcon] = useState<string | null>(() => {
     if (skip) return null;
@@ -41,12 +41,12 @@ export function useNativeIcon(
       return;
     }
 
+    // 아이콘은 확장자별 캐시가 있어 실질적으로 한 번만 Rust 호출 → 큐 불필요
     // 항상 고정 해상도로 요청 → 확대해도 선명
-    const { promise, cancel } = queuedInvoke<string | null>(
-      'get_file_icon', { path: entry.path, size: ICON_FETCH_SIZE }
-    );
-    promise
+    let cancelled = false;
+    invoke<string | null>('get_file_icon', { path: entry.path, size: ICON_FETCH_SIZE })
       .then(b64 => {
+        if (cancelled) return;
         if (b64) {
           const dataUrl = `data:image/png;base64,${b64}`;
           nativeIconCache.set(cacheKey, dataUrl);
@@ -57,7 +57,7 @@ export function useNativeIcon(
       })
       .catch(() => { nativeIconCache.set(cacheKey, null); });
 
-    return () => cancel();
+    return () => { cancelled = true; };
   }, [isVisible, entry.file_type, entry.path, entry.name, entry.is_dir, skip]);
 
   return nativeIcon;
@@ -79,11 +79,11 @@ export function useFolderIcon(path: string, _size?: number): string | null {
       return;
     }
 
-    const { promise, cancel } = queuedInvoke<string | null>(
-      'get_file_icon', { path, size: ICON_FETCH_SIZE }
-    );
-    promise
+    // 폴더 아이콘도 캐시 미스 시 한 번만 호출 → 큐 불필요
+    let cancelled = false;
+    invoke<string | null>('get_file_icon', { path, size: ICON_FETCH_SIZE })
       .then(b64 => {
+        if (cancelled) return;
         if (b64) {
           const dataUrl = `data:image/png;base64,${b64}`;
           nativeIconCache.set(cacheKey, dataUrl);
@@ -94,7 +94,7 @@ export function useFolderIcon(path: string, _size?: number): string | null {
       })
       .catch(() => { nativeIconCache.set(cacheKey, null); });
 
-    return () => cancel();
+    return () => { cancelled = true; };
   }, [path]);
 
   return icon;

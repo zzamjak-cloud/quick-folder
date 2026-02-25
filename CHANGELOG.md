@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.9] - 2026-02-25
+
+### Added
+- **탭 드래그 교차 패널 이동**: 분할 뷰에서 탭을 드래그하여 다른 패널로 이동
+  - 마우스 기반 드래그 (Tauri WebView 호환, HTML5 Drag API 미사용)
+  - 드래그 고스트 UI, 탭 사이 삽입 인디케이터, 패널 하이라이트 피드백
+  - 같은 패널 내 탭 순서 변경 지원
+  - 모든 탭 이동 시 자동으로 single 모드 전환
+- **라이트모드 카테고리 색상 프리셋**: 진한 색상 12종 추가 (블랙, 차콜, 다크 레드 등)
+- **PSD 파일 전용 아이콘**: FileImage 아이콘 + Adobe 퍼플 색상 표시
+- **분할 뷰 토글 양쪽 패널 표시**: 두 번째 패널에서도 분할 모드 전환 가능
+
+### Changed
+- **썸네일 동시성 제한 완화**: 프론트엔드 큐 6→12, Rust 세마포어 4→8
+- **Windows 시스템 파일 필터 개선**: desktop.ini, Thumbs.db, ntuser.dat 정확 매치
+
 ## [1.2.8] - 2026-02-25
 
 ### Changed

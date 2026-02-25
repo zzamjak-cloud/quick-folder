@@ -200,10 +200,11 @@ export default memo(function FileCard({
             draggable={false}
           />
         ) : (
-          <div style={{ color: iconColor(entry.file_type) }}>
+          <div style={{ color: iconColor(entry.file_type, entry.name) }}>
             <FileTypeIcon
               fileType={entry.file_type}
               size={thumbnailSize >= 120 ? 40 : 28}
+              fileName={entry.name}
             />
           </div>
         )}

@@ -940,6 +940,8 @@ export default function App() {
                 <FileExplorer
                   instanceId="pane-1"
                   isFocused={focusedPane === 1}
+                  splitMode={splitMode}
+                  onSplitModeChange={setSplitMode}
                   initialPath={explorerPath2}
                   onPathChange={setExplorerPath2}
                   onAddToFavorites={handleAddFavoriteFromExplorer}

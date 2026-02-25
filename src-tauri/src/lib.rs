@@ -52,11 +52,27 @@ async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
+        // Windows: 숨김(HIDDEN) 또는 시스템(SYSTEM) 속성 파일 제외
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::fs::MetadataExt;
+            // FILE_ATTRIBUTE_HIDDEN(0x2) | FILE_ATTRIBUTE_SYSTEM(0x4)
+            if meta.file_attributes() & 0x6 != 0 {
+                continue;
+            }
+        }
+
         let name = entry.file_name().to_string_lossy().to_string();
         // 숨김 파일 제외 (점으로 시작하는 파일)
         if name.starts_with('.') {
             continue;
         }
+        // Windows 시스템 파일 이름으로 필터링 (대소문자 무관)
+        let name_lower = name.to_lowercase();
+        if name_lower == "desktop.ini" || name_lower == "thumbs.db" || name_lower == "ntuser.dat" {
+            continue;
+        }
+
         let file_type = if meta.is_dir() {
             FileType::Directory
         } else {
@@ -402,13 +418,26 @@ async fn quick_look(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// 텍스트 파일 읽기 (미리보기용, 최대 바이트 제한)
+#[tauri::command]
+fn read_text_file(path: String, max_bytes: usize) -> Result<String, String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    let read_size = (meta.len() as usize).min(max_bytes);
+    let mut buf = vec![0u8; read_size];
+    file.read_exact(&mut buf).map_err(|e| e.to_string())?;
+    // UTF-8 유효하지 않은 바이트는 대체 문자로 변환
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
 // --- 동시성 제한 (이미지 처리 메모리 폭주 방지) ---
 use std::sync::{OnceLock, Mutex, Condvar};
 use std::collections::HashMap;
 
 /// 동시 이미지/썸네일 처리 최대 개수
-/// 대용량 이미지(8K PNG, 100MB PSD)를 동시에 처리하면 수 GB 메모리 소모 → 크래시
-const MAX_HEAVY_OPS: usize = 2;
+/// PSD 썸네일을 제거하여 메모리 부담이 감소했으므로 8개로 완화
+const MAX_HEAVY_OPS: usize = 8;
 
 fn heavy_op_guard() -> &'static (Mutex<usize>, Condvar) {
     static GUARD: OnceLock<(Mutex<usize>, Condvar)> = OnceLock::new();
@@ -468,8 +497,8 @@ fn get_file_icon(path: String, size: u32) -> Result<Option<String>, String> {
         }
     }
 
-    // 플랫폼별 아이콘 추출 (동시성 제한 + 패닉 방지)
-    let _permit = HeavyOpPermit::acquire();
+    // 플랫폼별 아이콘 추출 (패닉 방지)
+    // 아이콘은 확장자별 캐시로 재사용되어 실질적으로 한 번만 호출 → 세마포어 불필요
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_native_icon_bytes(&path, size))) {
         Ok(Some(bytes)) => {
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -965,6 +994,7 @@ pub fn run() {
         get_video_thumbnail,
         compress_to_zip,
         open_with_app,
+        read_text_file,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

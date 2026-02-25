@@ -1,9 +1,18 @@
 import React from 'react';
 import { Folder, File, FileImage, FileVideo, FileText, FileCode, Archive } from 'lucide-react';
 
+// PSD 확장자 판별 헬퍼
+function isPsd(fileName?: string): boolean {
+  return !!fileName && fileName.toLowerCase().endsWith('.psd');
+}
+
 // 파일 타입별 아이콘 컴포넌트
-export function FileTypeIcon({ fileType, size }: { fileType: string; size: number }) {
+export function FileTypeIcon({ fileType, size, fileName }: { fileType: string; size: number; fileName?: string }) {
   const iconProps = { size, className: 'flex-shrink-0' };
+  // PSD 파일은 file_type이 'other'이므로 파일명으로 별도 분기
+  if (fileType === 'other' && isPsd(fileName)) {
+    return <FileImage {...iconProps} />;
+  }
   switch (fileType) {
     case 'directory': return <Folder {...iconProps} />;
     case 'image':     return <FileImage {...iconProps} />;
@@ -16,7 +25,9 @@ export function FileTypeIcon({ fileType, size }: { fileType: string; size: numbe
 }
 
 // 파일 타입별 아이콘 색상
-export function iconColor(fileType: string): string {
+export function iconColor(fileType: string, fileName?: string): string {
+  // PSD 파일 전용 색상 (Adobe 브랜딩 퍼플)
+  if (fileType === 'other' && isPsd(fileName)) return '#a855f7';
   switch (fileType) {
     case 'directory': return '#60a5fa';
     case 'image':     return '#34d399';

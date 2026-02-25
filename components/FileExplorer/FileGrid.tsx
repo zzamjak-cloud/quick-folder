@@ -77,8 +77,8 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       {nativeIcon ? (
         <img src={nativeIcon} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} draggable={false} />
       ) : (
-        <span style={{ color: iconColor(entry.file_type), flexShrink: 0 }}>
-          <FileTypeIcon fileType={entry.file_type} size={16} />
+        <span style={{ color: iconColor(entry.file_type, entry.name), flexShrink: 0 }}>
+          <FileTypeIcon fileType={entry.file_type} size={16} fileName={entry.name} />
         </span>
       )}
       {/* 이름 */}
@@ -160,8 +160,8 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
           {nativeIcon ? (
             <img src={nativeIcon} alt="" style={{ width: 14, height: 14, flexShrink: 0 }} draggable={false} />
           ) : (
-            <span style={{ color: iconColor(entry.file_type), flexShrink: 0 }}>
-              <FileTypeIcon fileType={entry.file_type} size={14} />
+            <span style={{ color: iconColor(entry.file_type, entry.name), flexShrink: 0 }}>
+              <FileTypeIcon fileType={entry.file_type} size={14} fileName={entry.name} />
             </span>
           )}
           {isRenaming ? (

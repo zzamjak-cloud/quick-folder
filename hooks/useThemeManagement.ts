@@ -28,10 +28,23 @@ export const THEME_PRESETS: Theme[] = [
 type TextColorPreset = { name: string; value: string };
 
 export const TEXT_COLOR_PRESETS: TextColorPreset[] = [
+  // === 진한 색상 (라이트모드 최적) ===
+  { name: '블랙', value: '#0b0f19' },
+  { name: '차콜', value: '#374151' },
+  { name: '다크 레드', value: '#b91c1c' },
+  { name: '다크 오렌지', value: '#c2410c' },
+  { name: '다크 앰버', value: '#b45309' },
+  { name: '다크 그린', value: '#15803d' },
+  { name: '다크 틸', value: '#0f766e' },
+  { name: '다크 블루', value: '#1d4ed8' },
+  { name: '다크 인디고', value: '#4338ca' },
+  { name: '다크 퍼플', value: '#7e22ce' },
+  { name: '다크 핑크', value: '#be185d' },
+  { name: '다크 브라운', value: '#92400e' },
+  // === 밝은 색상 (다크모드 최적) ===
   { name: '화이트', value: '#ffffff' },
   { name: '라이트 그레이', value: '#e5e7eb' },
   { name: '그레이', value: '#94a3b8' },
-  { name: '블랙', value: '#0b0f19' },
   { name: '레드', value: '#f87171' },
   { name: '오렌지', value: '#fb923c' },
   { name: '앰버', value: '#fbbf24' },

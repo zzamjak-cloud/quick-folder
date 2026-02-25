@@ -82,8 +82,14 @@ export default function FileExplorer({
   const [previewImageData, setPreviewImageData] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // --- 텍스트 미리보기 상태 ---
+  const [previewTextPath, setPreviewTextPath] = useState<string | null>(null);
+  const [previewTextContent, setPreviewTextContent] = useState<string | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  // 뒤로/위로 이동 시 이전 폴더를 자동 선택하기 위한 ref
+  const lastVisitedChildRef = useRef<string | null>(null);
 
   // 활성 탭에서 파생된 값
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
@@ -110,7 +116,18 @@ export default function FileExplorer({
     setFocusedIndex(-1);
     try {
       const result = await invoke<FileEntry[]>('list_directory', { path });
-      setEntries(sortEntries(result, sortBy, sortDir));
+      const sortedResult = sortEntries(result, sortBy, sortDir);
+      setEntries(sortedResult);
+      // 뒤로/위로 이동 시 이전에 있던 폴더를 자동 선택
+      if (lastVisitedChildRef.current) {
+        const prevPath = lastVisitedChildRef.current;
+        lastVisitedChildRef.current = null;
+        const idx = sortedResult.findIndex(e => e.path === prevPath);
+        if (idx >= 0) {
+          setSelectedPaths([sortedResult[idx].path]);
+          setFocusedIndex(idx);
+        }
+      }
     } catch (e) {
       setError(String(e));
       setEntries([]);
@@ -219,12 +236,14 @@ export default function FileExplorer({
     if (!activeTab || activeTab.historyIndex <= 0) return;
     const newPath = activeTab.history[activeTab.historyIndex - 1];
     const title = pathTitle(newPath);
+    // 뒤로 이동 시 현재 경로를 저장하여 부모 디렉토리에서 자동 선택
+    lastVisitedChildRef.current = currentPath;
     setTabs(prev => prev.map(t =>
       t.id === activeTabId ? { ...t, path: newPath, title, historyIndex: t.historyIndex - 1 } : t
     ));
     onPathChange(newPath);
     loadDirectory(newPath);
-  }, [activeTab, activeTabId, onPathChange, loadDirectory]);
+  }, [activeTab, activeTabId, currentPath, onPathChange, loadDirectory]);
 
   const goForward = useCallback(() => {
     if (!activeTab || activeTab.historyIndex >= activeTab.history.length - 1) return;
@@ -244,6 +263,8 @@ export default function FileExplorer({
     if (parts.length <= 1) return;
     parts.pop();
     const parent = parts.join(sep) || sep;
+    // 위로 이동 시 현재 경로를 저장하여 부모 디렉토리에서 자동 선택
+    lastVisitedChildRef.current = currentPath;
     navigateTo(parent);
   }, [currentPath, navigateTo]);
 
@@ -269,6 +290,45 @@ export default function FileExplorer({
       return newTabs;
     });
   }, [activeTabId, loadDirectory]);
+
+  // --- 탭 드래그 순서 변경 (같은 패널 내) ---
+  const handleTabReorder = useCallback((fromIndex: number, toIndex: number) => {
+    setTabs(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }, []);
+
+  // --- 다른 패널에서 탭을 받아오기 (교차 패널 이동) ---
+  const handleTabReceive = useCallback((tab: Tab, insertIndex: number) => {
+    setTabs(prev => {
+      const next = [...prev];
+      next.splice(insertIndex, 0, tab);
+      return next;
+    });
+    setActiveTabId(tab.id);
+    loadDirectory(tab.path);
+  }, [loadDirectory]);
+
+  // --- 다른 패널로 탭을 보낸 후 제거 (교차 패널 이동) ---
+  const handleTabRemove = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const newTabs = prev.filter(t => t.id !== tabId);
+      if (tabId === activeTabId && newTabs.length > 0) {
+        const closedIdx = prev.findIndex(t => t.id === tabId);
+        const nextTab = newTabs[Math.min(closedIdx, newTabs.length - 1)];
+        setActiveTabId(nextTab.id);
+        loadDirectory(nextTab.path);
+      } else if (newTabs.length === 0) {
+        // 탭이 모두 빠져나가면 single 모드로 자동 전환
+        setActiveTabId('');
+        if (onSplitModeChange) onSplitModeChange('single');
+      }
+      return newTabs;
+    });
+  }, [activeTabId, loadDirectory, onSplitModeChange]);
 
   // --- 파일/폴더 열기 ---
   const openEntry = useCallback(async (entry: FileEntry) => {
@@ -451,6 +511,18 @@ export default function FileExplorer({
     }
   }, []);
 
+  // --- 텍스트 파일 미리보기 ---
+  const handlePreviewText = useCallback(async (path: string) => {
+    setPreviewTextPath(path);
+    setPreviewTextContent(null);
+    try {
+      const content = await invoke<string>('read_text_file', { path, maxBytes: 100000 });
+      setPreviewTextContent(content);
+    } catch {
+      setPreviewTextContent('파일을 읽을 수 없습니다.');
+    }
+  }, []);
+
   // --- 컨텍스트 메뉴 ---
   const handleContextMenu = useCallback((e: React.MouseEvent, paths: string[]) => {
     e.preventDefault();
@@ -524,6 +596,13 @@ export default function FileExplorer({
         if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); return; }
         if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); return; }
         if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
+        // Windows: Ctrl+↓ 로 폴더/파일 진입
+        if (ctrl && e.key === 'ArrowDown') {
+          if (selectedPaths.length === 1) {
+            const entry = entries.find(en => en.path === selectedPaths[0]);
+            if (entry) { e.preventDefault(); openEntry(entry); return; }
+          }
+        }
       }
 
       // Ctrl+F: 검색 토글
@@ -563,13 +642,23 @@ export default function FileExplorer({
         return;
       }
 
-      // --- Quick Look / 비디오 미리보기 (Spacebar) ---
+      // --- Quick Look / 미리보기 (Spacebar) ---
       if (e.key === ' ' && selectedPaths.length === 1) {
         e.preventDefault();
         const entry = entries.find(en => en.path === selectedPaths[0]);
-        if (entry?.file_type === 'video') {
+        if (!entry) return;
+
+        if (entry.file_type === 'video') {
+          // 동영상: 내장 비디오 플레이어
           setVideoPlayerPath(entry.path);
-        } else {
+        } else if (entry.file_type === 'image' || entry.name.toLowerCase().endsWith('.psd')) {
+          // 이미지/PSD: 내장 미리보기 모달
+          handlePreviewImage(entry.path);
+        } else if (['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log'].includes(entry.name.split('.').pop()?.toLowerCase() ?? '')) {
+          // 텍스트 파일: 내장 텍스트 미리보기
+          handlePreviewText(entry.path);
+        } else if (isMac) {
+          // macOS: Quick Look 폴백
           invoke('quick_look', { path: selectedPaths[0] }).catch(console.error);
         }
         return;
@@ -656,6 +745,7 @@ export default function FileExplorer({
     goBack, goForward, goUp, selectedPaths, entries, openEntry,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect,
+    handlePreviewImage, handlePreviewText,
   ]);
 
   // --- 창 포커스 시 현재 디렉토리 자동 새로고침 ---
@@ -715,10 +805,13 @@ export default function FileExplorer({
     <div
       ref={containerRef}
       data-pane-drop-target={currentPath || undefined}
+      data-pane-instance={instanceId}
       className="h-full flex flex-col outline-none"
       tabIndex={0}
       onClick={handleContainerClick}
-      style={{ backgroundColor: themeVars?.bg ?? '#0f172a' }}
+      style={{
+        backgroundColor: themeVars?.bg ?? '#0f172a',
+      }}
     >
       {/* 탭 바 */}
       <TabBar
@@ -726,6 +819,10 @@ export default function FileExplorer({
         activeTabId={activeTabId}
         onTabSelect={handleTabSelect}
         onTabClose={handleTabClose}
+        onTabReorder={handleTabReorder}
+        onTabReceive={handleTabReceive}
+        onTabRemove={handleTabRemove}
+        instanceId={instanceId}
         themeVars={themeVars}
       />
 
@@ -864,6 +961,45 @@ export default function FileExplorer({
                 <span className="text-sm" style={{ color: themeVars?.muted ?? '#94a3b8' }}>미리보기를 생성할 수 없습니다</span>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 텍스트 미리보기 모달 */}
+      {previewTextPath && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          onClick={() => { setPreviewTextPath(null); setPreviewTextContent(null); }}
+        >
+          <div
+            className="relative flex flex-col rounded-lg overflow-hidden shadow-2xl"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#1e293b',
+              width: '70vw', maxWidth: 800, maxHeight: '85vh',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+              <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                {previewTextPath.split(/[/\\]/).pop()}
+              </span>
+              <button
+                className="text-lg px-2 hover:opacity-70"
+                style={{ color: themeVars?.muted ?? '#94a3b8' }}
+                onClick={() => { setPreviewTextPath(null); setPreviewTextContent(null); }}
+              >
+                ✕
+              </button>
+            </div>
+            {/* 텍스트 내용 */}
+            <pre
+              className="flex-1 overflow-auto p-4 text-xs leading-relaxed whitespace-pre-wrap"
+              style={{ color: themeVars?.text ?? '#e5e7eb', maxHeight: '75vh' }}
+            >
+              {previewTextContent ?? '로딩 중...'}
+            </pre>
           </div>
         </div>
       )}
