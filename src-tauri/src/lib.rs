@@ -553,10 +553,12 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
                 continue;
             }
 
-            // IImageList vtable에서 GetIcon 호출 (vtable 인덱스 9)
+            // IImageList vtable에서 GetIcon 호출 (vtable 인덱스 10)
+            // IUnknown(0-2) + Add(3), ReplaceIcon(4), SetOverlayImage(5),
+            // Replace(6), AddMasked(7), Draw(8), Remove(9), GetIcon(10)
             let vtable = *(image_list as *const *const usize);
             let get_icon_fn: extern "system" fn(*mut std::ffi::c_void, i32, i32, *mut HICON) -> i32 =
-                mem::transmute(*vtable.add(9));
+                mem::transmute(*vtable.add(10));
             let mut icon: HICON = std::ptr::null_mut();
             let hr2 = get_icon_fn(image_list, icon_index, ILD_TRANSPARENT, &mut icon);
 
