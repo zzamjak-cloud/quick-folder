@@ -77,6 +77,11 @@ export default function FileExplorer({
   // --- 비디오 플레이어 상태 ---
   const [videoPlayerPath, setVideoPlayerPath] = useState<string | null>(null);
 
+  // --- 이미지/PSD 미리보기 상태 ---
+  const [previewImagePath, setPreviewImagePath] = useState<string | null>(null);
+  const [previewImageData, setPreviewImageData] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -425,6 +430,26 @@ export default function FileExplorer({
       console.error('압축 실패:', e);
     }
   }, [currentPath, loadDirectory]);
+
+  // --- 이미지/PSD 미리보기 ---
+  const handlePreviewImage = useCallback(async (path: string) => {
+    setPreviewImagePath(path);
+    setPreviewImageData(null);
+    setPreviewLoading(true);
+    try {
+      const isPsd = path.toLowerCase().endsWith('.psd');
+      const cmd = isPsd ? 'get_psd_thumbnail' : 'get_file_thumbnail';
+      // 미리보기용 큰 해상도
+      const b64 = await invoke<string | null>(cmd, { path, size: 800 });
+      if (b64) {
+        setPreviewImageData(`data:image/png;base64,${b64}`);
+      }
+    } catch {
+      // 미리보기 생성 실패
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, []);
 
   // --- 컨텍스트 메뉴 ---
   const handleContextMenu = useCallback((e: React.MouseEvent, paths: string[]) => {
@@ -799,6 +824,50 @@ export default function FileExplorer({
         />
       )}
 
+      {/* 이미지/PSD 미리보기 모달 */}
+      {previewImagePath && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          onClick={() => { setPreviewImagePath(null); setPreviewImageData(null); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setPreviewImagePath(null); setPreviewImageData(null); } }}
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] rounded-lg overflow-hidden shadow-2xl"
+            style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+              <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                {previewImagePath.split(/[/\\]/).pop()}
+              </span>
+              <button
+                className="text-lg px-2 hover:opacity-70"
+                style={{ color: themeVars?.muted ?? '#94a3b8' }}
+                onClick={() => { setPreviewImagePath(null); setPreviewImageData(null); }}
+              >
+                ✕
+              </button>
+            </div>
+            {/* 이미지 */}
+            <div className="flex items-center justify-center p-4" style={{ minWidth: 300, minHeight: 200 }}>
+              {previewLoading ? (
+                <span className="text-sm" style={{ color: themeVars?.muted ?? '#94a3b8' }}>로딩 중...</span>
+              ) : previewImageData ? (
+                <img
+                  src={previewImageData}
+                  alt="미리보기"
+                  className="max-w-[85vw] max-h-[80vh] object-contain"
+                />
+              ) : (
+                <span className="text-sm" style={{ color: themeVars?.muted ?? '#94a3b8' }}>미리보기를 생성할 수 없습니다</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 컨텍스트 메뉴 */}
       {contextMenu && (
         <ContextMenu
@@ -825,6 +894,7 @@ export default function FileExplorer({
             onAddToFavorites(path, name);
           }}
           onCompressZip={handleCompressZip}
+          onPreviewPsd={handlePreviewImage}
         />
       )}
     </div>

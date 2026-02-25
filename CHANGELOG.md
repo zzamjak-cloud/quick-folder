@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.7] - 2026-02-25
 
+### Changed
+- **PSD 썸네일 그리드 제거**: 대량 PSD 파일이 PNG 썸네일 로딩을 차단하는 성능 문제 해결
+- **PSD/이미지 우클릭 미리보기**: 컨텍스트 메뉴에서 "미리보기" 선택 시 800px 해상도 모달 표시
+
 ### Fixed
 - **대량 이미지 파일 스크롤 시 앱 크래시**: 프론트엔드+Rust 이중 동시성 제한
   - 프론트엔드: invoke 큐 (동시 3개, 대기 최대 20개, 초과 시 오래된 요청 자동 취소)

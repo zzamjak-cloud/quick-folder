@@ -91,7 +91,7 @@ export default memo(function FileCard({
       const requestSize = thumbnailSize;
       let cmd = '';
       if (entry.file_type === 'image') cmd = 'get_file_thumbnail';
-      else if (isPsd) cmd = 'get_psd_thumbnail';
+      // PSD 썸네일은 성능 문제로 그리드에서 제외 (우클릭 미리보기로 대체)
       else if (entry.file_type === 'video') cmd = 'get_video_thumbnail';
 
       if (cmd) {
@@ -109,9 +109,9 @@ export default memo(function FileCard({
     };
   }, [isVisible, entry.file_type, entry.path, thumbnailSize, isPsd]);
 
-  // 화면에 보일 때 이미지 규격 조회 (이미지 + PSD)
+  // 화면에 보일 때 이미지 규격 조회 (이미지만, PSD 제외 - 성능)
   useEffect(() => {
-    if (!isVisible || !(entry.file_type === 'image' || isPsd) || imageDims) return;
+    if (!isVisible || entry.file_type !== 'image' || imageDims) return;
 
     const { promise, cancel } = queuedInvoke<[number, number] | null>(
       'get_image_dimensions', { path: entry.path }

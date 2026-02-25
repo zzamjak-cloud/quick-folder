@@ -11,6 +11,7 @@ import {
   Hash,
   Star,
   FileArchive,
+  Eye,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
 
@@ -32,6 +33,7 @@ interface ContextMenuProps {
   onCopyPath: (path: string) => void;
   onAddToFavorites: (path: string) => void;
   onCompressZip: (paths: string[]) => void;
+  onPreviewPsd?: (path: string) => void;
 }
 
 export default function ContextMenu({
@@ -52,6 +54,7 @@ export default function ContextMenu({
   onCopyPath,
   onAddToFavorites,
   onCompressZip,
+  onPreviewPsd,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -134,6 +137,15 @@ export default function ContextMenu({
       <div className="py-1">
         {/* 열기 */}
         {isSingle && item(<ExternalLink size={13} />, '열기', () => onOpen(singlePath))}
+
+        {/* PSD/이미지 미리보기 */}
+        {isSingle && singleEntry && !singleEntry.is_dir &&
+          (singleEntry.name.toLowerCase().endsWith('.psd') || singleEntry.file_type === 'image') &&
+          onPreviewPsd && item(
+            <Eye size={13} />,
+            '미리보기',
+            () => onPreviewPsd(singlePath),
+          )}
 
         {/* 탐색기에서 열기 */}
         {isSingle && item(
