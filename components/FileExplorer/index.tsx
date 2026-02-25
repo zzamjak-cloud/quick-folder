@@ -9,6 +9,7 @@ import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import VideoPlayer from './VideoPlayer';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
+import { cancelAllQueued } from './hooks/invokeQueue';
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
@@ -97,6 +98,7 @@ export default function FileExplorer({
   // --- 디렉토리 로딩 ---
   const loadDirectory = useCallback(async (path: string) => {
     if (!path) return;
+    cancelAllQueued(); // 이전 디렉토리의 대기 중인 썸네일 요청 모두 취소
     setLoading(true);
     setError(null);
     setSelectedPaths([]);
@@ -551,6 +553,7 @@ export default function FileExplorer({
       // --- 탐색기 줌 (Ctrl +/-) ---
       if (ctrl && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
+        cancelAllQueued();
         setThumbnailSize(prev => {
           const idx = THUMBNAIL_SIZES.indexOf(prev);
           return THUMBNAIL_SIZES[Math.min(THUMBNAIL_SIZES.length - 1, idx + 1)];
@@ -559,6 +562,7 @@ export default function FileExplorer({
       }
       if (ctrl && e.key === '-') {
         e.preventDefault();
+        cancelAllQueued();
         setThumbnailSize(prev => {
           const idx = THUMBNAIL_SIZES.indexOf(prev);
           return THUMBNAIL_SIZES[Math.max(0, idx - 1)];
@@ -567,6 +571,7 @@ export default function FileExplorer({
       }
       if (ctrl && e.key === '0') {
         e.preventDefault();
+        cancelAllQueued();
         setThumbnailSize(120);
         return;
       }
@@ -654,6 +659,7 @@ export default function FileExplorer({
     const handler = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
+      cancelAllQueued(); // 줌 변경 시 대기 중인 썸네일 요청 모두 취소
       const direction = e.deltaY < 0 ? 1 : -1;
       setThumbnailSize(prev => {
         const idx = THUMBNAIL_SIZES.indexOf(prev);

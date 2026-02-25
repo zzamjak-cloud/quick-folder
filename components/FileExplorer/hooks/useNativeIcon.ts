@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
+import { queuedInvoke } from './invokeQueue';
 
 // 확장자별 네이티브 아이콘 캐시 (모듈 레벨, 모든 인스턴스 공유)
 // 항상 고정 해상도(ICON_FETCH_SIZE)로 요청하여 확대해도 선명하게 표시
@@ -42,7 +42,10 @@ export function useNativeIcon(
     }
 
     // 항상 고정 해상도로 요청 → 확대해도 선명
-    invoke<string | null>('get_file_icon', { path: entry.path, size: ICON_FETCH_SIZE })
+    const { promise, cancel } = queuedInvoke<string | null>(
+      'get_file_icon', { path: entry.path, size: ICON_FETCH_SIZE }
+    );
+    promise
       .then(b64 => {
         if (b64) {
           const dataUrl = `data:image/png;base64,${b64}`;
@@ -53,6 +56,8 @@ export function useNativeIcon(
         }
       })
       .catch(() => { nativeIconCache.set(cacheKey, null); });
+
+    return () => cancel();
   }, [isVisible, entry.file_type, entry.path, entry.name, entry.is_dir, skip]);
 
   return nativeIcon;
@@ -74,7 +79,10 @@ export function useFolderIcon(path: string, _size?: number): string | null {
       return;
     }
 
-    invoke<string | null>('get_file_icon', { path, size: ICON_FETCH_SIZE })
+    const { promise, cancel } = queuedInvoke<string | null>(
+      'get_file_icon', { path, size: ICON_FETCH_SIZE }
+    );
+    promise
       .then(b64 => {
         if (b64) {
           const dataUrl = `data:image/png;base64,${b64}`;
@@ -85,6 +93,8 @@ export function useFolderIcon(path: string, _size?: number): string | null {
         }
       })
       .catch(() => { nativeIconCache.set(cacheKey, null); });
+
+    return () => cancel();
   }, [path]);
 
   return icon;
