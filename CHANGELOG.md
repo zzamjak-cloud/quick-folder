@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-02-25
+
+### Fixed
+- **Windows 시스템 아이콘 뿌옇게 표시**: `SHGetFileInfoW`(32x32) → `SHGetImageList` + `SHIL_JUMBO`(256x256) 고해상도 추출로 변경
+  - COM vtable 직접 호출로 `IImageList::GetIcon` 사용, 폴백 체인: 256x256 → 48x48 → 32x32
+
 ## [1.2.3] - 2026-02-25
 
 ### Fixed

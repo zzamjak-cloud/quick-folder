@@ -480,46 +480,115 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
 #[cfg(target_os = "windows")]
 fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
     use std::mem;
-    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_SMALLICON};
+    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_SYSICONINDEX};
     use winapi::um::winuser::{GetIconInfo, DestroyIcon, ICONINFO, GetDC, ReleaseDC};
     use winapi::um::wingdi::{
         CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject,
         BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
     };
+    use winapi::um::objbase::CoInitialize;
+    use winapi::shared::windef::HICON;
+    use winapi::shared::winerror::S_OK;
+
+    // SHGetImageList 이미지 리스트 크기 상수
+    const SHIL_LARGE: i32 = 0;      // 32x32
+    const SHIL_JUMBO: i32 = 4;      // 256x256
+    const SHIL_EXTRALARGE: i32 = 2;  // 48x48
+
+    // IImageList::GetIcon 메서드 인덱스 (vtable offset)
+    // IImageList는 IUnknown(3개) + Add, ReplaceIcon, ... GetIcon은 인덱스 9
+    const ILD_TRANSPARENT: i32 = 1;
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SHGetImageList(iImageList: i32, riid: *const winapi::shared::guiddef::GUID, ppvObj: *mut *mut std::ffi::c_void) -> i32;
+    }
+
+    // IID_IImageList = {46EB5926-582E-4017-9FDF-E8998DAA0950}
+    let iid_iimagelist = winapi::shared::guiddef::GUID {
+        Data1: 0x46EB5926,
+        Data2: 0x582E,
+        Data3: 0x4017,
+        Data4: [0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50],
+    };
 
     unsafe {
-        // 1. Shell 아이콘 가져오기
+        // COM 초기화 (이미 초기화된 경우 무시)
+        CoInitialize(std::ptr::null_mut());
+
+        // 1. 파일의 시스템 아이콘 인덱스 가져오기
         let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
         let mut shfi: SHFILEINFOW = mem::zeroed();
-        let flags = SHGFI_ICON | if size >= 32 { SHGFI_LARGEICON } else { SHGFI_SMALLICON };
 
         let result = SHGetFileInfoW(
             wide_path.as_ptr(),
             0,
             &mut shfi,
             mem::size_of::<SHFILEINFOW>() as u32,
-            flags,
+            SHGFI_SYSICONINDEX,
         );
 
-        if result == 0 || shfi.hIcon.is_null() {
+        if result == 0 {
             return None;
         }
 
-        // 2. 아이콘 정보에서 비트맵 핸들 추출
+        let icon_index = shfi.iIcon;
+
+        // 2. 요청 크기에 맞는 이미지 리스트 가져오기
+        // 256x256 시도 → 48x48 폴백 → 32x32 폴백
+        let list_sizes = if size >= 64 {
+            vec![SHIL_JUMBO, SHIL_EXTRALARGE, SHIL_LARGE]
+        } else if size >= 40 {
+            vec![SHIL_EXTRALARGE, SHIL_LARGE]
+        } else {
+            vec![SHIL_LARGE]
+        };
+
+        let mut h_icon: HICON = std::ptr::null_mut();
+
+        for &shil in &list_sizes {
+            let mut image_list: *mut std::ffi::c_void = std::ptr::null_mut();
+            let hr = SHGetImageList(shil, &iid_iimagelist, &mut image_list);
+            if hr != S_OK || image_list.is_null() {
+                continue;
+            }
+
+            // IImageList vtable에서 GetIcon 호출 (vtable 인덱스 9)
+            let vtable = *(image_list as *const *const usize);
+            let get_icon_fn: extern "system" fn(*mut std::ffi::c_void, i32, i32, *mut HICON) -> i32 =
+                mem::transmute(*vtable.add(9));
+            let mut icon: HICON = std::ptr::null_mut();
+            let hr2 = get_icon_fn(image_list, icon_index, ILD_TRANSPARENT, &mut icon);
+
+            // IImageList Release (vtable 인덱스 2)
+            let release_fn: extern "system" fn(*mut std::ffi::c_void) -> u32 =
+                mem::transmute(*vtable.add(2));
+            release_fn(image_list);
+
+            if hr2 == S_OK && !icon.is_null() {
+                h_icon = icon;
+                break;
+            }
+        }
+
+        if h_icon.is_null() {
+            return None;
+        }
+
+        // 3. HICON → 비트맵 픽셀 데이터 추출
         let mut icon_info: ICONINFO = mem::zeroed();
-        if GetIconInfo(shfi.hIcon, &mut icon_info) == 0 {
-            DestroyIcon(shfi.hIcon);
+        if GetIconInfo(h_icon, &mut icon_info) == 0 {
+            DestroyIcon(h_icon);
             return None;
         }
 
         let hbm_color = icon_info.hbmColor;
         if hbm_color.is_null() {
             if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
-            DestroyIcon(shfi.hIcon);
+            DestroyIcon(h_icon);
             return None;
         }
 
-        // 3. 비트맵 크기 조회
         let mut bmp: BITMAP = mem::zeroed();
         GetObjectW(
             hbm_color as _,
@@ -533,22 +602,22 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         if width == 0 || height == 0 {
             DeleteObject(icon_info.hbmColor as _);
             if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
-            DestroyIcon(shfi.hIcon);
+            DestroyIcon(h_icon);
             return None;
         }
 
         // 4. BITMAPINFOHEADER 준비 (top-down DIB)
         let bmi_size = mem::size_of::<BITMAPINFOHEADER>();
-        let mut bmi_buf = vec![0u8; bmi_size + 4 * 256]; // BITMAPINFO + 여분
+        let mut bmi_buf = vec![0u8; bmi_size + 4 * 256];
         let bmi = &mut *(bmi_buf.as_mut_ptr() as *mut winapi::um::wingdi::BITMAPINFO);
         bmi.bmiHeader.biSize = bmi_size as u32;
         bmi.bmiHeader.biWidth = width as i32;
-        bmi.bmiHeader.biHeight = -(height as i32); // top-down
+        bmi.bmiHeader.biHeight = -(height as i32);
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
 
-        // 5. 픽셀 데이터 추출 (SelectObject로 비트맵을 DC에 연결 필수)
+        // 5. 픽셀 데이터 추출
         let hdc_screen = GetDC(std::ptr::null_mut());
         let hdc_mem = CreateCompatibleDC(hdc_screen);
         let old_bmp = SelectObject(hdc_mem, hbm_color as _);
@@ -565,12 +634,11 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
             DIB_RGB_COLORS,
         );
 
-        // SelectObject 복원
         SelectObject(hdc_mem, old_bmp);
 
         // 6. BGRA → RGBA 변환
         for chunk in pixels.chunks_exact_mut(4) {
-            chunk.swap(0, 2); // B ↔ R
+            chunk.swap(0, 2);
         }
 
         // 7. 알파 채널이 모두 0인 경우 불투명으로 설정 (구형 아이콘 호환)
@@ -586,9 +654,9 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         ReleaseDC(std::ptr::null_mut(), hdc_screen);
         DeleteObject(icon_info.hbmColor as _);
         if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
-        DestroyIcon(shfi.hIcon);
+        DestroyIcon(h_icon);
 
-        // 9. image 크레이트로 PNG 인코딩
+        // 9. PNG 인코딩
         let img = image::RgbaImage::from_raw(width, height, pixels)?;
         let mut png_buf = std::io::Cursor::new(Vec::new());
         img.write_to(&mut png_buf, image::ImageFormat::Png).ok()?;
