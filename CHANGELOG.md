@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-02-25
+
+### Fixed
+- **Ctrl+마우스 휠 썸네일 확대/축소 미작동**: gridRef 타이밍 문제 해결 (window 레벨 리스너로 변경)
+- **썸네일 확대 시 이미지 뿌옇게 표시**: thumbnailSize 변경 시 기존 썸네일 리셋 후 새 해상도로 재요청
+
 ## [1.2.1] - 2026-02-25
 
 ### Fixed

@@ -41,6 +41,7 @@ export default memo(function FileCard({
   const [isVisible, setIsVisible] = useState(false);
   const [imageDims, setImageDims] = useState<[number, number] | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const lastThumbnailSizeRef = useRef<number>(0);
 
   // PSD 파일 여부 확인
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
@@ -71,21 +72,27 @@ export default memo(function FileCard({
     return () => observer.disconnect();
   }, []);
 
-  // 화면에 보일 때 이미지/PSD 썸네일 자동 요청 (PNG처럼 자동 표시)
+  // 화면에 보일 때 이미지/PSD 썸네일 자동 요청
+  // thumbnailSize 변경 시 기존 썸네일을 리셋하여 새 해상도로 재요청
   useEffect(() => {
-    if (!isVisible || thumbnail) return;
+    if (!isVisible) return;
+    // 크기가 변경되면 기존 썸네일 리셋
+    if (lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize) {
+      setThumbnail(null);
+    }
+    lastThumbnailSizeRef.current = thumbnailSize;
+
+    const requestSize = thumbnailSize;
     if (entry.file_type === 'image') {
-      invoke<string | null>('get_file_thumbnail', { path: entry.path, size: thumbnailSize })
+      invoke<string | null>('get_file_thumbnail', { path: entry.path, size: requestSize })
         .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
         .catch(() => {/* 썸네일 생성 실패 무시 */});
     } else if (isPsd) {
-      // PSD도 일반 이미지처럼 자동 썸네일 로드
-      invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: thumbnailSize })
+      invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: requestSize })
         .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
         .catch(() => {/* PSD 썸네일 생성 실패 무시 */});
     } else if (entry.file_type === 'video') {
-      // 동영상 썸네일 (ffmpeg 설치 필요, 미설치 시 네이티브 아이콘 폴백)
-      invoke<string | null>('get_video_thumbnail', { path: entry.path, size: thumbnailSize })
+      invoke<string | null>('get_video_thumbnail', { path: entry.path, size: requestSize })
         .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
         .catch(() => {/* 동영상 썸네일 생성 실패 무시 */});
     }

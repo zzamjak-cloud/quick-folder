@@ -649,9 +649,8 @@ export default function FileExplorer({
   }, [currentPath, loadDirectory]);
 
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
+  // 컨테이너 div에 직접 바인딩 (gridRef 타이밍 무관하게 동작)
   useEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
     const handler = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -661,8 +660,9 @@ export default function FileExplorer({
         return THUMBNAIL_SIZES[Math.max(0, Math.min(THUMBNAIL_SIZES.length - 1, idx + direction))];
       });
     };
-    el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler);
+    // gridRef 대신 window에 등록 (그리드 영역 포커스 불필요)
+    window.addEventListener('wheel', handler, { passive: false });
+    return () => window.removeEventListener('wheel', handler);
   }, []);
 
   // --- 내부 드래그 → 폴더 이동 ---
