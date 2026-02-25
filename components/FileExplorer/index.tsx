@@ -642,9 +642,16 @@ export default function FileExplorer({
         return;
       }
 
-      // --- Quick Look / 미리보기 (Spacebar) ---
+      // --- Quick Look / 미리보기 (Spacebar 토글) ---
       if (e.key === ' ' && selectedPaths.length === 1) {
         e.preventDefault();
+        // 미리보기가 이미 열려있으면 닫기 (토글)
+        if (previewImagePath || videoPlayerPath || previewTextPath) {
+          setPreviewImagePath(null); setPreviewImageData(null);
+          setVideoPlayerPath(null);
+          setPreviewTextPath(null); setPreviewTextContent(null);
+          return;
+        }
         const entry = entries.find(en => en.path === selectedPaths[0]);
         if (!entry) return;
 
@@ -769,11 +776,13 @@ export default function FileExplorer({
   }, [currentPath, loadDirectory]);
 
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
-  // 컨테이너 div에 직접 바인딩 (gridRef 타이밍 무관하게 동작)
+  // 터치패드 핀치 줌 방지: ctrlKey가 true여도 deltaMode=0 + 비정수 deltaY이면 핀치 제스처
   useEffect(() => {
     const handler = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
+      // 터치패드 핀치 제스처 필터: deltaMode=0(픽셀) + 소수점 deltaY = 핀치
+      if (e.deltaMode === 0 && !Number.isInteger(e.deltaY)) return;
       cancelAllQueued(); // 줌 변경 시 대기 중인 썸네일 요청 모두 취소
       const direction = e.deltaY < 0 ? 1 : -1;
       setThumbnailSize(prev => {
@@ -781,7 +790,6 @@ export default function FileExplorer({
         return THUMBNAIL_SIZES[Math.max(0, Math.min(THUMBNAIL_SIZES.length - 1, idx + direction))];
       });
     };
-    // gridRef 대신 window에 등록 (그리드 영역 포커스 불필요)
     window.addEventListener('wheel', handler, { passive: false });
     return () => window.removeEventListener('wheel', handler);
   }, []);
