@@ -73,29 +73,34 @@ export default memo(function FileCard({
   }, []);
 
   // 화면에 보일 때 이미지/PSD 썸네일 자동 요청
-  // thumbnailSize 변경 시 기존 썸네일을 리셋하여 새 해상도로 재요청
+  // thumbnailSize 변경 시 디바운스(300ms) 후 새 해상도로 재요청 (빠른 줌 시 과부하 방지)
   useEffect(() => {
     if (!isVisible) return;
-    // 크기가 변경되면 기존 썸네일 리셋
-    if (lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize) {
-      setThumbnail(null);
-    }
+
+    const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize;
     lastThumbnailSizeRef.current = thumbnailSize;
 
-    const requestSize = thumbnailSize;
-    if (entry.file_type === 'image') {
-      invoke<string | null>('get_file_thumbnail', { path: entry.path, size: requestSize })
-        .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
-        .catch(() => {/* 썸네일 생성 실패 무시 */});
-    } else if (isPsd) {
-      invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: requestSize })
-        .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
-        .catch(() => {/* PSD 썸네일 생성 실패 무시 */});
-    } else if (entry.file_type === 'video') {
-      invoke<string | null>('get_video_thumbnail', { path: entry.path, size: requestSize })
-        .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
-        .catch(() => {/* 동영상 썸네일 생성 실패 무시 */});
-    }
+    // 크기 변경이 아닌 첫 로드는 즉시, 크기 변경은 디바운스
+    const delay = sizeChanged ? 300 : 0;
+
+    const timer = setTimeout(() => {
+      const requestSize = thumbnailSize;
+      if (entry.file_type === 'image') {
+        invoke<string | null>('get_file_thumbnail', { path: entry.path, size: requestSize })
+          .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
+          .catch(() => {/* 썸네일 생성 실패 무시 */});
+      } else if (isPsd) {
+        invoke<string | null>('get_psd_thumbnail', { path: entry.path, size: requestSize })
+          .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
+          .catch(() => {/* PSD 썸네일 생성 실패 무시 */});
+      } else if (entry.file_type === 'video') {
+        invoke<string | null>('get_video_thumbnail', { path: entry.path, size: requestSize })
+          .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
+          .catch(() => {/* 동영상 썸네일 생성 실패 무시 */});
+      }
+    }, delay);
+
+    return () => clearTimeout(timer);
   }, [isVisible, entry.file_type, entry.path, thumbnailSize, isPsd]);
 
   // 화면에 보일 때 이미지 규격 조회 (이미지 + PSD)

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-02-25
+
+### Fixed
+- **시스템 아이콘 확대 시 뿌옇게 표시**: 고정 해상도(128px)로 아이콘 요청 후 CSS 축소 방식으로 변경, 확대해도 항상 선명
+- **빠른 스크롤 줌 시 앱 종료**: 썸네일 재요청에 300ms 디바운스 추가, Rust 백엔드 과부하 방지
+
 ## [1.2.2] - 2026-02-25
 
 ### Fixed
