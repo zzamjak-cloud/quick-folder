@@ -806,7 +806,7 @@ async fn open_with_app(path: String, app: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
-            .args(["/c", "start", "", &path])
+            .args(["/c", "start", "", &app, &path])
             .spawn()
             .map_err(|e| format!("앱 실행 실패: {}", e))?;
     }
