@@ -1,13 +1,15 @@
 /**
  * Rust invoke 동시성 제한 큐
- * - 최대 MAX_CONCURRENT개만 동시 실행, 나머지는 대기
+ * - 프론트엔드: 최대 MAX_CONCURRENT개만 동시 Rust 호출
+ * - Rust 백엔드: HeavyOpPermit으로 추가 동시성 제한 (2개)
+ * - 대기 큐 최대 크기 제한: 넘치면 오래된 요청부터 자동 취소
  * - cancelAll()로 대기 중인 모든 요청 즉시 취소 (줌/디렉토리 이동 시)
- * - 실행 중인 요청은 완료될 때까지 유지 (Rust 측 취소 불가)
  */
 
 import { invoke } from '@tauri-apps/api/core';
 
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = 3;
+const MAX_QUEUE_SIZE = 20; // 대기 큐 최대 크기 (넘치면 오래된 것부터 취소)
 
 interface QueueItem {
   cmd: string;
@@ -67,9 +69,21 @@ export function queuedInvoke<T>(
     item.reject = reject;
   });
 
+  // reject을 캐치하여 uncaught rejection 방지
+  promise.catch(() => {});
+
   const cancel = () => {
     item.cancelled = true;
   };
+
+  // 대기 큐 크기 제한: 넘치면 가장 오래된 대기 요청 취소
+  while (queue.length >= MAX_QUEUE_SIZE) {
+    const oldest = queue.shift();
+    if (oldest) {
+      oldest.cancelled = true;
+      oldest.reject(new Error('queue overflow'));
+    }
+  }
 
   queue.push(item);
   processNext();
@@ -83,6 +97,7 @@ export function queuedInvoke<T>(
 export function cancelAllQueued(): void {
   for (const item of queue) {
     item.cancelled = true;
+    item.reject(new Error('cancelled'));
   }
   queue.length = 0;
 }

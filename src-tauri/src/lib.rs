@@ -78,20 +78,22 @@ async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
 // 이미지 규격 조회 (헤더만 읽어 빠르게 반환)
 #[tauri::command]
 fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String> {
+    use std::io::Read;
+
     let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
     let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd"];
     if !supported.contains(&ext.as_str()) {
         return Ok(None);
     }
     if ext == "psd" {
-        // PSD는 image::image_dimensions 미지원 → 바이트 파싱
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-        if bytes.len() < 26 {
+        // PSD 헤더에서 규격만 읽음 (26바이트만 필요, 전체 파일 로드 방지)
+        let mut buf = [0u8; 26];
+        let mut f = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+        if f.read_exact(&mut buf).is_err() {
             return Ok(None);
         }
-        // PSD 헤더: 시그니처(4) + 버전(2) + 예약(6) + 채널(2) + 높이(4) + 너비(4)
-        let h = u32::from_be_bytes([bytes[14], bytes[15], bytes[16], bytes[17]]);
-        let w = u32::from_be_bytes([bytes[18], bytes[19], bytes[20], bytes[21]]);
+        let h = u32::from_be_bytes([buf[14], buf[15], buf[16], buf[17]]);
+        let w = u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]);
         return Ok(Some((w, h)));
     }
     match image::image_dimensions(&path) {
@@ -101,6 +103,7 @@ fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String> {
 }
 
 // 이미지 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
+// HeavyOpPermit으로 동시 처리 수 제한 + catch_unwind로 패닉 방지
 #[tauri::command]
 fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
     use std::hash::{Hash, Hasher};
@@ -138,32 +141,42 @@ fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<
     std::fs::create_dir_all(&cache_dir).ok();
     let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    // 캐시 히트
+    // 캐시 히트 → 세마포어 불필요
     if cache_file.exists() {
         let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
         return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
     }
 
-    // 썸네일 생성
-    let img = image::open(&path).map_err(|e| e.to_string())?;
-    let thumb = img.thumbnail(size, size);
-    let mut buf = vec![];
-    thumb
-        .write_to(
-            &mut std::io::Cursor::new(&mut buf),
-            image::ImageFormat::Png,
-        )
-        .map_err(|e| e.to_string())?;
+    // 메모리 집약 작업: 동시성 제한 + 패닉 방지
+    let _permit = HeavyOpPermit::acquire();
 
-    // 디스크 캐시 저장
-    std::fs::write(&cache_file, &buf).ok();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let img = image::open(&path).map_err(|e| e.to_string())?;
+        let thumb = img.thumbnail(size, size);
+        let mut buf = vec![];
+        thumb
+            .write_to(
+                &mut std::io::Cursor::new(&mut buf),
+                image::ImageFormat::Png,
+            )
+            .map_err(|e| e.to_string())?;
 
-    Ok(Some(
-        base64::engine::general_purpose::STANDARD.encode(&buf),
-    ))
+        // 디스크 캐시 저장
+        std::fs::write(&cache_file, &buf).ok();
+
+        Ok(Some(
+            base64::engine::general_purpose::STANDARD.encode(&buf),
+        ))
+    }));
+
+    match result {
+        Ok(r) => r,
+        Err(_) => Ok(None), // 패닉 발생 시 안전하게 None 반환
+    }
 }
 
 // PSD 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
+// PSD는 전체 파일을 메모리에 로드하므로 동시성 제한 필수
 #[tauri::command]
 fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
     use std::hash::{Hash, Hasher};
@@ -194,35 +207,42 @@ fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<O
     std::fs::create_dir_all(&cache_dir).ok();
     let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    // 캐시 히트
+    // 캐시 히트 → 세마포어 불필요
     if cache_file.exists() {
         let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
         return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
     }
 
-    // PSD 파싱 → 합성 이미지 픽셀
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let psd = psd::Psd::from_bytes(&bytes).map_err(|e| format!("PSD 파싱 실패: {}", e))?;
+    // 메모리 집약 작업: 동시성 제한 + 패닉 방지
+    let _permit = HeavyOpPermit::acquire();
 
-    let rgba_pixels = psd.rgba();
-    let width = psd.width();
-    let height = psd.height();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let psd = psd::Psd::from_bytes(&bytes).map_err(|e| format!("PSD 파싱 실패: {}", e))?;
 
-    // image 크레이트로 리사이즈
-    let img = image::RgbaImage::from_raw(width, height, rgba_pixels)
-        .ok_or_else(|| "PSD 픽셀 변환 실패".to_string())?;
-    let dynamic = image::DynamicImage::ImageRgba8(img);
-    let thumb = dynamic.thumbnail(size, size);
+        let rgba_pixels = psd.rgba();
+        let width = psd.width();
+        let height = psd.height();
 
-    let mut buf = vec![];
-    thumb
-        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
+        let img = image::RgbaImage::from_raw(width, height, rgba_pixels)
+            .ok_or_else(|| "PSD 픽셀 변환 실패".to_string())?;
+        let dynamic = image::DynamicImage::ImageRgba8(img);
+        let thumb = dynamic.thumbnail(size, size);
 
-    // 디스크 캐시 저장
-    std::fs::write(&cache_file, &buf).ok();
+        let mut buf = vec![];
+        thumb
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
 
-    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&buf)))
+        std::fs::write(&cache_file, &buf).ok();
+
+        Ok(Some(base64::engine::general_purpose::STANDARD.encode(&buf)))
+    }));
+
+    match result {
+        Ok(r) => r,
+        Err(_) => Ok(None),
+    }
 }
 
 // 파일/폴더 복사 (재귀 지원)
@@ -382,9 +402,44 @@ async fn quick_look(path: String) -> Result<(), String> {
     Ok(())
 }
 
-// --- OS 네이티브 파일 아이콘 (확장자별 캐시) ---
-use std::sync::{OnceLock, Mutex};
+// --- 동시성 제한 (이미지 처리 메모리 폭주 방지) ---
+use std::sync::{OnceLock, Mutex, Condvar};
 use std::collections::HashMap;
+
+/// 동시 이미지/썸네일 처리 최대 개수
+/// 대용량 이미지(8K PNG, 100MB PSD)를 동시에 처리하면 수 GB 메모리 소모 → 크래시
+const MAX_HEAVY_OPS: usize = 2;
+
+fn heavy_op_guard() -> &'static (Mutex<usize>, Condvar) {
+    static GUARD: OnceLock<(Mutex<usize>, Condvar)> = OnceLock::new();
+    GUARD.get_or_init(|| (Mutex::new(0), Condvar::new()))
+}
+
+/// RAII 가드: 생성 시 슬롯 획득, 드롭 시 슬롯 반환
+struct HeavyOpPermit;
+
+impl HeavyOpPermit {
+    fn acquire() -> Self {
+        let (lock, cvar) = heavy_op_guard();
+        let mut count = lock.lock().unwrap();
+        while *count >= MAX_HEAVY_OPS {
+            count = cvar.wait(count).unwrap();
+        }
+        *count += 1;
+        HeavyOpPermit
+    }
+}
+
+impl Drop for HeavyOpPermit {
+    fn drop(&mut self) {
+        let (lock, cvar) = heavy_op_guard();
+        let mut count = lock.lock().unwrap();
+        *count -= 1;
+        cvar.notify_one();
+    }
+}
+
+// --- OS 네이티브 파일 아이콘 (확장자별 캐시) ---
 
 fn icon_cache() -> &'static Mutex<HashMap<String, String>> {
     static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
@@ -413,14 +468,16 @@ fn get_file_icon(path: String, size: u32) -> Result<Option<String>, String> {
         }
     }
 
-    // 플랫폼별 아이콘 추출
-    if let Some(bytes) = get_native_icon_bytes(&path, size) {
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        let mut cache = icon_cache().lock().map_err(|e| e.to_string())?;
-        cache.insert(cache_key, b64.clone());
-        Ok(Some(b64))
-    } else {
-        Ok(None)
+    // 플랫폼별 아이콘 추출 (동시성 제한 + 패닉 방지)
+    let _permit = HeavyOpPermit::acquire();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_native_icon_bytes(&path, size))) {
+        Ok(Some(bytes)) => {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let mut cache = icon_cache().lock().map_err(|e| e.to_string())?;
+            cache.insert(cache_key, b64.clone());
+            Ok(Some(b64))
+        }
+        _ => Ok(None),
     }
 }
 

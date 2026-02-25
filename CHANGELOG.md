@@ -5,12 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.6] - 2026-02-25
+## [1.2.7] - 2026-02-25
 
 ### Fixed
-- **대량 파일 표시 시 앱 크래시**: 썸네일/아이콘 Rust invoke 동시성 제한 큐 도입 (최대 4개)
-  - 줌 변경·디렉토리 이동 시 대기 큐 전체 취소, 개별 요청 자동 정리
-  - 이미지·PSD·동영상 썸네일 + 네이티브 아이콘 + 이미지 규격 조회 모두 큐 경유
+- **대량 이미지 파일 스크롤 시 앱 크래시**: 프론트엔드+Rust 이중 동시성 제한
+  - 프론트엔드: invoke 큐 (동시 3개, 대기 최대 20개, 초과 시 오래된 요청 자동 취소)
+  - Rust 백엔드: HeavyOpPermit 세마포어 (동시 2개) + catch_unwind 패닉 방지
+  - 줌 변경·디렉토리 이동 시 대기 큐 전체 취소
+  - PSD 규격 조회: 전체 파일 로드 → 헤더 26바이트만 읽기로 최적화
 
 ## [1.2.5] - 2026-02-25
 
