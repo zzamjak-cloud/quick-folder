@@ -5,9 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.2] - 2026-02-26
+## [1.4.0] - 2026-02-26
+
+### Added
+- **Ctrl+W 탭 닫기**: 현재 탭 닫기 단축키 추가
+- **Ctrl+Alt+W 다른 탭 모두 닫기**: 현재 탭만 남기고 나머지 탭 일괄 닫기
+- **같은 폴더 내 파일 복사**: Ctrl+C/V로 같은 폴더 내 복사 시 "(복사)" 접미사 자동 추가
+
+### Changed
+- **드래그앤드롭 전면 재설계**: 드래그 중 아이템 위치 고정, 파란색 인디케이터 라인만 표시, 드롭 시 즉시 이동
+- **세션↔즐겨찾기 드래그 분리**: 세션 드래그 시 즐겨찾기가 반응하지 않도록 충돌 감지 분리
+- **빈 카테고리 드롭 허용**: 즐겨찾기를 빈 카테고리로 드래그하여 이동 가능
 
 ### Fixed
+- **스페이스바 미리보기 토글**: 열린 미리보기가 스페이스바로 정상 닫힘 (깜빡임 버그 수정)
+- **접힌 카테고리 드롭 버그**: 접힌 카테고리 사이에서 즐겨찾기가 잘못된 위치로 이동하던 문제 수정
 - **네이티브 아이콘 복원**: .psd, .ai 등 기존 정상 표시되던 네이티브 아이콘 복원
 - **아이콘 폴백 범위 축소**: .md, .json, .sh만 lucide 아이콘 폴백 (나머지는 OS 네이티브 유지)
 

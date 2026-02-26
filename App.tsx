@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -36,7 +36,7 @@ import {
   rectSortingStrategy,
   useSortable
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+// CSS import 제거 - transform 미사용 (드래그 중 아이템 위치 고정)
 import { v4 as uuidv4 } from 'uuid';
 import { Category, FolderShortcut, ToastMessage } from './types';
 import { Button } from './components/ui/Button';
@@ -75,14 +75,12 @@ interface SortableShortcutItemProps {
   key?: React.Key;
 }
 
-function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCopyPath, deleteShortcut, openEditFolderModal }: SortableShortcutItemProps) {
+function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCopyPath, deleteShortcut, openEditFolderModal, showIndicatorBefore }: SortableShortcutItemProps & { showIndicatorBefore?: boolean }) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
-    transition,
-    isDragging
+    isDragging,
   } = useSortable({
     id: shortcut.id,
     data: {
@@ -93,8 +91,6 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
     opacity: isDragging ? 0.3 : 1,
   };
 
@@ -131,6 +127,13 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
   }, [menuOpen]);
 
   return (
+    <>
+      {/* 드롭 위치 인디케이터 (파란색 라인 - 아이템 사이 빈 공간) */}
+      {showIndicatorBefore && (
+        <li className="list-none py-[1px]">
+          <div className="h-[2px] rounded-full bg-[var(--qf-accent)]" />
+        </li>
+      )}
     <li
       ref={setNodeRef}
       style={style}
@@ -221,12 +224,24 @@ function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCo
         )}
       </div>
     </li>
+    </>
   );
 }
 
 // --- Category Component ---
+// 드롭 인디케이터 타입
+type DropIndicator = {
+  type: 'category';
+  index: number;       // 이 인덱스 앞에 라인 표시
+} | {
+  type: 'shortcut';
+  categoryId: string;  // 대상 카테고리
+  index: number;       // 이 인덱스 앞에 라인 표시
+};
+
 interface CategoryColumnProps {
   category: Category;
+  categoryIndex: number;
   toggleCollapse: (id: string) => void;
   handleAddFolder: (catId: string, path?: string, name?: string) => void;
   openEditCategoryModal: (cat: Category) => void;
@@ -236,11 +251,13 @@ interface CategoryColumnProps {
   deleteShortcut: (catId: string, sId: string) => void;
   openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
   searchQuery: string;
+  dropIndicator: DropIndicator | null;
   key?: React.Key;
 }
 
 function CategoryColumn({
   category,
+  categoryIndex,
   toggleCollapse,
   handleAddFolder,
   openEditCategoryModal,
@@ -249,16 +266,14 @@ function CategoryColumn({
   handleCopyPath,
   deleteShortcut,
   openEditFolderModal,
-  searchQuery
+  searchQuery,
+  dropIndicator,
 }: CategoryColumnProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
-    transition,
     isDragging,
-    isOver
   } = useSortable({
     id: category.id,
     data: {
@@ -269,8 +284,6 @@ function CategoryColumn({
   });
 
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
     opacity: isDragging ? 0.5 : 1,
     breakInside: 'avoid' as const,
     display: 'inline-block',
@@ -279,22 +292,35 @@ function CategoryColumn({
   };
 
   const isExpanded = !category.isCollapsed || searchQuery.length > 0;
+
+  // 카테고리 드롭 인디케이터: 이 카테고리 앞에 라인 표시
+  const showCategoryIndicator = dropIndicator?.type === 'category' && dropIndicator.index === categoryIndex;
   const categoryTitleHex =
     category.color?.startsWith('#')
       ? category.color
       : (category.color && (LEGACY_TEXT_CLASS_TO_HEX[category.color] || LEGACY_BG_CLASS_TO_HEX[category.color])) || '';
 
+  // 즐겨찾기 드롭 인디케이터: 이 카테고리의 어떤 인덱스 앞에 라인 표시
+  const shortcutIndicatorIndex = dropIndicator?.type === 'shortcut' && dropIndicator.categoryId === category.id
+    ? dropIndicator.index : -1;
+
   return (
     <SortableContext
       id={category.id}
-      items={category.shortcuts.map(s => s.id)}
+      items={isExpanded ? category.shortcuts.map(s => s.id) : []}
       strategy={verticalListSortingStrategy}
     >
+      {/* 카테고리 드롭 인디케이터 (세션 사이 파란색 라인) */}
+      {showCategoryIndicator && (
+        <div style={{ breakInside: 'avoid', display: 'inline-block', width: '100%', marginTop: '0.75rem' }}>
+          <div className="h-[2px] rounded-full bg-[var(--qf-accent)] mx-1" />
+        </div>
+      )}
       <div
         ref={setNodeRef}
         style={style}
         data-category-id={category.id}
-        className={`border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full bg-[var(--qf-surface)] border-[var(--qf-border)] ${isOver ? 'border-[var(--qf-accent-50)] bg-[var(--qf-surface-2)]' : 'hover:border-[var(--qf-border)]'} ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
+        className={`border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full bg-[var(--qf-surface)] border-[var(--qf-border)] hover:border-[var(--qf-border)] ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
       >
         <div
           className={`px-2.5 py-1.5 border-b flex items-center justify-between bg-[var(--qf-surface-2)] border-[var(--qf-border)] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
@@ -349,7 +375,7 @@ function CategoryColumn({
               </div>
             ) : (
               <ul className="space-y-1 min-h-[50px]">
-                {category.shortcuts.map(shortcut => (
+                {category.shortcuts.map((shortcut, idx) => (
                   <SortableShortcutItem
                     key={shortcut.id}
                     shortcut={shortcut}
@@ -358,8 +384,15 @@ function CategoryColumn({
                     handleCopyPath={handleCopyPath}
                     deleteShortcut={deleteShortcut}
                     openEditFolderModal={openEditFolderModal}
+                    showIndicatorBefore={shortcutIndicatorIndex === idx}
                   />
                 ))}
+                {/* 마지막 위치 인디케이터 */}
+                {shortcutIndicatorIndex === category.shortcuts.length && (
+                  <li className="list-none py-[1px]">
+                    <div className="h-[2px] rounded-full bg-[var(--qf-accent)]" />
+                  </li>
+                )}
               </ul>
             )}
           </div>
@@ -589,107 +622,174 @@ export default function App() {
 
   // --- DnD ---
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null);
+  const dropIndicatorRef = useRef<DropIndicator | null>(null);
+  // 충돌 감지에서 접힌 카테고리를 필터하기 위한 ref
+  const categoriesRef = useRef(categories);
+  categoriesRef.current = categories;
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // 충돌 감지: 카테고리↔카테고리, 즐겨찾기↔즐겨찾기+빈카테고리 분리
   const customCollisionDetection: CollisionDetection = useCallback((args) => {
     const activeType = args.active?.data?.current?.type;
-    if (activeType === 'Category') return rectIntersection(args);
-    return closestCenter(args);
+    if (activeType === 'Category') {
+      // 카테고리 드래그: 카테고리만 충돌 대상
+      const catContainers = args.droppableContainers.filter(
+        c => c.data.current?.type === 'Category'
+      );
+      return closestCenter({ ...args, droppableContainers: catContainers });
+    }
+    // 즐겨찾기 드래그: 즐겨찾기 아이템 + 열린 카테고리 컨테이너(빈 카테고리 드롭용)
+    const validContainers = args.droppableContainers.filter(c => {
+      const cType = c.data.current?.type;
+      if (cType === 'Shortcut') {
+        // 접힌 카테고리 내부 아이템 제외
+        const catId = c.data.current?.categoryId as string | undefined;
+        if (catId) {
+          const cat = categoriesRef.current.find(ct => ct.id === catId);
+          if (cat?.isCollapsed) return false;
+        }
+        return true;
+      }
+      // 카테고리 컨테이너: 열린 상태 + 빈 카테고리만 허용 (빈 곳에 즐겨찾기 드롭용)
+      if (cType === 'Category') {
+        const cat = categoriesRef.current.find(ct => ct.id === c.id);
+        if (cat && !cat.isCollapsed && cat.shortcuts.length === 0) return true;
+      }
+      return false;
+    });
+    return closestCenter({ ...args, droppableContainers: validContainers });
   }, []);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
+    setDropIndicator(null);
+    dropIndicatorRef.current = null;
   }, []);
 
+  // handleDragOver: 인디케이터 위치만 계산 (실제 이동 없음)
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
-    if (!over) return;
-    if (active.data.current?.type === 'Category') return;
-
-    const activeSectionId = active.data.current?.categoryId as string | undefined;
-    const overSectionId = (over.data.current?.categoryId ?? over.id) as string;
-    if (!activeSectionId || !overSectionId) return;
-
-    if (activeSectionId === overSectionId) {
-      if (over.id === overSectionId) return;
-      setCategories(prev => {
-        const catIdx = prev.findIndex(c => c.id === activeSectionId);
-        if (catIdx === -1) return prev;
-        const activeIdx = prev[catIdx].shortcuts.findIndex(s => s.id === active.id);
-        const overIdx = prev[catIdx].shortcuts.findIndex(s => s.id === over.id);
-        if (activeIdx === -1 || overIdx === -1 || activeIdx === overIdx) return prev;
-        const updated = [...prev];
-        updated[catIdx] = {
-          ...updated[catIdx],
-          shortcuts: arrayMove(updated[catIdx].shortcuts, activeIdx, overIdx),
-        };
-        return updated;
-      });
+    if (!over) {
+      setDropIndicator(null);
+      dropIndicatorRef.current = null;
       return;
     }
 
-    setCategories((prev) => {
-      const activeCategory = prev.find((c) => c.id === activeSectionId);
-      const overCategory = prev.find((c) => c.id === overSectionId);
-      if (!activeCategory || !overCategory) return prev;
-
-      const activeItems = activeCategory.shortcuts;
-      const overItems = overCategory.shortcuts;
-      const activeIndex = activeItems.findIndex((i) => i.id === active.id);
-      const overIndex = overItems.findIndex((i) => i.id === over.id);
-
-      let newIndex: number;
-      if (over.id === overSectionId) {
-        newIndex = overItems.length + 1;
-      } else {
-        const isBelowOverItem =
-          over &&
-          active.rect.current.translated &&
-          active.rect.current.translated.top > over.rect.top + over.rect.height;
-        const modifier = isBelowOverItem ? 1 : 0;
-        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
-      }
-
-      return prev.map((c) => {
-        if (c.id === activeSectionId) {
-          return { ...c, shortcuts: c.shortcuts.filter((item) => item.id !== active.id) };
-        } else if (c.id === overSectionId) {
-          return {
-            ...c,
-            shortcuts: [
-              ...c.shortcuts.slice(0, newIndex),
-              activeItems[activeIndex],
-              ...c.shortcuts.slice(newIndex),
-            ],
-          };
-        }
-        return c;
-      });
-    });
-  }, [setCategories]);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) { setActiveId(null); return; }
-
     const activeType = active.data.current?.type;
-    const overType = over.data.current?.type;
 
-    if (activeType === 'Category' && overType === 'Category') {
-      setCategories((prev) => {
-        const activeIndex = prev.findIndex((c) => c.id === active.id);
-        const overIndex = prev.findIndex((c) => c.id === over.id);
-        if (activeIndex !== overIndex) {
-          return arrayMove(prev, activeIndex, overIndex);
-        }
-        return prev;
-      });
+    if (activeType === 'Category') {
+      // 카테고리 드래그: 카테고리 사이 위치 계산
+      if (over.data.current?.type !== 'Category') {
+        setDropIndicator(null);
+        dropIndicatorRef.current = null;
+        return;
+      }
+      const cats = categoriesRef.current;
+      const activeIdx = cats.findIndex(c => c.id === active.id);
+      const overIdx = cats.findIndex(c => c.id === over.id);
+      if (overIdx === -1 || activeIdx === overIdx) {
+        setDropIndicator(null);
+        dropIndicatorRef.current = null;
+        return;
+      }
+      // 드래그 중인 항목보다 뒤에 있으면 → 뒤에 삽입, 앞에 있으면 → 앞에 삽입
+      const insertIdx = overIdx > activeIdx ? overIdx + 1 : overIdx;
+      const indicator: DropIndicator = { type: 'category', index: insertIdx };
+      setDropIndicator(indicator);
+      dropIndicatorRef.current = indicator;
+      return;
     }
 
+    // 즐겨찾기 드래그
+    let overCatId: string;
+    if (over.data.current?.type === 'Category') {
+      // 빈 카테고리 위에 드롭 (충돌 감지에서 빈 카테고리 허용)
+      overCatId = over.id as string;
+    } else {
+      overCatId = (over.data.current?.categoryId ?? over.id) as string;
+    }
+    const overCat = categoriesRef.current.find(c => c.id === overCatId);
+    // 접힌 카테고리는 드롭 불가
+    if (!overCat || overCat.isCollapsed) {
+      setDropIndicator(null);
+      dropIndicatorRef.current = null;
+      return;
+    }
+
+    if (over.data.current?.type === 'Shortcut') {
+      const overIdx = overCat.shortcuts.findIndex(s => s.id === over.id);
+      const isBelowCenter = active.rect.current.translated &&
+        active.rect.current.translated.top > over.rect.top + over.rect.height / 2;
+      const insertIdx = isBelowCenter ? overIdx + 1 : overIdx;
+      const indicator: DropIndicator = { type: 'shortcut', categoryId: overCatId, index: insertIdx };
+      setDropIndicator(indicator);
+      dropIndicatorRef.current = indicator;
+    } else {
+      // 카테고리 빈 영역: 마지막에 추가
+      const indicator: DropIndicator = { type: 'shortcut', categoryId: overCatId, index: overCat.shortcuts.length };
+      setDropIndicator(indicator);
+      dropIndicatorRef.current = indicator;
+    }
+  }, []);
+
+  // handleDragEnd: 인디케이터 위치 기반 실제 이동
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active } = event;
+    const indicator = dropIndicatorRef.current;
     setActiveId(null);
+    setDropIndicator(null);
+    dropIndicatorRef.current = null;
+
+    if (!indicator) return;
+
+    if (indicator.type === 'category') {
+      // 카테고리 순서 변경
+      setCategories(prev => {
+        const activeIdx = prev.findIndex(c => c.id === active.id);
+        if (activeIdx === -1) return prev;
+        let toIdx = indicator.index;
+        if (activeIdx < toIdx) toIdx -= 1;
+        if (activeIdx === toIdx) return prev;
+        return arrayMove(prev, activeIdx, toIdx);
+      });
+    } else {
+      // 즐겨찾기 이동
+      const activeCatId = active.data.current?.categoryId as string;
+      const targetCatId = indicator.categoryId;
+      const insertIdx = indicator.index;
+
+      setCategories(prev => {
+        const srcIdx = prev.findIndex(c => c.id === activeCatId);
+        const tgtIdx = prev.findIndex(c => c.id === targetCatId);
+        if (srcIdx === -1 || tgtIdx === -1) return prev;
+
+        const shortcut = prev[srcIdx].shortcuts.find(s => s.id === active.id);
+        if (!shortcut) return prev;
+
+        const updated = prev.map(c => ({ ...c, shortcuts: [...c.shortcuts] }));
+
+        // 원본에서 제거
+        const srcShortcuts = updated[srcIdx].shortcuts;
+        const removeIdx = srcShortcuts.findIndex(s => s.id === active.id);
+        if (removeIdx === -1) return prev;
+        srcShortcuts.splice(removeIdx, 1);
+
+        // 삽입 인덱스 조정 (같은 카테고리에서 앞에서 제거된 경우)
+        let adjustedIdx = insertIdx;
+        if (srcIdx === tgtIdx && removeIdx < insertIdx) {
+          adjustedIdx -= 1;
+        }
+
+        // 대상에 삽입
+        updated[tgtIdx].shortcuts.splice(adjustedIdx, 0, shortcut);
+        return updated;
+      });
+    }
   }, [setCategories]);
 
   // --- 필터 ---
@@ -810,10 +910,11 @@ export default function App() {
                       marginTop: '-0.75rem',
                     }}
                   >
-                  {filteredCategories.map(category => (
+                  {filteredCategories.map((category, idx) => (
                     <CategoryColumn
                       key={category.id}
                       category={category}
+                      categoryIndex={idx}
                       toggleCollapse={catMgmt.toggleCollapse}
                       handleAddFolder={catMgmt.handleAddFolder}
                       openEditCategoryModal={catMgmt.openEditCategoryModal}
@@ -823,6 +924,7 @@ export default function App() {
                       deleteShortcut={catMgmt.deleteShortcut}
                       openEditFolderModal={catMgmt.openEditFolderModal}
                       searchQuery={searchQuery}
+                      dropIndicator={dropIndicator}
                     />
                   ))}
 

@@ -262,7 +262,7 @@ fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<O
     }
 }
 
-// 파일/폴더 복사 (재귀 지원)
+// 파일/폴더 복사 (재귀 지원, 같은 폴더 내 복사 시 충돌 방지)
 #[tauri::command]
 async fn copy_items(sources: Vec<String>, dest: String) -> Result<(), String> {
     for source in &sources {
@@ -270,7 +270,29 @@ async fn copy_items(sources: Vec<String>, dest: String) -> Result<(), String> {
         let file_name = src_path
             .file_name()
             .ok_or_else(|| format!("잘못된 경로: {}", source))?;
-        let dest_path = std::path::Path::new(&dest).join(file_name);
+        let mut dest_path = std::path::Path::new(&dest).join(file_name);
+
+        // 같은 경로 충돌 시 "(복사)", "(복사 2)" 접미사 추가
+        if dest_path.exists() && dest_path.canonicalize().ok() == src_path.canonicalize().ok() {
+            let stem = src_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let ext = src_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+            let is_dir = src_path.is_dir();
+            if is_dir {
+                dest_path = std::path::Path::new(&dest).join(format!("{} (복사)", stem));
+                let mut counter = 2u32;
+                while dest_path.exists() {
+                    dest_path = std::path::Path::new(&dest).join(format!("{} (복사 {})", stem, counter));
+                    counter += 1;
+                }
+            } else {
+                dest_path = std::path::Path::new(&dest).join(format!("{} (복사){}", stem, ext));
+                let mut counter = 2u32;
+                while dest_path.exists() {
+                    dest_path = std::path::Path::new(&dest).join(format!("{} (복사 {}){}", stem, counter, ext));
+                    counter += 1;
+                }
+            }
+        }
 
         if src_path.is_dir() {
             copy_dir_recursive(src_path, &dest_path)?;

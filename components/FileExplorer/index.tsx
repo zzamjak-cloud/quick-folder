@@ -547,6 +547,20 @@ export default function FileExplorer({
       const isMac = navigator.platform.startsWith('Mac');
 
       // --- 탭 단축키 ---
+      // Ctrl+W: 현재 탭 닫기
+      if (ctrl && !e.altKey && e.key === 'w') {
+        e.preventDefault();
+        if (tabs.length > 1 && activeTabId) handleTabClose(activeTabId);
+        return;
+      }
+      // Ctrl+Alt+W: 현재 탭만 남기고 나머지 모두 닫기
+      if (ctrl && e.altKey && e.key === 'w') {
+        e.preventDefault();
+        if (tabs.length > 1 && activeTabId) {
+          setTabs(prev => prev.filter(t => t.id === activeTabId));
+        }
+        return;
+      }
       // Ctrl+T: 현재 탭 복제
       if (ctrl && e.key === 't') {
         e.preventDefault();
@@ -643,15 +657,17 @@ export default function FileExplorer({
       }
 
       // --- Quick Look / 미리보기 (Spacebar 토글) ---
-      if (e.key === ' ' && selectedPaths.length === 1) {
+      if (e.key === ' ') {
         e.preventDefault();
-        // 미리보기가 이미 열려있으면 닫기 (토글)
+        // 미리보기가 이미 열려있으면 닫기만 수행 (토글)
         if (previewImagePath || videoPlayerPath || previewTextPath) {
           setPreviewImagePath(null); setPreviewImageData(null);
           setVideoPlayerPath(null);
           setPreviewTextPath(null); setPreviewTextContent(null);
           return;
         }
+        // 선택된 파일이 하나일 때만 미리보기 열기
+        if (selectedPaths.length !== 1) return;
         const entry = entries.find(en => en.path === selectedPaths[0]);
         if (!entry) return;
 
@@ -751,8 +767,9 @@ export default function FileExplorer({
     handleCreateDirectory, handleRenameStart, handleDelete,
     goBack, goForward, goUp, selectedPaths, entries, openEntry,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
-    tabs, activeTabId, activeTab, handleTabSelect,
+    tabs, activeTabId, activeTab, handleTabSelect, handleTabClose,
     handlePreviewImage, handlePreviewText,
+    previewImagePath, videoPlayerPath, previewTextPath,
   ]);
 
   // --- 창 포커스 시 현재 디렉토리 자동 새로고침 ---
