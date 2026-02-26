@@ -772,18 +772,31 @@ export default function FileExplorer({
     previewImagePath, videoPlayerPath, previewTextPath,
   ]);
 
-  // --- 창 포커스 시 현재 디렉토리 자동 새로고침 ---
+  // --- 창 포커스 시 변경 감지 후 조건부 새로고침 ---
+  // 파일이 변경되지 않았으면 리렌더링 하지 않아 깜빡임 방지
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     const handleFocus = () => {
-      if (currentPath && !renamingPath) {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => loadDirectory(currentPath), 300);
-      }
+      if (!currentPath || renamingPath) return;
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(async () => {
+        try {
+          const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+          const sorted = sortEntries(result, sortBy, sortDir);
+          const prev = entriesRef.current;
+          // 파일 목록이 동일하면 업데이트 스킵 (깜빡임 방지)
+          if (prev.length === sorted.length && prev.every((e, i) =>
+            e.path === sorted[i].path && e.modified === sorted[i].modified && e.size === sorted[i].size
+          )) return;
+          setEntries(sorted);
+        } catch { /* 무시 */ }
+      }, 300);
     };
     window.addEventListener('focus', handleFocus);
     return () => { window.removeEventListener('focus', handleFocus); clearTimeout(timeoutId); };
-  }, [currentPath, loadDirectory, renamingPath]);
+  }, [currentPath, renamingPath, sortBy, sortDir]);
 
   // --- 다른 패널에서 파일 이동 시 새로고침 ---
   useEffect(() => {

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-02-27
+
+### Fixed
+- **창 포커스 깜빡임 방지**: 다른 앱에서 돌아올 때 불필요한 리렌더링 제거 (파일 변경 감지 후 조건부 갱신)
+
 ## [1.4.0] - 2026-02-26
 
 ### Added
