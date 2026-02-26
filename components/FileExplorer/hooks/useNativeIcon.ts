@@ -14,19 +14,13 @@ function getCacheKey(isDir: boolean, name: string): string {
   return ext;
 }
 
-// 네이티브 아이콘 대신 lucide 아이콘을 사용할 확장자 목록
-// (OS 네이티브 아이콘이 부정확하거나 너무 작게 표시되는 경우)
-const SKIP_NATIVE_EXTS = new Set([
-  'md', 'json', 'sh', 'psd', 'ai', 'gslides', 'unitypackage',
-  // code 타입 확장자 - lucide FileCode 아이콘 사용
-  'rs', 'js', 'ts', 'tsx', 'jsx', 'py', 'go', 'java', 'c', 'cpp', 'h',
-  'css', 'html', 'toml', 'yaml', 'yml',
-]);
+// 네이티브 아이콘이 부정확하게 표시되는 확장자만 lucide 폴백
+const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh']);
 
 /**
  * OS 네이티브 파일 아이콘 훅 (확장자별 캐시)
  * 이미지(jpg/png 등)는 썸네일을 사용하므로 건너뜀
- * SKIP_NATIVE_EXTS에 포함된 확장자는 lucide 아이콘으로 폴백
+ * PSD는 썸네일 기능 제거로 네이티브 아이콘 표시 대상에 포함
  */
 export function useNativeIcon(
   entry: FileEntry,

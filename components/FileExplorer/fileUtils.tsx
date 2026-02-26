@@ -1,8 +1,5 @@
 import React from 'react';
-import {
-  Folder, File, FileImage, FileVideo, FileText, FileCode, Archive,
-  Presentation, FileType2, Pen, Download, Box, FileDown,
-} from 'lucide-react';
+import { Folder, File, FileImage, FileVideo, FileText, FileCode, Archive } from 'lucide-react';
 
 // 파일명에서 확장자 추출 (소문자)
 function getExt(fileName?: string): string {
@@ -11,26 +8,19 @@ function getExt(fileName?: string): string {
   return dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
 }
 
-// 확장자별 전용 아이콘 매핑
+// 네이티브 아이콘이 안 나오는 확장자만 lucide 아이콘 폴백 매핑
+// (이 확장자들은 useNativeIcon의 SKIP_NATIVE_EXTS에도 등록됨)
 const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> = {
-  psd: FileImage,        // Adobe PSD
-  ai: Pen,               // Adobe Illustrator
-  pdf: FileDown,         // PDF 문서
-  gslides: Presentation, // Google Slides
-  exe: Download,         // 실행/설치 파일
-  unitypackage: Box,     // Unity 패키지
-  md: FileType2,         // 마크다운
+  md: FileText,          // 마크다운 → 문서 아이콘
+  json: FileCode,        // JSON → 코드 아이콘
+  sh: FileCode,          // 셸 스크립트 → 코드 아이콘
 };
 
-// 확장자별 전용 색상 매핑
+// 확장자별 전용 색상 (네이티브 아이콘 skip 대상만)
 const EXT_COLOR: Record<string, string> = {
-  psd: '#a855f7',        // Adobe 퍼플
-  ai: '#ff7c00',         // Adobe Illustrator 오렌지
-  pdf: '#ef4444',        // PDF 레드
-  gslides: '#fbbf24',    // Google Slides 옐로
-  exe: '#60a5fa',        // 설치 파일 블루
-  unitypackage: '#94a3b8', // Unity 그레이
   md: '#94a3b8',         // 마크다운 그레이
+  json: '#fbbf24',       // JSON 옐로
+  sh: '#22d3ee',         // 셸 스크립트 시안
 };
 
 // 파일 타입별 아이콘 컴포넌트

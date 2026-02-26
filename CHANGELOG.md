@@ -5,13 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-02-26
+
+### Fixed
+- **네이티브 아이콘 복원**: .psd, .ai 등 기존 정상 표시되던 네이티브 아이콘 복원
+- **아이콘 폴백 범위 축소**: .md, .json, .sh만 lucide 아이콘 폴백 (나머지는 OS 네이티브 유지)
+
 ## [1.3.1] - 2026-02-26
 
 ### Added
 - **스페이스바 미리보기 토글**: 스페이스바로 미리보기 열기/닫기 전환 가능
 
 ### Changed
-- **아이콘 폴백 개선**: .md, .json, .sh 등 네이티브 아이콘이 부정확한 확장자는 lucide 아이콘으로 폴백
 - **터치패드 핀치 줌 방지**: macOS 터치패드 핀치 제스처로 의도치 않은 썸네일 확대/축소 차단
 
 ## [1.3.0] - 2026-02-26
