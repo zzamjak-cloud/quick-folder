@@ -1088,7 +1088,7 @@ fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
 fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
     use winapi::um::winuser::{OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData, CF_HDROP};
     use winapi::um::winbase::{GlobalAlloc, GlobalLock, GlobalUnlock, GlobalFree, GMEM_MOVEABLE, GMEM_ZEROINIT};
-    use winapi::um::shellapi::DROPFILES;
+    use winapi::um::shlobj::DROPFILES;
     use std::mem;
     use std::ptr;
 
