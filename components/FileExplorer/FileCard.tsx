@@ -107,7 +107,7 @@ export default memo(function FileCard({
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, entry.file_type, entry.path, thumbnailSize, isPsd]);
+  }, [isVisible, entry.file_type, entry.path, entry.modified, thumbnailSize, isPsd]);
 
   // 화면에 보일 때 이미지 규격 조회 (이미지만, PSD 제외 - 성능)
   useEffect(() => {
