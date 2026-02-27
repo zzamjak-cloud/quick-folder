@@ -428,9 +428,18 @@ export default function FileExplorer({
         action = clipboard.action;
       } else {
         const osPaths = await invoke<string[]>('read_files_from_clipboard');
-        if (!osPaths || osPaths.length === 0) return;
-        paths = osPaths;
-        action = 'copy'; // 외부에서 복사한 파일은 항상 copy
+        if (osPaths && osPaths.length > 0) {
+          paths = osPaths;
+          action = 'copy'; // 외부에서 복사한 파일은 항상 copy
+        } else {
+          // 파일 경로 없으면 이미지 데이터 붙여넣기 시도
+          const savedPath = await invoke<string | null>('paste_image_from_clipboard', { destDir: currentPath });
+          if (savedPath) {
+            loadDirectory(currentPath);
+            setSelectedPaths([savedPath]);
+          }
+          return;
+        }
       }
 
       if (action === 'copy') {

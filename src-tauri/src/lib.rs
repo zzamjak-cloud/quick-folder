@@ -1218,6 +1218,44 @@ fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
     Ok(vec![])
 }
 
+// 클립보드 이미지 데이터를 PNG 파일로 저장
+#[tauri::command]
+fn paste_image_from_clipboard(dest_dir: String) -> Result<Option<String>, String> {
+    use arboard::Clipboard;
+
+    let mut clip = Clipboard::new().map_err(|e| format!("클립보드 접근 실패: {}", e))?;
+    let img = match clip.get_image() {
+        Ok(img) => img,
+        Err(_) => return Ok(None), // 이미지 데이터 없음
+    };
+
+    // 고유 파일명 생성
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let sep = if dest_dir.contains('\\') { "\\" } else { "/" };
+    let mut file_path = format!("{}{}clipboard_{}.png", dest_dir, sep, timestamp);
+
+    // 동일 파일명 존재 시 번호 추가
+    let mut counter = 1;
+    while std::path::Path::new(&file_path).exists() {
+        file_path = format!("{}{}clipboard_{}_{}.png", dest_dir, sep, timestamp, counter);
+        counter += 1;
+    }
+
+    // RGBA → PNG 저장
+    let width = img.width as u32;
+    let height = img.height as u32;
+    let rgba_data: Vec<u8> = img.bytes.into_owned();
+    let img_buf: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+        image::ImageBuffer::from_raw(width, height, rgba_data)
+            .ok_or("이미지 버퍼 생성 실패")?;
+    img_buf.save(&file_path).map_err(|e| format!("이미지 저장 실패: {}", e))?;
+
+    Ok(Some(file_path))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -1250,6 +1288,7 @@ pub fn run() {
         read_text_file,
         write_files_to_clipboard,
         read_files_from_clipboard,
+        paste_image_from_clipboard,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
