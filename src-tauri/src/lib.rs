@@ -1088,9 +1088,18 @@ fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
 fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
     use winapi::um::winuser::{OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData, CF_HDROP};
     use winapi::um::winbase::{GlobalAlloc, GlobalLock, GlobalUnlock, GlobalFree, GMEM_MOVEABLE, GMEM_ZEROINIT};
-    use winapi::um::shlobj::DROPFILES;
     use std::mem;
     use std::ptr;
+
+    // winapi 크레이트에 DROPFILES가 없어서 직접 정의
+    #[repr(C)]
+    struct DROPFILES {
+        pFiles: u32,
+        pt_x: i32,
+        pt_y: i32,
+        fNC: i32,
+        fWide: i32,
+    }
 
     // 경로를 UTF-16 null 종료 문자열로 변환
     let wide_paths: Vec<Vec<u16>> = paths.iter()
