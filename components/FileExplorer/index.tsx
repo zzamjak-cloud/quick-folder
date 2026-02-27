@@ -66,6 +66,7 @@ export default function FileExplorer({
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'details'>('grid');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const selectionAnchorRef = useRef<number>(-1); // Shift 선택 시작점
 
   // --- 탭 상태 (localStorage 영속) ---
   const [tabs, setTabs] = useState<Tab[]>(() => {
@@ -848,7 +849,17 @@ export default function FileExplorer({
 
         if (next < 0) next = 0;
         setFocusedIndex(next);
-        setSelectedPaths([entries[next].path]);
+
+        if (e.shiftKey) {
+          // Shift+방향키: 앵커~이동 위치까지 범위 선택 (반대 방향 이동 시 축소)
+          if (selectionAnchorRef.current < 0) selectionAnchorRef.current = current;
+          const from = Math.min(selectionAnchorRef.current, next);
+          const to = Math.max(selectionAnchorRef.current, next);
+          setSelectedPaths(entries.slice(from, to + 1).map(e => e.path));
+        } else {
+          selectionAnchorRef.current = -1;
+          setSelectedPaths([entries[next].path]);
+        }
         return;
       }
     };
