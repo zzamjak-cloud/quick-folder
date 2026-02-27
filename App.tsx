@@ -38,7 +38,7 @@ import {
 } from '@dnd-kit/sortable';
 // CSS import 제거 - transform 미사용 (드래그 중 아이템 위치 고정)
 import { v4 as uuidv4 } from 'uuid';
-import { Category, FolderShortcut, ToastMessage } from './types';
+import { Category, FolderShortcut, ToastMessage, ClipboardData } from './types';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
@@ -449,6 +449,8 @@ export default function App() {
   });
   const [explorerPath2, setExplorerPath2] = useState('');
   const [focusedPane, setFocusedPane] = useState<0 | 1>(0);
+  // 분할 뷰에서 두 패널이 클립보드를 공유
+  const [sharedClipboard, setSharedClipboard] = useState<ClipboardData | null>(null);
   const [splitRatio, setSplitRatio] = useState(() => {
     const saved = localStorage.getItem('qf_split_ratio');
     return saved ? Number(saved) : 0.5;
@@ -1014,6 +1016,8 @@ export default function App() {
               onPathChange={setExplorerPath}
               onAddToFavorites={handleAddFavoriteFromExplorer}
               themeVars={themeVars}
+              sharedClipboard={sharedClipboard}
+              onClipboardChange={setSharedClipboard}
             />
           </div>
 
@@ -1048,6 +1052,8 @@ export default function App() {
                   onPathChange={setExplorerPath2}
                   onAddToFavorites={handleAddFavoriteFromExplorer}
                   themeVars={themeVars}
+                  sharedClipboard={sharedClipboard}
+                  onClipboardChange={setSharedClipboard}
                 />
               </div>
             </>

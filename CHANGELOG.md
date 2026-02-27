@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-02-27
+
+### Added
+- **OS 클립보드 통합**: Ctrl+C로 복사한 파일을 Finder/탐색기/Google Drive에서 Ctrl+V로 붙여넣기 가능 (양방향)
+- **박스 드래그 선택**: 빈 영역에서 드래그하여 여러 파일 선택 (Ctrl+드래그로 추가 선택)
+- **기술 문서 전면 업데이트**: project_documentation.md를 v1.4.2 기준으로 재작성
+
+### Fixed
+- **F2 이름변경 후 Enter 폴더 진입 방지**: 이름변경 확정(Enter) 시 폴더에 진입하지 않도록 이벤트 전파 차단
+- **이름변경 후 선택 유지**: F2 이름변경 완료 후 변경된 파일이 선택 상태 유지
+- **분할 화면 클립보드 공유**: 분할 뷰에서 패널 간 복사/붙여넣기가 정상 동작하도록 클립보드 상태 공유
+- **키보드-마우스 포커스 동기화**: 마우스 클릭 후 키보드 방향키가 클릭한 위치에서 시작
+- **터치패드 썸네일 크기 조정 차단**: 터치패드 스크롤로 인한 의도치 않은 썸네일 크기 변경 완전 차단
+
 ## [1.4.1] - 2026-02-27
 
 ### Fixed

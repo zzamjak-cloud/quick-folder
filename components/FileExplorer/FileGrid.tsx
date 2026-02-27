@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FileEntry, ThumbnailSize, ClipboardData } from '../../types';
 import { ThemeVars } from './types';
@@ -22,6 +22,7 @@ interface FileGridProps {
   dropTargetPath: string | null;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
+  onSelectPaths: (paths: string[]) => void;
   onDeselectAll: () => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -266,17 +267,107 @@ export default function FileGrid({
   dropTargetPath,
   onDragMouseDown,
   onSelect,
+  onSelectPaths,
   onDeselectAll,
   onOpen,
   onContextMenu,
   onRenameCommit,
   themeVars,
 }: FileGridProps) {
-  // 컨테이너 클릭 시 선택 해제 (파일 요소가 아닌 경우)
-  const handleContainerClick = (e: React.MouseEvent) => {
+
+  // --- 박스 드래그 선택 ---
+  const dragState = useRef<{
+    origin: { x: number; y: number };
+    isActive: boolean;
+    ctrlHeld: boolean;
+    prevSelection: string[];
+  } | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{
+    left: number; top: number; width: number; height: number;
+  } | null>(null);
+  const skipNextClick = useRef(false);
+
+  // 콜백 ref (이벤트 핸들러에서 최신 값 접근)
+  const onSelectPathsRef = useRef(onSelectPaths);
+  onSelectPathsRef.current = onSelectPaths;
+
+  // 박스 드래그 window 이벤트 리스너
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const state = dragState.current;
+      if (!state) return;
+
+      const dx = e.clientX - state.origin.x;
+      const dy = e.clientY - state.origin.y;
+      // 5px 이상 이동해야 박스 드래그로 인식
+      if (!state.isActive && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+
+      state.isActive = true;
+      skipNextClick.current = true;
+
+      const left = Math.min(state.origin.x, e.clientX);
+      const top = Math.min(state.origin.y, e.clientY);
+      const width = Math.abs(dx);
+      const height = Math.abs(dy);
+      setSelectionBox({ left, top, width, height });
+
+      // 파일 카드와 교차 판정 (일부만 겹쳐도 선택)
+      const container = gridRef.current;
+      if (!container) return;
+      const fileElements = container.querySelectorAll('[data-file-path]');
+      const intersected: string[] = [];
+      fileElements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        if (rect.right > left && rect.left < left + width &&
+            rect.bottom > top && rect.top < top + height) {
+          const path = el.getAttribute('data-file-path');
+          if (path) intersected.push(path);
+        }
+      });
+
+      // Ctrl 누른 채 드래그 시 기존 선택에 추가
+      const newSelection = state.ctrlHeld
+        ? [...new Set([...state.prevSelection, ...intersected])]
+        : intersected;
+      onSelectPathsRef.current(newSelection);
+    };
+
+    const handleMouseUp = () => {
+      if (!dragState.current) return;
+      dragState.current = null;
+      setSelectionBox(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [gridRef]);
+
+  // 빈 영역 mousedown → 박스 드래그 시작
+  const handleContainerMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-file-path]')) return;
+    if (e.button !== 0) return; // 왼쪽 버튼만
+    dragState.current = {
+      origin: { x: e.clientX, y: e.clientY },
+      isActive: false,
+      ctrlHeld: e.ctrlKey || e.metaKey,
+      prevSelection: (e.ctrlKey || e.metaKey) ? selectedPaths : [],
+    };
+    skipNextClick.current = false;
+  }, [selectedPaths]);
+
+  // 컨테이너 클릭 시 선택 해제 (박스 드래그 후에는 스킵)
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    if (skipNextClick.current) {
+      skipNextClick.current = false;
+      return;
+    }
     if ((e.target as HTMLElement).closest('[data-file-path]')) return;
     onDeselectAll();
-  };
+  }, [onDeselectAll]);
 
   // 로딩 상태
   if (loading) {
@@ -320,9 +411,10 @@ export default function FileGrid({
   return (
     <div
       ref={gridRef}
-      className="flex-1 overflow-y-auto p-3"
+      className="flex-1 overflow-y-auto p-3 relative"
       style={{ backgroundColor: themeVars?.bg ?? '#0f172a' }}
       onClick={handleContainerClick}
+      onMouseDown={handleContainerMouseDown}
     >
       {/* 그리드 뷰 */}
       {viewMode === 'grid' && (
@@ -408,6 +500,23 @@ export default function FileGrid({
           onContextMenu={onContextMenu}
           onRenameCommit={onRenameCommit}
           themeVars={themeVars}
+        />
+      )}
+
+      {/* 박스 드래그 선택 시각화 */}
+      {selectionBox && (
+        <div
+          style={{
+            position: 'fixed',
+            left: selectionBox.left,
+            top: selectionBox.top,
+            width: selectionBox.width,
+            height: selectionBox.height,
+            border: `1px solid ${themeVars?.accent ?? '#3b82f6'}`,
+            backgroundColor: themeVars?.accent20 ?? 'rgba(59,130,246,0.15)',
+            pointerEvents: 'none',
+            zIndex: 9999,
+          }}
         />
       )}
     </div>

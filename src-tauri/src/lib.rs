@@ -988,6 +988,227 @@ async fn select_folder(app: tauri::AppHandle) -> Result<Option<FolderSelection>,
     }
 }
 
+// --- OS 파일 클립보드 (파일 경로를 시스템 클립보드에 등록/읽기) ---
+#[tauri::command]
+fn write_files_to_clipboard(paths: Vec<String>) -> Result<(), String> {
+    write_files_to_clipboard_native(&paths)
+}
+
+#[tauri::command]
+fn read_files_from_clipboard() -> Result<Vec<String>, String> {
+    read_files_from_clipboard_native()
+}
+
+#[cfg(target_os = "macos")]
+fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::CString;
+
+    unsafe {
+        let pb_class = Class::get("NSPasteboard").ok_or("NSPasteboard not found")?;
+        let pb: *mut Object = msg_send![pb_class, generalPasteboard];
+        if pb.is_null() { return Err("generalPasteboard is null".into()); }
+
+        let _: i64 = msg_send![pb, clearContents];
+
+        let arr_class = Class::get("NSMutableArray").ok_or("NSMutableArray not found")?;
+        let arr: *mut Object = msg_send![arr_class, arrayWithCapacity: paths.len()];
+        if arr.is_null() { return Err("Failed to create array".into()); }
+
+        let url_class = Class::get("NSURL").ok_or("NSURL not found")?;
+        let str_class = Class::get("NSString").ok_or("NSString not found")?;
+
+        for p in paths {
+            let c_path = CString::new(p.as_str()).map_err(|e| e.to_string())?;
+            let ns_path: *mut Object = msg_send![str_class, stringWithUTF8String: c_path.as_ptr()];
+            if ns_path.is_null() { continue; }
+            let url: *mut Object = msg_send![url_class, fileURLWithPath: ns_path];
+            if url.is_null() { continue; }
+            let _: () = msg_send![arr, addObject: url];
+        }
+
+        let ok: i8 = msg_send![pb, writeObjects: arr];
+        if ok == 0 {
+            return Err("writeObjects failed".into());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+
+    unsafe {
+        let pb_class = Class::get("NSPasteboard").ok_or("NSPasteboard not found")?;
+        let pb: *mut Object = msg_send![pb_class, generalPasteboard];
+        if pb.is_null() { return Err("generalPasteboard is null".into()); }
+
+        let url_class = Class::get("NSURL").ok_or("NSURL not found")?;
+        let arr_class = Class::get("NSArray").ok_or("NSArray not found")?;
+        let classes: *mut Object = msg_send![arr_class, arrayWithObject: url_class];
+
+        let null_ptr: *const std::ffi::c_void = std::ptr::null();
+        let urls: *mut Object = msg_send![pb, readObjectsForClasses: classes options: null_ptr];
+        if urls.is_null() { return Ok(vec![]); }
+
+        let count: usize = msg_send![urls, count];
+        let mut result = Vec::with_capacity(count);
+
+        for i in 0..count {
+            let url: *mut Object = msg_send![urls, objectAtIndex: i];
+            if url.is_null() { continue; }
+
+            let is_file: i8 = msg_send![url, isFileURL];
+            if is_file == 0 { continue; }
+
+            let path: *mut Object = msg_send![url, path];
+            if path.is_null() { continue; }
+
+            let utf8: *const std::os::raw::c_char = msg_send![path, UTF8String];
+            if utf8.is_null() { continue; }
+
+            let path_str = std::ffi::CStr::from_ptr(utf8).to_string_lossy().to_string();
+            result.push(path_str);
+        }
+
+        Ok(result)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
+    std::panic::catch_unwind(|| write_files_to_clipboard_inner(paths))
+        .map_err(|_| "clipboard write panic".to_string())?
+}
+
+#[cfg(target_os = "windows")]
+fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
+    use winapi::um::winuser::{OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData, CF_HDROP};
+    use winapi::um::winbase::{GlobalAlloc, GlobalLock, GlobalUnlock, GlobalFree, GMEM_MOVEABLE, GMEM_ZEROINIT};
+    use winapi::um::shellapi::DROPFILES;
+    use std::mem;
+    use std::ptr;
+
+    // 경로를 UTF-16 null 종료 문자열로 변환
+    let wide_paths: Vec<Vec<u16>> = paths.iter()
+        .map(|p| p.encode_utf16().chain(std::iter::once(0)).collect())
+        .collect();
+
+    // DROPFILES 헤더 + 모든 경로 + 끝 null 종료자
+    let mut total_size = mem::size_of::<DROPFILES>();
+    for wp in &wide_paths {
+        total_size += wp.len() * 2;
+    }
+    total_size += 2; // 끝 null 종료자
+
+    unsafe {
+        if OpenClipboard(ptr::null_mut()) == 0 {
+            return Err("OpenClipboard failed".into());
+        }
+
+        if EmptyClipboard() == 0 {
+            CloseClipboard();
+            return Err("EmptyClipboard failed".into());
+        }
+
+        let h_global = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, total_size);
+        if h_global.is_null() {
+            CloseClipboard();
+            return Err("GlobalAlloc failed".into());
+        }
+
+        let data = GlobalLock(h_global) as *mut u8;
+        if data.is_null() {
+            GlobalFree(h_global);
+            CloseClipboard();
+            return Err("GlobalLock failed".into());
+        }
+
+        // DROPFILES 헤더 채우기
+        let drop_files = data as *mut DROPFILES;
+        (*drop_files).pFiles = mem::size_of::<DROPFILES>() as u32;
+        (*drop_files).fWide = 1; // 유니코드 경로
+
+        // 헤더 뒤에 경로 복사
+        let mut offset = mem::size_of::<DROPFILES>();
+        for wp in &wide_paths {
+            let bytes = std::slice::from_raw_parts(wp.as_ptr() as *const u8, wp.len() * 2);
+            ptr::copy_nonoverlapping(bytes.as_ptr(), data.add(offset), bytes.len());
+            offset += bytes.len();
+        }
+        // 끝 null 종료자는 GMEM_ZEROINIT으로 이미 0
+
+        GlobalUnlock(h_global);
+
+        if SetClipboardData(CF_HDROP, h_global).is_null() {
+            GlobalFree(h_global);
+            CloseClipboard();
+            return Err("SetClipboardData failed".into());
+        }
+
+        // SetClipboardData 성공 시 시스템이 메모리 소유 (GlobalFree 호출 금지)
+        CloseClipboard();
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
+    std::panic::catch_unwind(|| read_files_from_clipboard_inner())
+        .map_err(|_| "clipboard read panic".to_string())?
+}
+
+#[cfg(target_os = "windows")]
+fn read_files_from_clipboard_inner() -> Result<Vec<String>, String> {
+    use winapi::um::winuser::{OpenClipboard, CloseClipboard, GetClipboardData, CF_HDROP, IsClipboardFormatAvailable};
+    use winapi::um::shellapi::{DragQueryFileW, HDROP};
+    use std::ptr;
+
+    unsafe {
+        if IsClipboardFormatAvailable(CF_HDROP) == 0 {
+            return Ok(vec![]);
+        }
+
+        if OpenClipboard(ptr::null_mut()) == 0 {
+            return Err("OpenClipboard failed".into());
+        }
+
+        let h_data = GetClipboardData(CF_HDROP);
+        if h_data.is_null() {
+            CloseClipboard();
+            return Ok(vec![]);
+        }
+
+        let h_drop = h_data as HDROP;
+        let count = DragQueryFileW(h_drop, 0xFFFFFFFF, ptr::null_mut(), 0);
+        let mut result = Vec::with_capacity(count as usize);
+
+        for i in 0..count {
+            let len = DragQueryFileW(h_drop, i, ptr::null_mut(), 0);
+            let mut buf = vec![0u16; (len + 1) as usize];
+            DragQueryFileW(h_drop, i, buf.as_mut_ptr(), len + 1);
+            let path = String::from_utf16_lossy(&buf[..len as usize]);
+            result.push(path);
+        }
+
+        CloseClipboard();
+        Ok(result)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn write_files_to_clipboard_native(_paths: &[String]) -> Result<(), String> {
+    Err("이 플랫폼에서는 파일 클립보드가 지원되지 않습니다".into())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
+    Ok(vec![])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -1018,6 +1239,8 @@ pub fn run() {
         compress_to_zip,
         open_with_app,
         read_text_file,
+        write_files_to_clipboard,
+        read_files_from_clipboard,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

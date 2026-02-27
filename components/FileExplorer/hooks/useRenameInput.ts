@@ -46,8 +46,10 @@ export function useRenameInput({
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation(); // window keydown 리스너로 버블링 방지 (폴더 진입 차단)
       onRenameCommit(path, renameValue);
     } else if (e.key === 'Escape') {
+      e.stopPropagation();
       onRenameCommit(path, name);
     }
   }, [path, name, renameValue, onRenameCommit]);

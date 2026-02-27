@@ -20,6 +20,9 @@ interface FileExplorerProps {
   onPathChange: (path: string) => void;
   onAddToFavorites: (path: string, name: string) => void;
   themeVars: ThemeVars | null;
+  // 분할 뷰에서 클립보드 공유용 (App.tsx에서 상태 관리)
+  sharedClipboard?: ClipboardData | null;
+  onClipboardChange?: (cb: ClipboardData | null) => void;
 }
 
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240];
@@ -40,6 +43,8 @@ export default function FileExplorer({
   onPathChange,
   onAddToFavorites,
   themeVars,
+  sharedClipboard,
+  onClipboardChange,
 }: FileExplorerProps) {
   // --- localStorage 키 (instanceId로 분할 뷰 시 분리) ---
   const tabsKey = instanceId === 'default' ? TABS_KEY : `${TABS_KEY}_${instanceId}`;
@@ -48,7 +53,10 @@ export default function FileExplorer({
   // --- 상태 ---
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
-  const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
+  // 분할 뷰: 공유 클립보드 사용, 단일 뷰: 내부 상태 사용
+  const [internalClipboard, setInternalClipboard] = useState<ClipboardData | null>(null);
+  const clipboard = sharedClipboard !== undefined ? sharedClipboard : internalClipboard;
+  const setClipboard = onClipboardChange ?? setInternalClipboard;
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(120);
@@ -356,6 +364,10 @@ export default function FileExplorer({
 
   // --- 선택 ---
   const selectEntry = useCallback((path: string, multi: boolean, range: boolean) => {
+    // 마우스 클릭 시 focusedIndex도 동기화 (키보드 이동 기준점 갱신)
+    const clickedIdx = entries.findIndex(e => e.path === path);
+    if (clickedIdx >= 0) setFocusedIndex(clickedIdx);
+
     if (multi) {
       setSelectedPaths(prev =>
         prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
@@ -385,24 +397,46 @@ export default function FileExplorer({
     setSelectedPaths([]);
   }, []);
 
+  // 박스 드래그 선택용 다중 경로 설정
+  const handleSelectPaths = useCallback((paths: string[]) => {
+    setSelectedPaths(paths);
+  }, []);
+
   // --- 파일 조작 ---
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback(async () => {
     if (selectedPaths.length === 0) return;
     setClipboard({ paths: selectedPaths, action: 'copy' });
+    // OS 클립보드에도 파일 경로 등록 (외부 앱에서 Ctrl+V 가능)
+    try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
   }, [selectedPaths]);
 
-  const handleCut = useCallback(() => {
+  const handleCut = useCallback(async () => {
     if (selectedPaths.length === 0) return;
     setClipboard({ paths: selectedPaths, action: 'cut' });
+    // OS 클립보드에도 파일 경로 등록
+    try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
   }, [selectedPaths]);
 
   const handlePaste = useCallback(async () => {
-    if (!clipboard || !currentPath) return;
+    if (!currentPath) return;
     try {
-      if (clipboard.action === 'copy') {
-        await invoke('copy_items', { sources: clipboard.paths, dest: currentPath });
+      // 내부 클립보드 우선, 없으면 OS 클립보드에서 읽기
+      let paths: string[];
+      let action: 'copy' | 'cut';
+      if (clipboard) {
+        paths = clipboard.paths;
+        action = clipboard.action;
       } else {
-        await invoke('move_items', { sources: clipboard.paths, dest: currentPath });
+        const osPaths = await invoke<string[]>('read_files_from_clipboard');
+        if (!osPaths || osPaths.length === 0) return;
+        paths = osPaths;
+        action = 'copy'; // 외부에서 복사한 파일은 항상 copy
+      }
+
+      if (action === 'copy') {
+        await invoke('copy_items', { sources: paths, dest: currentPath });
+      } else {
+        await invoke('move_items', { sources: paths, dest: currentPath });
         setClipboard(null);
       }
       loadDirectory(currentPath);
@@ -462,7 +496,13 @@ export default function FileExplorer({
     if (newPath === oldPath) return;
     try {
       await invoke('rename_item', { oldPath, newPath });
-      loadDirectory(currentPath);
+      // 이름 변경 후 새 경로로 선택 유지
+      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      const sorted = sortEntries(result, sortBy, sortDir);
+      setEntries(sorted);
+      setSelectedPaths([newPath]);
+      const idx = sorted.findIndex(e => e.path === newPath);
+      if (idx >= 0) setFocusedIndex(idx);
     } catch (e) {
       console.error('이름 변경 실패:', e);
     }
@@ -806,14 +846,16 @@ export default function FileExplorer({
   }, [currentPath, loadDirectory]);
 
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
-  // 터치패드 핀치 줌 방지: ctrlKey가 true여도 deltaMode=0 + 비정수 deltaY이면 핀치 제스처
+  // 터치패드 완전 차단: deltaMode=1(라인 단위) = 마우스 휠만 허용
+  // deltaMode=0(픽셀 단위) = 터치패드이므로 차단 (핀치/스크롤 모두)
   useEffect(() => {
     const handler = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      // 터치패드 핀치 제스처 필터: deltaMode=0(픽셀) + 소수점 deltaY = 핀치
-      if (e.deltaMode === 0 && !Number.isInteger(e.deltaY)) return;
-      cancelAllQueued(); // 줌 변경 시 대기 중인 썸네일 요청 모두 취소
+      // 마우스 휠만 허용 (deltaMode=1: 라인 단위)
+      // 터치패드는 deltaMode=0(픽셀 단위)이므로 모두 차단
+      if (e.deltaMode === 0) return;
+      cancelAllQueued();
       const direction = e.deltaY < 0 ? 1 : -1;
       setThumbnailSize(prev => {
         const idx = THUMBNAIL_SIZES.indexOf(prev);
@@ -926,6 +968,7 @@ export default function FileExplorer({
             dropTargetPath={dropTargetPath}
             onDragMouseDown={handleDragMouseDown}
             onSelect={selectEntry}
+            onSelectPaths={handleSelectPaths}
             onDeselectAll={deselectAll}
             onOpen={openEntry}
             onContextMenu={handleContextMenu}
