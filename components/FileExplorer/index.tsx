@@ -499,23 +499,54 @@ export default function FileExplorer({
     setRenamingPath(null);
     if (!newName.trim()) return;
     const sep = oldPath.includes('/') ? '/' : '\\';
-    const parts = oldPath.split(sep);
-    parts[parts.length - 1] = newName;
-    const newPath = parts.join(sep);
-    if (newPath === oldPath) return;
+
+    // 유틸: 파일 베이스명과 확장자 분리
+    const getBaseName = (p: string) => {
+      const name = p.split(/[/\\]/).pop() ?? '';
+      const dot = name.lastIndexOf('.');
+      return dot > 0 ? name.substring(0, dot) : name;
+    };
+    const getExt = (p: string) => {
+      const name = p.split(/[/\\]/).pop() ?? '';
+      const dot = name.lastIndexOf('.');
+      return dot > 0 ? name.substring(dot) : '';
+    };
+
+    // 새 이름에서 베이스명 추출
+    const newBaseName = getBaseName(newName) || newName;
+    const newExt = getExt(newName);
+
+    // 일괄 이름변경 대상 결정: 선택된 파일 중 동일 베이스명만
+    const oldBaseName = getBaseName(oldPath);
+    const batchPaths = selectedPaths.length > 1
+      ? selectedPaths.filter(p => getBaseName(p) === oldBaseName)
+      : [oldPath];
+
     try {
-      await invoke('rename_item', { oldPath, newPath });
-      // 이름 변경 후 새 경로로 선택 유지
+      const renamedPaths: string[] = [];
+      for (const p of batchPaths) {
+        const dir = p.substring(0, p.lastIndexOf(sep));
+        // 대표 파일은 입력한 확장자 사용, 나머지는 기존 확장자 유지
+        const ext = p === oldPath ? newExt : getExt(p);
+        const targetName = newBaseName + ext;
+        const targetPath = dir + sep + targetName;
+        if (targetPath !== p) {
+          await invoke('rename_item', { oldPath: p, newPath: targetPath });
+        }
+        renamedPaths.push(targetPath);
+      }
+
+      // 이름 변경 후 디렉토리 재로드
       const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
       const sorted = sortEntries(result, sortBy, sortDir);
       setEntries(sorted);
-      setSelectedPaths([newPath]);
-      const idx = sorted.findIndex(e => e.path === newPath);
+      setSelectedPaths(renamedPaths);
+      const idx = sorted.findIndex(e => renamedPaths.includes(e.path));
       if (idx >= 0) setFocusedIndex(idx);
     } catch (e) {
       console.error('이름 변경 실패:', e);
     }
-  }, [currentPath, loadDirectory]);
+  }, [currentPath, selectedPaths, sortBy, sortDir]);
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -771,7 +802,20 @@ export default function FileExplorer({
       if (ctrl && e.shiftKey && e.key === 'N') { e.preventDefault(); handleCreateDirectory(); return; }
 
       if (e.key === 'F2') {
-        if (selectedPaths.length === 1) handleRenameStart(selectedPaths[0]);
+        if (selectedPaths.length === 1) {
+          handleRenameStart(selectedPaths[0]);
+        } else if (selectedPaths.length > 1) {
+          // 동일 베이스명 파일들만 일괄 이름변경 지원
+          const getBaseName = (p: string) => {
+            const name = p.split(/[/\\]/).pop() ?? '';
+            const dot = name.lastIndexOf('.');
+            return dot > 0 ? name.substring(0, dot) : name;
+          };
+          const baseNames = new Set(selectedPaths.map(getBaseName));
+          if (baseNames.size === 1) {
+            handleRenameStart(selectedPaths[0]);
+          }
+        }
         return;
       }
 
