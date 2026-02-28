@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { memo, useCallback, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Tab, ThemeVars } from './types';
 
@@ -23,7 +23,7 @@ interface TabBarProps {
   themeVars: ThemeVars | null;
 }
 
-export default function TabBar({
+export default memo(function TabBar({
   tabs,
   activeTabId,
   onTabSelect,
@@ -282,4 +282,4 @@ export default function TabBar({
       })}
     </div>
   );
-}
+});

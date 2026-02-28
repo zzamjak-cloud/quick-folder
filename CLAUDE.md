@@ -105,7 +105,6 @@ App state is split between:
 - **`FileCard.tsx`** - 개별 파일 카드 (lazy 썸네일, 인라인 이름변경)
 - **`ContextMenu.tsx`** - 우클릭 메뉴 (뷰포트 안전 포탈 렌더링)
 - **`StatusBar.tsx`** - 선택 항목 정보
-- **`hooks/useDragToOS.ts`** - OS로 파일 드래그 내보내기
 - **`hooks/useRenameInput.ts`** - 이름변경 입력 상태·핸들러
 
 ### Drag & Drop
@@ -122,7 +121,7 @@ App state is split between:
 - `data-category-id` 속성 + 바운딩 렉트 기반 카테고리 감지
 
 **OS로 파일 드래그 내보내기** (`tauri-plugin-drag`):
-- `components/FileExplorer/hooks/useDragToOS.ts`
+- `components/FileExplorer/hooks/useInternalDragDrop.ts` — 커스텀 드래그 고스트 + OS 드래그
 - 캔버스 기반 커스텀 드래그 아이콘 (`fileUtils.tsx::DRAG_IMAGE`)
 
 ### Data Types (`types.ts`)

@@ -252,7 +252,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
 }
 
 // --- 메인 FileGrid 컴포넌트 ---
-export default function FileGrid({
+export default memo(function FileGrid({
   entries,
   selectedPaths,
   clipboard,
@@ -528,4 +528,4 @@ export default function FileGrid({
       )}
     </div>
   );
-}
+});

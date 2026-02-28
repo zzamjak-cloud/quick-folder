@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import {
   ExternalLink,
   Folder,
@@ -37,7 +37,7 @@ interface ContextMenuProps {
   onBulkRename?: (paths: string[]) => void;
 }
 
-export default function ContextMenu({
+export default memo(function ContextMenu({
   x,
   y,
   paths,
@@ -210,4 +210,4 @@ export default function ContextMenu({
       </div>
     </div>
   );
-}
+});

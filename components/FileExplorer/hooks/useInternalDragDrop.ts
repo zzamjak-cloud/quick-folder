@@ -1,23 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { DRAG_IMAGE } from '../fileUtils';
+import { isCloudPath } from '../../../utils/pathUtils';
 
 interface UseInternalDragDropOptions {
   selectedPaths: string[];
   currentPath: string;
   onMoveComplete: () => void;
   onAddToCategory?: (categoryId: string, path: string, name: string) => void;
-}
-
-// 클라우드 스토리지 경로 감지
-function isCloudPath(path: string): boolean {
-  const lower = path.toLowerCase();
-  if (lower.includes('/library/cloudstorage/')) return true;
-  if (lower.includes('/library/mobile documents/')) return true;
-  if (lower.includes('/google drive/')) return true;
-  if (/[\\/]onedrive[\\/]/i.test(path)) return true;
-  if (/[\\/]dropbox[\\/]/i.test(path)) return true;
-  return false;
 }
 
 // 드롭 대상 패널의 시각적 피드백 해제

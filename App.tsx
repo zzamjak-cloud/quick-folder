@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Plus,
   Settings,
   Folder,
-  Copy,
   Trash2,
-  Edit2,
   Palette,
   Search,
   ZoomIn,
-  MoreVertical,
   ChevronDown,
   ChevronRight,
   PanelLeftClose,
@@ -35,9 +31,7 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
   rectSortingStrategy,
-  useSortable
 } from '@dnd-kit/sortable';
 // CSS import 제거 - transform 미사용 (드래그 중 아이템 위치 고정)
 import { v4 as uuidv4 } from 'uuid';
@@ -47,13 +41,14 @@ import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
 import FileExplorer from './components/FileExplorer';
-import { useFolderIcon } from './components/FileExplorer/hooks/useNativeIcon';
 import { invoke } from '@tauri-apps/api/core';
+import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
+import { ThemeSettingsModal } from './components/ThemeSettingsModal';
+import { ZoomModal } from './components/ZoomModal';
 
 // 커스텀 훅
 import {
   useThemeManagement,
-  THEME_PRESETS,
   COLORS,
   FOLDER_TEXT_COLORS,
   normalizeHexColor,
@@ -69,344 +64,6 @@ import {
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
-
-// --- Sortable Item Component ---
-interface SortableShortcutItemProps {
-  shortcut: FolderShortcut;
-  categoryId: string;
-  handleOpenFolder: (path: string) => void;
-  handleCopyPath: (path: string) => void;
-  deleteShortcut: (catId: string, sId: string) => void;
-  openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
-  key?: React.Key;
-}
-
-function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCopyPath, deleteShortcut, openEditFolderModal, showIndicatorBefore }: SortableShortcutItemProps & { showIndicatorBefore?: boolean }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    isDragging,
-  } = useSortable({
-    id: shortcut.id,
-    data: {
-      type: 'Shortcut',
-      shortcut,
-      categoryId
-    }
-  });
-
-  const style = {
-    opacity: isDragging ? 0.3 : 1,
-  };
-
-  const folderIcon = useFolderIcon(shortcut.path, 16);
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-  const btnRef = React.useRef<HTMLButtonElement>(null);
-  const [menuPos, setMenuPos] = React.useState<{ top: number; left: number } | null>(null);
-
-  // 메뉴 열릴 때 버튼 위치 기반으로 fixed 좌표 계산
-  React.useEffect(() => {
-    if (!menuOpen || !btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    const menuHeight = 120; // 대략적인 메뉴 높이
-    const spaceBelow = window.innerHeight - rect.bottom;
-    // 아래 공간 부족하면 위로 표시
-    const top = spaceBelow < menuHeight ? rect.top - menuHeight : rect.bottom + 4;
-    setMenuPos({ top, left: rect.right - 130 }); // min-w-[130px] 기준 우측 정렬
-  }, [menuOpen]);
-
-  // 외부 클릭 시 메뉴 닫기
-  React.useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        btnRef.current && !btnRef.current.contains(e.target as Node)
-      ) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
-
-  return (
-    <>
-      {/* 드롭 위치 인디케이터 (파란색 라인 - 아이템 사이 빈 공간) */}
-      {showIndicatorBefore && (
-        <li className="list-none py-[1px]">
-          <div className="h-[2px] rounded-full bg-[var(--qf-accent)]" />
-        </li>
-      )}
-    <li
-      ref={setNodeRef}
-      style={style}
-      className="group/item flex items-center justify-between p-2 rounded-lg transition-colors border border-transparent bg-[var(--qf-surface)] hover:bg-[var(--qf-surface-hover)] hover:border-[var(--qf-border)]"
-      {...attributes}
-      {...listeners}
-    >
-      <div
-        className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-        onClick={() => handleOpenFolder(shortcut.path)}
-        title={`${shortcut.path} (클릭하여 탐색기에서 열기)`}
-      >
-        <div className="text-[var(--qf-accent)] transition-colors">
-          {folderIcon ? (
-            <img src={folderIcon} alt="" style={{ width: 16, height: 16 }} draggable={false} />
-          ) : (
-            <Folder size={16} />
-          )}
-        </div>
-        <div className="min-w-0">
-          <div
-            className="text-sm font-medium group-hover/item:opacity-80 truncate"
-            style={{
-              color:
-                shortcut.color?.startsWith('#')
-                  ? shortcut.color
-                  : (shortcut.color && LEGACY_TEXT_CLASS_TO_HEX[shortcut.color]) || undefined,
-            }}
-          >
-            {shortcut.name}
-          </div>
-        </div>
-      </div>
-
-      {/* MoreVertical 드롭다운 */}
-      <div
-        className="opacity-0 group-hover/item:opacity-100 transition-opacity"
-      >
-        <button
-          ref={btnRef}
-          onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-text)] hover:bg-[var(--qf-surface-hover)] rounded-md"
-          title="더 보기"
-        >
-          <MoreVertical size={13} />
-        </button>
-        {menuOpen && menuPos && createPortal(
-          <div
-            ref={menuRef}
-            className="fixed z-[9999] rounded-lg shadow-xl overflow-hidden min-w-[130px]"
-            style={{
-              top: menuPos.top,
-              left: menuPos.left,
-              backgroundColor: 'var(--qf-surface-2)',
-              border: '1px solid var(--qf-border)',
-            }}
-          >
-            {[
-              {
-                icon: <Edit2 size={12} />,
-                label: '수정',
-                onClick: () => { openEditFolderModal(categoryId, shortcut); setMenuOpen(false); },
-              },
-              {
-                icon: <Copy size={12} />,
-                label: '경로 복사',
-                onClick: () => { handleCopyPath(shortcut.path); setMenuOpen(false); },
-              },
-              {
-                icon: <Trash2 size={12} style={{ color: '#f87171' }} />,
-                label: '삭제',
-                onClick: () => { deleteShortcut(categoryId, shortcut.id); setMenuOpen(false); },
-              },
-            ].map(item => (
-              <button
-                key={item.label}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); item.onClick(); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--qf-surface-hover)] text-[var(--qf-text)]"
-              >
-                <span className="text-[var(--qf-muted)]">{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
-          </div>,
-          document.getElementById('qf-root') || document.body
-        )}
-      </div>
-    </li>
-    </>
-  );
-}
-
-// --- Category Component ---
-// 드롭 인디케이터 타입
-type DropIndicator = {
-  type: 'category';
-  index: number;       // 이 인덱스 앞에 라인 표시
-} | {
-  type: 'shortcut';
-  categoryId: string;  // 대상 카테고리
-  index: number;       // 이 인덱스 앞에 라인 표시
-};
-
-interface CategoryColumnProps {
-  category: Category;
-  categoryIndex: number;
-  toggleCollapse: (id: string) => void;
-  handleAddFolder: (catId: string, path?: string, name?: string) => void;
-  openEditCategoryModal: (cat: Category) => void;
-  deleteCategory: (id: string) => void;
-  handleOpenFolder: (path: string) => void;
-  handleCopyPath: (path: string) => void;
-  deleteShortcut: (catId: string, sId: string) => void;
-  openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
-  searchQuery: string;
-  dropIndicator: DropIndicator | null;
-  key?: React.Key;
-}
-
-function CategoryColumn({
-  category,
-  categoryIndex,
-  toggleCollapse,
-  handleAddFolder,
-  openEditCategoryModal,
-  deleteCategory,
-  handleOpenFolder,
-  handleCopyPath,
-  deleteShortcut,
-  openEditFolderModal,
-  searchQuery,
-  dropIndicator,
-}: CategoryColumnProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    isDragging,
-  } = useSortable({
-    id: category.id,
-    data: {
-      type: 'Category',
-      category,
-      categoryId: category.id
-    }
-  });
-
-  const style: React.CSSProperties = {
-    opacity: isDragging ? 0.5 : 1,
-    breakInside: 'avoid' as const,
-    display: 'inline-block',
-    width: '100%',
-    marginTop: '0.75rem',
-  };
-
-  const isExpanded = !category.isCollapsed || searchQuery.length > 0;
-
-  // 카테고리 드롭 인디케이터: 이 카테고리 앞에 라인 표시
-  const showCategoryIndicator = dropIndicator?.type === 'category' && dropIndicator.index === categoryIndex;
-  const categoryTitleHex =
-    category.color?.startsWith('#')
-      ? category.color
-      : (category.color && (LEGACY_TEXT_CLASS_TO_HEX[category.color] || LEGACY_BG_CLASS_TO_HEX[category.color])) || '';
-
-  // 즐겨찾기 드롭 인디케이터: 이 카테고리의 어떤 인덱스 앞에 라인 표시
-  const shortcutIndicatorIndex = dropIndicator?.type === 'shortcut' && dropIndicator.categoryId === category.id
-    ? dropIndicator.index : -1;
-
-  return (
-    <SortableContext
-      id={category.id}
-      items={isExpanded ? category.shortcuts.map(s => s.id) : []}
-      strategy={verticalListSortingStrategy}
-    >
-      {/* 카테고리 드롭 인디케이터 (세션 사이 파란색 라인) */}
-      {showCategoryIndicator && (
-        <div style={{ breakInside: 'avoid', display: 'inline-block', width: '100%', marginTop: '0.75rem' }}>
-          <div className="h-[2px] rounded-full bg-[var(--qf-accent)] mx-1" />
-        </div>
-      )}
-      <div
-        ref={setNodeRef}
-        style={style}
-        data-category-id={category.id}
-        className={`border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full bg-[var(--qf-surface)] border-[var(--qf-border)] hover:border-[var(--qf-border)] ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
-      >
-        <div
-          className={`px-2.5 py-1.5 border-b flex items-center justify-between bg-[var(--qf-surface-2)] border-[var(--qf-border)] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-          {...attributes}
-          {...listeners}
-        >
-          <div
-            className="flex items-center gap-2 cursor-pointer select-none"
-            onClick={() => toggleCollapse(category.id)}
-          >
-            {isExpanded ? <ChevronDown size={14} className="text-[var(--qf-muted)]" /> : <ChevronRight size={14} className="text-[var(--qf-muted)]" />}
-            <h2
-              className="text-sm font-medium truncate max-w-[140px]"
-              style={{ color: categoryTitleHex || undefined }}
-              title={category.title}
-            >
-              {category.title}
-            </h2>
-          </div>
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => handleAddFolder(category.id)}
-              className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-accent)] hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
-              title="폴더 추가"
-            >
-              <Plus size={14} />
-            </button>
-            <button
-              onClick={() => openEditCategoryModal(category)}
-              className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-text)] hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
-              title="카테고리 수정"
-            >
-              <Settings size={14} />
-            </button>
-            <button
-              onClick={() => deleteCategory(category.id)}
-              className="p-1.5 text-[var(--qf-muted)] hover:text-red-400 hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
-              title="카테고리 삭제"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        </div>
-
-        {isExpanded && (
-          <div className="p-2 flex-1">
-            {category.shortcuts.length === 0 ? (
-              <div className="text-center py-3 text-[var(--qf-muted)] text-xs italic">
-                등록된 폴더가 없습니다
-                <br />
-                <span className="text-[10px] opacity-70 mt-1 block">폴더를 이곳으로 드래그하세요</span>
-              </div>
-            ) : (
-              <ul className="space-y-1 min-h-[50px]">
-                {category.shortcuts.map((shortcut, idx) => (
-                  <SortableShortcutItem
-                    key={shortcut.id}
-                    shortcut={shortcut}
-                    categoryId={category.id}
-                    handleOpenFolder={handleOpenFolder}
-                    handleCopyPath={handleCopyPath}
-                    deleteShortcut={deleteShortcut}
-                    openEditFolderModal={openEditFolderModal}
-                    showIndicatorBefore={shortcutIndicatorIndex === idx}
-                  />
-                ))}
-                {/* 마지막 위치 인디케이터 */}
-                {shortcutIndicatorIndex === category.shortcuts.length && (
-                  <li className="list-none py-[1px]">
-                    <div className="h-[2px] rounded-full bg-[var(--qf-accent)]" />
-                  </li>
-                )}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
-    </SortableContext>
-  );
-}
 
 export default function App() {
   // --- 토스트 (다른 훅들의 의존성) ---
@@ -437,7 +94,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
-  const masonryRef = React.useRef<HTMLDivElement>(null);
 
   // 좌측 패널 너비
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
@@ -475,7 +131,7 @@ export default function App() {
     const saved = localStorage.getItem('qf_split_ratio');
     return saved ? Number(saved) : 0.5;
   });
-  const splitContainerRef = React.useRef<HTMLDivElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // --- 분할 뷰 localStorage 동기화 ---
   useEffect(() => {
@@ -956,7 +612,6 @@ export default function App() {
               >
                 {(
                   <div
-                    ref={masonryRef}
                     style={{
                       columnCount: 1,
                       columnGap: '0.75rem',
@@ -1125,78 +780,8 @@ export default function App() {
 
       {/* --- Modals --- */}
 
-      {/* Theme Settings Modal */}
-      <Modal
-        isOpen={isBgModalOpen}
-        onClose={() => setIsBgModalOpen(false)}
-        title="테마 설정"
-      >
-        <div className="space-y-5">
-          <div>
-            <div className="text-sm font-medium text-[var(--qf-muted)] mb-2">프리셋 테마</div>
-            <div className="grid grid-cols-2 gap-2">
-              {THEME_PRESETS.map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => {
-                    theme.setThemeId(t.id);
-                    theme.setBgInputValue(t.bg);
-                    theme.setAccentInputValue(t.accent);
-                  }}
-                  className={`flex items-center gap-2 p-2 rounded-lg border transition-colors bg-[var(--qf-surface)] hover:bg-[var(--qf-surface-hover)] border-[var(--qf-border)] ${theme.themeId === t.id ? 'ring-2 ring-[var(--qf-accent)]' : ''}`}
-                  title={`${t.bg} / ${t.accent}`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-md border border-white/10" style={{ backgroundColor: t.bg }} />
-                    <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ backgroundColor: t.accent }} />
-                  </span>
-                  <span className="text-xs text-[var(--qf-text)] truncate">{t.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm font-medium text-[var(--qf-muted)] mb-2">커스텀 (배경 + 강조색)</div>
-            <div className="flex items-center gap-3 mb-3">
-              <input type="color" value={normalizeHexColor(theme.bgInputValue) ?? theme.customBg} onChange={(e) => theme.setBgInputValue(e.target.value)} className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1" aria-label="배경색 선택" />
-              <input type="text" value={theme.bgInputValue} onChange={(e) => theme.setBgInputValue(e.target.value)} placeholder="#0f172a" className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs" />
-            </div>
-            <div className="flex items-center gap-3">
-              <input type="color" value={normalizeHexColor(theme.accentInputValue) ?? theme.customAccent} onChange={(e) => theme.setAccentInputValue(e.target.value)} className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1" aria-label="강조색 선택" />
-              <input type="text" value={theme.accentInputValue} onChange={(e) => theme.setAccentInputValue(e.target.value)} placeholder="#3b82f6" className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs" />
-              <Button type="button" variant="secondary" onClick={() => theme.applyCustomTheme(theme.bgInputValue, theme.accentInputValue)}>적용</Button>
-            </div>
-            <div className="text-[11px] text-[var(--qf-muted)] mt-2">* `#RRGGBB` 형식만 지원합니다.</div>
-          </div>
-
-          <div className="pt-2 flex justify-between items-center">
-            <Button type="button" variant="ghost" onClick={() => { theme.setThemeId(THEME_PRESETS[0].id); theme.setBgInputValue(THEME_PRESETS[0].bg); theme.setAccentInputValue(THEME_PRESETS[0].accent); }}>기본값으로</Button>
-            <Button type="button" variant="ghost" onClick={() => setIsBgModalOpen(false)}>닫기</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Zoom Modal */}
-      <Modal
-        isOpen={isZoomModalOpen}
-        onClose={() => setIsZoomModalOpen(false)}
-        title="확대/축소"
-      >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium text-[var(--qf-muted)]">현재</div>
-            <div className="text-sm font-semibold text-[var(--qf-text)]">{theme.zoomPercent}%</div>
-          </div>
-          <input type="range" min={50} max={150} step={10} value={theme.zoomPercent} onChange={(e) => theme.setZoomPercent(Number(e.target.value))} className="w-full" aria-label="확대/축소 슬라이더" />
-          <div className="flex items-center justify-between">
-            <Button type="button" variant="secondary" onClick={() => theme.setZoomPercent((p) => Math.max(50, p - 10))}>－</Button>
-            <Button type="button" variant="ghost" onClick={() => theme.setZoomPercent(100)}>100%로</Button>
-            <Button type="button" variant="secondary" onClick={() => theme.setZoomPercent((p) => Math.min(150, p + 10))}>＋</Button>
-          </div>
-        </div>
-      </Modal>
+      <ThemeSettingsModal isOpen={isBgModalOpen} onClose={() => setIsBgModalOpen(false)} theme={theme} />
+      <ZoomModal isOpen={isZoomModalOpen} onClose={() => setIsZoomModalOpen(false)} zoomPercent={theme.zoomPercent} setZoomPercent={theme.setZoomPercent} />
 
       {/* Category Modal */}
       <Modal

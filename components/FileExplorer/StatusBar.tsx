@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
 import { formatSize } from './fileUtils';
@@ -9,7 +9,7 @@ interface StatusBarProps {
   themeVars: ThemeVars | null;
 }
 
-export default function StatusBar({ entries, selectedPaths, themeVars }: StatusBarProps) {
+export default memo(function StatusBar({ entries, selectedPaths, themeVars }: StatusBarProps) {
   const totalCount = entries.length;
   const selectedCount = selectedPaths.length;
 
@@ -47,4 +47,4 @@ export default function StatusBar({ entries, selectedPaths, themeVars }: StatusB
       )}
     </div>
   );
-}
+});

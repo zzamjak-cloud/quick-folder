@@ -91,8 +91,7 @@ quick-folder/
 │   │   ├── types.ts                # 탐색기 전용 타입
 │   │   └── hooks/
 │   │       ├── invokeQueue.ts      # Tauri invoke 동시성 제한 큐
-│   │       ├── useDragToOS.ts      # OS로 파일 드래그 내보내기
-│   │       ├── useInternalDragDrop.ts # 패널 내 파일→폴더 드래그
+│   │       ├── useInternalDragDrop.ts # 패널 내 파일→폴더 드래그 + OS 드래그
 │   │       ├── useNativeIcon.ts    # OS 네이티브 파일 아이콘 훅
 │   │       └── useRenameInput.ts   # 인라인 이름변경 상태 관리
 │   │
@@ -245,11 +244,7 @@ interface ToastMessage { id, message, type: 'success' | 'error' | 'info' }
 - `onDragDropEvent()` 전역 리스너 + `is_directory` 필터링
 - `data-category-id` 속성 + 바운딩 렉트 기반 카테고리 감지
 
-**앱 → 외부** (`hooks/useDragToOS.ts`):
-- `tauri-plugin-drag`로 파일을 OS 외부 앱으로 드래그 내보내기
-- 캔버스 기반 커스텀 드래그 아이콘 + 다중 파일 뱃지
-
-**파일 → 폴더** (`hooks/useInternalDragDrop.ts`):
+**앱 → 외부 + 파일 → 폴더** (`hooks/useInternalDragDrop.ts`):
 - 파일을 탐색기 내 폴더 위에 드롭하여 이동
 - 분할 뷰 패널 간 파일 드래그 이동 지원
 - 클라우드 스토리지(Google Drive/Dropbox/OneDrive/iCloud) 자동 감지: 클라우드 ↔ 로컬은 복사, 로컬 ↔ 로컬은 이동

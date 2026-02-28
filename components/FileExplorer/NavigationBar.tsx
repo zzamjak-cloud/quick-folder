@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { memo, useState, useRef, useEffect } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -45,7 +45,7 @@ interface NavigationBarProps {
   themeVars: ThemeVars | null;
 }
 
-export default function NavigationBar({
+export default memo(function NavigationBar({
   currentPath,
   canGoBack,
   canGoForward,
@@ -522,4 +522,4 @@ export default function NavigationBar({
       )}
     </div>
   );
-}
+});
