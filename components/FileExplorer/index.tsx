@@ -366,6 +366,7 @@ export default function FileExplorer({
       loadDirectory(currentPath);
     } catch (e) {
       console.error('삭제 실패:', e);
+      setError(`삭제 실패: ${e}`);
     }
   }, [currentPath, loadDirectory]);
 
@@ -609,14 +610,14 @@ export default function FileExplorer({
         return;
       }
 
-      // Mac: ⌫ 키로 파일 삭제 (선택 있을 때), 미선택 시 뒤로 이동
-      if (e.key === 'Backspace') {
+      // Mac: ⌫/Delete 키로 파일 삭제 (선택 있을 때), 미선택 시 뒤로 이동
+      if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();
-        if (isMac && selectedPaths.length > 0) {
+        if (selectedPaths.length > 0) {
           handleDelete(selectedPaths, e.shiftKey);
           return;
         }
-        if (!ctrl) { goBack(); return; }
+        if (e.key === 'Backspace' && !ctrl) { goBack(); return; }
       }
 
       if (e.key === 'Enter') {
@@ -643,9 +644,12 @@ export default function FileExplorer({
         if (entry.file_type === 'video') {
           // 동영상: 내장 비디오 플레이어
           preview.setVideoPlayerPath(entry.path);
-        } else if (entry.file_type === 'image' || /\.(psd|psb)$/i.test(entry.name)) {
+        } else if (entry.file_type === 'image' || /\.psd$/i.test(entry.name)) {
           // 이미지/PSD: 내장 미리보기 모달
           preview.handlePreviewImage(entry.path);
+        } else if (/\.psb$/i.test(entry.name) && isMac) {
+          // PSB: psd 크레이트 미지원 → macOS Quick Look
+          invoke('quick_look', { path: entry.path }).catch(console.error);
         } else if (['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log'].includes(entry.name.split('.').pop()?.toLowerCase() ?? '')) {
           // 텍스트 파일: 내장 텍스트 미리보기
           preview.handlePreviewText(entry.path);
@@ -688,7 +692,7 @@ export default function FileExplorer({
       if (ctrl && e.key === 'x') { handleCut(); return; }
       if (ctrl && e.key === 'v') { handlePaste(); return; }
       if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
-      if (ctrl && e.shiftKey && e.key === 'N') { e.preventDefault(); handleCreateDirectory(); return; }
+      if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
 
       if (e.key === 'F2') {
         if (selectedPaths.length === 1) {
@@ -730,15 +734,15 @@ export default function FileExplorer({
           return Math.max(1, Math.floor(gridRef.current.clientWidth / cardWidth));
         })();
 
-        const current = focusedIndex < 0 ? -1 : focusedIndex;
+        const current = focusedIndex < 0 ? 0 : focusedIndex;
         let next = current;
 
-        if (e.key === 'ArrowRight') next = Math.min(entries.length - 1, current + 1);
-        else if (e.key === 'ArrowLeft') next = Math.max(0, current - 1);
-        else if (e.key === 'ArrowDown') next = Math.min(entries.length - 1, current + cols);
-        else if (e.key === 'ArrowUp') next = Math.max(0, current - cols);
+        // 경계에서 멈추기: 이동 가능한 경우에만 이동
+        if (e.key === 'ArrowRight' && current < entries.length - 1) next = current + 1;
+        else if (e.key === 'ArrowLeft' && current > 0) next = current - 1;
+        else if (e.key === 'ArrowDown' && current + cols <= entries.length - 1) next = current + cols;
+        else if (e.key === 'ArrowUp' && current - cols >= 0) next = current - cols;
 
-        if (next < 0) next = 0;
         setFocusedIndex(next);
 
         if (e.shiftKey) {
@@ -751,6 +755,12 @@ export default function FileExplorer({
           selectionAnchorRef.current = -1;
           setSelectedPaths([entries[next].path]);
         }
+
+        // 포커스된 항목이 화면에 보이도록 자동 스크롤
+        requestAnimationFrame(() => {
+          const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(entries[next].path)}"]`);
+          el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        });
         return;
       }
     };

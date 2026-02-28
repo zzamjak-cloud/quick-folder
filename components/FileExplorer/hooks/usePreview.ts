@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 
 export interface PreviewState {
   // 비디오
@@ -41,11 +41,15 @@ export function usePreview(): PreviewState {
     setPreviewLoading(true);
     try {
       const isPsd = /\.(psd|psb)$/i.test(path);
-      const cmd = isPsd ? 'get_psd_thumbnail' : 'get_file_thumbnail';
-      // 미리보기용 큰 해상도
-      const b64 = await invoke<string | null>(cmd, { path, size: 800 });
-      if (b64) {
-        setPreviewImageData(`data:image/png;base64,${b64}`);
+      if (isPsd) {
+        // PSD/PSB: Rust 변환 필요 (원본에 가깝게 큰 해상도)
+        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 4096 });
+        if (b64) {
+          setPreviewImageData(`data:image/png;base64,${b64}`);
+        }
+      } else {
+        // 일반 이미지: 원본 파일을 asset 프로토콜로 직접 로딩
+        setPreviewImageData(convertFileSrc(path));
       }
     } catch {
       // 미리보기 생성 실패

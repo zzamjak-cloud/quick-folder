@@ -370,22 +370,48 @@ async fn move_items(sources: Vec<String>, dest: String) -> Result<(), String> {
     Ok(())
 }
 
-// 파일/폴더 삭제 (use_trash=true면 휴지통)
+/// 클라우드 스토리지 경로 판별 (Google Drive, OneDrive, Dropbox 등)
+/// macOS에서 trash::delete 시 시스템 권한 팝업을 방지하기 위해 사용
+fn is_cloud_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.contains("/library/cloudstorage/")
+        || lower.contains("/library/mobile documents/")
+        || lower.contains("/google drive/")
+        || lower.contains("/onedrive/")
+        || lower.contains("/dropbox/")
+}
+
+/// 경로에 따라 직접 삭제 수행 (디렉토리/파일 구분)
+fn remove_directly(p: &std::path::Path, path: &str) -> Result<(), String> {
+    if p.is_dir() {
+        std::fs::remove_dir_all(p).map_err(|e| format!("삭제 실패 {}: {}", path, e))
+    } else {
+        std::fs::remove_file(p).map_err(|e| format!("삭제 실패 {}: {}", path, e))
+    }
+}
+
+// 파일/폴더 삭제 (use_trash=true면 휴지통, 클라우드 경로는 직접 삭제)
+// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
+// macOS: NsFileManager 사용 (Finder AppleScript 대비 빠르고 권한 문제 없음)
 #[tauri::command]
 async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<(), String> {
-    for path in &paths {
-        let p = std::path::Path::new(path);
-        if use_trash {
-            trash::delete(p).map_err(|e| format!("휴지통 이동 실패 {}: {}", path, e))?;
-        } else if p.is_dir() {
-            std::fs::remove_dir_all(p)
-                .map_err(|e| format!("삭제 실패 {}: {}", path, e))?;
-        } else {
-            std::fs::remove_file(p)
-                .map_err(|e| format!("삭제 실패 {}: {}", path, e))?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let mut ctx = trash::TrashContext::new();
+        #[cfg(target_os = "macos")]
+        {
+            use trash::macos::{DeleteMethod, TrashContextExtMacos};
+            ctx.set_delete_method(DeleteMethod::NsFileManager);
         }
-    }
-    Ok(())
+        for path in &paths {
+            let p = std::path::Path::new(path.as_str());
+            if use_trash && !is_cloud_path(path) {
+                ctx.delete(p).map_err(|e| format!("휴지통 이동 실패 {}: {}", path, e))?;
+            } else {
+                remove_directly(p, path)?;
+            }
+        }
+        Ok(())
+    }).await.map_err(|e| format!("삭제 작업 실패: {}", e))?
 }
 
 // 새 폴더 생성

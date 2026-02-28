@@ -92,7 +92,22 @@
       "Bash(lsof -ti:3000 2>/dev/null | xargs kill -9 2>/dev/null; pkill -f \"target/debug/app\" 2>/dev/null; npm run build 2>&1 | tail -8)",
       "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; lsof -ti:1420 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; echo \"포트 정리 완료\")",
       "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; lsof -ti:1420 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; npm run tauri dev 2>&1)",
-      "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; npm run tauri dev 2>&1)"
+      "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; npm run tauri dev 2>&1)",
+      "Bash(wc -l components/FileExplorer/*.tsx components/FileExplorer/*.ts components/FileExplorer/hooks/*.ts 2>/dev/null | sort -n)",
+      "Bash(wc -l /Users/woody/Desktop/AI/QuickFolder/quick-folder/App.tsx /Users/woody/Desktop/AI/QuickFolder/quick-folder/components/FileExplorer/index.tsx /Users/woody/Desktop/AI/QuickFolder/quick-folder/hooks/*.ts 2>/dev/null | tail -1)",
+      "Bash(ls -la /Users/woody/Desktop/AI/QuickFolder/quick-folder/*.css 2>/dev/null || echo \"No CSS files in root\")",
+      "Bash(grep -r \"internalDragState\" /Users/woody/Desktop/AI/QuickFolder/quick-folder --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.git/*\")",
+      "Bash(ls -lh /Users/woody/Desktop/AI/QuickFolder/quick-folder/components/FileExplorer/*.tsx)",
+      "Bash(git worktree add .worktrees/refactor-optimize -b refactor/optimize-and-cleanup)",
+      "Bash(cd /Users/woody/Desktop/AI/QuickFolder/quick-folder && git checkout main && git merge refactor/optimize-and-cleanup)",
+      "Bash(git branch -d refactor/optimize-and-cleanup && git worktree remove /Users/woody/Desktop/AI/QuickFolder/quick-folder/.worktrees/refactor-optimize)",
+      "Bash(git worktree remove /Users/woody/Desktop/AI/QuickFolder/quick-folder/.worktrees/refactor-optimize && git branch -d refactor/optimize-and-cleanup)",
+      "Bash(grep -r \"PSB\\\\|psb\\\\|version.*2\\\\|Version2\\\\|BigDocument\" /Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/target/debug/.cargo-lock 2>/dev/null || cargo metadata --manifest-path /Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/Cargo.toml --format-version 1 2>/dev/null | python3 -c \"import sys,json; m=json.load\\(sys.stdin\\); pkgs=[p for p in m['packages'] if p['name']=='psd']; print\\(pkgs[0]['version'] if pkgs else 'not found'\\)\")",
+      "WebFetch(domain:crates.io)",
+      "Bash(grep -A 20 '\\\\[features\\\\]' /Users/woody/.cargo/registry/src/*/trash-5.2.5/Cargo.toml 2>/dev/null)",
+      "Bash(ls /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/ 2>/dev/null)",
+      "Bash(ls /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/macos/ 2>/dev/null)",
+      "Bash(head -100 /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/macos/mod.rs 2>/dev/null)"
     ],
     "deny": [],
     "ask": []
