@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { FileEntry, ClipboardData, ThumbnailSize } from '../../types';
+import { FileEntry, ClipboardData, ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars } from './types';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
@@ -13,6 +13,8 @@ import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
 import { PreviewModals } from './PreviewModals';
 import { cancelAllQueued } from './hooks/invokeQueue';
+import { useColumnView } from './hooks/useColumnView';
+import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { isCloudPath } from '../../utils/pathUtils';
 
@@ -69,9 +71,12 @@ export default function FileExplorer({
   const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'details'>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const selectionAnchorRef = useRef<number>(-1); // Shift 선택 시작점
+
+  // --- 컬럼 뷰 상태 ---
+  const columnView = useColumnView();
 
   // --- 검색/필터 상태 ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -203,6 +208,22 @@ export default function FileExplorer({
     }
     return result;
   }, [entries, activeExtFilters, searchQuery, getExt]);
+
+  // --- 컬럼 뷰 초기화/정리 ---
+  useEffect(() => {
+    if (viewMode === 'columns' && displayEntries.length > 0 && currentPath) {
+      columnView.initColumns(currentPath, displayEntries);
+    } else if (viewMode !== 'columns') {
+      columnView.clearColumns();
+    }
+  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // displayEntries 변경 시 컬럼 뷰 첫 번째 컬럼 동기화
+  useEffect(() => {
+    if (viewMode === 'columns' && displayEntries.length > 0) {
+      columnView.updateFirstColumn(displayEntries);
+    }
+  }, [displayEntries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
   useEffect(() => {
@@ -621,7 +642,14 @@ export default function FileExplorer({
       }
 
       if (e.key === 'Enter') {
-        if (selectedPaths.length === 1) {
+        if (viewMode === 'columns') {
+          // 컬럼 뷰: 포커스된 항목으로 진입
+          const col = columnView.columns[columnView.focusedCol];
+          if (col) {
+            const entry = col.entries[columnView.focusedRow];
+            if (entry) { e.preventDefault(); openEntry(entry); return; }
+          }
+        } else if (selectedPaths.length === 1) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
           if (entry) { e.preventDefault(); openEntry(entry); return; }
         }
@@ -657,6 +685,14 @@ export default function FileExplorer({
           // macOS: Quick Look 폴백
           invoke('quick_look', { path: selectedPaths[0] }).catch(console.error);
         }
+        return;
+      }
+
+      // --- Ctrl+1~4 / Cmd+1~4: 뷰 모드 전환 ---
+      if (ctrl && ['1', '2', '3', '4'].includes(e.key)) {
+        e.preventDefault();
+        const modes: ViewMode[] = ['grid', 'columns', 'list', 'details'];
+        setViewMode(modes[parseInt(e.key) - 1]);
         return;
       }
 
@@ -726,9 +762,77 @@ export default function FileExplorer({
       // --- 방향키 포커스 이동 ---
       if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
         e.preventDefault();
+
+        // 컬럼 뷰 방향키 처리
+        if (viewMode === 'columns') {
+          const { columns: cols, focusedCol: fc, focusedRow: fr } = columnView;
+          if (cols.length === 0) return;
+          const currentCol = cols[fc];
+          if (!currentCol) return;
+
+          if (e.key === 'ArrowUp') {
+            // 현재 컬럼 내 위로
+            if (fr > 0) {
+              columnView.setFocusedRow(fr - 1);
+              const entry = currentCol.entries[fr - 1];
+              if (entry) {
+                columnView.selectInColumn(fc, entry);
+                setSelectedPaths([entry.path]);
+              }
+            }
+          } else if (e.key === 'ArrowDown') {
+            // 현재 컬럼 내 아래로
+            if (fr < currentCol.entries.length - 1) {
+              columnView.setFocusedRow(fr + 1);
+              const entry = currentCol.entries[fr + 1];
+              if (entry) {
+                columnView.selectInColumn(fc, entry);
+                setSelectedPaths([entry.path]);
+              }
+            }
+          } else if (e.key === 'ArrowRight') {
+            // 선택된 항목이 폴더면 다음 컬럼으로
+            const selectedEntry = currentCol.entries[fr];
+            if (selectedEntry?.is_dir) {
+              const nextCol = cols[fc + 1];
+              if (nextCol && nextCol.entries.length > 0) {
+                // 이미 열린 컬럼이면 포커스만 이동
+                columnView.setFocusedCol(fc + 1);
+                columnView.setFocusedRow(0);
+                const firstEntry = nextCol.entries[0];
+                if (firstEntry) {
+                  columnView.selectInColumn(fc + 1, firstEntry);
+                  setSelectedPaths([firstEntry.path]);
+                }
+              } else if (!nextCol) {
+                // 아직 열리지 않은 폴더: selectInColumn으로 열기
+                columnView.selectInColumn(fc, selectedEntry);
+                setSelectedPaths([selectedEntry.path]);
+              }
+            }
+          } else if (e.key === 'ArrowLeft') {
+            // 이전 컬럼으로 포커스 이동
+            if (fc > 0) {
+              const prevCol = cols[fc - 1];
+              columnView.setFocusedCol(fc - 1);
+              if (prevCol?.selectedPath) {
+                const rowIdx = prevCol.entries.findIndex(e => e.path === prevCol.selectedPath);
+                if (rowIdx >= 0) columnView.setFocusedRow(rowIdx);
+              }
+              // selectedPaths도 이전 컬럼의 선택으로 복원
+              if (prevCol?.selectedPath) {
+                setSelectedPaths([prevCol.selectedPath]);
+              }
+            }
+          }
+          return;
+        }
+
         if (entries.length === 0) return;
 
+        // list/details 뷰는 1행에 1개 항목, grid 뷰만 열 수 계산
         const cols = (() => {
+          if (viewMode === 'list' || viewMode === 'details') return 1;
           if (!gridRef.current) return 4;
           const cardWidth = thumbnailSize + 16 + 8;
           return Math.max(1, Math.floor(gridRef.current.clientWidth / cardWidth));
@@ -775,6 +879,8 @@ export default function FileExplorer({
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     preview.handlePreviewImage, preview.handlePreviewText,
     preview.isAnyPreviewOpen,
+    viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
+    columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow,
   ]);
 
   // --- 창 포커스 시 변경 감지 후 조건부 새로고침 ---
@@ -977,29 +1083,47 @@ export default function FileExplorer({
             themeVars={themeVars}
           />
 
-          {/* 파일 그리드 */}
-          <FileGrid
-            entries={displayEntries}
-            selectedPaths={selectedPaths}
-            clipboard={clipboard}
-            renamingPath={renamingPath}
-            thumbnailSize={thumbnailSize}
-            viewMode={viewMode}
-            sortBy={sortBy}
-            focusedIndex={focusedIndex}
-            gridRef={gridRef}
-            loading={loading}
-            error={error}
-            dropTargetPath={dropTargetPath}
-            onDragMouseDown={handleDragMouseDown}
-            onSelect={selectEntry}
-            onSelectPaths={handleSelectPaths}
-            onDeselectAll={deselectAll}
-            onOpen={openEntry}
-            onContextMenu={handleContextMenu}
-            onRenameCommit={handleRenameCommit}
-            themeVars={themeVars}
-          />
+          {/* 파일 그리드 / 컬럼 뷰 */}
+          {viewMode === 'columns' ? (
+            <ColumnView
+              columns={columnView.columns}
+              preview={columnView.preview}
+              focusedCol={columnView.focusedCol}
+              focusedRow={columnView.focusedRow}
+              loading={loading}
+              error={error}
+              themeVars={themeVars}
+              onSelectInColumn={(colIndex, entry) => {
+                columnView.selectInColumn(colIndex, entry);
+                setSelectedPaths([entry.path]);
+              }}
+              onOpenEntry={openEntry}
+              onContextMenu={handleContextMenu}
+            />
+          ) : (
+            <FileGrid
+              entries={displayEntries}
+              selectedPaths={selectedPaths}
+              clipboard={clipboard}
+              renamingPath={renamingPath}
+              thumbnailSize={thumbnailSize}
+              viewMode={viewMode}
+              sortBy={sortBy}
+              focusedIndex={focusedIndex}
+              gridRef={gridRef}
+              loading={loading}
+              error={error}
+              dropTargetPath={dropTargetPath}
+              onDragMouseDown={handleDragMouseDown}
+              onSelect={selectEntry}
+              onSelectPaths={handleSelectPaths}
+              onDeselectAll={deselectAll}
+              onOpen={openEntry}
+              onContextMenu={handleContextMenu}
+              onRenameCommit={handleRenameCommit}
+              themeVars={themeVars}
+            />
+          )}
 
           {/* 상태 바 */}
           <StatusBar

@@ -6,13 +6,14 @@ import {
   FolderPlus,
   ArrowUpDown,
   LayoutGrid,
+  Columns3,
   List,
   Table2,
   Search,
   X,
   Filter,
 } from 'lucide-react';
-import { ThumbnailSize } from '../../types';
+import { ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars } from './types';
 
 interface NavigationBarProps {
@@ -29,8 +30,8 @@ interface NavigationBarProps {
   onSortChange: (by: 'name' | 'size' | 'modified' | 'type', dir: 'asc' | 'desc') => void;
   thumbnailSize: ThumbnailSize;
   onThumbnailSizeChange: (size: ThumbnailSize) => void;
-  viewMode: 'grid' | 'list' | 'details';
-  onViewModeChange: (mode: 'grid' | 'list' | 'details') => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
   isSearchActive: boolean;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
@@ -306,9 +307,10 @@ export default memo(function NavigationBar({
       {/* 뷰 전환 버튼 */}
       <div className="flex items-center gap-0.5 rounded-md overflow-hidden" style={{ border: `1px solid ${themeVars?.border ?? '#334155'}` }}>
         {([
-          { mode: 'grid' as const, icon: <LayoutGrid size={13} />, title: '그리드 뷰' },
-          { mode: 'list' as const, icon: <List size={13} />, title: '리스트 뷰' },
-          { mode: 'details' as const, icon: <Table2 size={13} />, title: '세부사항 뷰' },
+          { mode: 'grid' as const, icon: <LayoutGrid size={13} />, title: `그리드 뷰 (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}+1)` },
+          { mode: 'columns' as const, icon: <Columns3 size={13} />, title: `컬럼 뷰 (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}+2)` },
+          { mode: 'list' as const, icon: <List size={13} />, title: `리스트 뷰 (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}+3)` },
+          { mode: 'details' as const, icon: <Table2 size={13} />, title: `세부사항 뷰 (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}+4)` },
         ]).map(({ mode, icon, title }) => (
           <button
             key={mode}

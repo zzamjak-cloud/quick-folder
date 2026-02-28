@@ -34,6 +34,9 @@ export interface ClipboardData {
 
 export type ThumbnailSize = 40 | 60 | 80 | 100 | 120 | 160 | 200 | 240 | 280 | 320;
 
+// 파일 탐색기 뷰 모드 (순서: Grid=Ctrl+1, Columns=Ctrl+2, List=Ctrl+3, Details=Ctrl+4)
+export type ViewMode = 'grid' | 'columns' | 'list' | 'details';
+
 // 테마 CSS 변수 (App, FileExplorer 공용)
 export interface ThemeVars {
   bg: string;

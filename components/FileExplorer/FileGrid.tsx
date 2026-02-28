@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { FileEntry, ThumbnailSize, ClipboardData } from '../../types';
+import { FileEntry, ThumbnailSize, ClipboardData, ViewMode } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
 import FileCard from './FileCard';
@@ -13,7 +13,7 @@ interface FileGridProps {
   clipboard: ClipboardData | null;
   renamingPath: string | null;
   thumbnailSize: ThumbnailSize;
-  viewMode: 'grid' | 'list' | 'details';
+  viewMode: ViewMode;
   sortBy: 'name' | 'size' | 'modified' | 'type';
   focusedIndex: number;
   gridRef: React.RefObject<HTMLDivElement>;

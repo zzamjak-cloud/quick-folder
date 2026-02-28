@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-03-01
+
+### Added
+- **macOS Finder 스타일 컬럼 뷰**: 파일 탐색기 4번째 뷰 모드로 컬럼 뷰 추가
+  - 폴더 선택 시 오른쪽에 새 컬럼 추가, 여러 depth 동시 탐색 가능
+  - 파일 선택 시 미리보기 패널 표시 (이미지 썸네일 + 파일 정보)
+  - 고정 컬럼 너비(220px), 가로 스크롤 지원
+  - 키보드: ↑↓ 컬럼 내 이동, → 폴더 진입, ← 이전 컬럼
+- **뷰 모드 전환 단축키**: Ctrl+1~4 (Mac: ⌘+1~4) 로 Grid/Column/List/Detail 전환
+- **ViewMode 타입 중앙화**: `types.ts`에 ViewMode 타입 추출, 인라인 반복 제거
+
+### Fixed
+- **list/details 뷰 방향키 10단계 점프 버그**: grid 카드 너비 기반 열 수 계산이 list/details 뷰에도 적용되어 ↑↓가 ~10칸씩 건너뛰던 문제 수정
+
 ## [1.6.0] - 2026-02-28
 
 ### Added
