@@ -369,8 +369,8 @@ export default function FileGrid({
     onDeselectAll();
   }, [onDeselectAll]);
 
-  // 로딩 상태
-  if (loading) {
+  // 첫 로드 시 (entries 없음 + 로딩 중) 전체 스피너 표시
+  if (loading && entries.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2
@@ -416,6 +416,13 @@ export default function FileGrid({
       onClick={handleContainerClick}
       onMouseDown={handleContainerMouseDown}
     >
+      {/* 백그라운드 로딩 인디케이터 (기존 파일 표시 중 새 디렉토리 로드) */}
+      {loading && entries.length > 0 && (
+        <div className="absolute top-0 left-0 right-0 z-10 h-0.5 overflow-hidden" style={{ backgroundColor: `${themeVars?.accent ?? '#3b82f6'}20` }}>
+          <div className="h-full animate-[loading-bar_1s_ease-in-out_infinite]" style={{ backgroundColor: themeVars?.accent ?? '#3b82f6', width: '40%' }} />
+          <style>{`@keyframes loading-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }`}</style>
+        </div>
+      )}
       {/* 그리드 뷰 */}
       {viewMode === 'grid' && (
         <div className="flex flex-wrap gap-2 content-start">

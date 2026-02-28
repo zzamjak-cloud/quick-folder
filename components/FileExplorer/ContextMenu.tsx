@@ -34,6 +34,7 @@ interface ContextMenuProps {
   onAddToFavorites: (path: string) => void;
   onCompressZip: (paths: string[]) => void;
   onPreviewPsd?: (path: string) => void;
+  onBulkRename?: (paths: string[]) => void;
 }
 
 export default function ContextMenu({
@@ -55,6 +56,7 @@ export default function ContextMenu({
   onAddToFavorites,
   onCompressZip,
   onPreviewPsd,
+  onBulkRename,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +92,7 @@ export default function ContextMenu({
     };
   }, [onClose]);
 
+  const mod = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
   const isSingle = paths.length === 1;
   const singlePath = paths[0] ?? '';
   const singleEntry = entries.find(e => e.path === singlePath);
@@ -140,7 +143,7 @@ export default function ContextMenu({
 
         {/* PSD/이미지 미리보기 */}
         {isSingle && singleEntry && !singleEntry.is_dir &&
-          (singleEntry.name.toLowerCase().endsWith('.psd') || singleEntry.file_type === 'image') &&
+          (/\.(psd|psb)$/i.test(singleEntry.name) || singleEntry.file_type === 'image') &&
           onPreviewPsd && item(
             <Eye size={13} />,
             '미리보기',
@@ -157,15 +160,22 @@ export default function ContextMenu({
         {divider('d1')}
 
         {/* 복사 / 잘라내기 / 붙여넣기 */}
-        {item(<Copy size={13} />, '복사', onCopy, paths.length === 0, 'Ctrl+C')}
-        {item(<Scissors size={13} />, '잘라내기', onCut, paths.length === 0, 'Ctrl+X')}
-        {item(<Clipboard size={13} />, '붙여넣기', onPaste, !clipboard, 'Ctrl+V')}
-        {item(<CopyPlus size={13} />, '복제', onDuplicate, paths.length === 0, 'Ctrl+D')}
+        {item(<Copy size={13} />, '복사', onCopy, paths.length === 0, `${mod}+C`)}
+        {item(<Scissors size={13} />, '잘라내기', onCut, paths.length === 0, `${mod}+X`)}
+        {item(<Clipboard size={13} />, '붙여넣기', onPaste, !clipboard, `${mod}+V`)}
+        {item(<CopyPlus size={13} />, '복제', onDuplicate, paths.length === 0, `${mod}+D`)}
 
         {divider('d2')}
 
         {/* 이름 바꾸기 */}
         {isSingle && item(<Edit2 size={13} />, '이름 바꾸기', () => onRename(singlePath), false, 'F2')}
+
+        {/* 이름 모두 바꾸기 (복수 선택 시) */}
+        {!isSingle && paths.length > 1 && onBulkRename && item(
+          <Edit2 size={13} />,
+          '이름 모두 바꾸기',
+          () => onBulkRename(paths),
+        )}
 
         {/* 삭제 (휴지통) */}
         {item(

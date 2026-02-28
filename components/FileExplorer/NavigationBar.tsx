@@ -164,7 +164,7 @@ export default function NavigationBar({
   };
 
   const sizeLabels: Record<ThumbnailSize, string> = {
-    40: 'XS', 60: 'S', 80: 'M', 100: 'L', 120: 'XL', 160: '2X', 200: '3X', 240: '4X',
+    40: 'XS', 60: 'S', 80: 'M', 100: 'L', 120: 'XL', 160: '2X', 200: '3X', 240: '4X', 280: '5X', 320: '6X',
   };
 
   const btnCls = (active: boolean) =>
@@ -261,15 +261,6 @@ export default function NavigationBar({
 
       <div className="w-px h-4 bg-[var(--qf-border)] mx-0.5" />
 
-      {/* 새 폴더 */}
-      <button
-        className={btnCls(false)}
-        onClick={onCreateDirectory}
-        title="새 폴더 (Ctrl+Shift+N)"
-      >
-        <FolderPlus size={15} />
-      </button>
-
       {/* 검색 */}
       {isSearchActive ? (
         <div className="flex items-center gap-1 rounded-md px-1.5 py-0.5" style={{ backgroundColor: themeVars?.surface ?? '#111827', border: `1px solid ${themeVars?.accent ?? '#3b82f6'}` }}>
@@ -300,6 +291,15 @@ export default function NavigationBar({
           <Search size={15} />
         </button>
       )}
+
+      {/* 새 폴더 */}
+      <button
+        className={btnCls(false)}
+        onClick={onCreateDirectory}
+        title={`새 폴더 (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}+Shift+N)`}
+      >
+        <FolderPlus size={15} />
+      </button>
 
       {/* 뷰 전환 버튼 */}
       <div className="flex items-center gap-0.5 rounded-md overflow-hidden" style={{ border: `1px solid ${themeVars?.border ?? '#334155'}` }}>
@@ -451,7 +451,7 @@ export default function NavigationBar({
                 border: `1px solid ${themeVars?.border ?? '#334155'}`,
               }}
             >
-              {([40, 60, 80, 100, 120, 160, 200, 240] as const).map(size => (
+              {([40, 60, 80, 100, 120, 160, 200, 240, 280, 320] as const).map(size => (
                 <button
                   key={size}
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)]"

@@ -1,6 +1,6 @@
 # QuickFolder Widget - 기술 문서
 
-> **현재 버전**: v1.4.1 | **최종 업데이트**: 2026-02-27
+> **현재 버전**: v1.6.0 | **최종 업데이트**: 2026-02-28
 
 ## 1. 프로젝트 개요
 
@@ -117,12 +117,12 @@ quick-folder/
 
 | 커맨드 | 설명 |
 |--------|------|
-| `list_directory` | 디렉토리 내용 조회 (숨김/시스템 파일 자동 제외) |
-| `get_file_thumbnail` | 이미지 썸네일 생성 (디스크 캐시: `app_cache_dir/img_thumbnails/`) |
-| `get_psd_thumbnail` | PSD 파일 썸네일 생성 (디스크 캐시: `app_cache_dir/psd_thumbnails/`) |
-| `get_video_thumbnail` | ffmpeg 기반 동영상 썸네일 추출 (미설치 시 None) |
+| `list_directory` | 디렉토리 내용 조회 (숨김/시스템 파일 자동 제외, `spawn_blocking`) |
+| `get_file_thumbnail` | 이미지 썸네일 생성 (디스크 캐시, `spawn_blocking`) |
+| `get_psd_thumbnail` | PSD 파일 썸네일 생성 (디스크 캐시, `spawn_blocking`) |
+| `get_video_thumbnail` | ffmpeg 기반 동영상 썸네일 추출 (`spawn_blocking`, 미설치 시 None) |
 | `get_file_icon` | OS 네이티브 파일 아이콘 추출 (macOS: NSWorkspace, Windows: SHGetImageList) |
-| `get_image_dimensions` | 이미지 해상도 조회 |
+| `get_image_dimensions` | 이미지 해상도 조회 (`spawn_blocking`) |
 | `read_text_file` | 텍스트 파일 읽기 (최대 바이트 제한) |
 | `copy_items` | 파일/폴더 복사 (같은 폴더 복사 시 "(복사)" 접미사 자동 추가) |
 | `move_items` | 파일/폴더 이동 |
@@ -154,8 +154,10 @@ quick-folder/
 - 확장자별 캐시로 Rust 호출 최소화 (같은 확장자는 한 번만 요청)
 
 **성능 보호**:
-- 프론트엔드: invoke 큐 (동시 12개, 대기 최대 20개, 초과 시 오래된 요청 취소)
-- Rust 백엔드: `HeavyOpPermit` 세마포어 (동시 8개) + `catch_unwind` 패닉 방지
+- 프론트엔드: invoke 큐 (동시 3개, 대기 최대 200개, 초과 시 오래된 요청 취소)
+- Rust 백엔드: `HeavyOpPermit` 세마포어 (동시 3개) + `catch_unwind` 패닉 방지
+- 모든 I/O 커맨드 `async fn` + `spawn_blocking`: 네트워크 파일시스템에서 tokio 워커 차단 방지
+- 탭별 entries 캐시: 디렉토리 내용을 `Map<string, FileEntry[]>`로 캐시하여 탭 전환 즉시 표시
 
 ### 4.2 프론트엔드 아키텍처
 
@@ -176,24 +178,28 @@ quick-folder/
 | 단축키 | macOS | Windows | 동작 |
 |--------|-------|---------|------|
 | 뒤로/앞으로 | Alt+←/→ | Alt+←/→ | 히스토리 탐색 |
-| 폴더 진입 | Cmd+↓ | Alt+↓ | 선택 폴더로 이동 |
-| 상위 이동 | Cmd+↑ | Alt+↑ | 부모 디렉토리 |
-| 이름변경 | F2 / Enter | F2 | 인라인 이름변경 |
+| 폴더 진입 | ⌘+↓ | Alt+↓ | 선택 폴더로 이동 |
+| 상위 이동 | ⌘+↑ | Alt+↑ | 부모 디렉토리 |
+| 이름변경 | F2 / Enter | F2 | 인라인 이름변경 (다중 선택 시 일괄) |
 | 삭제 | Delete / ⌫ | Delete | 휴지통으로 이동 |
-| 새 탭 | Ctrl+T | Ctrl+T | 탭 생성 |
-| 탭 닫기 | Ctrl+W | Ctrl+W | 현재 탭 닫기 |
-| 다른 탭 닫기 | Ctrl+Alt+W | Ctrl+Alt+W | 다른 탭 모두 닫기 |
+| 새 탭 | ⌘+T | Ctrl+T | 탭 생성 |
+| 탭 닫기 | ⌘+W | Ctrl+W | 현재 탭 닫기 |
+| 다른 탭 닫기 | ⌘+Alt+W | Ctrl+Alt+W | 다른 탭 모두 닫기 |
+| 새 폴더 | ⌘+Shift+N | Ctrl+Shift+N | 새 폴더 생성 + 인라인 이름변경 |
 | 미리보기 | Space | Space | 토글 열기/닫기 |
-| 전체 선택 | Ctrl+A | Ctrl+A | 모든 파일 선택 |
-| 복사 | Ctrl+C | Ctrl+C | 파일 복사 |
-| 잘라내기 | Ctrl+X | Ctrl+X | 파일 잘라내기 |
-| 붙여넣기 | Ctrl+V | Ctrl+V | 파일 붙여넣기 |
-| 복제 | Ctrl+D | Ctrl+D | 파일 복제 |
-| 검색 | Ctrl+F | Ctrl+F | 파일명 검색 |
+| 전체 선택 | ⌘+A | Ctrl+A | 모든 파일 선택 |
+| 복사 | ⌘+C | Ctrl+C | 파일 복사 |
+| 잘라내기 | ⌘+X | Ctrl+X | 파일 잘라내기 |
+| 붙여넣기 | ⌘+V | Ctrl+V | 파일 붙여넣기 |
+| 복제 | ⌘+D | Ctrl+D | 파일 복제 |
+| 검색 | ⌘+F | Ctrl+F | 파일명 검색 |
+| 범위 선택 | Shift+방향키 | Shift+방향키 | 앵커 기반 범위 선택 |
 | 썸네일 확대/축소 | Ctrl+스크롤 | Ctrl+스크롤 | 썸네일 크기 조절 |
 
 - **미리보기**: 이미지(스페이스바 토글), PSD(우클릭), 동영상(더블클릭/Space), 텍스트 파일
 - **파일 작업**: 복사, 이동, 삭제, 이름변경, 새 폴더, ZIP 압축, 같은 폴더 복사
+- **OS 파일 드래그 이동**: OS 탐색기 ↔ QuickFolder 파일 드래그로 이동/복사 (클라우드 스토리지 자동 감지)
+- **비차단 로딩**: 네트워크 파일시스템(Google Drive 등)에서도 로딩 중 앱 조작 가능
 - **분할 뷰**: 2분할(수평/수직), 각 패널 독립 탐색·탭·설정
 - **창 포커스 최적화**: 파일 변경 감지 후 조건부 갱신 (변경 없으면 리렌더링 없음)
 
@@ -246,6 +252,11 @@ interface ToastMessage { id, message, type: 'success' | 'error' | 'info' }
 **파일 → 폴더** (`hooks/useInternalDragDrop.ts`):
 - 파일을 탐색기 내 폴더 위에 드롭하여 이동
 - 분할 뷰 패널 간 파일 드래그 이동 지원
+- 클라우드 스토리지(Google Drive/Dropbox/OneDrive/iCloud) 자동 감지: 클라우드 ↔ 로컬은 복사, 로컬 ↔ 로컬은 이동
+
+**OS → 탐색기** (`FileExplorer/index.tsx`):
+- Tauri `onDragDropEvent` 기반 외부 파일 드롭 수신
+- 클라우드 스토리지 경로 감지하여 자동 이동/복사 결정
 
 ### 4.6 아이콘 시스템
 
@@ -276,8 +287,8 @@ npm run tauri build  # 현재 플랫폼용 빌드
 태그 푸시 시 자동 빌드 및 릴리즈 생성:
 
 ```bash
-git tag v1.4.1
-git push origin v1.4.1
+git tag v1.6.0
+git push origin v1.6.0
 # GitHub Actions가 자동으로 빌드 및 릴리즈 생성
 ```
 
@@ -390,6 +401,9 @@ npm install @tauri-apps/plugin-xxxxx
 
 | 버전 | 날짜 | 주요 변경 |
 |------|------|----------|
+| **1.6.0** | 2026-02-28 | OS 파일 드래그 이동, 비차단 로딩, spawn_blocking 전환, 동시성 최적화 |
+| **1.5.0** | 2026-02-28 | Shift+방향키 범위 선택, 동일 파일명 일괄 이름변경, 클립보드 이미지 붙여넣기 |
+| **1.4.2** | 2026-02-27 | OS 클립보드 통합, 박스 드래그 선택 |
 | **1.4.1** | 2026-02-27 | 창 포커스 깜빡임 방지 (변경 감지 조건부 갱신) |
 | **1.4.0** | 2026-02-26 | DnD 전면 재설계, Ctrl+W 탭 닫기, 같은 폴더 복사 |
 | **1.3.x** | 2026-02-26 | 확장자별 아이콘, 스페이스바 미리보기 토글, 터치패드 핀치 방지 |

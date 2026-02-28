@@ -8,8 +8,9 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
-// PSD 썸네일 제거로 메모리 부담 감소 → 동시성 한도 12개로 완화, 대기 큐 200개로 확대
-const MAX_CONCURRENT = 12;
+// 네트워크 파일시스템(Google Drive 등) 대응: 동시성 3개로 제한
+// tokio 워커 스레드 차단 최소화 + UI 응답성 유지
+const MAX_CONCURRENT = 3;
 const MAX_QUEUE_SIZE = 200; // 대기 큐 최대 크기 (넘치면 오래된 것부터 취소)
 
 interface QueueItem {

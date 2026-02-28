@@ -40,226 +40,248 @@ fn classify_file(name: &str) -> FileType {
 // 디렉토리 목록 조회
 #[tauri::command]
 async fn list_directory(path: String) -> Result<Vec<FileEntry>, String> {
-    let entries = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
-    let mut result = vec![];
-    for entry in entries.flatten() {
-        let meta = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let modified = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        // Windows: 숨김(HIDDEN) 또는 시스템(SYSTEM) 속성 파일 제외
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::fs::MetadataExt;
-            // FILE_ATTRIBUTE_HIDDEN(0x2) | FILE_ATTRIBUTE_SYSTEM(0x4)
-            if meta.file_attributes() & 0x6 != 0 {
+    // spawn_blocking: 네트워크 파일시스템(Google Drive 등) I/O가 tokio 워커를 차단하지 않도록 분리
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
+        let entries = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
+        let mut result = vec![];
+        for entry in entries.flatten() {
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            // Windows: 숨김(HIDDEN) 또는 시스템(SYSTEM) 속성 파일 제외
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::fs::MetadataExt;
+                // FILE_ATTRIBUTE_HIDDEN(0x2) | FILE_ATTRIBUTE_SYSTEM(0x4)
+                if meta.file_attributes() & 0x6 != 0 {
+                    continue;
+                }
+            }
+
+            let name = entry.file_name().to_string_lossy().to_string();
+            // 숨김 파일 제외 (점으로 시작하는 파일)
+            if name.starts_with('.') {
                 continue;
             }
-        }
+            // Windows 시스템 파일 이름으로 필터링 (대소문자 무관)
+            let name_lower = name.to_lowercase();
+            if name_lower == "desktop.ini" || name_lower == "thumbs.db" || name_lower == "ntuser.dat" {
+                continue;
+            }
 
-        let name = entry.file_name().to_string_lossy().to_string();
-        // 숨김 파일 제외 (점으로 시작하는 파일)
-        if name.starts_with('.') {
-            continue;
+            let file_type = if meta.is_dir() {
+                FileType::Directory
+            } else {
+                classify_file(&name)
+            };
+            result.push(FileEntry {
+                path: entry.path().to_string_lossy().to_string(),
+                is_dir: meta.is_dir(),
+                size: if meta.is_dir() { 0 } else { meta.len() },
+                modified,
+                file_type,
+                name,
+            });
         }
-        // Windows 시스템 파일 이름으로 필터링 (대소문자 무관)
-        let name_lower = name.to_lowercase();
-        if name_lower == "desktop.ini" || name_lower == "thumbs.db" || name_lower == "ntuser.dat" {
-            continue;
-        }
-
-        let file_type = if meta.is_dir() {
-            FileType::Directory
-        } else {
-            classify_file(&name)
-        };
-        result.push(FileEntry {
-            path: entry.path().to_string_lossy().to_string(),
-            is_dir: meta.is_dir(),
-            size: if meta.is_dir() { 0 } else { meta.len() },
-            modified,
-            file_type,
-            name,
-        });
-    }
-    // 정렬은 프론트엔드에서 수행 (sortEntries)
-    Ok(result)
+        Ok(result)
+    })
+    .await
+    .map_err(|e| format!("디렉토리 읽기 태스크 실패: {}", e))?
 }
 
 // 이미지 규격 조회 (헤더만 읽어 빠르게 반환)
+// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
-fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String> {
-    use std::io::Read;
+async fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<(u32, u32)>, String> {
+        use std::io::Read;
 
-    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
-    let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd"];
-    if !supported.contains(&ext.as_str()) {
-        return Ok(None);
-    }
-    if ext == "psd" {
-        // PSD 헤더에서 규격만 읽음 (26바이트만 필요, 전체 파일 로드 방지)
-        let mut buf = [0u8; 26];
-        let mut f = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-        if f.read_exact(&mut buf).is_err() {
+        let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd", "psb"];
+        if !supported.contains(&ext.as_str()) {
             return Ok(None);
         }
-        let h = u32::from_be_bytes([buf[14], buf[15], buf[16], buf[17]]);
-        let w = u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]);
-        return Ok(Some((w, h)));
-    }
-    match image::image_dimensions(&path) {
-        Ok((w, h)) => Ok(Some((w, h))),
-        Err(_) => Ok(None),
-    }
+        if ext == "psd" || ext == "psb" {
+            // PSD 헤더에서 규격만 읽음 (26바이트만 필요, 전체 파일 로드 방지)
+            let mut buf = [0u8; 26];
+            let mut f = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            if f.read_exact(&mut buf).is_err() {
+                return Ok(None);
+            }
+            let h = u32::from_be_bytes([buf[14], buf[15], buf[16], buf[17]]);
+            let w = u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]);
+            return Ok(Some((w, h)));
+        }
+        match image::image_dimensions(&path) {
+            Ok((w, h)) => Ok(Some((w, h))),
+            Err(_) => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| format!("이미지 규격 조회 실패: {}", e))?
 }
 
 // 이미지 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
+// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 // HeavyOpPermit으로 동시 처리 수 제한 + catch_unwind로 패닉 방지
 #[tauri::command]
-fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
-    use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
-    use base64::Engine;
+async fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
     use tauri::Manager;
 
-    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
-    let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
-    if !supported.contains(&ext.as_str()) {
-        return Ok(None);
-    }
-
-    // 파일 수정 시각 + 크기로 캐시 키 구성
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    let modified = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    modified.hash(&mut hasher);
-    size.hash(&mut hasher);
-    let cache_key = format!("{:x}", hasher.finish());
-
-    // 캐시 디렉토리 경로
     let cache_dir = app
         .path()
         .app_cache_dir()
         .map_err(|e: tauri::Error| e.to_string())?
         .join("img_thumbnails");
-    std::fs::create_dir_all(&cache_dir).ok();
-    let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    // 캐시 히트 → 세마포어 불필요
-    if cache_file.exists() {
-        let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
-        return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
-    }
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>, String> {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        use base64::Engine;
 
-    // 메모리 집약 작업: 동시성 제한 + 패닉 방지
-    let _permit = HeavyOpPermit::acquire();
+        let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+        if !supported.contains(&ext.as_str()) {
+            return Ok(None);
+        }
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let img = image::open(&path).map_err(|e| e.to_string())?;
-        let thumb = img.thumbnail(size, size);
-        let mut buf = vec![];
-        thumb
-            .write_to(
-                &mut std::io::Cursor::new(&mut buf),
-                image::ImageFormat::Png,
-            )
-            .map_err(|e| e.to_string())?;
+        // 파일 수정 시각 + 크기로 캐시 키 구성
+        let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
 
-        // 디스크 캐시 저장
-        std::fs::write(&cache_file, &buf).ok();
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        modified.hash(&mut hasher);
+        size.hash(&mut hasher);
+        let cache_key = format!("{:x}", hasher.finish());
 
-        Ok(Some(
-            base64::engine::general_purpose::STANDARD.encode(&buf),
-        ))
-    }));
+        // 캐시 디렉토리 경로
+        std::fs::create_dir_all(&cache_dir).ok();
+        let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    match result {
-        Ok(r) => r,
-        Err(_) => Ok(None), // 패닉 발생 시 안전하게 None 반환
-    }
+        // 캐시 히트 → 세마포어 불필요
+        if cache_file.exists() {
+            let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
+            return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
+        }
+
+        // 메모리 집약 작업: 동시성 제한 + 패닉 방지
+        let _permit = HeavyOpPermit::acquire();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let img = image::open(&path).map_err(|e| e.to_string())?;
+            let thumb = img.thumbnail(size, size);
+            let mut buf = vec![];
+            thumb
+                .write_to(
+                    &mut std::io::Cursor::new(&mut buf),
+                    image::ImageFormat::Png,
+                )
+                .map_err(|e| e.to_string())?;
+
+            // 디스크 캐시 저장
+            std::fs::write(&cache_file, &buf).ok();
+
+            Ok(Some(
+                base64::engine::general_purpose::STANDARD.encode(&buf),
+            ))
+        }));
+
+        match result {
+            Ok(r) => r,
+            Err(_) => Ok(None), // 패닉 발생 시 안전하게 None 반환
+        }
+    })
+    .await
+    .map_err(|e| format!("썸네일 생성 실패: {}", e))?
 }
 
 // PSD 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
 // PSD는 전체 파일을 메모리에 로드하므로 동시성 제한 필수
+// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
-fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
-    use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
-    use base64::Engine;
+async fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
     use tauri::Manager;
 
-    // 파일 수정 시각으로 캐시 키 구성
-    let modified = std::fs::metadata(&path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    modified.hash(&mut hasher);
-    size.hash(&mut hasher);
-    let cache_key = format!("{:x}", hasher.finish());
-
-    // 캐시 디렉토리 경로
     let cache_dir = app
         .path()
         .app_cache_dir()
         .map_err(|e: tauri::Error| e.to_string())?
         .join("psd_thumbnails");
-    std::fs::create_dir_all(&cache_dir).ok();
-    let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    // 캐시 히트 → 세마포어 불필요
-    if cache_file.exists() {
-        let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
-        return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
-    }
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>, String> {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        use base64::Engine;
 
-    // 메모리 집약 작업: 동시성 제한 + 패닉 방지
-    let _permit = HeavyOpPermit::acquire();
+        // 파일 수정 시각으로 캐시 키 구성
+        let modified = std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-        let psd = psd::Psd::from_bytes(&bytes).map_err(|e| format!("PSD 파싱 실패: {}", e))?;
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        modified.hash(&mut hasher);
+        size.hash(&mut hasher);
+        let cache_key = format!("{:x}", hasher.finish());
 
-        let rgba_pixels = psd.rgba();
-        let width = psd.width();
-        let height = psd.height();
+        std::fs::create_dir_all(&cache_dir).ok();
+        let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-        let img = image::RgbaImage::from_raw(width, height, rgba_pixels)
-            .ok_or_else(|| "PSD 픽셀 변환 실패".to_string())?;
-        let dynamic = image::DynamicImage::ImageRgba8(img);
-        let thumb = dynamic.thumbnail(size, size);
+        // 캐시 히트 → 세마포어 불필요
+        if cache_file.exists() {
+            let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
+            return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
+        }
 
-        let mut buf = vec![];
-        thumb
-            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
-            .map_err(|e| e.to_string())?;
+        // 메모리 집약 작업: 동시성 제한 + 패닉 방지
+        let _permit = HeavyOpPermit::acquire();
 
-        std::fs::write(&cache_file, &buf).ok();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+            let psd = psd::Psd::from_bytes(&bytes).map_err(|e| format!("PSD 파싱 실패: {}", e))?;
 
-        Ok(Some(base64::engine::general_purpose::STANDARD.encode(&buf)))
-    }));
+            let rgba_pixels = psd.rgba();
+            let width = psd.width();
+            let height = psd.height();
 
-    match result {
-        Ok(r) => r,
-        Err(_) => Ok(None),
-    }
+            let img = image::RgbaImage::from_raw(width, height, rgba_pixels)
+                .ok_or_else(|| "PSD 픽셀 변환 실패".to_string())?;
+            let dynamic = image::DynamicImage::ImageRgba8(img);
+            let thumb = dynamic.thumbnail(size, size);
+
+            let mut buf = vec![];
+            thumb
+                .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                .map_err(|e| e.to_string())?;
+
+            std::fs::write(&cache_file, &buf).ok();
+
+            Ok(Some(base64::engine::general_purpose::STANDARD.encode(&buf)))
+        }));
+
+        match result {
+            Ok(r) => r,
+            Err(_) => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| format!("PSD 썸네일 생성 실패: {}", e))?
 }
 
 // 파일/폴더 복사 (재귀 지원, 같은 폴더 내 복사 시 충돌 방지)
@@ -460,7 +482,7 @@ use std::collections::HashMap;
 
 /// 동시 이미지/썸네일 처리 최대 개수
 /// PSD 썸네일을 제거하여 메모리 부담이 감소했으므로 8개로 완화
-const MAX_HEAVY_OPS: usize = 8;
+const MAX_HEAVY_OPS: usize = 3;
 
 fn heavy_op_guard() -> &'static (Mutex<usize>, Condvar) {
     static GUARD: OnceLock<(Mutex<usize>, Condvar)> = OnceLock::new();
@@ -796,66 +818,73 @@ fn is_ffmpeg_available() -> bool {
 }
 
 // --- 동영상 썸네일 (ffmpeg CLI 기반, 디스크 캐시) ---
+// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
-fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
-    use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
-    use base64::Engine;
+async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
     use tauri::Manager;
 
     if !is_ffmpeg_available() {
         return Ok(None);
     }
 
-    // 캐시 키 구성
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    let modified = meta.modified().ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    modified.hash(&mut hasher);
-    size.hash(&mut hasher);
-    let cache_key = format!("{:x}", hasher.finish());
-
     let cache_dir = app.path().app_cache_dir()
         .map_err(|e: tauri::Error| e.to_string())?
         .join("video_thumbnails");
-    std::fs::create_dir_all(&cache_dir).ok();
-    let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    // 캐시 히트
-    if cache_file.exists() {
-        let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
-        return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
-    }
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>, String> {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        use base64::Engine;
 
-    // ffmpeg로 1초 지점 프레임 추출 → PNG 파이프 출력
-    let output = std::process::Command::new("ffmpeg")
-        .args([
-            "-i", &path,
-            "-ss", "00:00:01",
-            "-frames:v", "1",
-            "-vf", &format!("scale={}:-1", size),
-            "-f", "image2pipe",
-            "-vcodec", "png",
-            "pipe:1",
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| e.to_string())?;
+        // 캐시 키 구성
+        let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        let modified = meta.modified().ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
 
-    if !output.status.success() || output.stdout.is_empty() {
-        return Ok(None);
-    }
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        modified.hash(&mut hasher);
+        size.hash(&mut hasher);
+        let cache_key = format!("{:x}", hasher.finish());
 
-    // 디스크 캐시 저장
-    std::fs::write(&cache_file, &output.stdout).ok();
+        std::fs::create_dir_all(&cache_dir).ok();
+        let cache_file = cache_dir.join(format!("{}.png", cache_key));
 
-    Ok(Some(base64::engine::general_purpose::STANDARD.encode(&output.stdout)))
+        // 캐시 히트
+        if cache_file.exists() {
+            let cached = std::fs::read(&cache_file).map_err(|e| e.to_string())?;
+            return Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)));
+        }
+
+        // ffmpeg로 1초 지점 프레임 추출 → PNG 파이프 출력
+        let output = std::process::Command::new("ffmpeg")
+            .args([
+                "-i", &path,
+                "-ss", "00:00:01",
+                "-frames:v", "1",
+                "-vf", &format!("scale={}:-1", size),
+                "-f", "image2pipe",
+                "-vcodec", "png",
+                "pipe:1",
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() || output.stdout.is_empty() {
+            return Ok(None);
+        }
+
+        // 디스크 캐시 저장
+        std::fs::write(&cache_file, &output.stdout).ok();
+
+        Ok(Some(base64::engine::general_purpose::STANDARD.encode(&output.stdout)))
+    })
+    .await
+    .map_err(|e| format!("동영상 썸네일 생성 실패: {}", e))?
 }
 
 // --- ZIP 압축 ---
@@ -899,6 +928,43 @@ fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
             zip.start_file(&full_name, options).map_err(|e| e.to_string())?;
             let content = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
             std::io::Write::write_all(zip, &content).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+// --- 썸네일 캐시 무효화 ---
+#[tauri::command]
+fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+    use tauri::Manager;
+
+    let sizes: [u32; 10] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
+    let cache_dir_names = ["img_thumbnails", "psd_thumbnails", "video_thumbnails"];
+    let app_cache = app.path().app_cache_dir().map_err(|e: tauri::Error| e.to_string())?;
+
+    for path in &paths {
+        let modified = std::fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+
+        for &size in &sizes {
+            let mut hasher = DefaultHasher::new();
+            path.hash(&mut hasher);
+            modified.hash(&mut hasher);
+            size.hash(&mut hasher);
+            let cache_key = format!("{:x}", hasher.finish());
+
+            for dir_name in &cache_dir_names {
+                let cache_file = app_cache.join(dir_name).join(format!("{}.png", cache_key));
+                if cache_file.exists() {
+                    std::fs::remove_file(&cache_file).ok();
+                }
+            }
         }
     }
     Ok(())
@@ -1289,6 +1355,7 @@ pub fn run() {
         write_files_to_clipboard,
         read_files_from_clipboard,
         paste_image_from_clipboard,
+        invalidate_thumbnail_cache,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

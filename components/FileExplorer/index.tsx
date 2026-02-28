@@ -5,11 +5,29 @@ import { ThemeVars, Tab } from './types';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
+import BulkRenameModal from './BulkRenameModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import VideoPlayer from './VideoPlayer';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
 import { cancelAllQueued } from './hooks/invokeQueue';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+
+// 클라우드 스토리지 경로 감지 (Google Drive, Dropbox, OneDrive, iCloud 등)
+function isCloudPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  // macOS 클라우드 스토리지 마운트 경로
+  if (lower.includes('/library/cloudstorage/')) return true;
+  // macOS iCloud
+  if (lower.includes('/library/mobile documents/')) return true;
+  // Google Drive 공유 드라이브 (구버전)
+  if (lower.includes('/google drive/')) return true;
+  // Windows OneDrive
+  if (/[\\/]onedrive[\\/]/i.test(path)) return true;
+  // Windows Dropbox
+  if (/[\\/]dropbox[\\/]/i.test(path)) return true;
+  return false;
+}
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
@@ -25,7 +43,7 @@ interface FileExplorerProps {
   onClipboardChange?: (cb: ClipboardData | null) => void;
 }
 
-const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240];
+const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
 const TABS_KEY = 'qf_explorer_tabs';
 const ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
 
@@ -62,6 +80,7 @@ export default function FileExplorer({
   const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(120);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'details'>('grid');
@@ -116,17 +135,37 @@ export default function FileExplorer({
   }, [activeTabId, activeTabKey]);
 
   // --- 디렉토리 로딩 ---
+  const loadRequestRef = useRef(0); // 동시 요청 시 마지막 요청만 반영
+  const entriesCacheRef = useRef<Map<string, FileEntry[]>>(new Map()); // 탭별 entries 캐시
+
   const loadDirectory = useCallback(async (path: string) => {
     if (!path) return;
     cancelAllQueued(); // 이전 디렉토리의 대기 중인 썸네일 요청 모두 취소
-    setLoading(true);
     setError(null);
-    setSelectedPaths([]);
-    setFocusedIndex(-1);
+
+    // 캐시에 있으면 즉시 표시 (탭 전환 시 대기 없음)
+    const cached = entriesCacheRef.current.get(path);
+    if (cached) {
+      setEntries(sortEntries(cached, sortBy, sortDir));
+      setSelectedPaths([]);
+      setFocusedIndex(-1);
+    }
+
+    // 캐시 히트와 무관하게 항상 백그라운드에서 최신 데이터 요청
+    setLoading(true);
+    const requestId = ++loadRequestRef.current;
     try {
       const result = await invoke<FileEntry[]>('list_directory', { path });
+      // 이미 다른 디렉토리로 이동한 경우 무시
+      if (requestId !== loadRequestRef.current) return;
+      entriesCacheRef.current.set(path, result); // 캐시 갱신
       const sortedResult = sortEntries(result, sortBy, sortDir);
       setEntries(sortedResult);
+      // 캐시 히트가 없었던 경우에만 선택 초기화 (첫 진입)
+      if (!cached) {
+        setSelectedPaths([]);
+        setFocusedIndex(-1);
+      }
       // 뒤로/위로 이동 시 이전에 있던 폴더를 자동 선택
       if (lastVisitedChildRef.current) {
         const prevPath = lastVisitedChildRef.current;
@@ -138,10 +177,11 @@ export default function FileExplorer({
         }
       }
     } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
       setError(String(e));
       setEntries([]);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [sortBy, sortDir]);
 
@@ -479,22 +519,50 @@ export default function FileExplorer({
 
   const handleCreateDirectory = useCallback(async () => {
     if (!currentPath) return;
-    const name = window.prompt('새 폴더 이름을 입력하세요:', '새 폴더');
-    if (!name) return;
     const sep = currentPath.includes('/') ? '/' : '\\';
-    const newPath = `${currentPath}${sep}${name}`;
+    // 중복 방지: "새 폴더", "새 폴더 2", "새 폴더 3"...
+    let baseName = '새 폴더';
+    let candidate = baseName;
+    let counter = 2;
+    const existingNames = new Set(entries.map(e => e.name));
+    while (existingNames.has(candidate)) {
+      candidate = `${baseName} ${counter++}`;
+    }
+    const newPath = `${currentPath}${sep}${candidate}`;
     try {
       await invoke('create_directory', { path: newPath });
-      loadDirectory(currentPath);
+      await loadDirectory(currentPath);
+      // 생성 후 바로 인라인 이름변경 시작
+      setRenamingPath(newPath);
+      setSelectedPaths([newPath]);
     } catch (e) {
       console.error('폴더 생성 실패:', e);
     }
-  }, [currentPath, loadDirectory]);
+  }, [currentPath, loadDirectory, entries]);
 
   const handleRenameStart = useCallback((path: string) => {
     setRenamingPath(path);
     setContextMenu(null);
   }, []);
+
+  // 일괄 이름변경 모달 열기
+  const handleBulkRename = useCallback((paths: string[]) => {
+    setBulkRenamePaths(paths);
+    setContextMenu(null);
+  }, []);
+
+  // 일괄 이름변경 적용
+  const handleBulkRenameApply = useCallback(async (renames: { oldPath: string; newPath: string }[]) => {
+    for (const { oldPath, newPath } of renames) {
+      await invoke('rename_item', { oldPath, newPath });
+    }
+    if (currentPath) {
+      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      setEntries(sortEntries(result, sortBy, sortDir));
+    }
+    setSelectedPaths([]);
+    window.dispatchEvent(new Event('qf-files-changed'));
+  }, [currentPath, sortBy, sortDir]);
 
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
     setRenamingPath(null);
@@ -578,7 +646,7 @@ export default function FileExplorer({
     setPreviewImageData(null);
     setPreviewLoading(true);
     try {
-      const isPsd = path.toLowerCase().endsWith('.psd');
+      const isPsd = /\.(psd|psb)$/i.test(path);
       const cmd = isPsd ? 'get_psd_thumbnail' : 'get_file_thumbnail';
       // 미리보기용 큰 해상도
       const b64 = await invoke<string | null>(cmd, { path, size: 800 });
@@ -605,10 +673,15 @@ export default function FileExplorer({
   }, []);
 
   // --- 컨텍스트 메뉴 ---
+  // 선택된 항목 중 하나를 우클릭하면 선택 전체를 대상으로 메뉴 표시
   const handleContextMenu = useCallback((e: React.MouseEvent, paths: string[]) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, paths });
-  }, []);
+    const clickedPath = paths[0];
+    const menuPaths = (clickedPath && selectedPaths.includes(clickedPath))
+      ? selectedPaths
+      : paths;
+    setContextMenu({ x: e.clientX, y: e.clientY, paths: menuPaths });
+  }, [selectedPaths]);
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -755,7 +828,7 @@ export default function FileExplorer({
         if (entry.file_type === 'video') {
           // 동영상: 내장 비디오 플레이어
           setVideoPlayerPath(entry.path);
-        } else if (entry.file_type === 'image' || entry.name.toLowerCase().endsWith('.psd')) {
+        } else if (entry.file_type === 'image' || /\.(psd|psb)$/i.test(entry.name)) {
           // 이미지/PSD: 내장 미리보기 모달
           handlePreviewImage(entry.path);
         } else if (['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log'].includes(entry.name.split('.').pop()?.toLowerCase() ?? '')) {
@@ -806,7 +879,8 @@ export default function FileExplorer({
         if (selectedPaths.length === 1) {
           handleRenameStart(selectedPaths[0]);
         } else if (selectedPaths.length > 1) {
-          // 동일 베이스명 파일들만 일괄 이름변경 지원
+          // 동일 베이스명(확장자만 다름) → 인라인 이름변경 (커밋 시 일괄 적용)
+          // 다른 이름 섞임 → 일괄 이름변경 모달
           const getBaseName = (p: string) => {
             const name = p.split(/[/\\]/).pop() ?? '';
             const dot = name.lastIndexOf('.');
@@ -815,6 +889,8 @@ export default function FileExplorer({
           const baseNames = new Set(selectedPaths.map(getBaseName));
           if (baseNames.size === 1) {
             handleRenameStart(selectedPaths[0]);
+          } else {
+            handleBulkRename(selectedPaths);
           }
         }
         return;
@@ -936,6 +1012,65 @@ export default function FileExplorer({
     currentPath,
     onMoveComplete: () => loadDirectory(currentPath),
   });
+
+  // --- OS에서 파일 드래그 수신 (Tauri onDragDropEvent) ---
+  useEffect(() => {
+    if (!currentPath) return;
+    let isMounted = true;
+    let unlisten: (() => void) | null = null;
+
+    getCurrentWebview().onDragDropEvent(async (event) => {
+      if (!isMounted) return;
+      if (event.payload.type !== 'drop') return;
+
+      const droppedPaths = event.payload.paths;
+      if (!droppedPaths || droppedPaths.length === 0) return;
+
+      // 드롭 위치가 이 패널 영역 안인지 확인
+      const pos = event.payload.position;
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      // Tauri는 물리 픽셀 좌표를 전달할 수 있으므로 두 좌표 체계 모두 확인
+      const inBounds = (px: number, py: number) =>
+        px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom;
+      if (!inBounds(pos.x, pos.y) && !inBounds(pos.x / dpr, pos.y / dpr)) return;
+
+      // 이미 같은 디렉토리에 있는 파일은 제외
+      const filtered = droppedPaths.filter(p => {
+        const sep = p.includes('/') ? '/' : '\\';
+        const dir = p.substring(0, p.lastIndexOf(sep));
+        return dir !== currentPath;
+      });
+      if (filtered.length === 0) return;
+
+      // 클라우드 경로 ↔ 로컬 = 복사, 로컬 ↔ 로컬 = 이동
+      const srcIsCloud = filtered.some(p => isCloudPath(p));
+      const destIsCloud = isCloudPath(currentPath);
+      const shouldCopy = srcIsCloud || destIsCloud;
+
+      try {
+        if (shouldCopy) {
+          await invoke('copy_items', { sources: filtered, dest: currentPath });
+        } else {
+          await invoke('move_items', { sources: filtered, dest: currentPath });
+        }
+        loadDirectory(currentPath);
+        window.dispatchEvent(new Event('qf-files-changed'));
+      } catch (err) {
+        console.error('파일 드롭 처리 실패:', err);
+      }
+    }).then(fn => {
+      if (isMounted) unlisten = fn;
+      else fn();
+    });
+
+    return () => {
+      isMounted = false;
+      if (unlisten) unlisten();
+    };
+  }, [currentPath]);
 
   // 외부 클릭 시 선택 해제
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
@@ -1176,6 +1311,17 @@ export default function FileExplorer({
           }}
           onCompressZip={handleCompressZip}
           onPreviewPsd={handlePreviewImage}
+          onBulkRename={handleBulkRename}
+        />
+      )}
+
+      {/* 일괄 이름변경 모달 */}
+      {bulkRenamePaths && (
+        <BulkRenameModal
+          paths={bulkRenamePaths}
+          onClose={() => setBulkRenamePaths(null)}
+          onApply={handleBulkRenameApply}
+          themeVars={themeVars}
         />
       )}
     </div>

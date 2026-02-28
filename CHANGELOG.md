@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-28
+
+### Added
+- **OS ↔ 탐색기 파일 드래그 이동**: OS 탐색기에서 QuickFolder로, 또는 반대로 파일을 드래그하여 직접 이동
+  - 로컬 ↔ 로컬: 이동(move), 클라우드 스토리지(Google Drive/Dropbox/OneDrive/iCloud) ↔ 로컬: 복사(copy)
+  - `Tauri onDragDropEvent` 기반 외부 파일 드롭 수신
+- **F2 일괄 이름변경 개선**: 여러 파일 선택 후 F2 → 파일명이 다르면 일괄 이름변경 모달 자동 표시
+- **새 폴더 인라인 생성**: Ctrl+Shift+N으로 "새 폴더" 즉시 생성 후 인라인 이름변경 모드 진입
+- **비차단 디렉토리 로딩**: 폴더 진입 시 기존 파일 목록을 유지한 채 백그라운드에서 로딩
+  - 탭별 entries 캐시로 탭 전환 시 즉시 표시
+  - 로딩 중에도 다른 탭 이동, 파일 선택 등 모든 조작 가능
+
+### Changed
+- **Rust 커맨드 비동기화**: `get_file_thumbnail`, `get_video_thumbnail`, `get_image_dimensions`, `get_psd_thumbnail`, `list_directory`를 `async fn` + `spawn_blocking`으로 전환
+  - 네트워크 파일시스템(Google Drive 등)에서 tokio 워커 스레드 차단 방지
+  - UI 응답성 대폭 향상 (썸네일 로딩 중에도 앱 조작 가능)
+- **동시성 제한 축소**: 프론트엔드 invoke 큐 12→3, Rust HeavyOpPermit 세마포어 8→3
+  - 네트워크 파일시스템 환경에서 과부하 방지
+- **macOS 단축키 표시**: 컨텍스트 메뉴·툴팁에서 Ctrl 대신 ⌘ 기호 표시
+- **즐겨찾기 패널 단일 열 고정**: 다중 열 masonry 레이아웃 제거, 항상 1열 표시
+
+### Fixed
+- **Google Drive 폴더 진입 시 앱 전체 프리즈**: 동기 Rust 커맨드가 tokio 스레드풀 전체를 차단하던 근본 원인 해결
+- **다중 선택 우클릭 메뉴 누락**: 여러 파일 선택 후 우클릭 시 "이름 모두 바꾸기" 등 일괄 메뉴가 표시되지 않던 문제 수정
+- **사이드바 접기/펼치기 후 레이아웃 깨짐**: 섹션이 2열로 표시되던 문제 수정
+
+## [1.5.0] - 2026-02-28
+
+### Added
+- **Shift+방향키 범위 선택**: 앵커 기반 확장/축소 범위 선택
+- **동일 파일명(다른 확장자) 일괄 이름변경**: F2로 같은 이름의 여러 확장자 파일을 한 번에 변경
+- **클립보드 이미지 붙여넣기**: 외부 앱에서 복사한 이미지 데이터를 PNG 파일로 저장
+
+### Fixed
+- **외부 파일 수정 시 썸네일 자동 갱신**: entry.modified 의존성 추가
+
 ## [1.4.2] - 2026-02-27
 
 ### Added

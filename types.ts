@@ -32,7 +32,7 @@ export interface ClipboardData {
   action: 'copy' | 'cut';
 }
 
-export type ThumbnailSize = 40 | 60 | 80 | 100 | 120 | 160 | 200 | 240;
+export type ThumbnailSize = 40 | 60 | 80 | 100 | 120 | 160 | 200 | 240 | 280 | 320;
 
 // 테마 CSS 변수 (App, FileExplorer 공용)
 export interface ThemeVars {

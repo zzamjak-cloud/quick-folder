@@ -8,6 +8,17 @@ interface UseInternalDragDropOptions {
   onMoveComplete: () => void;
 }
 
+// 클라우드 스토리지 경로 감지
+function isCloudPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  if (lower.includes('/library/cloudstorage/')) return true;
+  if (lower.includes('/library/mobile documents/')) return true;
+  if (lower.includes('/google drive/')) return true;
+  if (/[\\/]onedrive[\\/]/i.test(path)) return true;
+  if (/[\\/]dropbox[\\/]/i.test(path)) return true;
+  return false;
+}
+
 // 드롭 대상 패널의 시각적 피드백 해제
 function clearPaneHighlight() {
   document.querySelectorAll('[data-pane-drop-target]').forEach(p => {
@@ -185,12 +196,19 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
       if (dragging && target && paths.length > 0) {
         try {
-          await invoke('move_items', { sources: paths, dest: target });
+          // 클라우드 경로 ↔ 로컬 = 복사, 로컬 ↔ 로컬 = 이동
+          const srcCloud = paths.some(p => isCloudPath(p));
+          const destCloud = isCloudPath(target);
+          if (srcCloud || destCloud) {
+            await invoke('copy_items', { sources: paths, dest: target });
+          } else {
+            await invoke('move_items', { sources: paths, dest: target });
+          }
           onMoveComplete();
           // 모든 패널에 새로고침 이벤트 전파
           window.dispatchEvent(new CustomEvent('qf-files-changed'));
         } catch (err) {
-          console.error('폴더로 이동 실패:', err);
+          console.error('파일 이동/복사 실패:', err);
         }
       }
     }

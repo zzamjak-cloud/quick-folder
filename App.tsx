@@ -12,7 +12,9 @@ import {
   ZoomIn,
   MoreVertical,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import {
   DndContext,
@@ -429,9 +431,6 @@ export default function App() {
 
   // --- UI 상태 ---
   const [searchQuery, setSearchQuery] = useState('');
-  const [columnCount, setColumnCount] = useState(1);
-  const [masonryKey, setMasonryKey] = useState(0);
-  const [isMasonryVisible, setIsMasonryVisible] = useState(true);
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const masonryRef = React.useRef<HTMLDivElement>(null);
@@ -441,6 +440,16 @@ export default function App() {
     const saved = localStorage.getItem('qf_left_panel_width');
     return saved ? JSON.parse(saved) : 280;
   });
+
+  // 좌측 사이드바 접기/펼치기
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('qf_sidebar_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('qf_sidebar_collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
   const [explorerPath, setExplorerPath] = useState('');
 
   // --- 분할 뷰 상태 ---
@@ -466,9 +475,9 @@ export default function App() {
     localStorage.setItem('qf_split_ratio', String(splitRatio));
   }, [splitRatio]);
 
-  // --- 분할 뷰 키보드 단축키 (Ctrl+\) ---
+  // --- 글로벌 키보드 단축키 (Ctrl+\: 분할 뷰, Ctrl+B: 사이드바 토글) ---
   useEffect(() => {
-    const handleSplitKeyDown = (e: KeyboardEvent) => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
         e.preventDefault();
         setSplitMode(prev => {
@@ -477,9 +486,13 @@ export default function App() {
           return 'single';
         });
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setSidebarCollapsed(prev => !prev);
+      }
     };
-    window.addEventListener('keydown', handleSplitKeyDown);
-    return () => window.removeEventListener('keydown', handleSplitKeyDown);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
   // --- Tauri 드래그앤드롭 ---
@@ -574,53 +587,10 @@ export default function App() {
     window.addEventListener('mouseup', handleMouseUp);
   }, [splitMode]);
 
-  // --- 열 수 계산 ---
+  // 항상 1컬럼 사용 (CSS 변수 초기 설정)
   useEffect(() => {
-    const updateColumnCount = () => {
-      const container = document.querySelector('main');
-      const width = container ? container.clientWidth : window.innerWidth;
-
-      let newCount: number;
-      if (width >= 1400) newCount = 5;
-      else if (width >= 1100) newCount = 4;
-      else if (width >= 800) newCount = 3;
-      else if (width >= 400) newCount = 2;
-      else newCount = 1;
-
-      setColumnCount(prev => prev !== newCount ? newCount : prev);
-    };
-
-    const initTimer = setTimeout(updateColumnCount, 100);
-    window.addEventListener('resize', updateColumnCount, { passive: true });
-
-    let resizeObserver: ResizeObserver | null = null;
-    const connectObserver = () => {
-      const mainElement = document.querySelector('main');
-      if (mainElement) {
-        resizeObserver = new ResizeObserver(updateColumnCount);
-        resizeObserver.observe(mainElement);
-      }
-    };
-    setTimeout(connectObserver, 200);
-
-    return () => {
-      clearTimeout(initTimer);
-      window.removeEventListener('resize', updateColumnCount);
-      if (resizeObserver) resizeObserver.disconnect();
-    };
+    document.documentElement.style.setProperty('--masonry-columns', '1');
   }, []);
-
-  // columnCount 변경 시 CSS 변수 업데이트 + 컨테이너 재생성
-  useEffect(() => {
-    document.documentElement.style.setProperty('--masonry-columns', String(columnCount));
-    setIsMasonryVisible(false);
-    requestAnimationFrame(() => {
-      setMasonryKey(prev => prev + 1);
-      requestAnimationFrame(() => {
-        setIsMasonryVisible(true);
-      });
-    });
-  }, [columnCount]);
 
   // --- DnD ---
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -834,46 +804,76 @@ export default function App() {
       {/* Split Panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Favorites Panel */}
-        <div style={{ width: leftPanelWidth }} className="flex-shrink-0 flex flex-col overflow-hidden">
-          <div className="flex-shrink-0 px-3 pt-3 pb-2 flex flex-col gap-2 border-b border-[var(--qf-border)]">
-            <input
-              type="text"
-              placeholder="검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[var(--qf-surface)] border border-[var(--qf-border)] text-[var(--qf-text)] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--qf-accent)] w-full transition-all placeholder:text-[var(--qf-muted)]"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--qf-muted)] font-medium">즐겨찾기</span>
-              <div className="flex items-center gap-1">
+        <div
+          style={{ width: sidebarCollapsed ? 32 : leftPanelWidth }}
+          className="flex-shrink-0 flex flex-col overflow-hidden transition-[width] duration-200"
+        >
+          {/* 사이드바 헤더: 폴딩 아이콘 + (펼침 시) 검색/버튼 */}
+          <div className="flex-shrink-0 border-b border-[var(--qf-border)]">
+            {sidebarCollapsed ? (
+              /* 접힌 상태: 폴딩 아이콘만 */
+              <div className="flex items-center justify-center" style={{ height: 36 }}>
                 <button
-                  type="button"
-                  onClick={() => setIsZoomModalOpen(true)}
+                  onClick={() => setSidebarCollapsed(prev => !prev)}
                   className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title="확대/축소"
+                  title="사이드바 펼치기 (Ctrl+B)"
                 >
-                  <ZoomIn size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsBgModalOpen(true)}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title="테마 설정"
-                >
-                  <Palette size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={catMgmt.openAddCategoryModal}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title="카테고리 추가"
-                >
-                  <Plus size={14} />
+                  <PanelLeftOpen size={14} />
                 </button>
               </div>
-            </div>
+            ) : (
+              /* 펼친 상태: 폴딩 아이콘 행 + 검색/버튼 행 (2줄) */
+              <>
+                <div className="flex items-center px-3" style={{ height: 32 }}>
+                  <button
+                    onClick={() => setSidebarCollapsed(prev => !prev)}
+                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
+                    title="사이드바 접기 (Ctrl+B)"
+                  >
+                    <PanelLeftClose size={14} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 pb-2">
+                  <input
+                    type="text"
+                    placeholder="검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-[var(--qf-surface)] border border-[var(--qf-border)] text-[var(--qf-text)] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--qf-accent)] flex-1 min-w-0 transition-all placeholder:text-[var(--qf-muted)]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsZoomModalOpen(true)}
+                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                    title="확대/축소"
+                  >
+                    <ZoomIn size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsBgModalOpen(true)}
+                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                    title="테마 설정"
+                  >
+                    <Palette size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={catMgmt.openAddCategoryModal}
+                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                    title="카테고리 추가"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+
+          {/* 사이드바 콘텐츠 (접힌 상태에서 숨김) */}
+          {!sidebarCollapsed && (
+            <>
+              <div className="flex-1 overflow-y-auto p-4">
           <DndContext
             sensors={sensors}
             collisionDetection={customCollisionDetection}
@@ -901,12 +901,11 @@ export default function App() {
                 items={filteredCategories.map(c => c.id)}
                 strategy={rectSortingStrategy}
               >
-                {isMasonryVisible && (
+                {(
                   <div
                     ref={masonryRef}
-                    key={`masonry-${columnCount}-${masonryKey}`}
                     style={{
-                      columnCount: columnCount,
+                      columnCount: 1,
                       columnGap: '0.75rem',
                       width: '100%',
                       marginTop: '-0.75rem',
@@ -983,13 +982,17 @@ export default function App() {
               })() : null}
             </DragOverlay>
           </DndContext>
-          </div>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* 드래그 구분선 */}
+        {/* 드래그 구분선 (접힌 상태에서는 너비 조절 비활성화) */}
         <div
-          className="w-1 flex-shrink-0 cursor-col-resize bg-[var(--qf-border)] hover:bg-[var(--qf-accent)] transition-colors"
-          onMouseDown={handleDividerMouseDown}
+          className={`w-1 flex-shrink-0 bg-[var(--qf-border)] transition-colors ${
+            sidebarCollapsed ? 'cursor-default' : 'cursor-col-resize hover:bg-[var(--qf-accent)]'
+          }`}
+          onMouseDown={sidebarCollapsed ? undefined : handleDividerMouseDown}
         />
 
         {/* Right: File Explorer(s) — 분할 뷰 지원 */}
