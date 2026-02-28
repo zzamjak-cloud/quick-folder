@@ -91,7 +91,8 @@
       "Bash(pgrep -f \"target/debug/app\" && echo \"앱 실행 중\" || echo \"앱 미실행\")",
       "Bash(lsof -ti:3000 2>/dev/null | xargs kill -9 2>/dev/null; pkill -f \"target/debug/app\" 2>/dev/null; npm run build 2>&1 | tail -8)",
       "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; lsof -ti:1420 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; echo \"포트 정리 완료\")",
-      "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; lsof -ti:1420 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; npm run tauri dev 2>&1)"
+      "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; lsof -ti:1420 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; npm run tauri dev 2>&1)",
+      "Bash(lsof -ti:3000 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; npm run tauri dev 2>&1)"
     ],
     "deny": [],
     "ask": []

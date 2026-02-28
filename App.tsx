@@ -827,6 +827,24 @@ export default function App() {
         ['--qf-accent-50' as string]: themeVars?.accent50 ?? 'rgba(59,130,246,0.50)',
       }}
     >
+      {/* macOS 커스텀 타이틀바 (overlay 모드) */}
+      <div
+        data-tauri-drag-region
+        className="flex-shrink-0 flex items-center border-b border-[var(--qf-border)]"
+        style={{
+          height: 36,
+          paddingLeft: 72,
+          backgroundColor: themeVars?.surface ?? '#111827',
+          WebkitAppRegion: 'drag' as unknown as string,
+        }}
+      >
+        <span
+          className="text-xs font-semibold text-[var(--qf-muted)] select-none pointer-events-none"
+        >
+          QuickFolder
+        </span>
+      </div>
+
       {/* Split Panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Favorites Panel */}
