@@ -14,7 +14,8 @@ import {
   ChevronDown,
   ChevronRight,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Clock,
 } from 'lucide-react';
 import {
   DndContext,
@@ -59,12 +60,15 @@ import {
 } from './hooks/useThemeManagement';
 import { useWindowState } from './hooks/useWindowState';
 import { useAutoUpdate } from './hooks/useAutoUpdate';
-import { useTauriDragDrop, isExternalFileDragEvent } from './hooks/useTauriDragDrop';
+import { useTauriDragDrop } from './hooks/useTauriDragDrop';
 import {
   useCategoryManagement,
   LEGACY_TEXT_CLASS_TO_HEX,
   LEGACY_BG_CLASS_TO_HEX,
 } from './hooks/useCategoryManagement';
+
+// 최근항목 특수 경로 상수
+const RECENT_PATH = '__recent__';
 
 // --- Sortable Item Component ---
 interface SortableShortcutItemProps {
@@ -450,13 +454,20 @@ export default function App() {
     localStorage.setItem('qf_sidebar_collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
-  const [explorerPath, setExplorerPath] = useState('');
+  // explorerPath: { path, key } 구조로 같은 경로를 다시 설정해도 useEffect가 반응하도록 함
+  const [explorerRequest, setExplorerRequest] = useState<{ path: string; key: number }>({ path: '', key: 0 });
+  const setExplorerPath = useCallback((path: string) => {
+    setExplorerRequest(prev => ({ path, key: prev.key + 1 }));
+  }, []);
 
   // --- 분할 뷰 상태 ---
   const [splitMode, setSplitMode] = useState<'single' | 'horizontal' | 'vertical'>(() => {
     return (localStorage.getItem('qf_split_mode') as 'single' | 'horizontal' | 'vertical') || 'single';
   });
-  const [explorerPath2, setExplorerPath2] = useState('');
+  const [explorerRequest2, setExplorerRequest2] = useState<{ path: string; key: number }>({ path: '', key: 0 });
+  const setExplorerPath2 = useCallback((path: string) => {
+    setExplorerRequest2(prev => ({ path, key: prev.key + 1 }));
+  }, []);
   const [focusedPane, setFocusedPane] = useState<0 | 1>(0);
   // 분할 뷰에서 두 패널이 클립보드를 공유
   const [sharedClipboard, setSharedClipboard] = useState<ClipboardData | null>(null);
@@ -524,6 +535,21 @@ export default function App() {
       addToast("폴더를 열 수 없습니다.", "error");
     }
   }, [addToast]);
+
+  // 최근항목 버튼 클릭 → 탐색기에서 최근항목 탭 열기
+  const handleOpenRecent = useCallback(() => {
+    if (splitMode === 'single' || focusedPane === 0) {
+      setExplorerPath(RECENT_PATH);
+    } else {
+      setExplorerPath2(RECENT_PATH);
+    }
+  }, [splitMode, focusedPane]);
+
+  // 즐겨찾기 폴더 경로 목록 (FileExplorer에서 최근항목 조회 시 사용)
+  const recentRoots = useMemo(() =>
+    categories.flatMap(c => c.shortcuts.map(s => s.path)),
+    [categories]
+  );
 
   const handleOpenInExplorer = useCallback((path: string) => {
     if (splitMode === 'single' || focusedPane === 0) {
@@ -874,6 +900,16 @@ export default function App() {
           {!sidebarCollapsed && (
             <>
               <div className="flex-1 overflow-y-auto p-4">
+
+          {/* 최근항목 버튼 */}
+          <div
+            className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+            onClick={handleOpenRecent}
+          >
+            <Clock size={14} className="text-[var(--qf-accent)]" />
+            <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
+          </div>
+
           <DndContext
             sensors={sensors}
             collisionDetection={customCollisionDetection}
@@ -883,9 +919,8 @@ export default function App() {
           >
             <main
               className="w-full"
-              onDragEnterCapture={updateHoveredCategoryFromDragEvent}
               onDragOverCapture={(e) => {
-                if (isExternalFileDragEvent(e)) e.preventDefault();
+                e.preventDefault();
                 updateHoveredCategoryFromDragEvent(e);
               }}
               onDragLeaveCapture={clearHoveredCategoryIfLeftMain}
@@ -1015,12 +1050,15 @@ export default function App() {
               isFocused={splitMode === 'single' || focusedPane === 0}
               splitMode={splitMode}
               onSplitModeChange={setSplitMode}
-              initialPath={explorerPath}
+              initialPath={explorerRequest.path}
+              initialPathKey={explorerRequest.key}
               onPathChange={setExplorerPath}
               onAddToFavorites={handleAddFavoriteFromExplorer}
+              onAddToCategory={catMgmt.handleAddFolder}
               themeVars={themeVars}
               sharedClipboard={sharedClipboard}
               onClipboardChange={setSharedClipboard}
+              recentRoots={recentRoots}
             />
           </div>
 
@@ -1051,12 +1089,15 @@ export default function App() {
                   isFocused={focusedPane === 1}
                   splitMode={splitMode}
                   onSplitModeChange={setSplitMode}
-                  initialPath={explorerPath2}
+                  initialPath={explorerRequest2.path}
+                  initialPathKey={explorerRequest2.key}
                   onPathChange={setExplorerPath2}
                   onAddToFavorites={handleAddFavoriteFromExplorer}
+                  onAddToCategory={catMgmt.handleAddFolder}
                   themeVars={themeVars}
                   sharedClipboard={sharedClipboard}
                   onClipboardChange={setSharedClipboard}
+                  recentRoots={recentRoots}
                 />
               </div>
             </>

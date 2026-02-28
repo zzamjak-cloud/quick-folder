@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>QuickFolder에서 데스크탑 폴더의 파일을 탐색하고 관리하기 위해 접근 권한이 필요합니다.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>QuickFolder에서 다운로드 폴더의 파일을 탐색하고 관리하기 위해 접근 권한이 필요합니다.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>QuickFolder에서 문서 폴더의 파일을 탐색하고 관리하기 위해 접근 권한이 필요합니다.</string>
+</dict>
+</plist>

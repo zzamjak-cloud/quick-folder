@@ -970,6 +970,77 @@ fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Resu
     Ok(())
 }
 
+// --- 최근 변경 파일 조회 ---
+// 지정된 루트 디렉토리들에서 최근 N일 이내 변경된 파일을 조회
+// spawn_blocking으로 네트워크 파일시스템 차단 방지
+#[tauri::command]
+async fn get_recent_files(roots: Vec<String>, days: u32) -> Result<Vec<FileEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
+        let now = std::time::SystemTime::now();
+        let cutoff = std::time::Duration::from_secs(days as u64 * 24 * 60 * 60);
+        let mut results: Vec<FileEntry> = Vec::new();
+
+        for root in &roots {
+            let root_path = std::path::Path::new(root);
+            if !root_path.is_dir() {
+                continue;
+            }
+            // 1단계 깊이만 스캔 (재귀 X → 성능 보장)
+            let entries = match std::fs::read_dir(root_path) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            for entry in entries.flatten() {
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                // 디렉토리 제외 (파일만)
+                if meta.is_dir() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                // 숨김 파일 제외
+                if name.starts_with('.') {
+                    continue;
+                }
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+
+                // 최근 N일 이내 변경된 파일만
+                let file_age = now
+                    .duration_since(meta.modified().unwrap_or(now))
+                    .unwrap_or(cutoff);
+                if file_age > cutoff {
+                    continue;
+                }
+
+                let file_type = classify_file(&name);
+                results.push(FileEntry {
+                    path: entry.path().to_string_lossy().to_string(),
+                    is_dir: false,
+                    size: meta.len(),
+                    modified,
+                    file_type,
+                    name,
+                });
+            }
+        }
+
+        // 최신순 정렬
+        results.sort_by(|a, b| b.modified.cmp(&a.modified));
+        // 최대 100개 제한
+        results.truncate(100);
+        Ok(results)
+    })
+    .await
+    .map_err(|e| format!("최근 파일 조회 실패: {}", e))?
+}
+
 // --- 다른 앱으로 열기 ---
 #[tauri::command]
 async fn open_with_app(path: String, app: String) -> Result<(), String> {
@@ -1356,6 +1427,7 @@ pub fn run() {
         read_files_from_clipboard,
         paste_image_from_clipboard,
         invalidate_thumbnail_cache,
+        get_recent_files,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

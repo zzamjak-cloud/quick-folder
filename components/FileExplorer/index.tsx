@@ -29,18 +29,25 @@ function isCloudPath(path: string): boolean {
   return false;
 }
 
+// 최근항목 특수 경로 상수
+const RECENT_PATH = '__recent__';
+
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
   isFocused?: boolean;   // 포커스된 패널만 키보드 단축키 응답 (기본: true)
   splitMode?: 'single' | 'horizontal' | 'vertical';
   onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
   initialPath: string;
+  initialPathKey?: number;  // 같은 경로를 다시 요청할 때도 반응하기 위한 키
   onPathChange: (path: string) => void;
   onAddToFavorites: (path: string, name: string) => void;
+  onAddToCategory?: (categoryId: string, path: string, name: string) => void;
   themeVars: ThemeVars | null;
   // 분할 뷰에서 클립보드 공유용 (App.tsx에서 상태 관리)
   sharedClipboard?: ClipboardData | null;
   onClipboardChange?: (cb: ClipboardData | null) => void;
+  // 최근항목 조회 시 사용할 즐겨찾기 폴더 경로 목록
+  recentRoots?: string[];
 }
 
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
@@ -49,6 +56,7 @@ const ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
 
 // 경로의 마지막 세그먼트를 탭 제목으로 사용
 function pathTitle(path: string): string {
+  if (path === RECENT_PATH) return '최근항목';
   return path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path;
 }
 
@@ -60,9 +68,12 @@ export default function FileExplorer({
   initialPath,
   onPathChange,
   onAddToFavorites,
+  onAddToCategory,
   themeVars,
   sharedClipboard,
   onClipboardChange,
+  recentRoots = [],
+  initialPathKey = 0,
 }: FileExplorerProps) {
   // --- localStorage 키 (instanceId로 분할 뷰 시 분리) ---
   const tabsKey = instanceId === 'default' ? TABS_KEY : `${TABS_KEY}_${instanceId}`;
@@ -143,8 +154,11 @@ export default function FileExplorer({
     cancelAllQueued(); // 이전 디렉토리의 대기 중인 썸네일 요청 모두 취소
     setError(null);
 
-    // 캐시에 있으면 즉시 표시 (탭 전환 시 대기 없음)
-    const cached = entriesCacheRef.current.get(path);
+    // 최근항목 특수 경로 처리
+    const isRecent = path === RECENT_PATH;
+
+    // 캐시에 있으면 즉시 표시 (탭 전환 시 대기 없음) — 최근항목은 캐시 안 함
+    const cached = isRecent ? null : entriesCacheRef.current.get(path);
     if (cached) {
       setEntries(sortEntries(cached, sortBy, sortDir));
       setSelectedPaths([]);
@@ -155,11 +169,14 @@ export default function FileExplorer({
     setLoading(true);
     const requestId = ++loadRequestRef.current;
     try {
-      const result = await invoke<FileEntry[]>('list_directory', { path });
+      const result = isRecent
+        ? await invoke<FileEntry[]>('get_recent_files', { roots: recentRoots, days: 7 })
+        : await invoke<FileEntry[]>('list_directory', { path });
       // 이미 다른 디렉토리로 이동한 경우 무시
       if (requestId !== loadRequestRef.current) return;
-      entriesCacheRef.current.set(path, result); // 캐시 갱신
-      const sortedResult = sortEntries(result, sortBy, sortDir);
+      if (!isRecent) entriesCacheRef.current.set(path, result); // 캐시 갱신 (최근항목 제외)
+      // 최근항목은 이미 서버에서 수정시간 내림차순 정렬된 상태
+      const sortedResult = isRecent ? result : sortEntries(result, sortBy, sortDir);
       setEntries(sortedResult);
       // 캐시 히트가 없었던 경우에만 선택 초기화 (첫 진입)
       if (!cached) {
@@ -183,7 +200,7 @@ export default function FileExplorer({
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [sortBy, sortDir]);
+  }, [sortBy, sortDir, recentRoots]);
 
   // --- 정렬 ---
   function sortEntries(list: FileEntry[], by: string, dir: string): FileEntry[] {
@@ -234,6 +251,7 @@ export default function FileExplorer({
   }, [entries, activeExtFilters, searchQuery, getExt]);
 
   // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
+  // initialPathKey가 변경되면 같은 경로라도 반응 (사이드바에서 같은 폴더 반복 클릭 시)
   useEffect(() => {
     if (!initialPath) return;
     const existing = tabs.find(t => t.path === initialPath);
@@ -252,7 +270,7 @@ export default function FileExplorer({
       setActiveTabId(newTab.id);
       loadDirectory(initialPath);
     }
-  }, [initialPath]);
+  }, [initialPath, initialPathKey]);
 
   // 앱 시작 시 저장된 탭이 있으면 마지막 활성 탭 로드
   useEffect(() => {
@@ -1006,11 +1024,12 @@ export default function FileExplorer({
     return () => window.removeEventListener('wheel', handler);
   }, []);
 
-  // --- 내부 드래그 → 폴더 이동 ---
+  // --- 내부 드래그 → 폴더 이동 / 사이드바 즐겨찾기 등록 ---
   const { isDragging: isInternalDragging, dropTargetPath, handleDragMouseDown } = useInternalDragDrop({
     selectedPaths,
     currentPath,
     onMoveComplete: () => loadDirectory(currentPath),
+    onAddToCategory,
   });
 
   // --- OS에서 파일 드래그 수신 (Tauri onDragDropEvent) ---

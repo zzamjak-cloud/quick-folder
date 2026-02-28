@@ -6,6 +6,7 @@ interface UseInternalDragDropOptions {
   selectedPaths: string[];
   currentPath: string;
   onMoveComplete: () => void;
+  onAddToCategory?: (categoryId: string, path: string, name: string) => void;
 }
 
 // 클라우드 스토리지 경로 감지
@@ -28,6 +29,14 @@ function clearPaneHighlight() {
   });
 }
 
+// 사이드바 카테고리 하이라이트 해제
+function clearCategoryHighlight() {
+  document.querySelectorAll('[data-category-id]').forEach(el => {
+    (el as HTMLElement).style.outline = '';
+    (el as HTMLElement).style.outlineOffset = '';
+  });
+}
+
 /**
  * 파일 드래그 → 폴더/패널 이동 훅 (내부 드래그 + OS 드래그 통합)
  *
@@ -37,7 +46,7 @@ function clearPaneHighlight() {
  * 리스너를 handleMouseDown에서 동기적으로 등록하여
  * useEffect 재실행 의존 문제를 회피.
  */
-export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete }: UseInternalDragDropOptions) {
+export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory }: UseInternalDragDropOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -53,6 +62,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     let dragging = false;
     let osStarted = false;
     let localDropTarget: string | null = null;
+    let localCategoryTarget: string | null = null;
 
     // --- 드래그 고스트 ---
     function createGhost(x: number, y: number) {
@@ -119,8 +129,10 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       clearPaneHighlight();
+      clearCategoryHighlight();
       destroyGhost();
       localDropTarget = null;
+      localCategoryTarget = null;
       setIsDragging(false);
       setDropTargetPath(null);
     }
@@ -159,10 +171,27 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
       // 드롭 대상 감지 (고스트를 숨기고 elementFromPoint 호출)
       clearPaneHighlight();
+      clearCategoryHighlight();
       if (ghostRef.current) ghostRef.current.style.display = 'none';
       const el = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
       if (ghostRef.current) ghostRef.current.style.display = '';
 
+      // 1. 사이드바 카테고리 감지 (즐겨찾기 등록)
+      const categoryEl = el?.closest('[data-category-id]') as HTMLElement | null;
+      const categoryId = categoryEl?.getAttribute('data-category-id') ?? null;
+
+      if (categoryId) {
+        localCategoryTarget = categoryId;
+        localDropTarget = null;
+        setDropTargetPath(null);
+        categoryEl!.style.outline = '2px dashed var(--qf-accent, #3b82f6)';
+        categoryEl!.style.outlineOffset = '-2px';
+        return;
+      }
+
+      localCategoryTarget = null;
+
+      // 2. 폴더 카드 감지 (파일 이동)
       const folderEl = el?.closest('[data-folder-drop-target]') as HTMLElement | null;
       const folderPath = folderEl?.getAttribute('data-folder-drop-target') ?? null;
 
@@ -175,7 +204,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
         localDropTarget = folderPath;
         setDropTargetPath(folderPath);
       } else {
-        // 폴백: 다른 패널 영역 (패널의 현재 디렉토리로 이동)
+        // 3. 폴백: 다른 패널 영역 (패널의 현재 디렉토리로 이동)
         const paneEl = el?.closest('[data-pane-drop-target]') as HTMLElement | null;
         const panePath = paneEl?.getAttribute('data-pane-drop-target') ?? null;
         if (panePath && panePath !== currentPath) {
@@ -192,9 +221,25 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
     async function onMouseUp() {
       const target = localDropTarget;
+      const catTarget = localCategoryTarget;
       cleanup();
 
-      if (dragging && target && paths.length > 0) {
+      if (!dragging || paths.length === 0) return;
+
+      // 카테고리 드롭: 폴더만 즐겨찾기에 등록
+      if (catTarget && onAddToCategory) {
+        for (const p of paths) {
+          const isDir = await invoke<boolean>('is_directory', { path: p }).catch(() => false);
+          if (isDir) {
+            const name = p.split(/[/\\]/).pop() ?? p;
+            onAddToCategory(catTarget, p, name);
+          }
+        }
+        return;
+      }
+
+      // 폴더/패널 드롭: 파일 이동/복사
+      if (target) {
         try {
           // 클라우드 경로 ↔ 로컬 = 복사, 로컬 ↔ 로컬 = 이동
           const srcCloud = paths.some(p => isCloudPath(p));
@@ -216,7 +261,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     // 동기적으로 리스너 등록 (useEffect 의존 문제 회피)
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  }, [selectedPaths, currentPath, onMoveComplete]);
+  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory]);
 
   return {
     isDragging,
