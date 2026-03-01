@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-03-01
+
+### Fixed
+- **macOS 보호 폴더 접근 권한 팝업 반복**: 비샌드박스 앱에 샌드박스 전용 entitlements(temporary-exception 등)가 포함되어 TCC가 권한을 영속 캐시하지 않던 문제 수정
+
 ## [1.7.0] - 2026-03-01
 
 ### Added
