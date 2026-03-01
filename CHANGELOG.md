@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-03-01
+
+### Fixed
+- **macOS TCC 권한 팝업 매번 반복**: `APPLE_SIGNING_IDENTITY` 미설정으로 앱이 linker-signed만 되어 Hardened Runtime·엔타이틀먼트가 미적용, TCC가 권한을 영구 캐싱하지 못하던 문제 수정
+- **PSD 미리보기 원본 해상도**: 스페이스바 미리보기에서 PSD가 항상 썸네일 해상도로 표시되던 문제 수정 (size=0으로 원본 해상도 유지)
+- **그리드 뷰 XL 화살표 아래 이동 불가**: cols 계산이 컨테이너 padding·gap을 미반영하여 JS 열 수와 실제 렌더링이 불일치하던 문제 수정
+- **탭 변경 후 첫 번째 파일 포커스 누락**: 탭 전환 시 focusedIndex=-1 상태에서 화살표 키가 0번 항목을 건너뛰던 문제 수정
+
 ## [1.7.1] - 2026-03-01
 
 ### Fixed

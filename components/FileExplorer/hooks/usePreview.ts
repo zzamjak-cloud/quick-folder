@@ -42,8 +42,8 @@ export function usePreview(): PreviewState {
     try {
       const isPsd = /\.(psd|psb)$/i.test(path);
       if (isPsd) {
-        // PSD/PSB: Rust 변환 필요 (원본에 가깝게 큰 해상도)
-        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 4096 });
+        // PSD/PSB: Rust 변환 필요 (size=0 → 원본 해상도 유지)
+        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 0 });
         if (b64) {
           setPreviewImageData(`data:image/png;base64,${b64}`);
         }

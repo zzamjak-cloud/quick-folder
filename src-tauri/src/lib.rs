@@ -234,10 +234,15 @@ async fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Re
             let img = image::RgbaImage::from_raw(width, height, rgba_pixels)
                 .ok_or_else(|| "PSD 픽셀 변환 실패".to_string())?;
             let dynamic = image::DynamicImage::ImageRgba8(img);
-            let thumb = dynamic.thumbnail(size, size);
+            // size == 0: 원본 해상도 유지 (미리보기용), size > 0: 썸네일 생성 (그리드용)
+            let output = if size == 0 || (width <= size && height <= size) {
+                dynamic
+            } else {
+                dynamic.thumbnail(size, size)
+            };
 
             let mut buf = vec![];
-            thumb.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            output.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
                 .map_err(|e| e.to_string())?;
             Ok(Some(buf))
         })

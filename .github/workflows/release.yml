@@ -50,12 +50,15 @@ jobs:
 
       # 5. Tauri 빌드 및 GitHub Release 생성 (서명 포함)
       #    tauri-action이 latest.json을 자동 생성하여 Release에 업로드
+      #    APPLE_SIGNING_IDENTITY="-": macOS ad-hoc 서명 + Hardened Runtime + 엔타이틀먼트 적용
+      #    (없으면 linker-signed만 되어 TCC 권한이 영구 저장되지 않음)
       - name: build and release
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "-"
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "QuickFolder Widget v__VERSION__"

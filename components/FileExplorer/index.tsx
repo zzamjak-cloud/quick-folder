@@ -834,11 +834,22 @@ export default function FileExplorer({
         const cols = (() => {
           if (viewMode === 'list' || viewMode === 'details') return 1;
           if (!gridRef.current) return 4;
-          const cardWidth = thumbnailSize + 16 + 8;
-          return Math.max(1, Math.floor(gridRef.current.clientWidth / cardWidth));
+          // 컨테이너 패딩(p-3=24px) 차감, flex gap(gap-2=8px) 보정
+          const available = gridRef.current.clientWidth - 24;
+          const cardWidth = thumbnailSize + 16; // FileCard 실제 너비
+          const gap = 8; // gap-2
+          return Math.max(1, Math.floor((available + gap) / (cardWidth + gap)));
         })();
 
-        const current = focusedIndex < 0 ? 0 : focusedIndex;
+        // 포커스 없으면 첫 번째 항목에 포커스+선택만 (이동하지 않음)
+        if (focusedIndex < 0) {
+          setFocusedIndex(0);
+          setSelectedPaths([entries[0].path]);
+          selectionAnchorRef.current = -1;
+          return;
+        }
+
+        const current = focusedIndex;
         let next = current;
 
         // 경계에서 멈추기: 이동 가능한 경우에만 이동
