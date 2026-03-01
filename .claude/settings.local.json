@@ -107,7 +107,21 @@
       "Bash(grep -A 20 '\\\\[features\\\\]' /Users/woody/.cargo/registry/src/*/trash-5.2.5/Cargo.toml 2>/dev/null)",
       "Bash(ls /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/ 2>/dev/null)",
       "Bash(ls /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/macos/ 2>/dev/null)",
-      "Bash(head -100 /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/macos/mod.rs 2>/dev/null)"
+      "Bash(head -100 /Users/woody/.cargo/registry/src/*/trash-5.2.5/src/macos/mod.rs 2>/dev/null)",
+      "Bash(git push origin main && git push origin v1.7.0)",
+      "Bash(git tag -d v1.7.0 && git tag v1.7.0)",
+      "Bash(git tag v1.7.1 && git push origin main && git push origin v1.7.1)",
+      "Bash(codesign -dv --verbose=4 \"/Applications/QuickFolder Widget.app\" 2>&1 | head -30)",
+      "Bash(defaults read \"/Applications/QuickFolder Widget.app/Contents/Info.plist\" CFBundleIdentifier 2>&1)",
+      "Bash(codesign -d --entitlements - \"/Applications/QuickFolder Widget.app\" 2>&1 | head -20)",
+      "Bash(codesign -dv --verbose=4 \"/Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/target/release/bundle/macos/QuickFolder Widget.app\" 2>&1 | head -20)",
+      "Bash(codesign -d --entitlements - \"/Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/target/release/bundle/macos/QuickFolder Widget.app\" 2>&1)",
+      "Bash(APPLE_SIGNING_IDENTITY=\"-\" npm run tauri build 2>&1 | tail -20)",
+      "Bash(tccutil reset SystemPolicyDesktopFolder com.quickfolder.widget 2>&1; tccutil reset SystemPolicyDownloadsFolder com.quickfolder.widget 2>&1; tccutil reset SystemPolicyDocumentsFolder com.quickfolder.widget 2>&1)",
+      "Bash(cp -R \"/Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/target/release/bundle/macos/QuickFolder Widget.app\" \"/Applications/QuickFolder Widget.app\" 2>&1 && xattr -cr \"/Applications/QuickFolder Widget.app\" 2>&1 && echo \"설치 완료\")",
+      "Bash(codesign -dv \"/Applications/QuickFolder Widget.app\" 2>&1 | grep -E \"Identifier|flags|Signature|Info.plist\")",
+      "Bash(codesign -d --entitlements - \"/Applications/QuickFolder Widget.app\" 2>&1)",
+      "Bash(git tag v1.7.2 && git push origin main && git push origin v1.7.2)"
     ],
     "deny": [],
     "ask": []
