@@ -2,15 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.files.user-selected.read-write</key>
+    <!-- Hardened Runtime: WebView JIT 컴파일 허용 -->
+    <key>com.apple.security.cs.allow-jit</key>
     <true/>
-    <key>com.apple.security.files.downloads.read-write</key>
+    <!-- Hardened Runtime: WebView 서명되지 않은 메모리 실행 허용 -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
-    <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-    <array>
-        <string>/</string>
-    </array>
 </dict>
 </plist>
