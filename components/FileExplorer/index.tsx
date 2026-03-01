@@ -17,6 +17,8 @@ import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { isCloudPath } from '../../utils/pathUtils';
+import GoToFolderModal from './GoToFolderModal';
+import GlobalSearchModal from './GlobalSearchModal';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -83,6 +85,15 @@ export default function FileExplorer({
   const [isSearchActive, setIsSearchActive] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [activeExtFilters, setActiveExtFilters] = useState<Set<string>>(new Set());
+
+  // --- 모달 상태 ---
+  const [isGoToFolderOpen, setIsGoToFolderOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const pendingSelectRef = useRef<string | null>(null);
+
+  // --- 복사 피드백 토스트 ---
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // --- 미리보기 (비디오/이미지/텍스트) ---
   const preview = usePreview();
@@ -244,6 +255,22 @@ export default function FileExplorer({
     setIsSearchActive(false);
     navigateTo(path);
   }, [navigateTo]);
+
+  // 글로벌 검색 결과 선택 핸들러
+  const handleGlobalSearchSelect = useCallback((entry: FileEntry) => {
+    if (entry.is_dir) {
+      // 폴더 선택: 해당 폴더로 이동
+      handleNavigateTo(entry.path);
+    } else {
+      // 파일 선택: 부모 폴더로 이동 + 해당 파일 자동 선택
+      const sep = entry.path.includes('/') ? '/' : '\\';
+      const parts = entry.path.split(sep);
+      parts.pop();
+      const parentDir = parts.join(sep);
+      pendingSelectRef.current = entry.path;
+      handleNavigateTo(parentDir);
+    }
+  }, [handleNavigateTo]);
 
   // goBack 래퍼: 이전 경로 자동 선택
   const goBack = useCallback(() => {
@@ -502,13 +529,21 @@ export default function FileExplorer({
     }
   }, [currentPath, selectedPaths, sortBy, sortDir]);
 
+  // 토스트 표시 헬퍼
+  const showCopyToast = useCallback((msg: string) => {
+    if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
+    setCopyToast(msg);
+    copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
+  }, []);
+
   const handleCopyPath = useCallback(async (path: string) => {
     try {
       await invoke('copy_path', { path });
+      showCopyToast('경로가 복사되었습니다');
     } catch (e) {
       console.error('경로 복사 실패:', e);
     }
-  }, []);
+  }, [showCopyToast]);
 
   // --- ZIP 압축 ---
   const handleCompressZip = useCallback(async (paths: string[]) => {
@@ -610,6 +645,35 @@ export default function FileExplorer({
             if (entry) { e.preventDefault(); openEntry(entry); return; }
           }
         }
+      }
+
+      // Ctrl+Alt+C: 선택된 항목 경로 복사 (없으면 현재 폴더 경로)
+      if (ctrl && e.altKey && e.key === 'c') {
+        e.preventDefault();
+        if (selectedPaths.length > 0) {
+          // 선택된 항목이 있으면 해당 경로 복사 (여러 개면 줄바꿈 구분)
+          const pathsToCopy = selectedPaths.join('\n');
+          handleCopyPath(pathsToCopy);
+        } else if (currentPath && currentPath !== RECENT_PATH) {
+          handleCopyPath(currentPath);
+        }
+        return;
+      }
+
+      // Ctrl+Shift+G: 폴더로 이동
+      if (ctrl && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
+        e.preventDefault();
+        setIsGoToFolderOpen(true);
+        return;
+      }
+
+      // Ctrl+Shift+F: 글로벌 검색 (하위 폴더 재귀)
+      if (ctrl && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+        e.preventDefault();
+        if (currentPath && currentPath !== RECENT_PATH) {
+          setIsGlobalSearchOpen(true);
+        }
+        return;
       }
 
       // Ctrl+F: 검색 토글
@@ -884,8 +948,8 @@ export default function FileExplorer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     isFocused, renamingPath, selectAll, deselectAll, handleCopy, handleCut, handlePaste, handleDuplicate,
-    handleCreateDirectory, handleRenameStart, handleDelete,
-    goBack, goForward, goUp, selectedPaths, entries, openEntry,
+    handleCreateDirectory, handleRenameStart, handleDelete, handleCopyPath,
+    goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     preview.handlePreviewImage, preview.handlePreviewText,
@@ -893,6 +957,23 @@ export default function FileExplorer({
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow,
   ]);
+
+  // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
+  useEffect(() => {
+    if (!pendingSelectRef.current) return;
+    const targetPath = pendingSelectRef.current;
+    const idx = entries.findIndex(e => e.path === targetPath);
+    if (idx >= 0) {
+      setSelectedPaths([entries[idx].path]);
+      setFocusedIndex(idx);
+      pendingSelectRef.current = null;
+      // 스크롤
+      requestAnimationFrame(() => {
+        const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(targetPath)}"]`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
+  }, [entries]);
 
   // --- 창 포커스 시 변경 감지 후 조건부 새로고침 ---
   // 파일이 변경되지 않았으면 리렌더링 하지 않아 깜빡임 방지
@@ -1028,13 +1109,27 @@ export default function FileExplorer({
       ref={containerRef}
       data-pane-drop-target={currentPath || undefined}
       data-pane-instance={instanceId}
-      className="h-full flex flex-col outline-none"
+      className="h-full flex flex-col outline-none relative"
       tabIndex={0}
       onClick={handleContainerClick}
       style={{
         backgroundColor: themeVars?.bg ?? '#0f172a',
       }}
     >
+      {/* 복사 완료 토스트 */}
+      {copyToast && (
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-[9999] px-3 py-1.5 rounded-md text-xs shadow-lg animate-fade-in"
+          style={{
+            backgroundColor: themeVars?.surface ?? '#1e293b',
+            color: themeVars?.text ?? '#f8fafc',
+            border: `1px solid ${themeVars?.border ?? '#334155'}`,
+          }}
+        >
+          {copyToast}
+        </div>
+      )}
+
       {/* 탭 바 */}
       <TabBar
         tabs={tabs}
@@ -1192,6 +1287,25 @@ export default function FileExplorer({
           paths={bulkRenamePaths}
           onClose={() => setBulkRenamePaths(null)}
           onApply={handleBulkRenameApply}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 폴더로 이동 모달 */}
+      <GoToFolderModal
+        isOpen={isGoToFolderOpen}
+        onClose={() => setIsGoToFolderOpen(false)}
+        onNavigate={handleNavigateTo}
+        themeVars={themeVars}
+      />
+
+      {/* 글로벌 검색 모달 */}
+      {currentPath && currentPath !== RECENT_PATH && (
+        <GlobalSearchModal
+          isOpen={isGlobalSearchOpen}
+          onClose={() => setIsGlobalSearchOpen(false)}
+          currentPath={currentPath}
+          onSelect={handleGlobalSearchSelect}
           themeVars={themeVars}
         />
       )}

@@ -13,10 +13,10 @@ body {
   color: #f8fafc;
 }
 
-/* 커스텀 스크롤바 */
+/* 커스텀 스크롤바: 얇은 4px + 호버 시에만 표시 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -24,10 +24,26 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
+  background: transparent;
+  border-radius: 2px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+*:hover::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+/* 토스트 페이드인 애니메이션 */
+@keyframes fade-in-out {
+  0% { opacity: 0; transform: translate(-50%, -4px); }
+  15% { opacity: 1; transform: translate(-50%, 0); }
+  85% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+
+.animate-fade-in {
+  animation: fade-in-out 1.5s ease-in-out forwards;
 }

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-01
+
+### Added
+- **글로벌 파일 검색 (Ctrl+Shift+F)**: 현재 폴더 하위 재귀 탐색으로 파일 검색
+  - macOS: Spotlight 인덱스(mdfind) 활용으로 즉시 검색
+  - Windows: Windows Search Index(ADODB) 활용으로 빠른 검색
+  - 폴백: walkdir 기반 직접 탐색 (max_depth=10)
+  - VS Code 스타일 검색 모달, 300ms 디바운스, 키보드 탐색(↑↓/Enter)
+  - 파일 선택 시 부모 폴더로 이동 + 해당 파일 자동 선택
+- **폴더로 이동 (Ctrl+Shift+G)**: 경로 입력으로 빠른 폴더 이동
+  - 입력 경로의 하위 폴더 자동완성 리스트 표시
+  - 화살표 키 탐색 시 입력 필드 동기화, Tab으로 하위 뎁스 탐색
+  - 클릭으로 선택, 더블클릭 또는 Enter로 이동
+- **현재 경로 복사 (Ctrl+Alt+C)**: 선택된 파일/폴더 경로 복사 (미선택 시 현재 폴더 경로)
+  - 복사 완료 시 상단 토스트 피드백 (1.5초 페이드인/아웃)
+
+### Changed
+- **스크롤바 축소**: 8px → 4px, 기본 투명 + 호버 시에만 표시
+
 ## [1.7.2] - 2026-03-01
 
 ### Fixed
