@@ -1220,9 +1220,29 @@ async fn get_recent_files(roots: Vec<String>, days: u32) -> Result<Vec<FileEntry
                 if meta.is_dir() {
                     continue;
                 }
+                // Windows: 숨김(HIDDEN) 또는 시스템(SYSTEM) 속성 파일 제외
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    if meta.file_attributes() & 0x6 != 0 {
+                        continue;
+                    }
+                }
                 let name = entry.file_name().to_string_lossy().to_string();
                 // 숨김 파일 제외
                 if name.starts_with('.') {
+                    continue;
+                }
+                // 시스템/임시 파일 제외
+                let name_lower = name.to_lowercase();
+                if name_lower == "desktop.ini"
+                    || name_lower == "thumbs.db"
+                    || name_lower == "ntuser.dat"
+                    || name_lower.ends_with(".sys")
+                    || name_lower.ends_with(".log.tmp")
+                    || name_lower.starts_with("~$")
+                    || name_lower.starts_with("photoshop temp")
+                {
                     continue;
                 }
                 let modified = meta

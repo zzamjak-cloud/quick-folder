@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-03-03
+
+### Fixed
+- **최근 항목 시스템 파일 필터링**: Windows 시스템/임시 파일이 최근 항목에 표시되던 문제 해결
+  - 숨김/시스템 속성 파일, *.sys, *.log.tmp, Photoshop 임시 파일 등 제외
+
 ## [1.8.1] - 2026-03-03
 
 ### Fixed
