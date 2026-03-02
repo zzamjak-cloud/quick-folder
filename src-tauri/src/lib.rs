@@ -551,8 +551,12 @@ fn search_with_windows_index(root: &str, query: &str, max_results: usize) -> Res
         max_results, scope, safe_query
     );
 
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     let output = Command::new("powershell")
         .args(["-NoProfile", "-NoLogo", "-Command", &ps_script])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| format!("PowerShell 실행 실패: {}", e))?;
 
@@ -1041,11 +1045,17 @@ fn get_native_icon_bytes(_path: &str, _size: u32) -> Option<Vec<u8>> {
 fn is_ffmpeg_available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(|| {
-        std::process::Command::new("ffmpeg")
-            .arg("-version")
+        let mut cmd = std::process::Command::new("ffmpeg");
+        cmd.arg("-version")
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
+            .stderr(std::process::Stdio::null());
+        // Windows: 콘솔 창 숨김
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        cmd.status()
             .map(|s| s.success())
             .unwrap_or(false)
     })
@@ -1067,8 +1077,8 @@ async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> 
 
     tauri::async_runtime::spawn_blocking(move || {
         cached_thumbnail(&cache_dir, &path, size, false, || {
-            let output = std::process::Command::new("ffmpeg")
-                .args([
+            let mut cmd = std::process::Command::new("ffmpeg");
+            cmd.args([
                     "-i", &path,
                     "-ss", "00:00:01",
                     "-frames:v", "1",
@@ -1078,8 +1088,14 @@ async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> 
                     "pipe:1",
                 ])
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
+                .stderr(std::process::Stdio::null());
+            // Windows: 콘솔 창 숨김
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            let output = cmd.output()
                 .map_err(|e| e.to_string())?;
 
             if !output.status.success() || output.stdout.is_empty() {
@@ -1258,8 +1274,10 @@ async fn open_with_app(path: String, app: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         std::process::Command::new("cmd")
             .args(["/c", "start", "", &app, &path])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| format!("앱 실행 실패: {}", e))?;
     }

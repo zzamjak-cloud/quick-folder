@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-03-03
+
+### Fixed
+- **Windows 터미널 팝업 수정**: 폴더 진입·검색 시 콘솔 창이 잠깐 표시되던 문제 해결
+  - 모든 Windows `Command` 호출에 `CREATE_NO_WINDOW` 플래그 추가
+  - 영향: PowerShell(검색), ffmpeg(동영상 썸네일), cmd(파일 열기)
+
 ## [1.8.0] - 2026-03-01
 
 ### Added
