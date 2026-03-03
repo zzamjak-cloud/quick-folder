@@ -15,6 +15,7 @@ const ColumnRow = memo(function ColumnRow({
   onClick,
   onDoubleClick,
   onContextMenu,
+  onDragMouseDown,
 }: {
   entry: FileEntry;
   isSelected: boolean;
@@ -23,6 +24,7 @@ const ColumnRow = memo(function ColumnRow({
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
 }) {
   const nativeIcon = useNativeIcon(entry, 16);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,7 @@ const ColumnRow = memo(function ColumnRow({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
     >
       {/* 아이콘 */}
       {nativeIcon ? (
@@ -81,9 +84,11 @@ interface ColumnPanelProps {
   isFocusedCol: boolean;
   focusedRow: number;
   themeVars: ThemeVars | null;
-  onSelect: (colIndex: number, entry: FileEntry) => void;
+  selectedPaths: string[];
+  onSelect: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
 }
 
 export default memo(function ColumnPanel({
@@ -92,9 +97,11 @@ export default memo(function ColumnPanel({
   isFocusedCol,
   focusedRow,
   themeVars,
+  selectedPaths,
   onSelect,
   onOpen,
   onContextMenu,
+  onDragMouseDown,
 }: ColumnPanelProps) {
   return (
     <div
@@ -120,12 +127,12 @@ export default memo(function ColumnPanel({
           <ColumnRow
             key={entry.path}
             entry={entry}
-            isSelected={column.selectedPath === entry.path}
+            isSelected={selectedPaths.includes(entry.path)}
             isFocused={isFocusedCol && focusedRow === rowIdx}
             themeVars={themeVars}
             onClick={(e) => {
               e.stopPropagation();
-              onSelect(colIndex, entry);
+              onSelect(colIndex, entry, e.ctrlKey || e.metaKey, e.shiftKey);
             }}
             onDoubleClick={() => onOpen(entry)}
             onContextMenu={(e) => {
@@ -133,6 +140,7 @@ export default memo(function ColumnPanel({
               e.preventDefault();
               onContextMenu(e, [entry.path]);
             }}
+            onDragMouseDown={onDragMouseDown}
           />
         ))
       )}

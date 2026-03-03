@@ -80,10 +80,12 @@ export default memo(function NavigationBar({
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [breadcrumbWidth, setBreadcrumbWidth] = useState(0);
   const pathInputRef = useRef<HTMLInputElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const sizeMenuRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const breadcrumbRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isEditingPath) {
@@ -97,6 +99,17 @@ export default memo(function NavigationBar({
       pathInputRef.current.select();
     }
   }, [isEditingPath]);
+
+  // 브레드크럼 영역 너비 감지
+  useEffect(() => {
+    const el = breadcrumbRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setBreadcrumbWidth(entry.contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // 외부 클릭 시 드롭다운 닫기
   useEffect(() => {
@@ -142,7 +155,22 @@ export default memo(function NavigationBar({
     }));
   };
 
-  const segments = getPathSegments();
+  const allSegments = getPathSegments();
+
+  // 너비에 따라 표시할 세그먼트 수 결정
+  const getVisibleSegments = () => {
+    if (allSegments.length <= 2) return { segments: allSegments, truncated: false };
+    // 좁은 영역: 마지막 2~3단계만 표시
+    if (breadcrumbWidth > 0 && breadcrumbWidth < 200) {
+      return { segments: allSegments.slice(-2), truncated: true };
+    }
+    if (breadcrumbWidth > 0 && breadcrumbWidth < 350) {
+      return { segments: allSegments.slice(-3), truncated: true };
+    }
+    return { segments: allSegments, truncated: false };
+  };
+
+  const { segments, truncated } = getVisibleSegments();
 
   const handlePathSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,7 +241,7 @@ export default memo(function NavigationBar({
       <div className="w-px h-4 bg-[var(--qf-border)] mx-0.5" />
 
       {/* 경로/브레드크럼 영역 */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0" ref={breadcrumbRef}>
         {isEditingPath ? (
           <form onSubmit={handlePathSubmit} className="flex">
             <input
@@ -234,29 +262,42 @@ export default memo(function NavigationBar({
           <div
             className="flex items-center gap-0.5 min-w-0 cursor-text px-1 py-0.5 rounded-md hover:bg-[var(--qf-surface-hover)] transition-colors"
             onClick={() => setIsEditingPath(true)}
-            title="클릭하여 경로 직접 입력"
+            title={currentPath}
           >
             {segments.length === 0 ? (
               <span className="text-xs text-[var(--qf-muted)] italic">경로 없음</span>
             ) : (
-              segments.map((seg, idx) => (
-                <React.Fragment key={seg.path}>
-                  {idx > 0 && (
+              <>
+                {truncated && (
+                  <>
+                    <span
+                      className="text-xs px-1 py-0.5 flex-shrink-0"
+                      style={{ color: themeVars?.muted ?? '#94a3b8' }}
+                    >
+                      ..
+                    </span>
                     <ChevronRight size={11} className="flex-shrink-0" style={{ color: themeVars?.muted ?? '#94a3b8' }} />
-                  )}
-                  <button
-                    className="text-xs px-1 py-0.5 rounded hover:bg-[var(--qf-surface)] transition-colors truncate max-w-[120px]"
-                    style={{ color: idx === segments.length - 1 ? themeVars?.text : themeVars?.muted }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onNavigate(seg.path);
-                    }}
-                    title={seg.path}
-                  >
-                    {seg.name}
-                  </button>
-                </React.Fragment>
-              ))
+                  </>
+                )}
+                {segments.map((seg, idx) => (
+                  <React.Fragment key={seg.path}>
+                    {idx > 0 && (
+                      <ChevronRight size={11} className="flex-shrink-0" style={{ color: themeVars?.muted ?? '#94a3b8' }} />
+                    )}
+                    <button
+                      className="text-xs px-1 py-0.5 rounded hover:bg-[var(--qf-surface)] transition-colors truncate max-w-[120px]"
+                      style={{ color: idx === segments.length - 1 ? themeVars?.text : themeVars?.muted }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigate(seg.path);
+                      }}
+                      title={seg.path}
+                    >
+                      {seg.name}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </>
             )}
           </div>
         )}

@@ -72,7 +72,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={() => onOpen(entry)}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
-      onMouseDown={(e) => onDragMouseDown(e, entry.path)}
+      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
     >
       {/* 아이콘 (네이티브 우선, lucide 폴백) */}
       {nativeIcon ? (
@@ -153,7 +153,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
       onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={() => onOpen(entry)}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
-      onMouseDown={(e) => onDragMouseDown(e, entry.path)}
+      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
     >
       <td className="px-3 py-1">
         <div className="flex items-center gap-2">

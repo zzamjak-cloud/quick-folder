@@ -251,9 +251,28 @@ async fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Re
     .map_err(|e| format!("PSD 썸네일 생성 실패: {}", e))?
 }
 
-// 파일/폴더 복사 (재귀 지원, 같은 폴더 내 복사 시 충돌 방지)
+// 대상 디렉토리에서 중복되는 파일명 확인
 #[tauri::command]
-async fn copy_items(sources: Vec<String>, dest: String) -> Result<(), String> {
+async fn check_duplicate_items(sources: Vec<String>, dest: String) -> Result<Vec<String>, String> {
+    let mut duplicates = Vec::new();
+    for source in &sources {
+        let src_path = std::path::Path::new(source);
+        let file_name = src_path
+            .file_name()
+            .ok_or_else(|| format!("잘못된 경로: {}", source))?;
+        let dest_path = std::path::Path::new(&dest).join(file_name);
+        // 같은 파일이 아닌 다른 파일이 이미 존재하는 경우만 중복으로 판단
+        if dest_path.exists() && dest_path.canonicalize().ok() != src_path.canonicalize().ok() {
+            duplicates.push(file_name.to_string_lossy().to_string());
+        }
+    }
+    Ok(duplicates)
+}
+
+// 파일/폴더 복사 (재귀 지원, overwrite=true면 기존 파일 덮어쓰기)
+#[tauri::command]
+async fn copy_items(sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<(), String> {
+    let overwrite = overwrite.unwrap_or(false);
     for source in &sources {
         let src_path = std::path::Path::new(source);
         let file_name = src_path
@@ -281,6 +300,18 @@ async fn copy_items(sources: Vec<String>, dest: String) -> Result<(), String> {
                     counter += 1;
                 }
             }
+        } else if dest_path.exists() && overwrite {
+            // 덮어쓰기: 기존 파일/폴더 삭제 후 복사
+            if dest_path.is_dir() {
+                std::fs::remove_dir_all(&dest_path)
+                    .map_err(|e| format!("기존 폴더 삭제 실패: {}", e))?;
+            } else {
+                std::fs::remove_file(&dest_path)
+                    .map_err(|e| format!("기존 파일 삭제 실패: {}", e))?;
+            }
+        } else if dest_path.exists() {
+            // 덮어쓰기 안 함: 스킵
+            continue;
         }
 
         if src_path.is_dir() {
@@ -348,15 +379,31 @@ async fn duplicate_items(paths: Vec<String>) -> Result<Vec<String>, String> {
     Ok(new_paths)
 }
 
-// 파일/폴더 이동
+// 파일/폴더 이동 (overwrite=true면 기존 파일 덮어쓰기)
 #[tauri::command]
-async fn move_items(sources: Vec<String>, dest: String) -> Result<(), String> {
+async fn move_items(sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<(), String> {
+    let overwrite = overwrite.unwrap_or(false);
     for source in &sources {
         let src_path = std::path::Path::new(source);
         let file_name = src_path
             .file_name()
             .ok_or_else(|| format!("잘못된 경로: {}", source))?;
         let dest_path = std::path::Path::new(&dest).join(file_name);
+
+        // 대상에 같은 이름 파일이 있으면 덮어쓰기 처리
+        if dest_path.exists() && dest_path.canonicalize().ok() != src_path.canonicalize().ok() {
+            if overwrite {
+                if dest_path.is_dir() {
+                    std::fs::remove_dir_all(&dest_path)
+                        .map_err(|e| format!("기존 폴더 삭제 실패: {}", e))?;
+                } else {
+                    std::fs::remove_file(&dest_path)
+                        .map_err(|e| format!("기존 파일 삭제 실패: {}", e))?;
+                }
+            } else {
+                continue; // 덮어쓰기 안 함: 스킵
+            }
+        }
 
         // 같은 볼륨이면 rename, 다른 볼륨이면 복사 후 삭제
         if std::fs::rename(src_path, &dest_path).is_err() {
@@ -1654,6 +1701,7 @@ pub fn run() {
         get_file_thumbnail,
         get_psd_thumbnail,
         get_file_icon,
+        check_duplicate_items,
         copy_items,
         duplicate_items,
         move_items,

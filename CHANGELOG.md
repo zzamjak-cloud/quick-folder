@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-03-03
+
+### Added
+- **컬럼뷰 다중 선택**: Shift+Arrow, Ctrl+Click, Shift+Click으로 다중 파일 선택 지원
+- **컬럼뷰 파일 드래그**: 컬럼뷰에서 파일을 OS로 드래그하여 내보내기 가능
+- **붙여넣기 중복 확인 다이얼로그**: 같은 이름 파일 존재 시 덮어쓰기 확인 팝업
+- **반응형 브레드크럼**: 패널 폭이 좁아질 때 경로 세그먼트 자동 축소
+
+### Fixed
+- **macOS 탭 단축키**: Cmd+Alt+W 등 Alt 조합 단축키가 macOS에서 동작하지 않던 문제 수정 (e.key → e.code)
+- **컬럼뷰 ← 네비게이션**: 왼쪽 화살표 시 서브 컬럼만 제거되고 선택 포커싱 정상 해제
+- **컬럼뷰 초기 선택**: 컬럼뷰 진입 시 첫 번째 항목 자동 선택 및 서브컬럼 표시
+- **디테일뷰 드래그 충돌**: 파일 드래그 시 박스 선택이 같이 발동되던 문제 수정
+- **붙여넣기 후 포커싱**: 붙여넣기한 파일에 자동 포커스 및 스크롤
+
 ## [1.8.2] - 2026-03-03
 
 ### Fixed

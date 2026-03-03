@@ -224,6 +224,15 @@ export default function FileExplorer({
   useEffect(() => {
     if (viewMode === 'columns' && displayEntries.length > 0 && currentPath) {
       columnView.initColumns(currentPath, displayEntries);
+      // 첫 번째 항목 자동 선택 + 폴더면 서브컬럼 열기
+      const firstEntry = displayEntries[0];
+      if (firstEntry) {
+        setSelectedPaths([firstEntry.path]);
+        // initColumns 후 selectInColumn으로 서브컬럼 열기
+        requestAnimationFrame(() => {
+          columnView.selectInColumn(0, firstEntry);
+        });
+      }
     } else if (viewMode !== 'columns') {
       columnView.clearColumns();
     }
@@ -369,6 +378,38 @@ export default function FileExplorer({
     try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
   }, [selectedPaths]);
 
+  // 중복 파일 확인 다이얼로그 상태
+  const [duplicateConfirm, setDuplicateConfirm] = useState<{
+    duplicates: string[];
+    paths: string[];
+    action: 'copy' | 'cut';
+  } | null>(null);
+
+  // 붙여넣기 후 선택할 파일 경로를 저장하는 ref
+  const pendingPasteSelectRef = useRef<string[]>([]);
+
+  const executePaste = useCallback(async (paths: string[], action: 'copy' | 'cut', overwrite: boolean) => {
+    if (!currentPath) return;
+    try {
+      if (action === 'copy') {
+        await invoke('copy_items', { sources: paths, dest: currentPath, overwrite });
+      } else {
+        await invoke('move_items', { sources: paths, dest: currentPath, overwrite });
+        setClipboard(null);
+      }
+      // 붙여넣기된 파일명으로 대상 경로 생성 (선택용)
+      const sep = currentPath.includes('/') ? '/' : '\\';
+      const pastedPaths = paths.map(p => {
+        const name = p.split(/[/\\]/).pop() ?? '';
+        return currentPath + sep + name;
+      });
+      pendingPasteSelectRef.current = pastedPaths;
+      loadDirectory(currentPath);
+    } catch (e) {
+      console.error('붙여넣기 실패:', e);
+    }
+  }, [currentPath, loadDirectory, setClipboard]);
+
   const handlePaste = useCallback(async () => {
     if (!currentPath) return;
     try {
@@ -394,17 +435,18 @@ export default function FileExplorer({
         }
       }
 
-      if (action === 'copy') {
-        await invoke('copy_items', { sources: paths, dest: currentPath });
-      } else {
-        await invoke('move_items', { sources: paths, dest: currentPath });
-        setClipboard(null);
+      // 중복 파일 체크
+      const duplicates = await invoke<string[]>('check_duplicate_items', { sources: paths, dest: currentPath });
+      if (duplicates.length > 0) {
+        setDuplicateConfirm({ duplicates, paths, action });
+        return;
       }
-      loadDirectory(currentPath);
+
+      await executePaste(paths, action, false);
     } catch (e) {
       console.error('붙여넣기 실패:', e);
     }
-  }, [clipboard, currentPath, loadDirectory]);
+  }, [clipboard, currentPath, loadDirectory, executePaste]);
 
   const handleDelete = useCallback(async (paths: string[], permanent = false) => {
     if (paths.length === 0) return;
@@ -589,20 +631,20 @@ export default function FileExplorer({
       const isMac = navigator.platform.startsWith('Mac');
 
       // --- 탭 단축키 ---
-      // Ctrl+W: 현재 탭 닫기
-      if (ctrl && !e.altKey && e.key === 'w') {
+      // Ctrl+W (Cmd+W): 현재 탭 닫기
+      if (ctrl && !e.altKey && e.code === 'KeyW') {
         e.preventDefault();
         if (tabs.length > 1 && activeTabId) handleTabClose(activeTabId);
         return;
       }
-      // Ctrl+Alt+W: 현재 탭만 남기고 나머지 모두 닫기
-      if (ctrl && e.altKey && e.key === 'w') {
+      // Ctrl+Alt+W (Cmd+Alt+W): 현재 탭만 남기고 나머지 모두 닫기
+      if (ctrl && e.altKey && e.code === 'KeyW') {
         e.preventDefault();
         closeOtherTabs();
         return;
       }
-      // Ctrl+T: 현재 탭 복제
-      if (ctrl && e.key === 't') {
+      // Ctrl+T (Cmd+T): 현재 탭 복제
+      if (ctrl && e.code === 'KeyT') {
         e.preventDefault();
         duplicateTab();
         return;
@@ -834,25 +876,24 @@ export default function FileExplorer({
           const currentCol = cols[fc];
           if (!currentCol) return;
 
-          if (e.key === 'ArrowUp') {
-            // 현재 컬럼 내 위로
-            if (fr > 0) {
-              columnView.setFocusedRow(fr - 1);
-              const entry = currentCol.entries[fr - 1];
-              if (entry) {
-                columnView.selectInColumn(fc, entry);
-                setSelectedPaths([entry.path]);
-              }
-            }
-          } else if (e.key === 'ArrowDown') {
-            // 현재 컬럼 내 아래로
-            if (fr < currentCol.entries.length - 1) {
-              columnView.setFocusedRow(fr + 1);
-              const entry = currentCol.entries[fr + 1];
-              if (entry) {
-                columnView.selectInColumn(fc, entry);
-                setSelectedPaths([entry.path]);
-              }
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            const nextRow = e.key === 'ArrowUp' ? fr - 1 : fr + 1;
+            if (nextRow < 0 || nextRow >= currentCol.entries.length) return;
+            columnView.setFocusedRow(nextRow);
+            const entry = currentCol.entries[nextRow];
+            if (!entry) return;
+
+            if (e.shiftKey) {
+              // Shift+위/아래: 앵커 기반 범위 선택 (컬럼 구조 변경 없음)
+              if (selectionAnchorRef.current < 0) selectionAnchorRef.current = fr;
+              const from = Math.min(selectionAnchorRef.current, nextRow);
+              const to = Math.max(selectionAnchorRef.current, nextRow);
+              setSelectedPaths(currentCol.entries.slice(from, to + 1).map(e => e.path));
+            } else {
+              // 일반 위/아래: 단일 선택 + 컬럼 탐색
+              selectionAnchorRef.current = -1;
+              columnView.selectInColumn(fc, entry);
+              setSelectedPaths([entry.path]);
             }
           } else if (e.key === 'ArrowRight') {
             // 선택된 항목이 폴더면 다음 컬럼으로
@@ -875,16 +916,15 @@ export default function FileExplorer({
               }
             }
           } else if (e.key === 'ArrowLeft') {
-            // 이전 컬럼으로 포커스 이동
+            // 이전 컬럼으로 포커스 이동: 현재 컬럼의 서브 컬럼만 제거
             if (fc > 0) {
               const prevCol = cols[fc - 1];
+              // 현재 컬럼(fc)까지 유지하고, 그 뒤(fc+1~)만 제거
+              columnView.trimColumnsAfter(fc);
               columnView.setFocusedCol(fc - 1);
               if (prevCol?.selectedPath) {
                 const rowIdx = prevCol.entries.findIndex(e => e.path === prevCol.selectedPath);
                 if (rowIdx >= 0) columnView.setFocusedRow(rowIdx);
-              }
-              // selectedPaths도 이전 컬럼의 선택으로 복원
-              if (prevCol?.selectedPath) {
                 setSelectedPaths([prevCol.selectedPath]);
               }
             }
@@ -955,7 +995,7 @@ export default function FileExplorer({
     preview.handlePreviewImage, preview.handlePreviewText,
     preview.isAnyPreviewOpen,
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
-    columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow,
+    columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
   ]);
 
   // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
@@ -970,6 +1010,26 @@ export default function FileExplorer({
       // 스크롤
       requestAnimationFrame(() => {
         const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(targetPath)}"]`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
+  }, [entries]);
+
+  // --- 붙여넣기 후 파일 자동 선택 ---
+  useEffect(() => {
+    if (pendingPasteSelectRef.current.length === 0) return;
+    const targets = pendingPasteSelectRef.current;
+    const matched = entries.filter(e => targets.includes(e.path));
+    if (matched.length > 0) {
+      const matchedPaths = matched.map(e => e.path);
+      setSelectedPaths(matchedPaths);
+      // 첫 번째 항목에 포커스
+      const firstIdx = entries.findIndex(e => e.path === matchedPaths[0]);
+      if (firstIdx >= 0) setFocusedIndex(firstIdx);
+      pendingPasteSelectRef.current = [];
+      // 첫 번째 항목으로 스크롤
+      requestAnimationFrame(() => {
+        const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
         el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       });
     }
@@ -1196,15 +1256,40 @@ export default function FileExplorer({
               preview={columnView.preview}
               focusedCol={columnView.focusedCol}
               focusedRow={columnView.focusedRow}
+              selectedPaths={selectedPaths}
               loading={loading}
               error={error}
               themeVars={themeVars}
-              onSelectInColumn={(colIndex, entry) => {
-                columnView.selectInColumn(colIndex, entry);
-                setSelectedPaths([entry.path]);
+              onSelectInColumn={(colIndex, entry, multi, range) => {
+                const col = columnView.columns[colIndex];
+                if (!col) return;
+                const rowIdx = col.entries.findIndex(e => e.path === entry.path);
+
+                if (multi) {
+                  // Ctrl+Click: 개별 토글 다중 선택 (컬럼 구조 변경 없음)
+                  setSelectedPaths(prev =>
+                    prev.includes(entry.path) ? prev.filter(p => p !== entry.path) : [...prev, entry.path]
+                  );
+                  columnView.setFocusedCol(colIndex);
+                  if (rowIdx >= 0) columnView.setFocusedRow(rowIdx);
+                } else if (range) {
+                  // Shift+Click: 앵커~클릭 위치 범위 선택 (컬럼 구조 변경 없음)
+                  if (selectionAnchorRef.current < 0) selectionAnchorRef.current = columnView.focusedRow;
+                  const from = Math.min(selectionAnchorRef.current, rowIdx);
+                  const to = Math.max(selectionAnchorRef.current, rowIdx);
+                  setSelectedPaths(col.entries.slice(from, to + 1).map(e => e.path));
+                  columnView.setFocusedCol(colIndex);
+                  if (rowIdx >= 0) columnView.setFocusedRow(rowIdx);
+                } else {
+                  // 일반 클릭: 기존 동작 (컬럼 탐색)
+                  selectionAnchorRef.current = -1;
+                  columnView.selectInColumn(colIndex, entry);
+                  setSelectedPaths([entry.path]);
+                }
               }}
               onOpenEntry={openEntry}
               onContextMenu={handleContextMenu}
+              onDragMouseDown={handleDragMouseDown}
             />
           ) : (
             <FileGrid
@@ -1308,6 +1393,65 @@ export default function FileExplorer({
           onSelect={handleGlobalSearchSelect}
           themeVars={themeVars}
         />
+      )}
+
+      {/* 중복 파일 확인 다이얼로그 */}
+      {duplicateConfirm && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div
+            className="rounded-lg shadow-2xl max-w-sm w-full mx-4 overflow-hidden"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#1f2937',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+          >
+            <div className="px-5 pt-5 pb-3">
+              <p className="text-sm font-medium mb-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                같은 이름의 파일이 {duplicateConfirm.duplicates.length}개 존재합니다.
+              </p>
+              <p className="text-xs mb-3" style={{ color: themeVars?.muted ?? '#94a3b8' }}>
+                덮어씌우시겠습니까?
+              </p>
+              <div
+                className="text-xs rounded-md px-3 py-2 max-h-[120px] overflow-y-auto"
+                style={{ backgroundColor: themeVars?.surface ?? '#111827' }}
+              >
+                {duplicateConfirm.duplicates.map((name, i) => (
+                  <div key={i} className="py-0.5 truncate" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                    {name}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t" style={{ borderColor: themeVars?.border ?? '#334155' }}>
+              <button
+                className="px-4 py-1.5 text-xs rounded-md transition-colors hover:opacity-80"
+                style={{
+                  backgroundColor: themeVars?.surface ?? '#111827',
+                  color: themeVars?.text ?? '#e5e7eb',
+                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                }}
+                onClick={() => setDuplicateConfirm(null)}
+              >
+                취소
+              </button>
+              <button
+                className="px-4 py-1.5 text-xs rounded-md transition-colors hover:opacity-80"
+                style={{
+                  backgroundColor: themeVars?.accent ?? '#3b82f6',
+                  color: '#fff',
+                }}
+                onClick={async () => {
+                  const { paths, action } = duplicateConfirm;
+                  setDuplicateConfirm(null);
+                  await executePaste(paths, action, true);
+                }}
+              >
+                덮어쓰기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

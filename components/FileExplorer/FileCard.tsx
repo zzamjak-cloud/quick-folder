@@ -170,7 +170,7 @@ export default memo(function FileCard({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      onMouseDown={(e) => onDragMouseDown(e, entry.path)}
+      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
       title={formatTooltip(entry, imageDims)}
     >
       {/* 썸네일/아이콘 영역 */}

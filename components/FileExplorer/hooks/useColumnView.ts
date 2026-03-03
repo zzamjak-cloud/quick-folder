@@ -35,13 +35,14 @@ export function useColumnView() {
   // 썸네일 로딩 취소용
   const thumbnailCancelRef = useRef<(() => void) | null>(null);
 
-  // 뷰 모드 전환 시 첫 컬럼 초기화
+  // 뷰 모드 전환 시 첫 컬럼 초기화 (첫 번째 항목 자동 선택)
   const initColumns = useCallback((rootPath: string, entries: FileEntry[]) => {
+    const firstEntry = entries.length > 0 ? entries[0] : null;
     setColumns([{
       path: rootPath,
       entries,
       loading: false,
-      selectedPath: null,
+      selectedPath: firstEntry?.path ?? null,
     }]);
     setPreview(null);
     setFocusedCol(0);
@@ -198,6 +199,23 @@ export function useColumnView() {
     }
   }, [columns, sortEntries, loadThumbnail]);
 
+  // 지정 컬럼 이후의 모든 컬럼 제거 (← 화살표 뒤로 이동 시)
+  // 마지막 유지 컬럼의 selectedPath도 초기화 (서브 컬럼이 제거되었으므로)
+  const trimColumnsAfter = useCallback((colIndex: number) => {
+    setColumns(prev => {
+      if (prev.length <= colIndex + 1) return prev;
+      const trimmed = prev.slice(0, colIndex + 1);
+      return trimmed.map((col, i) => {
+        if (i === colIndex) return { ...col, selectedPath: null };
+        return col;
+      });
+    });
+    setPreview(null);
+    loadRequestRef.current.forEach((_, key) => {
+      if (key > colIndex) loadRequestRef.current.delete(key);
+    });
+  }, []);
+
   // 첫 번째 컬럼 entries 업데이트 (정렬/검색 변경 시)
   const updateFirstColumn = useCallback((entries: FileEntry[]) => {
     setColumns(prev => {
@@ -218,6 +236,7 @@ export function useColumnView() {
     initColumns,
     clearColumns,
     selectInColumn,
+    trimColumnsAfter,
     updateFirstColumn,
   };
 }

@@ -11,12 +11,14 @@ interface ColumnViewProps {
   preview: ColumnPreviewData | null;
   focusedCol: number;
   focusedRow: number;
+  selectedPaths: string[];
   loading: boolean;
   error: string | null;
   themeVars: ThemeVars | null;
-  onSelectInColumn: (colIndex: number, entry: FileEntry) => void;
+  onSelectInColumn: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
   onOpenEntry: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
+  onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
 }
 
 export default memo(function ColumnView({
@@ -30,6 +32,8 @@ export default memo(function ColumnView({
   onSelectInColumn,
   onOpenEntry,
   onContextMenu,
+  onDragMouseDown,
+  selectedPaths,
 }: ColumnViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -104,10 +108,12 @@ export default memo(function ColumnView({
           colIndex={idx}
           isFocusedCol={focusedCol === idx}
           focusedRow={focusedRow}
+          selectedPaths={selectedPaths}
           themeVars={themeVars}
           onSelect={onSelectInColumn}
           onOpen={onOpenEntry}
           onContextMenu={onContextMenu}
+          onDragMouseDown={onDragMouseDown}
         />
       ))}
 
