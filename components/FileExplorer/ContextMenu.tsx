@@ -162,7 +162,7 @@ export default memo(function ContextMenu({
         {/* 복사 / 잘라내기 / 붙여넣기 */}
         {item(<Copy size={13} />, '복사', onCopy, paths.length === 0, `${mod}+C`)}
         {item(<Scissors size={13} />, '잘라내기', onCut, paths.length === 0, `${mod}+X`)}
-        {item(<Clipboard size={13} />, '붙여넣기', onPaste, !clipboard, `${mod}+V`)}
+        {item(<Clipboard size={13} />, '붙여넣기', onPaste, false, `${mod}+V`)}
         {item(<CopyPlus size={13} />, '복제', onDuplicate, paths.length === 0, `${mod}+D`)}
 
         {divider('d2')}

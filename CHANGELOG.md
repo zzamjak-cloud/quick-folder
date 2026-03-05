@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-03-05
+
+### Added
+- **Photoshop에서 열기 단축키**: Ctrl+Alt+O (Cmd+Option+O)로 선택된 이미지 파일을 Photoshop에서 열기
+  - macOS: /Applications에서 최신 버전 자동 탐색
+  - Windows: 레지스트리 + Program Files 폴백 탐색
+
+### Fixed
+- **확장자 필터 초기화**: 폴더 이동/탭 전환 시 확장자 필터가 유지되던 문제 수정
+- **Windows 클립보드 붙여넣기**: 탐색기에서 복사한 파일을 QuickFolder에 붙여넣기 안 되던 문제 수정
+  - OpenClipboard 실패 시 재시도 로직 추가
+  - 컨텍스트 메뉴 붙여넣기 버튼 항상 활성화 (OS 클립보드 폴백)
+
 ## [1.9.0] - 2026-03-03
 
 ### Added

@@ -220,6 +220,11 @@ export default function FileExplorer({
     return result;
   }, [entries, activeExtFilters, searchQuery, getExt]);
 
+  // --- 폴더/탭 전환 시 확장자 필터 초기화 ---
+  useEffect(() => {
+    setActiveExtFilters(new Set());
+  }, [currentPath]);
+
   // --- 컬럼 뷰 초기화/정리 ---
   useEffect(() => {
     if (viewMode === 'columns' && displayEntries.length > 0 && currentPath) {
@@ -698,6 +703,25 @@ export default function FileExplorer({
           handleCopyPath(pathsToCopy);
         } else if (currentPath && currentPath !== RECENT_PATH) {
           handleCopyPath(currentPath);
+        }
+        return;
+      }
+
+      // Ctrl+Alt+O (Cmd+Option+O): Photoshop에서 열기
+      if (ctrl && e.altKey && e.code === 'KeyO') {
+        e.preventDefault();
+        const imageExts = new Set([
+          'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'psd', 'psb',
+          'tiff', 'tif', 'svg', 'ico', 'raw', 'cr2', 'nef', 'arw',
+        ]);
+        const imagePaths = selectedPaths.filter(p => {
+          const ext = p.split('.').pop()?.toLowerCase() ?? '';
+          return imageExts.has(ext);
+        });
+        if (imagePaths.length > 0) {
+          invoke('open_in_photoshop', { paths: imagePaths }).catch((err: unknown) => {
+            setError(`Photoshop 열기 실패: ${err}`);
+          });
         }
         return;
       }
