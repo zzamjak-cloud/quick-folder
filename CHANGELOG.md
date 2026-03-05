@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-03-05
+
+### Changed
+- **동영상 썸네일 네이티브 API**: ffmpeg 의존성 제거, OS 네이티브 API로 전환
+  - macOS: AVFoundation AVAssetImageGenerator로 프레임 추출
+  - Windows: Shell IShellItemImageFactory로 썸네일 생성
+  - 외부 도구 설치 불필요, 앱 크기 증가 없음
+
 ## [1.10.0] - 2026-03-05
 
 ### Added

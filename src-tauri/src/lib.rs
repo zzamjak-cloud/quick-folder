@@ -1088,35 +1088,10 @@ fn get_native_icon_bytes(_path: &str, _size: u32) -> Option<Vec<u8>> {
     None
 }
 
-// --- ffmpeg 설치 여부 캐시 ---
-fn is_ffmpeg_available() -> bool {
-    static AVAILABLE: OnceLock<bool> = OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        let mut cmd = std::process::Command::new("ffmpeg");
-        cmd.arg("-version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        // Windows: 콘솔 창 숨김
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-        cmd.status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    })
-}
-
-// --- 동영상 썸네일 (ffmpeg CLI 기반, 디스크 캐시) ---
-// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
+// --- 동영상 썸네일 (OS 네이티브 API, 디스크 캐시) ---
 #[tauri::command]
 async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>, String> {
     use tauri::Manager;
-
-    if !is_ffmpeg_available() {
-        return Ok(None);
-    }
 
     let cache_dir = app.path().app_cache_dir()
         .map_err(|e: tauri::Error| e.to_string())?
@@ -1124,35 +1099,258 @@ async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> 
 
     tauri::async_runtime::spawn_blocking(move || {
         cached_thumbnail(&cache_dir, &path, size, false, || {
-            let mut cmd = std::process::Command::new("ffmpeg");
-            cmd.args([
-                    "-i", &path,
-                    "-ss", "00:00:01",
-                    "-frames:v", "1",
-                    "-vf", &format!("scale={}:-1", size),
-                    "-f", "image2pipe",
-                    "-vcodec", "png",
-                    "pipe:1",
-                ])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null());
-            // Windows: 콘솔 창 숨김
-            #[cfg(target_os = "windows")]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-            }
-            let output = cmd.output()
-                .map_err(|e| e.to_string())?;
-
-            if !output.status.success() || output.stdout.is_empty() {
-                return Ok(None);
-            }
-            Ok(Some(output.stdout))
+            get_native_video_thumbnail(&path, size)
         })
     })
     .await
     .map_err(|e| format!("동영상 썸네일 생성 실패: {}", e))?
+}
+
+// macOS: AVFoundation AVAssetImageGenerator로 동영상 프레임 추출
+#[cfg(target_os = "macos")]
+fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>, String> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use std::ffi::c_void;
+
+    unsafe {
+        // NSURL fileURLWithPath:
+        let nsurl_class = Class::get("NSURL").ok_or("NSURL not found")?;
+        let path_nsstring: *mut Object = msg_send![
+            Class::get("NSString").unwrap(),
+            stringWithUTF8String: std::ffi::CString::new(path).map_err(|e| e.to_string())?.as_ptr()
+        ];
+        let url: *mut Object = msg_send![nsurl_class, fileURLWithPath: path_nsstring];
+        if url.is_null() {
+            return Ok(None);
+        }
+
+        // AVAsset assetWithURL:
+        let avasset_class = Class::get("AVAsset").ok_or("AVAsset not found")?;
+        let asset: *mut Object = msg_send![avasset_class, assetWithURL: url];
+        if asset.is_null() {
+            return Ok(None);
+        }
+
+        // AVAssetImageGenerator alloc/initWithAsset:
+        let generator_class = Class::get("AVAssetImageGenerator")
+            .ok_or("AVAssetImageGenerator not found")?;
+        let generator: *mut Object = msg_send![generator_class, alloc];
+        let generator: *mut Object = msg_send![generator, initWithAsset: asset];
+        if generator.is_null() {
+            return Ok(None);
+        }
+
+        // appliesPreferredTrackTransform = YES (회전 보정)
+        let _: () = msg_send![generator, setAppliesPreferredTrackTransform: true];
+
+        // maximumSize 설정
+        #[repr(C)]
+        struct CGSize { width: f64, height: f64 }
+        let max_size = CGSize { width: size as f64, height: size as f64 };
+        let _: () = msg_send![generator, setMaximumSize: max_size];
+
+        // CMTime: 1초 지점
+        #[repr(C)]
+        #[derive(Copy, Clone)]
+        struct CMTime {
+            value: i64,
+            timescale: i32,
+            flags: u32,
+            epoch: i64,
+        }
+        let time = CMTime { value: 1, timescale: 1, flags: 1, epoch: 0 };
+
+        // copyCGImageAtTime:actualTime:error:
+        let mut actual_time = time;
+        let mut error: *mut Object = std::ptr::null_mut();
+        let cg_image: *mut c_void = msg_send![
+            generator,
+            copyCGImageAtTime: time
+            actualTime: &mut actual_time as *mut CMTime
+            error: &mut error as *mut *mut Object
+        ];
+
+        if cg_image.is_null() || !error.is_null() {
+            let _: () = msg_send![generator, release];
+            return Ok(None);
+        }
+
+        // CGImage → NSBitmapImageRep → PNG 데이터
+        let bitmap_class = Class::get("NSBitmapImageRep")
+            .ok_or("NSBitmapImageRep not found")?;
+        let bitmap: *mut Object = msg_send![bitmap_class, alloc];
+        let bitmap: *mut Object = msg_send![bitmap, initWithCGImage: cg_image];
+
+        // CGImageRelease
+        extern "C" { fn CGImageRelease(image: *mut c_void); }
+        CGImageRelease(cg_image);
+
+        if bitmap.is_null() {
+            let _: () = msg_send![generator, release];
+            return Ok(None);
+        }
+
+        // representationUsingType:NSBitmapImageFileTypePNG properties:@{}
+        let empty_dict: *mut Object = msg_send![Class::get("NSDictionary").unwrap(), dictionary];
+        let png_data: *mut Object = msg_send![
+            bitmap,
+            representationUsingType: 4u64  // NSBitmapImageFileTypePNG = 4
+            properties: empty_dict
+        ];
+
+        let result = if !png_data.is_null() {
+            let length: usize = msg_send![png_data, length];
+            let bytes: *const u8 = msg_send![png_data, bytes];
+            Some(std::slice::from_raw_parts(bytes, length).to_vec())
+        } else {
+            None
+        };
+
+        let _: () = msg_send![bitmap, release];
+        let _: () = msg_send![generator, release];
+
+        Ok(result)
+    }
+}
+
+// Windows: Shell IShellItemImageFactory로 동영상 썸네일 추출
+#[cfg(target_os = "windows")]
+fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>, String> {
+    use winapi::um::shobjidl_core::IShellItemImageFactory;
+    use winapi::um::shobjidl_core::IShellItem;
+    use winapi::um::combaseapi::{CoInitializeEx, CoUninitialize};
+    use winapi::um::objbase::COINIT_MULTITHREADED;
+    use winapi::shared::windef::HBITMAP;
+    use winapi::shared::minwindef::DWORD;
+    use winapi::um::wingdi::*;
+    use std::ptr;
+
+    unsafe {
+        CoInitializeEx(ptr::null_mut(), COINIT_MULTITHREADED);
+
+        // SHCreateItemFromParsingName으로 IShellItem 생성
+        let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let mut shell_item: *mut IShellItem = ptr::null_mut();
+        extern "system" {
+            fn SHCreateItemFromParsingName(
+                pszPath: *const u16,
+                pbc: *mut winapi::um::objidl::IBindCtx,
+                riid: *const winapi::shared::guiddef::GUID,
+                ppv: *mut *mut std::ffi::c_void,
+            ) -> winapi::shared::winerror::HRESULT;
+        }
+
+        let iid_shell_item = winapi::shared::guiddef::GUID {
+            Data1: 0x43826d1e,
+            Data2: 0xe718,
+            Data3: 0x42ee,
+            Data4: [0xbc, 0x55, 0xa1, 0xe2, 0x61, 0xc3, 0x7b, 0xfe],
+        };
+
+        let hr = SHCreateItemFromParsingName(
+            wide_path.as_ptr(),
+            ptr::null_mut(),
+            &iid_shell_item,
+            &mut shell_item as *mut _ as *mut *mut std::ffi::c_void,
+        );
+        if hr != 0 || shell_item.is_null() {
+            CoUninitialize();
+            return Ok(None);
+        }
+
+        // IShellItemImageFactory로 QueryInterface
+        let iid_image_factory = winapi::shared::guiddef::GUID {
+            Data1: 0xbcc18b79,
+            Data2: 0xba16,
+            Data3: 0x442f,
+            Data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
+        };
+
+        let mut image_factory: *mut IShellItemImageFactory = ptr::null_mut();
+        let hr = (*shell_item).QueryInterface(
+            &iid_image_factory as *const _ as *const winapi::shared::guiddef::IID,
+            &mut image_factory as *mut _ as *mut *mut std::ffi::c_void,
+        );
+        (*shell_item).Release();
+
+        if hr != 0 || image_factory.is_null() {
+            CoUninitialize();
+            return Ok(None);
+        }
+
+        // GetImage로 HBITMAP 취득
+        let sz = winapi::shared::windef::SIZE { cx: size as i32, cy: size as i32 };
+        let mut hbitmap: HBITMAP = ptr::null_mut();
+        let hr = (*image_factory).GetImage(sz, 0x0, &mut hbitmap); // SIIGBF_RESIZETOFIT = 0
+        (*image_factory).Release();
+
+        if hr != 0 || hbitmap.is_null() {
+            CoUninitialize();
+            return Ok(None);
+        }
+
+        // HBITMAP → BMP 바이트열 → image crate로 PNG 변환
+        let mut bmp_info = BITMAP {
+            bmType: 0, bmWidth: 0, bmHeight: 0,
+            bmWidthBytes: 0, bmPlanes: 0, bmBitsPixel: 0, bmBits: ptr::null_mut(),
+        };
+        GetObjectW(hbitmap as *mut _, std::mem::size_of::<BITMAP>() as i32, &mut bmp_info as *mut _ as *mut _);
+
+        let width = bmp_info.bmWidth as u32;
+        let height = bmp_info.bmHeight.unsigned_abs();
+        if width == 0 || height == 0 {
+            DeleteObject(hbitmap as *mut _);
+            CoUninitialize();
+            return Ok(None);
+        }
+
+        // GetDIBits로 BGRA 픽셀 추출
+        let hdc = CreateCompatibleDC(ptr::null_mut());
+        let mut bi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as DWORD,
+                biWidth: width as i32,
+                biHeight: -(height as i32), // top-down
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB,
+                biSizeImage: 0,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [RGBQUAD { rgbBlue: 0, rgbGreen: 0, rgbRed: 0, rgbReserved: 0 }],
+        };
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        GetDIBits(hdc, hbitmap, 0, height, pixels.as_mut_ptr() as *mut _, &mut bi, DIB_RGB_COLORS);
+        DeleteDC(hdc);
+        DeleteObject(hbitmap as *mut _);
+        CoUninitialize();
+
+        // BGRA → RGBA 변환
+        for chunk in pixels.chunks_exact_mut(4) {
+            chunk.swap(0, 2); // B ↔ R
+        }
+
+        // image crate로 PNG 인코딩
+        let img_buf: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+            image::ImageBuffer::from_raw(width, height, pixels)
+                .ok_or("이미지 버퍼 생성 실패")?;
+
+        let mut png_buf = std::io::Cursor::new(Vec::new());
+        img_buf.write_to(&mut png_buf, image::ImageFormat::Png)
+            .map_err(|e| format!("PNG 인코딩 실패: {}", e))?;
+
+        Ok(Some(png_buf.into_inner()))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn get_native_video_thumbnail(_path: &str, _size: u32) -> Result<Option<Vec<u8>>, String> {
+    Ok(None)
 }
 
 // --- ZIP 압축 ---

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.10.0"
+version = "1.11.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -41,4 +41,4 @@ walkdir = "2"
 objc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3", features = ["shellapi", "wingdi", "winuser", "combaseapi", "objbase", "winerror", "winbase", "winreg"] }
+winapi = { version = "0.3", features = ["shellapi", "wingdi", "winuser", "combaseapi", "objbase", "winerror", "winbase", "winreg", "shobjidl_core", "objidl"] }
