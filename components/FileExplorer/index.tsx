@@ -97,6 +97,32 @@ export default function FileExplorer({
 
   // --- 미리보기 (비디오/이미지/텍스트) ---
   const preview = usePreview();
+  const isMac = navigator.platform.startsWith('Mac');
+
+  // 텍스트 미리보기 대상 확장자
+  const TEXT_PREVIEW_EXTS = useMemo(() => new Set([
+    'txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go',
+    'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log',
+  ]), []);
+
+  // 파일 미리보기 실행 (Space키 + 화살표 이동 시 공용)
+  const previewFile = useCallback((entry: FileEntry) => {
+    if (entry.file_type === 'video') {
+      preview.setVideoPlayerPath(entry.path);
+    } else if (entry.file_type === 'image' || /\.psd$/i.test(entry.name)) {
+      preview.handlePreviewImage(entry.path);
+    } else if (/\.psb$/i.test(entry.name)) {
+      if (isMac) {
+        invoke('quick_look', { path: entry.path }).catch(console.error);
+      } else {
+        preview.handlePreviewImage(entry.path);
+      }
+    } else if (TEXT_PREVIEW_EXTS.has(entry.name.split('.').pop()?.toLowerCase() ?? '')) {
+      preview.handlePreviewText(entry.path);
+    } else if (isMac) {
+      invoke('quick_look', { path: entry.path }).catch(console.error);
+    }
+  }, [isMac, TEXT_PREVIEW_EXTS, preview]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -633,7 +659,6 @@ export default function FileExplorer({
       if (isInput && e.key !== 'Escape') return;
 
       const ctrl = e.ctrlKey || e.metaKey;
-      const isMac = navigator.platform.startsWith('Mac');
 
       // --- 탭 단축키 ---
       // Ctrl+W (Cmd+W): 현재 탭 닫기
@@ -797,24 +822,7 @@ export default function FileExplorer({
         // 선택된 파일이 하나일 때만 미리보기 열기
         if (selectedPaths.length !== 1) return;
         const entry = entries.find(en => en.path === selectedPaths[0]);
-        if (!entry) return;
-
-        if (entry.file_type === 'video') {
-          // 동영상: 내장 비디오 플레이어
-          preview.setVideoPlayerPath(entry.path);
-        } else if (entry.file_type === 'image' || /\.psd$/i.test(entry.name)) {
-          // 이미지/PSD: 내장 미리보기 모달
-          preview.handlePreviewImage(entry.path);
-        } else if (/\.psb$/i.test(entry.name) && isMac) {
-          // PSB: psd 크레이트 미지원 → macOS Quick Look
-          invoke('quick_look', { path: entry.path }).catch(console.error);
-        } else if (['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log'].includes(entry.name.split('.').pop()?.toLowerCase() ?? '')) {
-          // 텍스트 파일: 내장 텍스트 미리보기
-          preview.handlePreviewText(entry.path);
-        } else if (isMac) {
-          // macOS: Quick Look 폴백
-          invoke('quick_look', { path: selectedPaths[0] }).catch(console.error);
-        }
+        if (entry) previewFile(entry);
         return;
       }
 
@@ -1016,11 +1024,17 @@ export default function FileExplorer({
     goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
-    preview.handlePreviewImage, preview.handlePreviewText,
-    preview.isAnyPreviewOpen,
+    previewFile, preview.isAnyPreviewOpen, preview.closeAllPreviews,
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
   ]);
+
+  // --- 미리보기 열려있을 때 선택 변경 시 자동 갱신 ---
+  useEffect(() => {
+    if (!preview.isAnyPreviewOpen || selectedPaths.length !== 1) return;
+    const entry = entries.find(e => e.path === selectedPaths[0]);
+    if (entry) previewFile(entry);
+  }, [selectedPaths, preview.isAnyPreviewOpen, entries, previewFile]);
 
   // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
   useEffect(() => {

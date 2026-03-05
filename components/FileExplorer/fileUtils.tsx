@@ -1,5 +1,5 @@
 import React from 'react';
-import { Folder, File, FileImage, FileVideo, FileText, FileCode, Archive } from 'lucide-react';
+import { Folder, File, FileImage, FileVideo, FileText, FileCode, Archive, Cog } from 'lucide-react';
 
 // 파일명에서 확장자 추출 (소문자)
 function getExt(fileName?: string): string {
@@ -14,6 +14,7 @@ const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> =
   md: FileText,          // 마크다운 → 문서 아이콘
   json: FileCode,        // JSON → 코드 아이콘
   sh: FileCode,          // 셸 스크립트 → 코드 아이콘
+  exe: Cog,              // 실행파일 → 톱니바퀴 아이콘
 };
 
 // 확장자별 전용 색상 (네이티브 아이콘 skip 대상만)
@@ -21,6 +22,7 @@ const EXT_COLOR: Record<string, string> = {
   md: '#94a3b8',         // 마크다운 그레이
   json: '#fbbf24',       // JSON 옐로
   sh: '#22d3ee',         // 셸 스크립트 시안
+  exe: '#60a5fa',        // 실행파일 블루
 };
 
 // 파일 타입별 아이콘 컴포넌트

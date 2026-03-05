@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-03-06
+
+### Fixed
+- Windows 타이틀바 이중 표시: 커스텀 타이틀바를 macOS에서만 렌더링
+- Windows PSB 파일 Space키 미리보기 미동작: Windows에서 내부 모달 미리보기 사용
+- .exe 파일 아이콘 비정상 크기: 네이티브 아이콘 대신 Lucide 아이콘으로 대체
+
+### Added
+- 미리보기 중 화살표 이동 시 실시간 미리보기 갱신
+- 사이드바에 "다운로드" 고정 바로가기 추가
+
 ## [1.12.0] - 2026-03-05
 
 ### Changed

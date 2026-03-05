@@ -15,7 +15,7 @@ function getCacheKey(isDir: boolean, name: string): string {
 }
 
 // 네이티브 아이콘이 부정확하게 표시되는 확장자만 lucide 폴백
-const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh']);
+const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh', 'exe']);
 
 /**
  * OS 네이티브 파일 아이콘 훅 (확장자별 캐시)

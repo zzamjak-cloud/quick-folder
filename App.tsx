@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Clock,
+  Download,
 } from 'lucide-react';
 import {
   DndContext,
@@ -42,6 +43,7 @@ import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
 import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
+import { downloadDir } from '@tauri-apps/api/path';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ZoomModal } from './components/ZoomModal';
@@ -66,6 +68,8 @@ import {
 const RECENT_PATH = '__recent__';
 
 export default function App() {
+  const isMac = navigator.platform.startsWith('Mac');
+
   // --- 토스트 (다른 훅들의 의존성) ---
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -200,6 +204,21 @@ export default function App() {
       setExplorerPath2(RECENT_PATH);
     }
   }, [splitMode, focusedPane]);
+
+  // 다운로드 폴더 경로
+  const [downloadPath, setDownloadPath] = useState<string | null>(null);
+  useEffect(() => {
+    downloadDir().then(setDownloadPath).catch(console.error);
+  }, []);
+
+  const handleOpenDownloads = useCallback(() => {
+    if (!downloadPath) return;
+    if (splitMode === 'single' || focusedPane === 0) {
+      setExplorerPath(downloadPath);
+    } else {
+      setExplorerPath2(downloadPath);
+    }
+  }, [splitMode, focusedPane, downloadPath]);
 
   // 즐겨찾기 폴더 경로 목록 (FileExplorer에서 최근항목 조회 시 사용)
   const recentRoots = useMemo(() =>
@@ -483,24 +502,26 @@ export default function App() {
         ['--qf-accent-50' as string]: themeVars?.accent50 ?? 'rgba(59,130,246,0.50)',
       }}
     >
-      {/* macOS 커스텀 타이틀바 (overlay 모드) */}
-      <div
-        data-tauri-drag-region
-        className="flex-shrink-0 flex items-center border-b border-[var(--qf-border)]"
-        style={{
-          height: 36,
-          paddingLeft: 72,
-          backgroundColor: themeVars?.surface ?? '#111827',
-          // @ts-expect-error WebkitAppRegion은 비표준 CSS 속성 (Tauri 타이틀바 드래그용)
-          WebkitAppRegion: 'drag',
-        }}
-      >
-        <span
-          className="text-xs font-semibold text-[var(--qf-muted)] select-none pointer-events-none"
+      {/* macOS 커스텀 타이틀바 (overlay 모드) — Windows는 OS 기본 타이틀바 사용 */}
+      {isMac && (
+        <div
+          data-tauri-drag-region
+          className="flex-shrink-0 flex items-center border-b border-[var(--qf-border)]"
+          style={{
+            height: 36,
+            paddingLeft: 72,
+            backgroundColor: themeVars?.surface ?? '#111827',
+            // @ts-expect-error WebkitAppRegion은 비표준 CSS 속성 (Tauri 타이틀바 드래그용)
+            WebkitAppRegion: 'drag',
+          }}
         >
-          QuickFolder
-        </span>
-      </div>
+          <span
+            className="text-xs font-semibold text-[var(--qf-muted)] select-none pointer-events-none"
+          >
+            QuickFolder
+          </span>
+        </div>
+      )}
 
       {/* Split Panel */}
       <div className="flex flex-1 overflow-hidden">
@@ -578,11 +599,20 @@ export default function App() {
 
           {/* 최근항목 버튼 */}
           <div
-            className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
             onClick={handleOpenRecent}
           >
             <Clock size={14} className="text-[var(--qf-accent)]" />
             <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
+          </div>
+
+          {/* 다운로드 버튼 */}
+          <div
+            className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+            onClick={handleOpenDownloads}
+          >
+            <Download size={14} className="text-[var(--qf-accent)]" />
+            <span className="text-xs font-semibold text-[var(--qf-text)]">다운로드</span>
           </div>
 
           <DndContext
