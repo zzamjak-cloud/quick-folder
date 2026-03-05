@@ -19,7 +19,7 @@ export default function GlobalSearchModal({ isOpen, onClose, currentPath, onSele
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const requestIdRef = useRef(0);
 
   // 모달 열릴 때 초기화

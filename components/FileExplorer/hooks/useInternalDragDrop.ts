@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { DRAG_IMAGE } from '../fileUtils';
 import { isCloudPath } from '../../../utils/pathUtils';

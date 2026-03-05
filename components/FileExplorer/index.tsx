@@ -93,7 +93,7 @@ export default function FileExplorer({
 
   // --- 복사 피드백 토스트 ---
   const [copyToast, setCopyToast] = useState<string | null>(null);
-  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // --- 미리보기 (비디오/이미지/텍스트) ---
   const preview = usePreview();

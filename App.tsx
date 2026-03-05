@@ -491,7 +491,8 @@ export default function App() {
           height: 36,
           paddingLeft: 72,
           backgroundColor: themeVars?.surface ?? '#111827',
-          WebkitAppRegion: 'drag' as unknown as string,
+          // @ts-expect-error WebkitAppRegion은 비표준 CSS 속성 (Tauri 타이틀바 드래그용)
+          WebkitAppRegion: 'drag',
         }}
       >
         <span

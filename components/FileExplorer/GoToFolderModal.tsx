@@ -20,7 +20,7 @@ export default function GoToFolderModal({ isOpen, onClose, onNavigate, themeVars
   const skipFetchRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const requestIdRef = useRef(0);
 
   // 모달 열릴 때 자동 포커스 + 상태 초기화
