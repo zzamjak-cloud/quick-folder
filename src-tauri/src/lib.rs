@@ -1214,68 +1214,67 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>, 
     }
 }
 
-// Windows: Shell IShellItemImageFactory로 동영상 썸네일 추출
+// Windows: Shell COM 인터페이스로 동영상 썸네일 추출
 #[cfg(target_os = "windows")]
 fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>, String> {
-    use winapi::um::shobjidl_core::IShellItemImageFactory;
-    use winapi::um::shobjidl_core::IShellItem;
     use winapi::um::combaseapi::{CoInitializeEx, CoUninitialize};
     use winapi::um::objbase::COINIT_MULTITHREADED;
     use winapi::shared::windef::HBITMAP;
     use winapi::shared::minwindef::DWORD;
+    use winapi::shared::guiddef::GUID;
+    use winapi::shared::winerror::HRESULT;
     use winapi::um::wingdi::*;
+    use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl};
     use std::ptr;
+    use std::ffi::c_void;
+
+    // IShellItemImageFactory COM 인터페이스 수동 정의
+    #[repr(C)]
+    struct IShellItemImageFactoryVtbl {
+        // IUnknown
+        query_interface: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw, *const GUID, *mut *mut c_void) -> HRESULT,
+        add_ref: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw) -> u32,
+        release: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw) -> u32,
+        // IShellItemImageFactory
+        get_image: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw, winapi::shared::windef::SIZE, u32, *mut HBITMAP) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct IShellItemImageFactoryRaw {
+        vtbl: *const IShellItemImageFactoryVtbl,
+    }
+
+    extern "system" {
+        fn SHCreateItemFromParsingName(
+            pszPath: *const u16,
+            pbc: *mut c_void,
+            riid: *const GUID,
+            ppv: *mut *mut c_void,
+        ) -> HRESULT;
+    }
+
+    // IShellItemImageFactory GUID: {bcc18b79-ba16-442f-80c4-8a59c30c463b}
+    let iid_image_factory = GUID {
+        Data1: 0xbcc18b79,
+        Data2: 0xba16,
+        Data3: 0x442f,
+        Data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
+    };
 
     unsafe {
         CoInitializeEx(ptr::null_mut(), COINIT_MULTITHREADED);
 
-        // SHCreateItemFromParsingName으로 IShellItem 생성
         let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
 
-        let mut shell_item: *mut IShellItem = ptr::null_mut();
-        extern "system" {
-            fn SHCreateItemFromParsingName(
-                pszPath: *const u16,
-                pbc: *mut winapi::um::objidl::IBindCtx,
-                riid: *const winapi::shared::guiddef::GUID,
-                ppv: *mut *mut std::ffi::c_void,
-            ) -> winapi::shared::winerror::HRESULT;
-        }
-
-        let iid_shell_item = winapi::shared::guiddef::GUID {
-            Data1: 0x43826d1e,
-            Data2: 0xe718,
-            Data3: 0x42ee,
-            Data4: [0xbc, 0x55, 0xa1, 0xe2, 0x61, 0xc3, 0x7b, 0xfe],
-        };
-
+        // SHCreateItemFromParsingName으로 IShellItemImageFactory 직접 취득
+        let mut factory: *mut IShellItemImageFactoryRaw = ptr::null_mut();
         let hr = SHCreateItemFromParsingName(
             wide_path.as_ptr(),
             ptr::null_mut(),
-            &iid_shell_item,
-            &mut shell_item as *mut _ as *mut *mut std::ffi::c_void,
+            &iid_image_factory,
+            &mut factory as *mut _ as *mut *mut c_void,
         );
-        if hr != 0 || shell_item.is_null() {
-            CoUninitialize();
-            return Ok(None);
-        }
-
-        // IShellItemImageFactory로 QueryInterface
-        let iid_image_factory = winapi::shared::guiddef::GUID {
-            Data1: 0xbcc18b79,
-            Data2: 0xba16,
-            Data3: 0x442f,
-            Data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
-        };
-
-        let mut image_factory: *mut IShellItemImageFactory = ptr::null_mut();
-        let hr = (*shell_item).QueryInterface(
-            &iid_image_factory as *const _ as *const winapi::shared::guiddef::IID,
-            &mut image_factory as *mut _ as *mut *mut std::ffi::c_void,
-        );
-        (*shell_item).Release();
-
-        if hr != 0 || image_factory.is_null() {
+        if hr != 0 || factory.is_null() {
             CoUninitialize();
             return Ok(None);
         }
@@ -1283,15 +1282,15 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>, 
         // GetImage로 HBITMAP 취득
         let sz = winapi::shared::windef::SIZE { cx: size as i32, cy: size as i32 };
         let mut hbitmap: HBITMAP = ptr::null_mut();
-        let hr = (*image_factory).GetImage(sz, 0x0, &mut hbitmap); // SIIGBF_RESIZETOFIT = 0
-        (*image_factory).Release();
+        let hr = ((*(*factory).vtbl).get_image)(factory, sz, 0x0, &mut hbitmap);
+        ((*(*factory).vtbl).release)(factory);
 
         if hr != 0 || hbitmap.is_null() {
             CoUninitialize();
             return Ok(None);
         }
 
-        // HBITMAP → BMP 바이트열 → image crate로 PNG 변환
+        // HBITMAP → 픽셀 데이터 추출
         let mut bmp_info = BITMAP {
             bmType: 0, bmWidth: 0, bmHeight: 0,
             bmWidthBytes: 0, bmPlanes: 0, bmBitsPixel: 0, bmBits: ptr::null_mut(),
@@ -1592,8 +1591,6 @@ async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-
         // 레지스트리에서 Photoshop 경로 탐색
         fn find_photoshop_path() -> Option<String> {
             use winapi::um::winreg::{RegOpenKeyExW, RegCloseKey, RegEnumKeyExW, RegQueryValueExW, HKEY_LOCAL_MACHINE};
