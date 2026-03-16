@@ -61,15 +61,15 @@ export function CategoryColumn({
     }
   });
 
+  const isExpanded = !category.isCollapsed || searchQuery.length > 0;
+
   const style: React.CSSProperties = {
     opacity: isDragging ? 0.5 : 1,
     breakInside: 'avoid' as const,
     display: 'inline-block',
     width: '100%',
-    marginTop: '0.75rem',
+    marginTop: isExpanded ? '0.75rem' : '0.25rem',
   };
-
-  const isExpanded = !category.isCollapsed || searchQuery.length > 0;
 
   // 카테고리 드롭 인디케이터: 이 카테고리 앞에 라인 표시
   const showCategoryIndicator = dropIndicator?.type === 'category' && dropIndicator.index === categoryIndex;
@@ -98,10 +98,18 @@ export function CategoryColumn({
         ref={setNodeRef}
         style={style}
         data-category-id={category.id}
-        className={`border rounded-2xl overflow-hidden backdrop-blur-sm transition-colors group flex flex-col w-full bg-[var(--qf-surface)] border-[var(--qf-border)] hover:border-[var(--qf-border)] ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
+        className={`overflow-hidden transition-all group flex flex-col w-full ${
+          isExpanded
+            ? `border rounded-2xl backdrop-blur-sm bg-[var(--qf-surface)] border-[var(--qf-border)] hover:border-[var(--qf-border)]`
+            : `border border-transparent rounded-xl opacity-60 hover:opacity-80`
+        } ${isDragging ? 'shadow-2xl shadow-[var(--qf-accent-20)]' : ''}`}
       >
         <div
-          className={`px-2.5 py-1.5 border-b flex items-center justify-between bg-[var(--qf-surface-2)] border-[var(--qf-border)] ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`px-2.5 py-1.5 flex items-center justify-between ${
+            isExpanded
+              ? `border-b bg-[var(--qf-surface-2)] border-[var(--qf-border)]`
+              : ``
+          } ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           {...attributes}
           {...listeners}
         >

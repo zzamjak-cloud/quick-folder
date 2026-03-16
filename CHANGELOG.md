@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-03-16
+
+### Added
+- **실행취소 (Ctrl+Z / Cmd+Z)**: 파일 삭제 및 이름 변경을 최대 10단계까지 되돌리기
+  - 삭제: 휴지통에서 원래 위치로 자동 복원
+  - 이름 변경: 이전 이름으로 즉시 복원
+- **macOS Finder 클립보드 호환**: Finder에서 Cmd+C로 복사한 파일을 QuickFolder에 붙여넣기 가능
+
+### Fixed
+- **파일명 중복 검사**: 이름 변경 시 동일한 이름의 파일이 존재하면 에러 메시지 표시 (기존 파일 덮어쓰기 방지)
+
+### Changed
+- **접힌 카테고리 시각적 약화**: 접힌 섹션의 배경/테두리 제거, 투명도 감소로 펼친 섹션과 시각적 구분 강화
+
 ## [1.13.0] - 2026-03-06
 
 ### Fixed

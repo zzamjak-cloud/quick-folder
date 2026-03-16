@@ -19,6 +19,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { isCloudPath } from '../../utils/pathUtils';
 import GoToFolderModal from './GoToFolderModal';
 import GlobalSearchModal from './GlobalSearchModal';
+import { useUndoStack } from './hooks/useUndoStack';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -79,6 +80,9 @@ export default function FileExplorer({
 
   // --- 컬럼 뷰 상태 ---
   const columnView = useColumnView();
+
+  // --- 실행취소 스택 ---
+  const undoStack = useUndoStack();
 
   // --- 검색/필터 상태 ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -483,13 +487,17 @@ export default function FileExplorer({
     if (paths.length === 0) return;
     try {
       await invoke('delete_items', { paths, useTrash: !permanent });
+      // 휴지통 삭제만 실행취소 가능 (영구삭제는 복원 불가)
+      if (!permanent) {
+        undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath, useTrash: true });
+      }
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
       loadDirectory(currentPath);
     } catch (e) {
       console.error('삭제 실패:', e);
       setError(`삭제 실패: ${e}`);
     }
-  }, [currentPath, loadDirectory]);
+  }, [currentPath, loadDirectory, undoStack]);
 
   const handleDuplicate = useCallback(async () => {
     if (selectedPaths.length === 0 || !currentPath) return;
@@ -549,6 +557,13 @@ export default function FileExplorer({
     window.dispatchEvent(new Event('qf-files-changed'));
   }, [currentPath, sortBy, sortDir]);
 
+  // 토스트 표시 헬퍼
+  const showCopyToast = useCallback((msg: string) => {
+    if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
+    setCopyToast(msg);
+    copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
+  }, []);
+
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
     setRenamingPath(null);
     if (!newName.trim()) return;
@@ -578,6 +593,7 @@ export default function FileExplorer({
 
     try {
       const renamedPaths: string[] = [];
+      const undoRenames: { oldPath: string; newPath: string }[] = [];
       for (const p of batchPaths) {
         const dir = p.substring(0, p.lastIndexOf(sep));
         // 대표 파일은 입력한 확장자 사용, 나머지는 기존 확장자 유지
@@ -586,8 +602,13 @@ export default function FileExplorer({
         const targetPath = dir + sep + targetName;
         if (targetPath !== p) {
           await invoke('rename_item', { oldPath: p, newPath: targetPath });
+          undoRenames.push({ oldPath: p, newPath: targetPath });
         }
         renamedPaths.push(targetPath);
+      }
+      // undo 스택에 역순으로 push (마지막 rename부터 되돌리기)
+      for (const r of undoRenames.reverse()) {
+        undoStack.push({ type: 'rename', oldPath: r.newPath, newPath: r.oldPath });
       }
 
       // 이름 변경 후 디렉토리 재로드
@@ -598,16 +619,41 @@ export default function FileExplorer({
       const idx = sorted.findIndex(e => renamedPaths.includes(e.path));
       if (idx >= 0) setFocusedIndex(idx);
     } catch (e) {
-      console.error('이름 변경 실패:', e);
+      const errMsg = String(e);
+      if (errMsg.includes('동일한 이름의 파일이 존재합니다')) {
+        showCopyToast('동일한 이름의 파일이 존재합니다.');
+      } else {
+        console.error('이름 변경 실패:', e);
+      }
+      // 실패 시 디렉토리 재로드하여 원래 이름 복원
+      if (currentPath) {
+        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+        setEntries(sortEntries(result, sortBy, sortDir));
+      }
     }
-  }, [currentPath, selectedPaths, sortBy, sortDir]);
+  }, [currentPath, selectedPaths, sortBy, sortDir, showCopyToast, undoStack]);
 
-  // 토스트 표시 헬퍼
-  const showCopyToast = useCallback((msg: string) => {
-    if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
-    setCopyToast(msg);
-    copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
-  }, []);
+  // --- 실행취소 (Ctrl+Z / Cmd+Z) ---
+  const handleUndo = useCallback(async () => {
+    const action = undoStack.pop();
+    if (!action) return;
+
+    try {
+      if (action.type === 'delete') {
+        await invoke('restore_trash_items', { originalPaths: action.paths });
+        showCopyToast('삭제 취소됨');
+      } else if (action.type === 'rename') {
+        await invoke('rename_item', { oldPath: action.oldPath, newPath: action.newPath });
+        showCopyToast('이름 변경 취소됨');
+      }
+      if (currentPath) {
+        loadDirectory(currentPath);
+      }
+    } catch (e) {
+      console.error('실행취소 실패:', e);
+      showCopyToast('실행취소 실패');
+    }
+  }, [undoStack, currentPath, loadDirectory, showCopyToast]);
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -861,6 +907,7 @@ export default function FileExplorer({
       }
 
       // --- 파일 조작 ---
+      if (ctrl && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
       if (ctrl && e.key === 'a') { e.preventDefault(); selectAll(); return; }
       if (ctrl && e.key === 'c') { handleCopy(); return; }
       if (ctrl && e.key === 'x') { handleCut(); return; }
@@ -1019,7 +1066,7 @@ export default function FileExplorer({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    isFocused, renamingPath, selectAll, deselectAll, handleCopy, handleCut, handlePaste, handleDuplicate,
+    isFocused, renamingPath, selectAll, deselectAll, handleUndo, handleCopy, handleCut, handlePaste, handleDuplicate,
     handleCreateDirectory, handleRenameStart, handleDelete, handleCopyPath,
     goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,

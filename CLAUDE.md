@@ -169,6 +169,7 @@ Core interfaces:
 - **태그 force-push 절대 금지**: 태그를 force-push하면 `tauri-action`이 같은 릴리스에 에셋을 두 번 업로드하여 서명 불일치가 발생한다. 업데이터가 깨진다.
 - **빌드 실패 시 새 버전 번호로 릴리스**: 기존 태그를 수정하지 않고, 버전을 올려서 새 태그를 생성한다.
 - **버전 동기화 필수**: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 세 파일의 버전을 항상 동일하게 유지한다.
+- **CHANGELOG.md 필수 업데이트**: 버전 태그를 푸시하기 전에 반드시 `CHANGELOG.md`에 해당 버전의 변경사항을 기록한다. 커밋 메시지만으로는 부족하며, CHANGELOG에 Added/Changed/Fixed 섹션으로 사용자가 읽을 수 있는 변경 이력을 남겨야 한다.
 
 ## Platform Notes
 
