@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-03-18
+
+### Added
+- **탭 고정 기능**: 탭 우클릭 → "탭 고정"으로 탭을 고정, 고정된 탭은 빨강 배경 + 핀 아이콘 표시
+  - 고정 탭은 Ctrl+W, 중간 클릭, X 버튼으로 닫히지 않음
+  - Ctrl+Alt+W (다른 탭 모두 닫기) 시에도 고정 탭은 유지
+  - 고정 탭은 자동으로 탭바 왼쪽에 모임 (Chrome 스타일)
+  - 우클릭 → "탭 고정 해제"로 해제 가능
+
 ## [1.14.0] - 2026-03-16
 
 ### Added

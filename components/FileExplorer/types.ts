@@ -10,4 +10,5 @@ export interface Tab {
   history: string[];
   historyIndex: number;
   title: string;
+  pinned?: boolean;
 }

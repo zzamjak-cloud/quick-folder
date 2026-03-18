@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
+import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
+import { X, Pin } from 'lucide-react';
 import { Tab, ThemeVars } from './types';
 
 // 드롭 인디케이터 및 패널 하이라이트 전체 해제
@@ -19,8 +19,17 @@ interface TabBarProps {
   onTabReorder: (fromIndex: number, toIndex: number) => void;
   onTabReceive?: (tab: Tab, insertIndex: number) => void;
   onTabRemove?: (tabId: string) => void;
+  onTogglePin?: (tabId: string) => void;
   instanceId: string;
   themeVars: ThemeVars | null;
+}
+
+// 탭 컨텍스트 메뉴 상태
+interface ContextMenuState {
+  x: number;
+  y: number;
+  tabId: string;
+  pinned: boolean;
 }
 
 export default memo(function TabBar({
@@ -31,6 +40,7 @@ export default memo(function TabBar({
   onTabReorder,
   onTabReceive,
   onTabRemove,
+  onTogglePin,
   instanceId,
   themeVars,
 }: TabBarProps) {
@@ -38,9 +48,31 @@ export default memo(function TabBar({
   const isDraggingRef = useRef(false);
   const ghostRef = useRef<HTMLDivElement | null>(null);
 
+  // 탭 컨텍스트 메뉴
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
   // mouseup 클로저에서 최신 콜백/상태 참조용 ref
   const stateRef = useRef({ onTabReorder, onTabReceive, onTabRemove, tabs });
   stateRef.current = { onTabReorder, onTabReceive, onTabRemove, tabs };
+
+  // 컨텍스트 메뉴 닫기 (외부 클릭)
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('contextmenu', close);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('contextmenu', close);
+    };
+  }, [contextMenu]);
+
+  // 탭 우클릭 핸들러
+  const handleContextMenu = useCallback((e: React.MouseEvent, tab: Tab) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id, pinned: !!tab.pinned });
+  }, []);
 
   // --- 마우스 기반 탭 드래그 ---
   const handleMouseDown = useCallback((e: React.MouseEvent, tab: Tab, index: number) => {
@@ -238,6 +270,7 @@ export default memo(function TabBar({
     >
       {tabs.map((tab, index) => {
         const isActive = tab.id === activeTabId;
+        const isPinned = !!tab.pinned;
 
         return (
           <div
@@ -249,25 +282,34 @@ export default memo(function TabBar({
             style={{
               maxWidth: 160,
               borderColor: themeVars?.border ?? '#334155',
-              backgroundColor: isActive ? (themeVars?.bg ?? '#0f172a') : 'transparent',
+              backgroundColor: isPinned
+                ? 'rgba(239, 68, 68, 0.25)'
+                : isActive ? (themeVars?.bg ?? '#0f172a') : 'transparent',
               borderBottom: isActive
-                ? `2px solid ${accentColor}`
+                ? `2px solid ${isPinned ? '#ef4444' : accentColor}`
                 : '2px solid transparent',
             }}
             onMouseDown={(e) => handleMouseDown(e, tab, index)}
             onClick={() => { if (!isDraggingRef.current) onTabSelect(tab.id); }}
+            onContextMenu={(e) => handleContextMenu(e, tab)}
             onAuxClick={(e) => {
-              if (e.button === 1) { e.preventDefault(); onTabClose(tab.id); }
+              // 고정 탭은 중간 클릭으로 닫을 수 없음
+              if (e.button === 1 && !isPinned) { e.preventDefault(); onTabClose(tab.id); }
             }}
             title={tab.path}
           >
+            {/* 고정 아이콘 */}
+            {isPinned && (
+              <Pin size={9} style={{ color: '#ef4444', flexShrink: 0, transform: 'rotate(45deg)' }} />
+            )}
             <span
               className="text-xs truncate flex-1 min-w-0 select-none"
               style={{ color: isActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8') }}
             >
               {tab.title || '새 탭'}
             </span>
-            {tabs.length > 1 && (
+            {/* 고정 탭은 닫기 버튼 숨김 */}
+            {tabs.length > 1 && !isPinned && (
               <button
                 className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded p-0.5 transition-opacity hover:bg-[var(--qf-surface-hover)]"
                 style={{ color: themeVars?.muted ?? '#94a3b8' }}
@@ -280,6 +322,32 @@ export default memo(function TabBar({
           </div>
         );
       })}
+
+      {/* 탭 컨텍스트 메뉴 */}
+      {contextMenu && (
+        <div
+          className="fixed z-[99999] rounded shadow-lg border py-1 min-w-[120px]"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+            backgroundColor: themeVars?.surface2 ?? '#1f2937',
+            borderColor: themeVars?.border ?? '#334155',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-white/10 flex items-center gap-2"
+            style={{ color: themeVars?.text ?? '#e5e7eb' }}
+            onClick={() => {
+              if (onTogglePin) onTogglePin(contextMenu.tabId);
+              setContextMenu(null);
+            }}
+          >
+            <Pin size={12} style={contextMenu.pinned ? undefined : { transform: 'rotate(45deg)' }} />
+            {contextMenu.pinned ? '탭 고정 해제' : '탭 고정'}
+          </button>
+        </div>
+      )}
     </div>
   );
 });

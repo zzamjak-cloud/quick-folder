@@ -122,7 +122,10 @@ export function useTabManagement({
   }, [tabs, loadDirectory]);
 
   const handleTabClose = useCallback((tabId: string) => {
+    // 고정된 탭은 닫을 수 없음
     setTabs(prev => {
+      const target = prev.find(t => t.id === tabId);
+      if (target?.pinned) return prev;
       const newTabs = prev.filter(t => t.id !== tabId);
       if (tabId === activeTabId && newTabs.length > 0) {
         const closedIdx = prev.findIndex(t => t.id === tabId);
@@ -188,12 +191,25 @@ export function useTabManagement({
     setActiveTabId(newTab.id);
   }, [activeTab, activeTabId]);
 
-  // 현재 탭만 남기고 나머지 닫기 (Ctrl+Alt+W)
+  // 현재 탭만 남기고 나머지 닫기 (Ctrl+Alt+W) — 고정 탭은 유지
   const closeOtherTabs = useCallback(() => {
     if (tabs.length > 1 && activeTabId) {
-      setTabs(prev => prev.filter(t => t.id === activeTabId));
+      setTabs(prev => prev.filter(t => t.id === activeTabId || t.pinned));
     }
   }, [tabs.length, activeTabId]);
+
+  // 탭 고정/해제 토글
+  const togglePinTab = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const updated = prev.map(t =>
+        t.id === tabId ? { ...t, pinned: !t.pinned } : t
+      );
+      // 고정 탭을 왼쪽에 모음
+      const pinned = updated.filter(t => t.pinned);
+      const unpinned = updated.filter(t => !t.pinned);
+      return [...pinned, ...unpinned];
+    });
+  }, []);
 
   return {
     tabs, activeTabId, activeTab, currentPath,
@@ -201,6 +217,6 @@ export function useTabManagement({
     openTab, navigateTo, goBack, goForward,
     handleTabSelect, handleTabClose, handleTabReorder,
     handleTabReceive, handleTabRemove,
-    duplicateTab, closeOtherTabs,
+    duplicateTab, closeOtherTabs, togglePinTab,
   };
 }

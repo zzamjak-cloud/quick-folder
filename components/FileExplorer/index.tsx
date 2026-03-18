@@ -199,7 +199,7 @@ export default function FileExplorer({
     openTab, navigateTo, goBack: tabGoBack, goForward,
     handleTabSelect, handleTabClose, handleTabReorder,
     handleTabReceive, handleTabRemove,
-    duplicateTab, closeOtherTabs,
+    duplicateTab, closeOtherTabs, togglePinTab,
   } = useTabManagement({ instanceId, loadDirectory, onPathChange, onSplitModeChange });
 
   // --- 정렬 ---
@@ -707,10 +707,10 @@ export default function FileExplorer({
       const ctrl = e.ctrlKey || e.metaKey;
 
       // --- 탭 단축키 ---
-      // Ctrl+W (Cmd+W): 현재 탭 닫기
+      // Ctrl+W (Cmd+W): 현재 탭 닫기 (고정 탭은 닫히지 않음)
       if (ctrl && !e.altKey && e.code === 'KeyW') {
         e.preventDefault();
-        if (tabs.length > 1 && activeTabId) handleTabClose(activeTabId);
+        if (tabs.length > 1 && activeTabId && !activeTab?.pinned) handleTabClose(activeTabId);
         return;
       }
       // Ctrl+Alt+W (Cmd+Alt+W): 현재 탭만 남기고 나머지 모두 닫기
@@ -1284,6 +1284,7 @@ export default function FileExplorer({
         onTabReorder={handleTabReorder}
         onTabReceive={handleTabReceive}
         onTabRemove={handleTabRemove}
+        onTogglePin={togglePinTab}
         instanceId={instanceId}
         themeVars={themeVars}
       />
