@@ -12,6 +12,7 @@ import {
   Star,
   FileArchive,
   Eye,
+  Film,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
 
@@ -33,6 +34,7 @@ interface ContextMenuProps {
   onCopyPath: (path: string) => void;
   onAddToFavorites: (path: string) => void;
   onCompressZip: (paths: string[]) => void;
+  onCompressVideo?: (path: string) => void;
   onPreviewPsd?: (path: string) => void;
   onBulkRename?: (paths: string[]) => void;
 }
@@ -55,6 +57,7 @@ export default memo(function ContextMenu({
   onCopyPath,
   onAddToFavorites,
   onCompressZip,
+  onCompressVideo,
   onPreviewPsd,
   onBulkRename,
 }: ContextMenuProps) {
@@ -195,6 +198,14 @@ export default memo(function ContextMenu({
           () => onCompressZip(paths),
           paths.length === 0,
         )}
+
+        {/* 동영상 압축 */}
+        {isSingle && singleEntry && singleEntry.file_type === 'video' &&
+          onCompressVideo && item(
+            <Film size={13} />,
+            '동영상 압축',
+            () => onCompressVideo(singlePath),
+          )}
 
         {divider('d4')}
 

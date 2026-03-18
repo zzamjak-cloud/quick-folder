@@ -95,6 +95,13 @@ export default function FileExplorer({
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const pendingSelectRef = useRef<string | null>(null);
 
+  // --- 동영상 압축 진행률 ---
+  const [videoCompression, setVideoCompression] = useState<{
+    fileName: string;
+    percent: number;  // -1: ffmpeg 다운로드 중, 0~: 인코딩 시간(초)
+    speed: string;
+  } | null>(null);
+
   // --- 복사 피드백 토스트 ---
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -203,16 +210,40 @@ export default function FileExplorer({
   } = useTabManagement({ instanceId, loadDirectory, onPathChange, onSplitModeChange });
 
   // --- 정렬 ---
+  // 자연 정렬: 텍스트/숫자 청크 분리 비교 (9 < 11 < 011 < 111)
+  function naturalCompare(a: string, b: string): number {
+    const re = /(\d+)|(\D+)/g;
+    const aParts = a.match(re) || [];
+    const bParts = b.match(re) || [];
+    const len = Math.min(aParts.length, bParts.length);
+    for (let i = 0; i < len; i++) {
+      const aIsNum = /^\d/.test(aParts[i]);
+      const bIsNum = /^\d/.test(bParts[i]);
+      if (aIsNum && bIsNum) {
+        // 숫자 비교: 정수값 우선, 같으면 선행0 적은(문자열 짧은) 쪽이 앞
+        const diff = parseInt(aParts[i], 10) - parseInt(bParts[i], 10);
+        if (diff !== 0) return diff;
+        if (aParts[i].length !== bParts[i].length) return aParts[i].length - bParts[i].length;
+      } else if (aIsNum !== bIsNum) {
+        return aIsNum ? -1 : 1;
+      } else {
+        const cmp = aParts[i].localeCompare(bParts[i], 'ko');
+        if (cmp !== 0) return cmp;
+      }
+    }
+    return aParts.length - bParts.length;
+  }
+
   function sortEntries(list: FileEntry[], by: string, dir: string): FileEntry[] {
     return [...list].sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
       let cmp = 0;
       switch (by) {
-        case 'name': cmp = a.name.localeCompare(b.name, 'ko'); break;
+        case 'name': cmp = naturalCompare(a.name, b.name); break;
         case 'size': cmp = a.size - b.size; break;
         case 'modified': cmp = a.modified - b.modified; break;
         case 'type': cmp = a.file_type.localeCompare(b.file_type); break;
-        default: cmp = a.name.localeCompare(b.name, 'ko');
+        default: cmp = naturalCompare(a.name, b.name);
       }
       return dir === 'asc' ? cmp : -cmp;
     });
@@ -678,6 +709,46 @@ export default function FileExplorer({
       console.error('압축 실패:', e);
     }
   }, [currentPath, loadDirectory]);
+
+  // --- 동영상 압축 (H.265) ---
+  const handleCompressVideo = useCallback(async (path: string) => {
+    const fileName = path.split(/[/\\]/).pop() ?? '';
+    try {
+      // 1. ffmpeg 설치 확인
+      const installed = await invoke<boolean>('check_ffmpeg');
+      if (!installed) {
+        setVideoCompression({ fileName, percent: -1, speed: 'ffmpeg 다운로드 중...' });
+        await invoke('download_ffmpeg');
+      }
+
+      // 2. Channel 생성 + 압축 시작
+      const { Channel } = await import('@tauri-apps/api/core');
+      const onProgress = new Channel<{ percent: number; speed: string; fps: number }>();
+      let lastSpeed = '';
+      onProgress.onmessage = (p) => {
+        if (p.percent === -2) {
+          // 스피드만 업데이트
+          lastSpeed = p.speed;
+        } else if (p.percent >= 0) {
+          setVideoCompression(prev => ({
+            fileName,
+            percent: p.percent,
+            speed: p.speed || lastSpeed || prev?.speed || '',
+          }));
+        }
+      };
+
+      setVideoCompression({ fileName, percent: 0, speed: '준비 중...' });
+      const output = await invoke<string>('compress_video', { input: path, onProgress });
+
+      setVideoCompression(null);
+      if (currentPath) loadDirectory(currentPath);
+      showCopyToast(`압축 완료: ${output.split(/[/\\]/).pop()}`);
+    } catch (e) {
+      setVideoCompression(null);
+      showCopyToast(`압축 실패: ${e}`);
+    }
+  }, [currentPath, loadDirectory, showCopyToast]);
 
   // --- 컨텍스트 메뉴 ---
   // 선택된 항목 중 하나를 우클릭하면 선택 전체를 대상으로 메뉴 표시
@@ -1402,6 +1473,25 @@ export default function FileExplorer({
             />
           )}
 
+          {/* 동영상 압축 진행률 */}
+          {videoCompression && (
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 text-xs"
+              style={{ backgroundColor: 'var(--qf-surface-2)', color: 'var(--qf-text)', borderTop: '1px solid var(--qf-border)' }}
+            >
+              {videoCompression.percent === -1 ? (
+                <span>⏳ ffmpeg 다운로드 중...</span>
+              ) : (
+                <>
+                  <span className="shrink-0">🎬 압축 중... {videoCompression.fileName}</span>
+                  <span className="text-[var(--qf-muted)]">
+                    ({Math.floor(videoCompression.percent)}초{videoCompression.speed ? ` · ${videoCompression.speed}` : ''})
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
           {/* 상태 바 */}
           <StatusBar
             entries={displayEntries}
@@ -1447,6 +1537,7 @@ export default function FileExplorer({
             onAddToFavorites(path, name);
           }}
           onCompressZip={handleCompressZip}
+          onCompressVideo={handleCompressVideo}
           onPreviewPsd={preview.handlePreviewImage}
           onBulkRename={handleBulkRename}
         />

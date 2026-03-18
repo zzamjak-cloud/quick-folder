@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-03-18
+
+### Added
+- **동영상 압축 (H.265)**: 동영상 파일 우클릭 → "동영상 압축"으로 H.265 기반 압축 파일 생성
+  - ffmpeg-sidecar 크레이트로 첫 실행 시 ffmpeg 자동 다운로드
+  - Tauri Channel로 실시간 인코딩 진행률 표시 (시간, 속도)
+  - CRF 28, AAC 128k, hvc1 태그 (Apple 호환)
+  - 출력 파일명 충돌 시 자동 넘버링 (`_comp`, `_comp_2`, ...)
+
+### Changed
+- **자연 정렬 (Natural Sort)**: 파일명 숫자를 자연수로 인식하여 정렬 (1, 2, 11, 111 순서)
+
 ## [1.15.0] - 2026-03-18
 
 ### Added

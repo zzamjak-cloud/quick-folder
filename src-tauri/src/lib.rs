@@ -1464,6 +1464,175 @@ async fn compress_to_zip(paths: Vec<String>, dest: String) -> Result<String, Str
     Ok(dest)
 }
 
+// ffmpeg 바이너리 경로 탐색 (sidecar → 시스템 PATH)
+fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
+    // 1. sidecar 경로 (실행 바이너리 옆)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar = dir.join("ffmpeg");
+            // 0바이트 파일 방지: 크기 체크
+            if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
+                return Some(sidecar);
+            }
+        }
+    }
+    // 2. 시스템 PATH
+    if let Ok(output) = std::process::Command::new("ffmpeg").arg("-version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        if output.success() {
+            return Some(std::path::PathBuf::from("ffmpeg"));
+        }
+    }
+    None
+}
+
+// --- ffmpeg 설치 확인 ---
+#[tauri::command]
+async fn check_ffmpeg() -> Result<bool, String> {
+    Ok(find_ffmpeg_path().is_some())
+}
+
+// --- ffmpeg 자동 다운로드 (첫 실행 시) ---
+#[tauri::command]
+async fn download_ffmpeg() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        ffmpeg_sidecar::download::auto_download()
+            .map_err(|e| format!("ffmpeg 다운로드 실패: {}", e))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// --- 동영상 압축 (H.265, Channel 진행률 스트리밍) ---
+#[derive(Clone, serde::Serialize)]
+struct VideoProgress {
+    percent: f32,
+    speed: String,
+    fps: f32,
+}
+
+#[tauri::command]
+async fn compress_video(
+    input: String,
+    on_progress: tauri::ipc::Channel<VideoProgress>,
+) -> Result<String, String> {
+    // 출력 파일명: {이름}_comp.{확장자}, 충돌 시 _comp_2, _comp_3 ...
+    let input_path = std::path::Path::new(&input);
+    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = input_path.extension().unwrap_or_default().to_string_lossy();
+    let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+
+    let mut output_path = parent.join(format!("{}_comp.{}", stem, ext));
+    let mut counter = 2u32;
+    while output_path.exists() {
+        output_path = parent.join(format!("{}_comp_{}.{}", stem, counter, ext));
+        counter += 1;
+    }
+    let output_str = output_path.to_string_lossy().to_string();
+
+    // ffmpeg 경로 결정 (sidecar → 시스템 PATH 순)
+    let ffmpeg_path = find_ffmpeg_path()
+        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+
+    // std::process::Command로 직접 ffmpeg 실행 (진행률은 -progress pipe:1)
+    let mut child = std::process::Command::new(&ffmpeg_path)
+        .args(&[
+            "-y",
+            "-i", &input,
+            "-c:v", "libx265",
+            "-crf", "28",
+            "-preset", "medium",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-tag:v", "hvc1",
+            "-progress", "pipe:1",
+        ])
+        .arg(&output_str)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("ffmpeg 실행 실패: {}", e))?;
+
+    // stdout에서 -progress 출력 파싱 (별도 스레드)
+    let stdout = child.stdout.take();
+    let on_progress_clone = on_progress.clone();
+    let progress_thread = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                // -progress 출력: "out_time_ms=12345678" 형식
+                if let Some(val) = line.strip_prefix("out_time_ms=") {
+                    if let Ok(us) = val.parse::<i64>() {
+                        let secs = us as f32 / 1_000_000.0;
+                        let _ = on_progress_clone.send(VideoProgress {
+                            percent: secs,
+                            speed: String::new(),
+                            fps: 0.0,
+                        });
+                    }
+                } else if let Some(val) = line.strip_prefix("speed=") {
+                    let speed_str = val.trim().to_string();
+                    let _ = on_progress_clone.send(VideoProgress {
+                        percent: -2.0, // 스피드만 업데이트 신호
+                        speed: speed_str,
+                        fps: 0.0,
+                    });
+                }
+            }
+        }
+    });
+
+    // stderr 캡처 (에러 메시지용)
+    let stderr = child.stderr.take();
+    let stderr_thread = std::thread::spawn(move || {
+        let mut output = String::new();
+        if let Some(mut stderr) = stderr {
+            use std::io::Read;
+            let _ = stderr.read_to_string(&mut output);
+        }
+        output
+    });
+
+    let status = child.wait().map_err(|e| format!("ffmpeg 대기 실패: {}", e))?;
+    let _ = progress_thread.join();
+    let stderr_output = stderr_thread.join().unwrap_or_default();
+
+    if !status.success() {
+        let _ = std::fs::remove_file(&output_path);
+        // stderr에서 의미있는 에러 추출
+        let err_msg = stderr_output.lines()
+            .filter(|l| l.contains("Error") || l.contains("error") || l.contains("Unknown") || l.contains("not found"))
+            .last()
+            .unwrap_or("ffmpeg 인코딩 실패")
+            .to_string();
+        return Err(err_msg);
+    }
+
+    if !output_path.exists() {
+        return Err(format!("ffmpeg가 출력 파일을 생성하지 않았습니다. stderr: {}",
+            stderr_output.lines().last().unwrap_or("(없음)")));
+    }
+
+    Ok(output_str)
+}
+
+// ffmpeg 시간 문자열 "HH:MM:SS.xx" → 초(f32) 파싱
+fn parse_ffmpeg_time(time: &str) -> f32 {
+    let parts: Vec<&str> = time.split(':').collect();
+    if parts.len() == 3 {
+        let h: f32 = parts[0].parse().unwrap_or(0.0);
+        let m: f32 = parts[1].parse().unwrap_or(0.0);
+        let s: f32 = parts[2].parse().unwrap_or(0.0);
+        h * 3600.0 + m * 60.0 + s
+    } else {
+        0.0
+    }
+}
+
 fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
     zip: &mut zip::ZipWriter<W>,
     dir: &std::path::Path,
@@ -2207,6 +2376,9 @@ pub fn run() {
         invalidate_thumbnail_cache,
         get_recent_files,
         search_files,
+        check_ffmpeg,
+        download_ffmpeg,
+        compress_video,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
