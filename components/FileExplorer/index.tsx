@@ -710,8 +710,8 @@ export default function FileExplorer({
     }
   }, [currentPath, loadDirectory]);
 
-  // --- 동영상 압축 (H.265) ---
-  const handleCompressVideo = useCallback(async (path: string) => {
+  // --- 동영상 압축 ---
+  const handleCompressVideo = useCallback(async (path: string, quality: 'low' | 'medium' | 'high' = 'medium') => {
     const fileName = path.split(/[/\\]/).pop() ?? '';
     try {
       // 1. ffmpeg 설치 확인
@@ -739,7 +739,7 @@ export default function FileExplorer({
       };
 
       setVideoCompression({ fileName, percent: 0, speed: '준비 중...' });
-      const output = await invoke<string>('compress_video', { input: path, onProgress });
+      const output = await invoke<string>('compress_video', { input: path, quality, onProgress });
 
       setVideoCompression(null);
       if (currentPath) loadDirectory(currentPath);

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-03-19
+
+### Added
+- **동영상 압축 품질 선택**: 우클릭 → "동영상 압축" 서브메뉴에서 3단계 품질 선택
+  - 보통 화질: 높은 압축률 (macOS CRF 32, Windows CRF 28)
+  - 좋은 화질: 균형 잡힌 품질 (macOS CRF 28, Windows CRF 23)
+  - 최고 화질: 최소 압축 (macOS CRF 22, Windows CRF 18)
+
+### Fixed
+- **Windows ffmpeg 콘솔 창 숨기기**: 압축 실행 시 터미널 창이 뜨지 않도록 CREATE_NO_WINDOW 플래그 적용
+
 ## [1.16.1] - 2026-03-19
 
 ### Fixed

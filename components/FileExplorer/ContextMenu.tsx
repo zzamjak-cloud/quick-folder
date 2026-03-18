@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import {
   ExternalLink,
   Folder,
@@ -13,6 +13,7 @@ import {
   FileArchive,
   Eye,
   Film,
+  ChevronRight,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
 
@@ -34,7 +35,7 @@ interface ContextMenuProps {
   onCopyPath: (path: string) => void;
   onAddToFavorites: (path: string) => void;
   onCompressZip: (paths: string[]) => void;
-  onCompressVideo?: (path: string) => void;
+  onCompressVideo?: (path: string, quality: 'low' | 'medium' | 'high') => void;
   onPreviewPsd?: (path: string) => void;
   onBulkRename?: (paths: string[]) => void;
 }
@@ -199,12 +200,12 @@ export default memo(function ContextMenu({
           paths.length === 0,
         )}
 
-        {/* 동영상 압축 */}
+        {/* 동영상 압축 (서브메뉴) */}
         {isSingle && singleEntry && singleEntry.file_type === 'video' &&
-          onCompressVideo && item(
-            <Film size={13} />,
-            '동영상 압축',
-            () => onCompressVideo(singlePath),
+          onCompressVideo && (
+            <VideoCompressSubmenu
+              onSelect={(quality) => { onCompressVideo(singlePath, quality); onClose(); }}
+            />
           )}
 
         {divider('d4')}
@@ -222,3 +223,61 @@ export default memo(function ContextMenu({
     </div>
   );
 });
+
+// 동영상 압축 품질 서브메뉴
+function VideoCompressSubmenu({ onSelect }: { onSelect: (quality: 'low' | 'medium' | 'high') => void }) {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleEnter = () => { clearTimeout(timerRef.current); setOpen(true); };
+  const handleLeave = () => { timerRef.current = setTimeout(() => setOpen(false), 150); };
+
+  const qualities: { key: 'low' | 'medium' | 'high'; label: string }[] = [
+    { key: 'low', label: '보통 화질' },
+    { key: 'medium', label: '좋은 화질' },
+    { key: 'high', label: '최고 화질' },
+  ];
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <button
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors text-left hover:bg-[var(--qf-surface-hover)] cursor-pointer"
+        style={{ color: 'var(--qf-text)' }}
+      >
+        <span style={{ color: 'var(--qf-muted)' }}><Film size={13} /></span>
+        <span className="flex-1">동영상 압축</span>
+        <ChevronRight size={11} style={{ color: 'var(--qf-muted)' }} />
+      </button>
+      {open && (
+        <div
+          className="absolute left-full top-0 rounded-lg shadow-2xl overflow-hidden min-w-[120px] z-[10000]"
+          style={{
+            backgroundColor: 'var(--qf-surface-2)',
+            border: '1px solid var(--qf-border)',
+          }}
+          onMouseEnter={handleEnter}
+          onMouseLeave={handleLeave}
+        >
+          <div className="py-1">
+            {qualities.map(q => (
+              <button
+                key={q.key}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors text-left hover:bg-[var(--qf-surface-hover)] cursor-pointer"
+                style={{ color: 'var(--qf-text)' }}
+                onClick={() => onSelect(q.key)}
+              >
+                {q.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

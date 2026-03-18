@@ -1517,6 +1517,7 @@ struct VideoProgress {
 #[tauri::command]
 async fn compress_video(
     input: String,
+    quality: String,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String, String> {
     // 출력 파일명: {이름}_comp.{확장자}, 충돌 시 _comp_2, _comp_3 ...
@@ -1537,24 +1538,46 @@ async fn compress_video(
     let ffmpeg_path = find_ffmpeg_path()
         .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
 
-    // 플랫폼별 코덱 선택: macOS=H.265(HEVC), Windows=H.264(AVC)
-    // Windows WebView2는 HEVC 기본 미지원이므로 H.264 사용
-    #[cfg(target_os = "macos")]
-    let codec_args: &[&str] = &[
-        "-c:v", "libx265", "-crf", "28", "-preset", "medium",
-        "-c:a", "aac", "-b:a", "128k", "-tag:v", "hvc1",
-    ];
-    #[cfg(not(target_os = "macos"))]
-    let codec_args: &[&str] = &[
-        "-c:v", "libx264", "-crf", "23", "-preset", "medium",
-        "-c:a", "aac", "-b:a", "128k",
-    ];
+    // 품질별 CRF 설정: low(보통)=높은CRF, medium(좋은)=중간CRF, high(최고)=낮은CRF
+    // macOS: H.265(HEVC), Windows: H.264(AVC) — WebView2 HEVC 미지원
+    let codec_args: Vec<String> = {
+        #[cfg(target_os = "macos")]
+        let (codec, tag_args, crf) = match quality.as_str() {
+            "low"  => ("libx265", vec!["-tag:v", "hvc1"], "32"),
+            "high" => ("libx265", vec!["-tag:v", "hvc1"], "22"),
+            _      => ("libx265", vec!["-tag:v", "hvc1"], "28"), // medium (기본)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let (codec, tag_args, crf) = match quality.as_str() {
+            "low"  => ("libx264", vec![] as Vec<&str>, "28"),
+            "high" => ("libx264", vec![] as Vec<&str>, "18"),
+            _      => ("libx264", vec![] as Vec<&str>, "23"), // medium (기본)
+        };
+        let mut args = vec![
+            "-c:v".to_string(), codec.to_string(),
+            "-crf".to_string(), crf.to_string(),
+            "-preset".to_string(), "medium".to_string(),
+            "-c:a".to_string(), "aac".to_string(),
+            "-b:a".to_string(), "128k".to_string(),
+        ];
+        for t in tag_args {
+            args.push(t.to_string());
+        }
+        args
+    };
 
     let mut cmd = std::process::Command::new(&ffmpeg_path);
     cmd.args(&["-y", "-i", &input]);
-    cmd.args(codec_args);
+    cmd.args(&codec_args);
     cmd.args(&["-progress", "pipe:1"]);
     cmd.arg(&output_str);
+
+    // Windows: 콘솔 창 숨기기 (CREATE_NO_WINDOW)
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
 
     let mut child = cmd
         .stdout(std::process::Stdio::piped())
