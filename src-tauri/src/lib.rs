@@ -1537,20 +1537,26 @@ async fn compress_video(
     let ffmpeg_path = find_ffmpeg_path()
         .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
 
-    // std::process::Command로 직접 ffmpeg 실행 (진행률은 -progress pipe:1)
-    let mut child = std::process::Command::new(&ffmpeg_path)
-        .args(&[
-            "-y",
-            "-i", &input,
-            "-c:v", "libx265",
-            "-crf", "28",
-            "-preset", "medium",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-tag:v", "hvc1",
-            "-progress", "pipe:1",
-        ])
-        .arg(&output_str)
+    // 플랫폼별 코덱 선택: macOS=H.265(HEVC), Windows=H.264(AVC)
+    // Windows WebView2는 HEVC 기본 미지원이므로 H.264 사용
+    #[cfg(target_os = "macos")]
+    let codec_args: &[&str] = &[
+        "-c:v", "libx265", "-crf", "28", "-preset", "medium",
+        "-c:a", "aac", "-b:a", "128k", "-tag:v", "hvc1",
+    ];
+    #[cfg(not(target_os = "macos"))]
+    let codec_args: &[&str] = &[
+        "-c:v", "libx264", "-crf", "23", "-preset", "medium",
+        "-c:a", "aac", "-b:a", "128k",
+    ];
+
+    let mut cmd = std::process::Command::new(&ffmpeg_path);
+    cmd.args(&["-y", "-i", &input]);
+    cmd.args(codec_args);
+    cmd.args(&["-progress", "pipe:1"]);
+    cmd.arg(&output_str);
+
+    let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

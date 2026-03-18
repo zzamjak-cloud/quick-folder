@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-03-19
+
+### Fixed
+- **Windows 동영상 압축 호환성**: Windows에서 H.264 코덱 사용 (H.265는 WebView2 미지원으로 썸네일/재생 불가)
+  - macOS: H.265 (HEVC, CRF 28, hvc1 태그)
+  - Windows: H.264 (AVC, CRF 23)
+
 ## [1.16.0] - 2026-03-18
 
 ### Added
