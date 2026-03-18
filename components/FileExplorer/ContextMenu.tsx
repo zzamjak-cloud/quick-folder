@@ -132,7 +132,7 @@ export default memo(function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] rounded-lg shadow-2xl overflow-hidden min-w-[180px]"
+      className="fixed z-[9999] rounded-lg shadow-2xl min-w-[180px]"
       style={{
         left: adjustedPos.x,
         top: adjustedPos.y,
