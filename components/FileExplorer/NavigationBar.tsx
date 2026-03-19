@@ -41,6 +41,8 @@ interface NavigationBarProps {
   availableExtensions: Set<string>;
   onExtFilterToggle: (ext: string) => void;
   onExtFilterClear: () => void;
+  hideText: boolean;
+  onHideTextToggle: () => void;
   splitMode?: 'single' | 'horizontal' | 'vertical';
   onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
   themeVars: ThemeVars | null;
@@ -71,6 +73,8 @@ export default memo(function NavigationBar({
   availableExtensions,
   onExtFilterToggle,
   onExtFilterClear,
+  hideText,
+  onHideTextToggle,
   splitMode,
   onSplitModeChange,
   themeVars,
@@ -428,6 +432,18 @@ export default memo(function NavigationBar({
                   </button>
                 </>
               )}
+              {/* Hide Text 토글 */}
+              <div className="border-t" style={{ borderColor: themeVars?.border }} />
+              <button
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--qf-surface-hover)] flex items-center gap-2"
+                style={{ color: themeVars?.text }}
+                onClick={onHideTextToggle}
+              >
+                <span className="w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px]" style={{ borderColor: themeVars?.border, backgroundColor: hideText ? themeVars?.accent : 'transparent', color: hideText ? '#fff' : 'transparent' }}>
+                  ✓
+                </span>
+                Hide Text
+              </button>
             </div>
           );
         })()}

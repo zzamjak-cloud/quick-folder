@@ -21,6 +21,7 @@ interface FileCardProps {
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
+  hideText?: boolean;
 }
 
 export default memo(function FileCard({
@@ -37,6 +38,7 @@ export default memo(function FileCard({
   onContextMenu,
   onRenameCommit,
   themeVars,
+  hideText = false,
 }: FileCardProps) {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -226,7 +228,7 @@ export default memo(function FileCard({
             border: `1px solid ${themeVars?.accent ?? '#3b82f6'}`,
           }}
         />
-      ) : (
+      ) : !hideText ? (
         <div
           className="w-full text-center text-xs leading-tight line-clamp-2 break-all"
           style={{ color: themeVars?.text ?? '#e5e7eb' }}
@@ -234,18 +236,20 @@ export default memo(function FileCard({
         >
           {entry.name}
         </div>
-      )}
+      ) : null}
 
       {/* 크기 + 이미지 규격 */}
-      <div
-        className="text-[10px] leading-none text-center"
-        style={{ color: themeVars?.muted ?? '#94a3b8' }}
-      >
-        {formatSize(entry.size, entry.is_dir)}
-        {imageDims && (
-          <span className="ml-1 opacity-75">{imageDims[0]}×{imageDims[1]}</span>
-        )}
-      </div>
+      {!hideText && (
+        <div
+          className="text-[10px] leading-none text-center"
+          style={{ color: themeVars?.muted ?? '#94a3b8' }}
+        >
+          {formatSize(entry.size, entry.is_dir)}
+          {imageDims && (
+            <span className="ml-1 opacity-75">{imageDims[0]}×{imageDims[1]}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 });

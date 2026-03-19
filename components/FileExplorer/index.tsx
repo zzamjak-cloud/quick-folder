@@ -95,6 +95,7 @@ export default function FileExplorer({
   const [isSearchActive, setIsSearchActive] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [activeExtFilters, setActiveExtFilters] = useState<Set<string>>(new Set());
+  const [hideText, setHideText] = useState(false);
 
   // --- 모달 상태 ---
   const [isGoToFolderOpen, setIsGoToFolderOpen] = useState(false);
@@ -1409,6 +1410,8 @@ export default function FileExplorer({
               });
             }}
             onExtFilterClear={() => setActiveExtFilters(new Set())}
+            hideText={hideText}
+            onHideTextToggle={() => setHideText(v => !v)}
             splitMode={splitMode}
             onSplitModeChange={onSplitModeChange}
             themeVars={themeVars}
@@ -1478,6 +1481,7 @@ export default function FileExplorer({
               onContextMenu={handleContextMenu}
               onRenameCommit={handleRenameCommit}
               themeVars={themeVars}
+              hideText={hideText}
             />
           )}
 

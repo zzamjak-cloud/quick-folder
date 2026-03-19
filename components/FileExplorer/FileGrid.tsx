@@ -28,6 +28,7 @@ interface FileGridProps {
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
+  hideText?: boolean;
 }
 
 // --- ListRow 컴포넌트 ---
@@ -273,6 +274,7 @@ export default memo(function FileGrid({
   onContextMenu,
   onRenameCommit,
   themeVars,
+  hideText = false,
 }: FileGridProps) {
 
   // --- 박스 드래그 선택 ---
@@ -451,6 +453,7 @@ export default memo(function FileGrid({
                   onContextMenu={onContextMenu}
                   onRenameCommit={onRenameCommit}
                   themeVars={themeVars}
+                  hideText={hideText}
                 />
               </React.Fragment>
             );

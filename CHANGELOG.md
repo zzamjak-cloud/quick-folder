@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.4] - 2026-03-19
+
+### Added
+- **Hide Text 필터**: 필터 메뉴 하단에 Hide Text 체크박스 추가, 그리드 뷰에서 파일명/크기 텍스트를 숨기고 썸네일만 표시
+
 ## [1.17.3] - 2026-03-19
 
 ### Changed
