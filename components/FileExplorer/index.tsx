@@ -66,8 +66,14 @@ export default function FileExplorer({
   const [internalClipboard, setInternalClipboard] = useState<ClipboardData | null>(null);
   const clipboard = sharedClipboard !== undefined ? sharedClipboard : internalClipboard;
   const setClipboard = onClipboardChange ?? setInternalClipboard;
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>(() => {
+    const saved = localStorage.getItem(`qf_sort_by_${instanceId}`);
+    return (saved as 'name' | 'size' | 'modified' | 'type') || 'modified';
+  });
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => {
+    const saved = localStorage.getItem(`qf_sort_dir_${instanceId}`);
+    return (saved as 'asc' | 'desc') || 'desc';
+  });
   const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(120);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -249,10 +255,12 @@ export default function FileExplorer({
     });
   }
 
-  // 정렬 변경 시 재정렬
+  // 정렬 변경 시 재정렬 + localStorage 저장
   useEffect(() => {
     setEntries(prev => sortEntries(prev, sortBy, sortDir));
-  }, [sortBy, sortDir]);
+    localStorage.setItem(`qf_sort_by_${instanceId}`, sortBy);
+    localStorage.setItem(`qf_sort_dir_${instanceId}`, sortDir);
+  }, [sortBy, sortDir, instanceId]);
 
   // 파일 확장자 추출 유틸
   const getExt = useCallback((entry: FileEntry): string => {

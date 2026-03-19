@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.2] - 2026-03-19
+
+### Changed
+- **기본 정렬 순서 변경**: 날짜 내림차순(최신순)이 기본 정렬
+- **정렬 설정 영속화**: 사용자가 변경한 정렬 기준과 방향을 localStorage에 저장하여 재시작 시 유지
+
 ## [1.17.1] - 2026-03-19
 
 ### Added
