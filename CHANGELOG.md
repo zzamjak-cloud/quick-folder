@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.3] - 2026-03-19
+
+### Changed
+- **동영상 미리보기 키보드 단축키**: 동영상 재생 중 좌우 화살표로 5초 탐색 (Shift: 10초), Space로 재생/일시정지
+  - 동영상 미리보기 상태에서 화살표 키가 파일 이동 대신 시간 탐색으로 동작
+
 ## [1.17.2] - 2026-03-19
 
 ### Changed
