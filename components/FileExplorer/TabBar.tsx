@@ -278,7 +278,7 @@ export default memo(function TabBar({
 
   return (
     <div
-      className="flex items-center overflow-x-auto flex-shrink-0 border-b relative pt-4"
+      className="flex items-end overflow-x-auto flex-shrink-0 border-b relative"
       style={{
         backgroundColor: themeVars?.surface2 ?? '#1f2937',
         borderColor: themeVars?.border ?? '#334155',
@@ -295,18 +295,10 @@ export default memo(function TabBar({
             data-tab-id={tab.id}
             data-tab-index={index}
             data-tab-instance={instanceId}
-            className="flex items-center gap-1 px-3 py-1.5 border-r cursor-pointer flex-shrink-0 group relative"
+            className="flex flex-col flex-shrink-0 cursor-pointer group"
             style={{
               maxWidth: 160,
-              minWidth: (isActive && getInheritedTag(tab.path)) ? 80 : undefined,
-              borderColor: themeVars?.border ?? '#334155',
-              backgroundColor: isPinned
-                ? 'rgba(239, 68, 68, 0.25)'
-                : isActive ? (themeVars?.bg ?? '#0f172a') : 'transparent',
-              borderBottom: isActive
-                ? `2px solid ${isPinned ? '#ef4444' : accentColor}`
-                : '2px solid transparent',
-              overflow: 'visible',
+              borderRight: `1px solid ${themeVars?.border ?? '#334155'}`,
             }}
             onMouseDown={(e) => handleMouseDown(e, tab, index)}
             onClick={() => { if (!isDraggingRef.current) onTabSelect(tab.id); }}
@@ -317,18 +309,17 @@ export default memo(function TabBar({
             }}
             title={tab.path}
           >
-            {/* 프로젝트 태그 배너 */}
-            {isActive && (() => {
+            {/* 프로젝트 태그 배너 (탭 상단에 인라인) */}
+            {(() => {
               const tag = getInheritedTag(tab.path);
               return tag ? (
-                <div
-                  className="absolute -top-3.5 left-0 right-0 flex justify-center pointer-events-none"
-                  style={{ zIndex: 1 }}
-                >
+                <div className="flex justify-center px-1 pt-0.5">
                   <span
                     className="text-[9px] px-1.5 py-px rounded-t font-medium truncate"
                     style={{
-                      backgroundColor: themeVars?.accent ?? '#3b82f6',
+                      backgroundColor: isActive
+                        ? (themeVars?.accent ?? '#3b82f6')
+                        : ((themeVars?.accent ?? '#3b82f6') + '60'),
                       color: '#fff',
                       maxWidth: '100%',
                     }}
@@ -338,27 +329,40 @@ export default memo(function TabBar({
                 </div>
               ) : null;
             })()}
-            {/* 고정 아이콘 */}
-            {isPinned && (
-              <Pin size={9} style={{ color: '#ef4444', flexShrink: 0, transform: 'rotate(45deg)' }} />
-            )}
-            <span
-              className="text-xs truncate flex-1 min-w-0 select-none"
-              style={{ color: isActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8') }}
+            {/* 탭 내용 */}
+            <div
+              className="flex items-center gap-1 px-3 py-1.5"
+              style={{
+                backgroundColor: isPinned
+                  ? 'rgba(239, 68, 68, 0.25)'
+                  : isActive ? (themeVars?.bg ?? '#0f172a') : 'transparent',
+                borderBottom: isActive
+                  ? `2px solid ${isPinned ? '#ef4444' : accentColor}`
+                  : '2px solid transparent',
+              }}
             >
-              {tab.title || '새 탭'}
-            </span>
-            {/* 고정 탭은 닫기 버튼 숨김 */}
-            {tabs.length > 1 && !isPinned && (
-              <button
-                className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded p-0.5 transition-opacity hover:bg-[var(--qf-surface-hover)]"
-                style={{ color: themeVars?.muted ?? '#94a3b8' }}
-                onClick={(e) => { e.stopPropagation(); onTabClose(tab.id); }}
-                title="탭 닫기"
+              {/* 고정 아이콘 */}
+              {isPinned && (
+                <Pin size={9} style={{ color: '#ef4444', flexShrink: 0, transform: 'rotate(45deg)' }} />
+              )}
+              <span
+                className="text-xs truncate flex-1 min-w-0 select-none"
+                style={{ color: isActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8') }}
               >
-                <X size={10} />
-              </button>
-            )}
+                {tab.title || '새 탭'}
+              </span>
+              {/* 고정 탭은 닫기 버튼 숨김 */}
+              {tabs.length > 1 && !isPinned && (
+                <button
+                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded p-0.5 transition-opacity hover:bg-[var(--qf-surface-hover)]"
+                  style={{ color: themeVars?.muted ?? '#94a3b8' }}
+                  onClick={(e) => { e.stopPropagation(); onTabClose(tab.id); }}
+                  title="탭 닫기"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
           </div>
         );
       })}

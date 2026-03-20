@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.1] - 2026-03-20
+
+### Fixed
+- **폴더 태그 항상 표시**: 프로젝트 태그 배너가 활성 탭뿐 아니라 모든 탭에서 항상 표시되도록 수정
+  - 배너를 absolute → 인라인 배치로 변경하여 `overflow-x: auto` 잘림 문제 해결
+
 ## [1.20.0] - 2026-03-20
 
 ### Fixed
