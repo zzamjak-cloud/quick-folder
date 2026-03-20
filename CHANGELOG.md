@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-03-20
+
+### Added
+- **폴더 태그 (프로젝트명)**: 폴더 우클릭 → "태그 추가"로 프로젝트명 태깅
+  - 태그된 폴더 아이콘에 뱃지 표시
+  - 하위 폴더 진입 시 활성 탭 위에 프로젝트명 배너 자동 표시
+  - 부모 태그 상속으로 동일 이름 탭 구분 가능
+  - "태그 해제"로 태그 제거, localStorage 영속화
+
+### Changed
+- **스크롤 위치 복원**: 폴더 진입 후 뒤로 이동 시 이전 스크롤 위치 자동 복원
+
 ## [1.18.0] - 2026-03-20
 
 ### Added

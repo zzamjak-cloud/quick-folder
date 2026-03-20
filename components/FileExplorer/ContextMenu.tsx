@@ -15,6 +15,7 @@ import {
   Film,
   ChevronRight,
   Grid3x3,
+  Tag,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
 
@@ -40,6 +41,9 @@ interface ContextMenuProps {
   onPreviewPsd?: (path: string) => void;
   onBulkRename?: (paths: string[]) => void;
   onPixelate?: (path: string) => void;
+  onAddTag?: (path: string) => void;
+  onRemoveTag?: (path: string) => void;
+  folderTags?: Record<string, string>; // 태그 존재 여부 확인용
 }
 
 export default memo(function ContextMenu({
@@ -64,6 +68,9 @@ export default memo(function ContextMenu({
   onPreviewPsd,
   onBulkRename,
   onPixelate,
+  onAddTag,
+  onRemoveTag,
+  folderTags,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -230,6 +237,14 @@ export default memo(function ContextMenu({
           '즐겨찾기에 추가',
           () => onAddToFavorites(singlePath),
         )}
+
+        {/* 폴더 태그 추가/해제 */}
+        {isSingle && singleEntry?.is_dir && onAddTag && onRemoveTag && (() => {
+          const hasTag = folderTags && folderTags[singlePath];
+          return hasTag
+            ? item(<Tag size={13} />, '태그 해제', () => onRemoveTag(singlePath))
+            : item(<Tag size={13} />, '태그 추가', () => onAddTag(singlePath));
+        })()}
       </div>
     </div>
   );

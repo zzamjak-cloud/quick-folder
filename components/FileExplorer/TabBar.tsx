@@ -22,6 +22,7 @@ interface TabBarProps {
   onTogglePin?: (tabId: string) => void;
   instanceId: string;
   themeVars: ThemeVars | null;
+  folderTags?: Record<string, string>; // 경로 → 프로젝트명 태그 매핑
 }
 
 // 탭 컨텍스트 메뉴 상태
@@ -43,6 +44,7 @@ export default memo(function TabBar({
   onTogglePin,
   instanceId,
   themeVars,
+  folderTags,
 }: TabBarProps) {
   // 드래그 중 클릭 방지 플래그 (리렌더 불필요하므로 ref)
   const isDraggingRef = useRef(false);
@@ -255,13 +257,28 @@ export default memo(function TabBar({
     return () => window.removeEventListener('qf-tab-transfer', handler);
   }, [instanceId]);
 
+  // 경로의 상속 태그 찾기 (가장 가까운 부모 태그 반환)
+  const getInheritedTag = useCallback((tabPath: string): string | null => {
+    if (!folderTags) return null;
+    // 현재 경로 자체에 태그 → 반환
+    if (folderTags[tabPath]) return folderTags[tabPath];
+    // 부모 경로 순회
+    const sep = tabPath.includes('/') ? '/' : '\\';
+    const parts = tabPath.split(sep);
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const parent = parts.slice(0, i).join(sep);
+      if (folderTags[parent]) return folderTags[parent];
+    }
+    return null;
+  }, [folderTags]);
+
   if (tabs.length === 0) return null;
 
   const accentColor = themeVars?.accent ?? '#3b82f6';
 
   return (
     <div
-      className="flex items-center overflow-x-auto flex-shrink-0 border-b relative"
+      className="flex items-center overflow-x-auto flex-shrink-0 border-b relative pt-4"
       style={{
         backgroundColor: themeVars?.surface2 ?? '#1f2937',
         borderColor: themeVars?.border ?? '#334155',
@@ -281,6 +298,7 @@ export default memo(function TabBar({
             className="flex items-center gap-1 px-3 py-1.5 border-r cursor-pointer flex-shrink-0 group relative"
             style={{
               maxWidth: 160,
+              minWidth: (isActive && getInheritedTag(tab.path)) ? 80 : undefined,
               borderColor: themeVars?.border ?? '#334155',
               backgroundColor: isPinned
                 ? 'rgba(239, 68, 68, 0.25)'
@@ -288,6 +306,7 @@ export default memo(function TabBar({
               borderBottom: isActive
                 ? `2px solid ${isPinned ? '#ef4444' : accentColor}`
                 : '2px solid transparent',
+              overflow: 'visible',
             }}
             onMouseDown={(e) => handleMouseDown(e, tab, index)}
             onClick={() => { if (!isDraggingRef.current) onTabSelect(tab.id); }}
@@ -298,6 +317,27 @@ export default memo(function TabBar({
             }}
             title={tab.path}
           >
+            {/* 프로젝트 태그 배너 */}
+            {isActive && (() => {
+              const tag = getInheritedTag(tab.path);
+              return tag ? (
+                <div
+                  className="absolute -top-3.5 left-0 right-0 flex justify-center pointer-events-none"
+                  style={{ zIndex: 1 }}
+                >
+                  <span
+                    className="text-[9px] px-1.5 py-px rounded-t font-medium truncate"
+                    style={{
+                      backgroundColor: themeVars?.accent ?? '#3b82f6',
+                      color: '#fff',
+                      maxWidth: '100%',
+                    }}
+                  >
+                    {tag}
+                  </span>
+                </div>
+              ) : null;
+            })()}
             {/* 고정 아이콘 */}
             {isPinned && (
               <Pin size={9} style={{ color: '#ef4444', flexShrink: 0, transform: 'rotate(45deg)' }} />

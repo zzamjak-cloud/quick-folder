@@ -99,6 +99,15 @@ export default function FileExplorer({
   const [activeExtFilters, setActiveExtFilters] = useState<Set<string>>(new Set());
   const [hideText, setHideText] = useState(false);
 
+  // --- 폴더 태그 (프로젝트명) ---
+  const [folderTags, setFolderTags] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('qf_folder_tags') ?? '{}'); }
+    catch { return {}; }
+  });
+
+  // --- 스크롤 위치 복원용 ---
+  const scrollPositionRef = useRef<Map<string, number>>(new Map());
+
   // --- 모달 상태 ---
   const [isGoToFolderOpen, setIsGoToFolderOpen] = useState(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
@@ -146,6 +155,7 @@ export default function FileExplorer({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const currentPathRef = useRef<string | null>(null); // loadDirectory에서 스크롤 저장용
   // 뒤로/위로 이동 시 이전 폴더를 자동 선택하기 위한 ref
   const lastVisitedChildRef = useRef<string | null>(null);
 
@@ -157,6 +167,11 @@ export default function FileExplorer({
 
   const loadDirectory = useCallback(async (path: string) => {
     if (!path) return;
+    // 현재 경로의 스크롤 위치 저장
+    if (gridRef.current && currentPathRef.current) {
+      scrollPositionRef.current.set(currentPathRef.current, gridRef.current.scrollTop);
+    }
+    currentPathRef.current = path;
     cancelAllQueued(); // 이전 디렉토리의 대기 중인 썸네일 요청 모두 취소
     setError(null);
 
@@ -198,6 +213,13 @@ export default function FileExplorer({
           setSelectedPaths([sortedResult[idx].path]);
           setFocusedIndex(idx);
         }
+      }
+      // 저장된 스크롤 위치 복원 (렌더링 후 실행)
+      const savedScroll = scrollPositionRef.current.get(path);
+      if (savedScroll != null && gridRef.current) {
+        requestAnimationFrame(() => {
+          if (gridRef.current) gridRef.current.scrollTop = savedScroll;
+        });
       }
     } catch (e) {
       if (requestId !== loadRequestRef.current) return;
@@ -264,6 +286,11 @@ export default function FileExplorer({
     localStorage.setItem(`qf_sort_by_${instanceId}`, sortBy);
     localStorage.setItem(`qf_sort_dir_${instanceId}`, sortDir);
   }, [sortBy, sortDir, instanceId]);
+
+  // 폴더 태그 변경 시 localStorage 저장
+  useEffect(() => {
+    localStorage.setItem('qf_folder_tags', JSON.stringify(folderTags));
+  }, [folderTags]);
 
   // 파일 확장자 추출 유틸
   const getExt = useCallback((entry: FileEntry): string => {
@@ -615,6 +642,22 @@ export default function FileExplorer({
     }
     showCopyToast(`픽셀화 완료: ${output.split(/[/\\]/).pop()}`);
   }, [currentPath, sortBy, sortDir, showCopyToast]);
+
+  // 폴더 태그 추가 (모달 상태 기반)
+  const [tagPrompt, setTagPrompt] = useState<{ path: string; defaultName: string } | null>(null);
+  const handleAddTag = useCallback((path: string) => {
+    const name = path.split(/[/\\]/).pop() ?? '';
+    setTagPrompt({ path, defaultName: name });
+  }, []);
+
+  // 폴더 태그 해제
+  const handleRemoveTag = useCallback((path: string) => {
+    setFolderTags(prev => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
+  }, []);
 
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
     setRenamingPath(null);
@@ -1379,6 +1422,7 @@ export default function FileExplorer({
         onTogglePin={togglePinTab}
         instanceId={instanceId}
         themeVars={themeVars}
+        folderTags={folderTags}
       />
 
       {currentPath ? (
@@ -1494,6 +1538,7 @@ export default function FileExplorer({
               onRenameCommit={handleRenameCommit}
               themeVars={themeVars}
               hideText={hideText}
+              folderTags={folderTags}
             />
           )}
 
@@ -1565,6 +1610,22 @@ export default function FileExplorer({
           onPreviewPsd={preview.handlePreviewImage}
           onBulkRename={handleBulkRename}
           onPixelate={(path) => setPixelatePath(path)}
+          onAddTag={handleAddTag}
+          onRemoveTag={handleRemoveTag}
+          folderTags={folderTags}
+        />
+      )}
+
+      {/* 태그 입력 다이얼로그 */}
+      {tagPrompt && (
+        <TagInputDialog
+          defaultName={tagPrompt.defaultName}
+          themeVars={themeVars}
+          onConfirm={(tag) => {
+            setFolderTags(prev => ({ ...prev, [tagPrompt.path]: tag }));
+            setTagPrompt(null);
+          }}
+          onCancel={() => setTagPrompt(null)}
         />
       )}
 
@@ -1665,6 +1726,61 @@ export default function FileExplorer({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// 태그 입력 다이얼로그 (인라인 컴포넌트)
+function TagInputDialog({ defaultName, themeVars, onConfirm, onCancel }: {
+  defaultName: string;
+  themeVars: ThemeVars | null;
+  onConfirm: (tag: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(defaultName);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.select(); }, []);
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div
+        className="rounded-lg shadow-2xl w-72 overflow-hidden"
+        style={{
+          backgroundColor: themeVars?.surface2 ?? '#1f2937',
+          border: `1px solid ${themeVars?.border ?? '#334155'}`,
+        }}
+      >
+        <div className="px-4 pt-4 pb-2">
+          <p className="text-xs font-medium mb-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>프로젝트 태그 입력</p>
+          <input
+            ref={inputRef}
+            className="w-full px-2 py-1.5 text-xs rounded-md outline-none"
+            style={{
+              backgroundColor: themeVars?.surface ?? '#111827',
+              color: themeVars?.text ?? '#e5e7eb',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && value.trim()) onConfirm(value.trim());
+              if (e.key === 'Escape') onCancel();
+            }}
+            autoFocus
+          />
+        </div>
+        <div className="flex justify-end gap-2 px-4 py-3">
+          <button
+            className="px-3 py-1 text-xs rounded-md transition-colors hover:opacity-80"
+            style={{ backgroundColor: themeVars?.surface ?? '#111827', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#334155'}` }}
+            onClick={onCancel}
+          >취소</button>
+          <button
+            className="px-3 py-1 text-xs rounded-md transition-colors hover:opacity-80"
+            style={{ backgroundColor: themeVars?.accent ?? '#3b82f6', color: '#fff', border: 'none' }}
+            onClick={() => value.trim() && onConfirm(value.trim())}
+          >확인</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -29,6 +29,7 @@ interface FileGridProps {
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
   hideText?: boolean;
+  folderTags?: Record<string, string>;
 }
 
 // --- ListRow 컴포넌트 ---
@@ -275,6 +276,7 @@ export default memo(function FileGrid({
   onRenameCommit,
   themeVars,
   hideText = false,
+  folderTags,
 }: FileGridProps) {
 
   // --- 박스 드래그 선택 ---
@@ -454,6 +456,7 @@ export default memo(function FileGrid({
                   onRenameCommit={onRenameCommit}
                   themeVars={themeVars}
                   hideText={hideText}
+                  tag={folderTags?.[entry.path]}
                 />
               </React.Fragment>
             );

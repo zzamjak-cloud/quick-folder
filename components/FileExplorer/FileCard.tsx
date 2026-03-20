@@ -22,6 +22,7 @@ interface FileCardProps {
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
   hideText?: boolean;
+  tag?: string; // 폴더 태그 (프로젝트명)
 }
 
 export default memo(function FileCard({
@@ -39,6 +40,7 @@ export default memo(function FileCard({
   onRenameCommit,
   themeVars,
   hideText = false,
+  tag,
 }: FileCardProps) {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -208,6 +210,19 @@ export default memo(function FileCard({
               size={thumbnailSize >= 120 ? 40 : 28}
               fileName={entry.name}
             />
+          </div>
+        )}
+        {/* 폴더 태그 뱃지 */}
+        {tag && entry.is_dir && (
+          <div
+            className="absolute top-0.5 right-0.5 px-1 py-px rounded text-[8px] font-bold leading-tight truncate"
+            style={{
+              backgroundColor: themeVars?.accent ?? '#3b82f6',
+              color: '#fff',
+              maxWidth: thumbnailSize * 0.8,
+            }}
+          >
+            {tag}
           </div>
         )}
       </div>
