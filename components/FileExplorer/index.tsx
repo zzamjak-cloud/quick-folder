@@ -6,6 +6,7 @@ import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import BulkRenameModal from './BulkRenameModal';
+import PixelateModal from './PixelateModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
@@ -78,6 +79,7 @@ export default function FileExplorer({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
+  const [pixelatePath, setPixelatePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -603,6 +605,16 @@ export default function FileExplorer({
     setCopyToast(msg);
     copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
   }, []);
+
+  // 픽셀화 적용
+  const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
+    const output = await invoke<string>('pixelate_image', { input: path, pixelSize, scale, maxColors });
+    if (currentPath) {
+      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      setEntries(sortEntries(result, sortBy, sortDir));
+    }
+    showCopyToast(`픽셀화 완료: ${output.split(/[/\\]/).pop()}`);
+  }, [currentPath, sortBy, sortDir, showCopyToast]);
 
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
     setRenamingPath(null);
@@ -1552,6 +1564,17 @@ export default function FileExplorer({
           onCompressVideo={handleCompressVideo}
           onPreviewPsd={preview.handlePreviewImage}
           onBulkRename={handleBulkRename}
+          onPixelate={(path) => setPixelatePath(path)}
+        />
+      )}
+
+      {/* 픽셀화 모달 */}
+      {pixelatePath && (
+        <PixelateModal
+          path={pixelatePath}
+          onClose={() => setPixelatePath(null)}
+          onApply={handlePixelateApply}
+          themeVars={themeVars}
         />
       )}
 

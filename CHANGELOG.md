@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-03-20
+
+### Added
+- **이미지 픽셀화**: PNG/JPG 이미지 우클릭 → "픽셀화"로 픽셀아트 변환
+  - 실시간 미리보기 (확대 + 실제 크기 좌우 비교)
+  - 출력 크기 선택 (16/32/48/64/128/256px 버튼)
+  - 픽셀 크기 슬라이더 (출력 크기에 비례하여 범위 자동 조정)
+  - 컬러 수 감소 (Median-cut 양자화: 4/8/16/32/64/128/256 컬러, 기본 16)
+  - 저장 시 `{파일명}_pixel.png` 생성, 중복 시 자동 넘버링
+
 ## [1.17.4] - 2026-03-19
 
 ### Added

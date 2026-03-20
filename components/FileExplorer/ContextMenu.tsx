@@ -14,6 +14,7 @@ import {
   Eye,
   Film,
   ChevronRight,
+  Grid3x3,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
 
@@ -38,6 +39,7 @@ interface ContextMenuProps {
   onCompressVideo?: (path: string, quality: 'low' | 'medium' | 'high') => void;
   onPreviewPsd?: (path: string) => void;
   onBulkRename?: (paths: string[]) => void;
+  onPixelate?: (path: string) => void;
 }
 
 export default memo(function ContextMenu({
@@ -61,6 +63,7 @@ export default memo(function ContextMenu({
   onCompressVideo,
   onPreviewPsd,
   onBulkRename,
+  onPixelate,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -206,6 +209,14 @@ export default memo(function ContextMenu({
             <VideoCompressSubmenu
               onSelect={(quality) => { onCompressVideo(singlePath, quality); onClose(); }}
             />
+          )}
+
+        {/* 픽셀화 (PNG/JPG) */}
+        {isSingle && singleEntry && /\.(png|jpe?g)$/i.test(singleEntry.name) &&
+          onPixelate && item(
+            <Grid3x3 size={13} />,
+            '픽셀화',
+            () => onPixelate(singlePath),
           )}
 
         {divider('d4')}
