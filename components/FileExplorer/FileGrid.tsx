@@ -15,6 +15,7 @@ interface FileGridProps {
   thumbnailSize: ThumbnailSize;
   viewMode: ViewMode;
   sortBy: 'name' | 'size' | 'modified' | 'type';
+  sortDir: 'asc' | 'desc';
   focusedIndex: number;
   gridRef: React.RefObject<HTMLDivElement>;
   loading: boolean;
@@ -27,9 +28,11 @@ interface FileGridProps {
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
+  onSortChange?: (by: string) => void;
   themeVars: ThemeVars | null;
   hideText?: boolean;
   folderTags?: Record<string, string>;
+  instanceId?: string;
 }
 
 // --- ListRow 컴포넌트 ---
@@ -183,22 +186,23 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
           )}
         </div>
       </td>
+      <td className="px-3 py-1 text-xs" style={{ color: themeVars?.muted }}>{fmtDate(entry.modified)}</td>
       <td className="px-3 py-1 text-right text-xs" style={{ color: themeVars?.muted }}>
         {formatSize(entry.size, entry.is_dir)}
       </td>
-      <td className="px-3 py-1 text-xs" style={{ color: themeVars?.muted }}>{fmtDate(entry.modified)}</td>
       <td className="px-3 py-1 text-xs" style={{ color: themeVars?.muted }}>{typeLabels[entry.file_type] ?? '기타'}</td>
     </tr>
   );
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
   renamingPath: string | null;
   sortBy: string;
+  sortDir: 'asc' | 'desc';
   clipboard: ClipboardData | null;
   dropTargetPath: string | null;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
@@ -206,16 +210,91 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
+  onSortChange?: (by: string) => void;
   themeVars: ThemeVars | null;
+  instanceId?: string;
 }) {
+  const storageKey = `qf_details_cols_${instanceId ?? 'default'}`;
+
+  // 컬럼 너비 상태 — localStorage에서 복원
+  const [colWidths, setColWidths] = useState<{ name: number; modified: number; size: number; type: number }>(() => {
+    const defaults = { name: 0, modified: 140, size: 80, type: 70 }; // name=0: auto
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return { ...defaults, ...JSON.parse(saved) };
+    } catch { /* 무시 */ }
+    return defaults;
+  });
+  const resizingRef = useRef<{ col: keyof typeof colWidths; startX: number; startW: number } | null>(null);
+  // 사용자가 이름 컬럼 너비를 수동 조정했는지 여부
+  const nameManuallyResized = colWidths.name > 0;
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const r = resizingRef.current;
+      if (!r) return;
+      const delta = e.clientX - r.startX;
+      setColWidths(prev => {
+        const minW = r.col === 'name' ? 100 : 50;
+        const baseW = r.col === 'name' && r.startW === 0 ? 200 : r.startW; // auto → 기본 200 기준
+        return { ...prev, [r.col]: Math.max(minW, baseW + delta) };
+      });
+    };
+    const onUp = () => {
+      if (resizingRef.current) {
+        resizingRef.current = null;
+        // 리사이즈 완료 시 localStorage 저장
+        setColWidths(prev => {
+          localStorage.setItem(storageKey, JSON.stringify(prev));
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [storageKey]);
+
+  const startResize = (col: keyof typeof colWidths, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = { col, startX: e.clientX, startW: colWidths[col] };
+  };
+
+  const sortIndicator = (col: string) => sortBy === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+
+  const headerStyle: React.CSSProperties = {
+    cursor: onSortChange ? 'pointer' : 'default',
+    userSelect: 'none',
+    position: 'relative',
+  };
+
   return (
-    <table className="w-full text-xs border-collapse">
+    <table className="text-xs border-collapse" style={{ tableLayout: 'auto' }}>
+      <colgroup>
+        <col style={nameManuallyResized ? { width: colWidths.name } : undefined} />
+        <col style={{ width: colWidths.modified }} />
+        <col style={{ width: colWidths.size }} />
+        <col style={{ width: colWidths.type }} />
+      </colgroup>
       <thead>
         <tr style={{ backgroundColor: themeVars?.surface2, color: themeVars?.muted }}>
-          <th className="text-left px-3 py-1.5 font-medium">이름</th>
-          <th className="text-right px-3 py-1.5 font-medium w-20">크기</th>
-          <th className="text-left px-3 py-1.5 font-medium w-28">날짜</th>
-          <th className="text-left px-3 py-1.5 font-medium w-16">형식</th>
+          {(['name', 'modified', 'size', 'type'] as const).map((col) => (
+            <th
+              key={col}
+              className={`${col === 'size' ? 'text-right' : 'text-left'} px-3 py-1.5 font-medium`}
+              style={{ ...headerStyle, borderRight: `1px solid ${themeVars?.border ?? '#334155'}` }}
+              onClick={() => onSortChange?.(col)}
+            >
+              {{ name: '이름', modified: '날짜', size: '크기', type: '형식' }[col]}{sortIndicator(col)}
+              {/* 리사이즈 핸들 — 넓은 투명 영역(8px)으로 잡기 쉽게 */}
+              <div
+                className="absolute top-0 w-2 h-full cursor-col-resize hover:bg-blue-500/40"
+                style={{ right: -4 }}
+                onMouseDown={(e) => startResize(col, e)}
+              />
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
@@ -262,6 +341,7 @@ export default memo(function FileGrid({
   thumbnailSize,
   viewMode,
   sortBy,
+  sortDir,
   focusedIndex,
   gridRef,
   loading,
@@ -274,9 +354,11 @@ export default memo(function FileGrid({
   onOpen,
   onContextMenu,
   onRenameCommit,
+  onSortChange,
   themeVars,
   hideText = false,
   folderTags,
+  instanceId,
 }: FileGridProps) {
 
   // --- 박스 드래그 선택 ---
@@ -505,6 +587,7 @@ export default memo(function FileGrid({
           focusedIndex={focusedIndex}
           renamingPath={renamingPath}
           sortBy={sortBy}
+          sortDir={sortDir}
           clipboard={clipboard}
           dropTargetPath={dropTargetPath}
           onDragMouseDown={onDragMouseDown}
@@ -512,7 +595,9 @@ export default memo(function FileGrid({
           onOpen={onOpen}
           onContextMenu={onContextMenu}
           onRenameCommit={onRenameCommit}
+          onSortChange={onSortChange}
           themeVars={themeVars}
+          instanceId={instanceId}
         />
       )}
 

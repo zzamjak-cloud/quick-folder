@@ -75,14 +75,21 @@ export default function FileExplorer({
     const saved = localStorage.getItem(`qf_sort_dir_${instanceId}`);
     return (saved as 'asc' | 'desc') || 'desc';
   });
-  const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(120);
+  const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(() => {
+    const saved = localStorage.getItem(`qf_thumb_size_${instanceId}`);
+    const parsed = saved ? Number(saved) : 120;
+    return ([40, 60, 80, 100, 120, 160, 200, 240, 280, 320].includes(parsed) ? parsed : 120) as ThumbnailSize;
+  });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
   const [pixelatePath, setPixelatePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem(`qf_view_mode_${instanceId}`);
+    return (['grid', 'columns', 'list', 'details'].includes(saved ?? '') ? saved : 'grid') as ViewMode;
+  });
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const selectionAnchorRef = useRef<number>(-1); // Shift 선택 시작점
 
@@ -136,6 +143,9 @@ export default function FileExplorer({
 
   // 파일 미리보기 실행 (Space키 + 화살표 이동 시 공용)
   const previewFile = useCallback((entry: FileEntry) => {
+    // 타입 전환 시 이전 미리보기 정리 (이미지→동영상 등)
+    preview.closeAllPreviews();
+
     if (entry.file_type === 'video') {
       preview.setVideoPlayerPath(entry.path);
     } else if (entry.file_type === 'image' || /\.psd$/i.test(entry.name)) {
@@ -286,6 +296,15 @@ export default function FileExplorer({
     localStorage.setItem(`qf_sort_by_${instanceId}`, sortBy);
     localStorage.setItem(`qf_sort_dir_${instanceId}`, sortDir);
   }, [sortBy, sortDir, instanceId]);
+
+  // 썸네일 크기·뷰 모드 변경 시 localStorage 저장
+  useEffect(() => {
+    localStorage.setItem(`qf_thumb_size_${instanceId}`, String(thumbnailSize));
+  }, [thumbnailSize, instanceId]);
+
+  useEffect(() => {
+    localStorage.setItem(`qf_view_mode_${instanceId}`, viewMode);
+  }, [viewMode, instanceId]);
 
   // 폴더 태그 변경 시 localStorage 저장
   useEffect(() => {
@@ -632,6 +651,30 @@ export default function FileExplorer({
     setCopyToast(msg);
     copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
   }, []);
+
+  // 선택된 파일들을 새 폴더로 그룹화 (Ctrl+G)
+  const handleGroupIntoFolder = useCallback(async () => {
+    if (!currentPath || selectedPaths.length === 0) return;
+    const sep = currentPath.includes('/') ? '/' : '\\';
+    // 중복 방지: "새 폴더", "새 폴더 2"...
+    let baseName = '새 폴더';
+    let candidate = baseName;
+    let counter = 2;
+    const existingNames = new Set(entries.map(e => e.name));
+    while (existingNames.has(candidate)) {
+      candidate = `${baseName} ${counter++}`;
+    }
+    const newPath = `${currentPath}${sep}${candidate}`;
+    try {
+      await invoke('create_directory', { path: newPath });
+      await invoke('move_items', { sources: selectedPaths, dest: newPath });
+      await loadDirectory(currentPath);
+      setSelectedPaths([newPath]);
+      setRenamingPath(newPath);
+    } catch (e) {
+      showCopyToast(`그룹화 실패: ${e}`);
+    }
+  }, [currentPath, selectedPaths, entries, loadDirectory, showCopyToast]);
 
   // 픽셀화 적용
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
@@ -995,7 +1038,11 @@ export default function FileExplorer({
       // --- Quick Look / 미리보기 (Spacebar 토글) ---
       if (e.key === ' ') {
         e.preventDefault();
-        // 미리보기가 이미 열려있으면 닫기만 수행 (토글)
+        // 컬럼뷰에서는 이미 미리보기 패널이 있으므로 스페이스바 미리보기 비활성화
+        if (viewMode === 'columns') return;
+        // 동영상 재생 중이면 스페이스바로 닫지 않음 (플레이/스탑 역할)
+        if (preview.videoPlayerPath) return;
+        // 이미지/텍스트 미리보기가 열려있으면 닫기
         if (preview.isAnyPreviewOpen) {
           preview.closeAllPreviews();
           return;
@@ -1048,6 +1095,8 @@ export default function FileExplorer({
       if (ctrl && e.key === 'x') { handleCut(); return; }
       if (ctrl && e.key === 'v') { handlePaste(); return; }
       if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
+      // Ctrl+G: 선택된 파일들을 새 폴더로 그룹화
+      if (ctrl && !e.shiftKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
       if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
 
       if (e.key === 'F2') {
@@ -1202,7 +1251,7 @@ export default function FileExplorer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     isFocused, renamingPath, selectAll, deselectAll, handleUndo, handleCopy, handleCut, handlePaste, handleDuplicate,
-    handleCreateDirectory, handleRenameStart, handleDelete, handleCopyPath,
+    handleCreateDirectory, handleGroupIntoFolder, handleRenameStart, handleDelete, handleCopyPath,
     goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
@@ -1214,9 +1263,11 @@ export default function FileExplorer({
   // --- 미리보기 열려있을 때 선택 변경 시 자동 갱신 ---
   useEffect(() => {
     if (!preview.isAnyPreviewOpen || selectedPaths.length !== 1) return;
+    // 동영상 재생 중이면 자동 갱신하지 않음 (시청 중 의도치 않은 전환 방지)
+    if (preview.videoPlayerPath) return;
     const entry = entries.find(e => e.path === selectedPaths[0]);
     if (entry) previewFile(entry);
-  }, [selectedPaths, preview.isAnyPreviewOpen, entries, previewFile]);
+  }, [selectedPaths, preview.isAnyPreviewOpen, preview.videoPlayerPath, entries, previewFile]);
 
   // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
   useEffect(() => {
@@ -1484,6 +1535,7 @@ export default function FileExplorer({
               loading={loading}
               error={error}
               themeVars={themeVars}
+              instanceId={instanceId}
               onSelectInColumn={(colIndex, entry, multi, range) => {
                 const col = columnView.columns[colIndex];
                 if (!col) return;
@@ -1524,6 +1576,7 @@ export default function FileExplorer({
               thumbnailSize={thumbnailSize}
               viewMode={viewMode}
               sortBy={sortBy}
+              sortDir={sortDir}
               focusedIndex={focusedIndex}
               gridRef={gridRef}
               loading={loading}
@@ -1536,9 +1589,19 @@ export default function FileExplorer({
               onOpen={openEntry}
               onContextMenu={handleContextMenu}
               onRenameCommit={handleRenameCommit}
+              onSortChange={(by) => {
+                const typedBy = by as 'name' | 'size' | 'modified' | 'type';
+                if (sortBy === typedBy) {
+                  setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+                } else {
+                  setSortBy(typedBy);
+                  setSortDir('asc');
+                }
+              }}
               themeVars={themeVars}
               hideText={hideText}
               folderTags={folderTags}
+              instanceId={instanceId}
             />
           )}
 

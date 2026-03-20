@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { memo, useEffect, useRef, useCallback } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
@@ -85,6 +85,8 @@ interface ColumnPanelProps {
   focusedRow: number;
   themeVars: ThemeVars | null;
   selectedPaths: string[];
+  width?: number;
+  onResize?: (delta: number) => void;
   onSelect: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -98,16 +100,41 @@ export default memo(function ColumnPanel({
   focusedRow,
   themeVars,
   selectedPaths,
+  width = 220,
+  onResize,
   onSelect,
   onOpen,
   onContextMenu,
   onDragMouseDown,
 }: ColumnPanelProps) {
+  const resizeStartRef = useRef<number | null>(null);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    resizeStartRef.current = startX;
+
+    const onMove = (ev: MouseEvent) => {
+      if (resizeStartRef.current === null) return;
+      const delta = ev.clientX - resizeStartRef.current;
+      resizeStartRef.current = ev.clientX;
+      onResize?.(delta);
+    };
+    const onUp = () => {
+      resizeStartRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [onResize]);
+
   return (
     <div
-      className="flex-shrink-0 h-full overflow-y-auto overflow-x-hidden border-r py-0.5"
+      className="flex-shrink-0 h-full overflow-y-auto overflow-x-hidden border-r py-0.5 relative"
       style={{
-        width: 220,
+        width,
         borderColor: themeVars?.border ?? '#334155',
       }}
     >
@@ -143,6 +170,13 @@ export default memo(function ColumnPanel({
             onDragMouseDown={onDragMouseDown}
           />
         ))
+      )}
+      {/* 리사이즈 핸들 */}
+      {onResize && (
+        <div
+          className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/30"
+          onMouseDown={handleResizeStart}
+        />
       )}
     </div>
   );

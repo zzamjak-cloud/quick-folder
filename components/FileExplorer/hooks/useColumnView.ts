@@ -71,17 +71,21 @@ export function useColumnView() {
       thumbnailCancelRef.current = null;
     }
 
-    // 이미지 파일만 썸네일 로딩
-    if (entry.file_type !== 'image') {
+    const isPsd = /\.(psd|psb)$/i.test(entry.name);
+
+    // 이미지 또는 PSD/PSB만 썸네일 로딩
+    if (entry.file_type !== 'image' && !isPsd) {
       setPreview({ entry, thumbnail: null, loading: false });
       return;
     }
 
     setPreview({ entry, thumbnail: null, loading: true });
 
+    // PSD/PSB는 get_psd_thumbnail, 일반 이미지는 get_file_thumbnail
+    const cmd = isPsd ? 'get_psd_thumbnail' : 'get_file_thumbnail';
     const { promise, cancel } = queuedInvoke<string | null>(
-      'get_file_thumbnail',
-      { path: entry.path, size: 260 },
+      cmd,
+      { path: entry.path, size: 1024 },
     );
     thumbnailCancelRef.current = cancel;
 

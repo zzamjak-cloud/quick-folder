@@ -34,39 +34,44 @@ const typeLabels: Record<string, string> = {
 
 export default memo(function ColumnPreviewPanel({ preview, themeVars }: ColumnPreviewPanelProps) {
   const { entry, thumbnail, loading } = preview;
+  const hasThumbnail = !!thumbnail;
 
   return (
     <div
       className="flex-shrink-0 h-full overflow-y-auto flex flex-col items-center p-4 gap-3"
       style={{
-        width: 260,
+        minWidth: 260,
+        width: hasThumbnail ? 'auto' : 260,
+        maxWidth: '50%',
         borderLeft: `1px solid ${themeVars?.border ?? '#334155'}`,
       }}
     >
       {/* 썸네일 / 큰 아이콘 */}
-      <div
-        className="flex items-center justify-center rounded-lg overflow-hidden"
-        style={{
-          width: 180,
-          height: 180,
-          backgroundColor: themeVars?.surface ?? '#111827',
-        }}
-      >
-        {loading ? (
+      {loading ? (
+        <div
+          className="flex items-center justify-center rounded-lg"
+          style={{ width: 180, height: 180, backgroundColor: themeVars?.surface ?? '#111827' }}
+        >
           <Loader2 size={28} className="animate-spin" style={{ color: themeVars?.accent ?? '#3b82f6' }} />
-        ) : thumbnail ? (
-          <img
-            src={thumbnail}
-            alt={entry.name}
-            className="max-w-full max-h-full object-contain"
-            draggable={false}
-          />
-        ) : (
+        </div>
+      ) : thumbnail ? (
+        <img
+          src={thumbnail}
+          alt={entry.name}
+          style={{ maxHeight: 1024, objectFit: 'contain' }}
+          className="rounded-lg"
+          draggable={false}
+        />
+      ) : (
+        <div
+          className="flex items-center justify-center rounded-lg"
+          style={{ width: 180, height: 180, backgroundColor: themeVars?.surface ?? '#111827' }}
+        >
           <span style={{ color: iconColor(entry.file_type, entry.name) }}>
             <FileTypeIcon fileType={entry.file_type} size={64} fileName={entry.name} />
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 파일명 */}
       <p

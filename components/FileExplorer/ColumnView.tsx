@@ -1,4 +1,4 @@
-import React, { memo, useRef, useEffect } from 'react';
+import React, { memo, useRef, useEffect, useState, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
@@ -15,6 +15,7 @@ interface ColumnViewProps {
   loading: boolean;
   error: string | null;
   themeVars: ThemeVars | null;
+  instanceId?: string;
   onSelectInColumn: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
   onOpenEntry: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -34,8 +35,26 @@ export default memo(function ColumnView({
   onContextMenu,
   onDragMouseDown,
   selectedPaths,
+  instanceId,
 }: ColumnViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const storageKey = `qf_colview_width_${instanceId ?? 'default'}`;
+
+  // 컬럼 너비 — 모든 컬럼에 동일하게 적용 (단일 값, localStorage 영속화)
+  const [columnWidth, setColumnWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return Math.max(150, Number(saved));
+    } catch { /* 무시 */ }
+    return 220;
+  });
+  const handleColumnResize = useCallback((_colIdx: number, delta: number) => {
+    setColumnWidth(prev => {
+      const next = Math.max(150, prev + delta);
+      localStorage.setItem(storageKey, String(next));
+      return next;
+    });
+  }, [storageKey]);
 
   // 새 컬럼 추가 시 자동 가로 스크롤
   useEffect(() => {
@@ -110,6 +129,8 @@ export default memo(function ColumnView({
           focusedRow={focusedRow}
           selectedPaths={selectedPaths}
           themeVars={themeVars}
+          width={columnWidth}
+          onResize={(delta) => handleColumnResize(idx, delta)}
           onSelect={onSelectInColumn}
           onOpen={onOpenEntry}
           onContextMenu={onContextMenu}
