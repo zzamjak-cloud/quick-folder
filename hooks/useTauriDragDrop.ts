@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { invoke } from '@tauri-apps/api/core';
+import { getFileName } from '../utils/pathUtils';
 
 // 좌표에서 카테고리 요소 찾기 (Tauri v2 논리 좌표 기반)
 function findCategoryAtPosition(position: { x: number; y: number }): { id: string; el: HTMLElement } | null {
@@ -107,7 +108,7 @@ export function useTauriDragDrop(
           if (dirPaths.length === 0) return;
 
           const path = dirPaths[0];
-          const name = path.split(/[\\/]/).pop() || 'Unknown';
+          const name = getFileName(path) || 'Unknown';
           handleAddFolder(finalCategoryId, path, name);
         }
       });

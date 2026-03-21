@@ -34,6 +34,8 @@ export function useColumnView() {
 
   // 경쟁 조건 방지: 각 컬럼 로딩 요청의 path 추적
   const loadRequestRef = useRef<Map<number, string>>(new Map());
+  // 디렉토리 캐시 — 동일 경로 재방문 시 IPC 호출 없이 즉시 표시
+  const dirCacheRef = useRef<Map<string, FileEntry[]>>(new Map());
   // 썸네일 로딩 취소용
   const thumbnailCancelRef = useRef<(() => void) | null>(null);
 
@@ -190,59 +192,99 @@ export function useColumnView() {
     });
 
     if (entry.is_dir) {
-      // 폴더: 선택 상태 업데이트 + 로딩 컬럼 추가를 한 번에
+      // 폴더: 선택 상태 업데이트 + 서브 컬럼 추가
       setPreview(null);
       const newColIndex = colIndex + 1;
       const requestPath = entry.path;
-      loadRequestRef.current.set(newColIndex, requestPath);
+      const cached = dirCacheRef.current.get(requestPath);
 
-      setColumns(prev => {
-        const updated = prev.slice(0, colIndex + 1).map((col, i) => {
-          if (i === colIndex) return { ...col, selectedPath: entry.path };
-          return col;
+      if (cached) {
+        // 캐시 히트: 스피너 없이 즉시 표시
+        setColumns(prev => {
+          const updated = prev.slice(0, colIndex + 1).map((col, i) => {
+            if (i === colIndex) return { ...col, selectedPath: entry.path };
+            return col;
+          });
+          updated.push({
+            path: requestPath,
+            entries: cached,
+            loading: false,
+            selectedPath: null,
+          });
+          return updated;
         });
-        updated.push({
-          path: requestPath,
-          entries: [],
-          loading: true,
-          selectedPath: null,
+        // 백그라운드에서 최신 데이터 갱신 (캐시 → 즉시 표시 → 변경분만 반영)
+        invoke<FileEntry[]>('list_directory', { path: requestPath })
+          .then(result => {
+            const sorted = sortEntries(result);
+            dirCacheRef.current.set(requestPath, sorted);
+            setColumns(prev => {
+              const idx = prev.findIndex(c => c.path === requestPath);
+              if (idx < 0) return prev;
+              // 캐시와 동일하면 업데이트 스킵
+              const existing = prev[idx].entries;
+              if (existing.length === sorted.length &&
+                existing.every((e, i) => e.path === sorted[i].path && e.modified === sorted[i].modified)) {
+                return prev;
+              }
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], entries: sorted };
+              return updated;
+            });
+          })
+          .catch(() => {});
+      } else {
+        // 캐시 미스: 로딩 표시 후 IPC 호출
+        loadRequestRef.current.set(newColIndex, requestPath);
+        setColumns(prev => {
+          const updated = prev.slice(0, colIndex + 1).map((col, i) => {
+            if (i === colIndex) return { ...col, selectedPath: entry.path };
+            return col;
+          });
+          updated.push({
+            path: requestPath,
+            entries: [],
+            loading: true,
+            selectedPath: null,
+          });
+          return updated;
         });
-        return updated;
-      });
 
-      // 디렉토리 로딩
-      invoke<FileEntry[]>('list_directory', { path: requestPath })
-        .then(result => {
-          if (loadRequestRef.current.get(newColIndex) !== requestPath) return;
-          loadRequestRef.current.delete(newColIndex);
-          const sorted = sortEntries(result);
-          setColumns(prev => {
-            if (prev.length <= newColIndex) return prev;
-            if (prev[newColIndex].path !== requestPath) return prev;
-            const updated = [...prev];
-            updated[newColIndex] = {
-              ...updated[newColIndex],
-              entries: sorted,
-              loading: false,
-            };
-            return updated;
+        // 디렉토리 로딩
+        invoke<FileEntry[]>('list_directory', { path: requestPath })
+          .then(result => {
+            if (loadRequestRef.current.get(newColIndex) !== requestPath) return;
+            loadRequestRef.current.delete(newColIndex);
+            const sorted = sortEntries(result);
+            dirCacheRef.current.set(requestPath, sorted);
+            setColumns(prev => {
+              if (prev.length <= newColIndex) return prev;
+              if (prev[newColIndex].path !== requestPath) return prev;
+              const updated = [...prev];
+              updated[newColIndex] = {
+                ...updated[newColIndex],
+                entries: sorted,
+                loading: false,
+              };
+              return updated;
+            });
+          })
+          .catch(() => {
+            if (loadRequestRef.current.get(newColIndex) !== requestPath) return;
+            loadRequestRef.current.delete(newColIndex);
+            setColumns(prev => {
+              if (prev.length <= newColIndex) return prev;
+              if (prev[newColIndex].path !== requestPath) return prev;
+              const updated = [...prev];
+              updated[newColIndex] = {
+                ...updated[newColIndex],
+                entries: [],
+                loading: false,
+              };
+              return updated;
+            });
           });
-        })
-        .catch(() => {
-          if (loadRequestRef.current.get(newColIndex) !== requestPath) return;
-          loadRequestRef.current.delete(newColIndex);
-          setColumns(prev => {
-            if (prev.length <= newColIndex) return prev;
-            if (prev[newColIndex].path !== requestPath) return prev;
-            const updated = [...prev];
-            updated[newColIndex] = {
-              ...updated[newColIndex],
-              entries: [],
-              loading: false,
-            };
-            return updated;
-          });
-        });
+      }
     } else {
       // 파일: 선택 상태만 업데이트
       setColumns(prev => {

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tab } from '../types';
+import { getFileName } from '../../../utils/pathUtils';
 
 // localStorage 키
 const TABS_KEY = 'qf_explorer_tabs';
@@ -10,7 +11,7 @@ const RECENT_PATH = '__recent__';
 function pathTitle(path: string): string {
   if (path === RECENT_PATH) return '최근항목';
   if (!path) return '';
-  return path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path;
+  return getFileName(path.replace(/[/\\]+$/, ''));
 }
 
 interface UseTabManagementOptions {
@@ -210,6 +211,67 @@ export function useTabManagement({
       return [...pinned, ...unpinned];
     });
   }, []);
+
+  // --- 이벤트 기반 탭 경로 동기화 ---
+  // setTabs를 ref로 감싸서 이벤트 핸들러에서 최신 상태 접근
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+
+  useEffect(() => {
+    // 폴더 이름 변경 이벤트: { oldPath, newPath }
+    const handleRename = (e: Event) => {
+      const { oldPath, newPath } = (e as CustomEvent).detail;
+      setTabs(prev => {
+        let changed = false;
+        const updated = prev.map(tab => {
+          if (tab.path === oldPath || tab.path.startsWith(oldPath + '/') || tab.path.startsWith(oldPath + '\\')) {
+            changed = true;
+            const updatedPath = tab.path === oldPath
+              ? newPath
+              : newPath + tab.path.slice(oldPath.length);
+            const updatedHistory = tab.history.map(h => {
+              if (h === oldPath) return newPath;
+              if (h.startsWith(oldPath + '/') || h.startsWith(oldPath + '\\')) {
+                return newPath + h.slice(oldPath.length);
+              }
+              return h;
+            });
+            return { ...tab, path: updatedPath, title: pathTitle(updatedPath), history: updatedHistory };
+          }
+          return tab;
+        });
+        return changed ? updated : prev;
+      });
+    };
+
+    // 폴더 삭제 이벤트: { paths }
+    const handleDelete = (e: Event) => {
+      const { paths: deletedPaths } = (e as CustomEvent).detail;
+      setTabs(prev => {
+        const shouldRemove = (tab: Tab) =>
+          deletedPaths.some((dp: string) =>
+            tab.path === dp || tab.path.startsWith(dp + '/') || tab.path.startsWith(dp + '\\')
+          );
+        const remaining = prev.filter(t => !shouldRemove(t));
+        if (remaining.length === prev.length) return prev;
+        if (!remaining.find(t => t.id === activeTabIdRef.current) && remaining.length > 0) {
+          const nextTab = remaining[0];
+          setActiveTabId(nextTab.id);
+          loadDirectory(nextTab.path);
+        } else if (remaining.length === 0) {
+          setActiveTabId('');
+        }
+        return remaining;
+      });
+    };
+
+    window.addEventListener('qf-tab-rename', handleRename);
+    window.addEventListener('qf-tab-delete', handleDelete);
+    return () => {
+      window.removeEventListener('qf-tab-rename', handleRename);
+      window.removeEventListener('qf-tab-delete', handleDelete);
+    };
+  }, [loadDirectory]);
 
   return {
     tabs, activeTabId, activeTab, currentPath,

@@ -54,7 +54,8 @@ npm run preview
 - **index.html** - HTML entry point loaded by Tauri
 - **index.tsx** - React app initialization
 - **App.tsx** - Main application component (~900줄, 리팩토링 후)
-- **src-tauri/src/lib.rs** - Tauri backend (Rust commands and plugins)
+- **src-tauri/src/lib.rs** - Tauri backend (Rust commands and plugins, ~2,700줄)
+- **src-tauri/src/helpers.rs** - Rust 공통 헬퍼 (경로 중복 회피, 복사 네이밍, 스프라이트 캔버스)
 - **src-tauri/src/main.rs** - Entry point (calls lib.rs)
 
 ### App.tsx 커스텀 훅 (hooks/)
@@ -100,6 +101,10 @@ Required plugins (configured in `src-tauri/Cargo.toml`):
 - `FileType` enum with `#[serde(rename_all = "lowercase")]` maps to TypeScript union type
 - Image thumbnails cached to `app_cache_dir/img_thumbnails/` (파일경로+수정시각+크기 해시)
 - PSD thumbnails cached to `app_cache_dir/psd_thumbnails/`
+- **`helpers.rs`** 공통 헬퍼 모듈:
+  - `find_unique_path()` — 출력 경로 중복 회피 (suffix + 카운터)
+  - `get_copy_destination()` — 복사/복제 시 "(복사)" 접미사 경로 결정
+  - `create_sprite_canvas()` — 이미지 그리드 배치 캔버스 생성
 
 ### State Management
 
@@ -111,13 +116,54 @@ App state is split between:
 
 ### File Explorer Architecture (`components/FileExplorer/`)
 
-- **`index.tsx`** - 메인 컨트롤러: 키보드 단축키, 탐색 히스토리, 탭 관리
+- **`index.tsx`** - 메인 컨트롤러 (~1,300줄): 탐색 히스토리, 탭 관리, 컨텍스트 메뉴 빌더
 - **`NavigationBar.tsx`** - 브레드크럼, 정렬, 썸네일 크기, 뷰 모드 전환
 - **`FileGrid.tsx`** - 파일 목록 렌더링 (grid/list/details 뷰)
 - **`FileCard.tsx`** - 개별 파일 카드 (lazy 썸네일, 인라인 이름변경)
-- **`ContextMenu.tsx`** - 우클릭 메뉴 (뷰포트 안전 포탈 렌더링)
+- **`ContextMenu.tsx`** - 우클릭 메뉴 (데이터 기반 레지스트리 패턴, 4개 prop)
 - **`StatusBar.tsx`** - 선택 항목 정보
-- **`hooks/useRenameInput.ts`** - 이름변경 입력 상태·핸들러
+- **`ui/ModalShell.tsx`** - 공통 모달 래퍼 (오버레이, 헤더, 푸터, ESC)
+- **`ui/modalStyles.ts`** - 공통 모달 스타일 (체커보드, 버튼, 입력, 스피너)
+
+### FileExplorer 커스텀 훅 (`components/FileExplorer/hooks/`)
+
+index.tsx에서 분리된 도메인별 훅:
+
+- **`useFileOperations.ts`** - 삭제, 복제, 이름변경, 그룹화, 압축, 픽셀화, 실행취소
+- **`useClipboard.ts`** - 복사/잘라내기/붙여넣기, 중복 확인 다이얼로그
+- **`useKeyboardShortcuts.ts`** - 전역 키보드 단축키 (탭, 내비게이션, 파일 조작, 뷰 전환)
+- **`useModalStates.ts`** - 모달 열림/닫힘 상태 (픽셀화, 시트패킹, 벌크리네임 등)
+- **`useSearchFilter.ts`** - 검색어, 확장자 필터, displayEntries 파생
+- **`useTabManagement.ts`** - 탭 CRUD, 내비게이션 히스토리, 이벤트 기반 탭 경로 동기화
+- **`useColumnView.ts`** - 컬럼 뷰 상태, 디렉토리 캐시, 미리보기
+- **`useRenameInput.ts`** - 이름변경 입력 상태·핸들러
+- **`usePreview.ts`** - 이미지/동영상/텍스트 미리보기 상태
+- **`useInternalDragDrop.ts`** - 내부 드래그 → 폴더 이동 / 즐겨찾기 등록
+- **`useUndoStack.ts`** - 실행취소 스택 관리
+
+### 공유 유틸리티 (`utils/pathUtils.ts`)
+
+- `isCloudPath()` — 클라우드 스토리지 경로 감지
+- `getFileName()` — 경로에서 파일명 추출
+- `getPathSeparator()` — 경로 구분자 감지
+- `getBaseName()` — 확장자 제외 파일명
+- `getExtension()` — 확장자 추출 (점 포함)
+- `getParentDir()` — 부모 디렉토리 추출
+
+### ContextMenu 레지스트리 패턴
+
+우클릭 메뉴는 데이터 기반으로 동작:
+- `ContextMenuItem` / `ContextMenuSection` 타입 (`types.ts`)
+- `index.tsx`의 `contextMenuSections` useMemo에서 조건별 섹션 빌더
+- `ContextMenu.tsx`는 `sections` 배열을 받아 렌더링만 담당 (4개 prop: x, y, sections, onClose)
+- 새 메뉴 항목 추가 시 `index.tsx` 빌더에만 항목 1개 추가
+
+### 탭-파일 조작 이벤트 연동
+
+파일 조작 시 다른 탭과 동기화하기 위해 커스텀 이벤트 사용:
+- `qf-tab-rename` — 폴더 이름 변경 시 해당 경로 탭의 path/title/history 갱신
+- `qf-tab-delete` — 폴더 삭제 시 해당 경로 탭 자동 제거
+- `qf-files-changed` — 파일 변경 시 다른 패널 새로고침
 
 ### Drag & Drop
 
