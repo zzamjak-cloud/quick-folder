@@ -1,0 +1,89 @@
+<h2>마크다운 편집기 레이아웃</h2>
+<p class="subtitle">편집기 팝업의 전체 구조입니다. 선호하는 레이아웃을 선택해주세요.</p>
+
+<div class="cards">
+  <!-- Option A: Compact Modal -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #1a1a2e;">
+      <div style="border: 1px solid #444; border-radius: 8px; overflow: hidden; font-family: system-ui; font-size: 12px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #252540; border-bottom: 1px solid #444;">
+          <span style="color: #aaa; font-size: 11px;">📄 프로젝트-계획.md</span>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="color: #6a6; font-size: 10px;">✓ 저장됨</span>
+            <span style="color: #888; cursor: pointer;">✕</span>
+          </div>
+        </div>
+        <!-- Toolbar -->
+        <div style="display: flex; gap: 4px; padding: 6px 12px; background: #1e1e36; border-bottom: 1px solid #333;">
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px; font-weight: bold;">B</span>
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px; font-style: italic;">I</span>
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px;">H1</span>
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px;">H2</span>
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px;">• List</span>
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px;">☐</span>
+          <span style="padding: 2px 8px; background: #333; border-radius: 4px; color: #ccc; font-size: 11px;">&lt;/&gt;</span>
+        </div>
+        <!-- Content -->
+        <div style="padding: 16px; min-height: 180px; color: #ddd; line-height: 1.8;">
+          <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">프로젝트 계획</div>
+          <div style="color: #aaa;">이 문서는 AI에게 제공할 <strong style="color:#ddd;">작업 지시사항</strong>을 정리합니다.</div>
+          <div style="margin-top: 8px; color: #aaa;">• 1단계: 데이터 모델 설계</div>
+          <div style="color: #aaa;">• 2단계: API 구현</div>
+          <div style="margin-top: 8px; padding: 6px 10px; background: #252540; border-radius: 4px; font-family: monospace; font-size: 11px; color: #8be;">const plan = "실행";</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 컴팩트 모달</h3>
+      <p>고정 크기 모달 (약 640×480). 파일명은 헤더에 표시. 서식 툴바가 에디터 위에 위치. 간결하고 가벼운 느낌.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Fullscreen-ish Panel -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 16px; background: #1a1a2e;">
+      <div style="border: 1px solid #444; border-radius: 8px; overflow: hidden; font-family: system-ui; font-size: 12px;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #252540; border-bottom: 1px solid #444;">
+          <span style="color: #ccc; font-size: 13px; font-weight: 600;">📄 프로젝트-계획.md</span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <span style="color: #6a6; font-size: 11px;">✓ 저장됨</span>
+            <span style="padding: 2px 10px; background: #444; border-radius: 4px; color: #ccc; font-size: 11px;">Ctrl+S</span>
+            <span style="color: #888; cursor: pointer; font-size: 16px;">✕</span>
+          </div>
+        </div>
+        <!-- Toolbar -->
+        <div style="display: flex; gap: 6px; padding: 8px 16px; background: #1e1e36; border-bottom: 1px solid #333; flex-wrap: wrap;">
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px; font-weight: bold;">B</span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px; font-style: italic;">I</span>
+          <span style="width: 1px; background: #444; margin: 0 4px;"></span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">H1</span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">H2</span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">H3</span>
+          <span style="width: 1px; background: #444; margin: 0 4px;"></span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">• UL</span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">1. OL</span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">☐ Task</span>
+          <span style="width: 1px; background: #444; margin: 0 4px;"></span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">&lt;/&gt;</span>
+          <span style="padding: 3px 10px; background: #333; border-radius: 4px; color: #ccc; font-size: 12px;">───</span>
+        </div>
+        <!-- Content - taller -->
+        <div style="padding: 20px 24px; min-height: 240px; color: #ddd; line-height: 2;">
+          <div style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">프로젝트 계획</div>
+          <div style="color: #aaa;">이 문서는 AI에게 제공할 <strong style="color:#ddd;">작업 지시사항</strong>을 정리합니다.</div>
+          <div style="margin-top: 10px; color: #aaa;">• 1단계: 데이터 모델 설계</div>
+          <div style="color: #aaa;">• 2단계: API 구현</div>
+          <div style="color: #aaa;">• 3단계: 테스트 작성</div>
+          <div style="margin-top: 10px; padding: 8px 12px; background: #252540; border-radius: 4px; font-family: monospace; font-size: 12px; color: #8be;">const plan = "실행";</div>
+          <div style="margin-top: 10px; border-top: 1px solid #444; padding-top: 10px; color: #888; font-size: 11px;">줄 7 • 120자</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 넓은 패널</h3>
+      <p>화면 80% 크기의 큰 모달. 넓은 편집 영역으로 긴 문서 작성에 적합. 하단에 커서 위치/글자 수 정보 표시. 여유로운 작업 공간.</p>
+    </div>
+  </div>
+</div>
