@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars } from './types';
+import { getPathSeparator } from '../../utils/pathUtils';
 
 interface NavigationBarProps {
   currentPath: string;
@@ -137,7 +138,7 @@ export default memo(function NavigationBar({
     if (!currentPath) return [];
     // 최근항목 특수 경로
     if (currentPath === '__recent__') return [{ name: '최근항목', path: '__recent__' }];
-    const sep = currentPath.includes('/') ? '/' : '\\';
+    const sep = getPathSeparator(currentPath);
     const parts = currentPath.replace(/[/\\]+$/, '').split(sep).filter(Boolean);
 
     // Windows 드라이브 문자 처리 (e.g., C:)

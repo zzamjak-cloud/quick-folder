@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-03-21
+
+### Added
+- **탭-파일 조작 동기화**: 폴더 이름 변경 시 해당 폴더 탭의 이름/경로 자동 갱신, 폴더 삭제 시 탭 자동 제거
+- **컬럼 뷰 디렉토리 캐시**: 이전에 방문한 폴더를 즉시 표시 (IPC 호출 없이), 백그라운드에서 최신 데이터 갱신
+
+### Fixed
+- **컬럼 뷰 탭 전환 버그**: 탭 변경 시 이전 탭의 컬럼/미리보기가 잔류하던 문제 수정 (루트 경로 기반 동기화)
+- **컬럼 뷰 뷰 전환 버그**: 그리드→컬럼 재진입 시 컬럼이 표시되지 않던 문제 수정
+
+### Changed
+- **코드 구조 대규모 리팩토링**: 확장 가능한 구조로 전환
+  - `index.tsx` 2,100줄 → 1,300줄 (5개 커스텀 훅 분리: useFileOperations, useClipboard, useKeyboardShortcuts, useModalStates, useSearchFilter)
+  - `ContextMenu.tsx` 25+ props → 4 props (데이터 기반 레지스트리 패턴)
+  - 모달 4개 공통 인프라 추출 (ModalShell, modalStyles) — 각 모달 40-60줄 감축
+  - `pathUtils.ts` 유틸리티 5개 함수 추가, 17개 파일에서 40+ 패턴 교체
+  - Rust `helpers.rs` 모듈 분리 (경로 중복 회피, 복사 네이밍, 스프라이트 캔버스)
+
 ## [1.21.0] - 2026-03-21
 
 ### Added

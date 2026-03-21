@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { X } from 'lucide-react';
 import { ThemeVars } from './types';
+import { getFileName } from '../../utils/pathUtils';
 
 interface VideoPlayerProps {
   path: string;
@@ -14,7 +15,7 @@ export default function VideoPlayer({ path, onClose, themeVars }: VideoPlayerPro
   const overlayRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoSrc = convertFileSrc(path);
-  const fileName = path.split(/[/\\]/).pop() ?? '';
+  const fileName = getFileName(path);
 
   // 키보드 단축키 (캡처 단계: 다른 핸들러보다 먼저 실행)
   useEffect(() => {

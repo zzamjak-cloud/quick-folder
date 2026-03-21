@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { X, Pin } from 'lucide-react';
 import { Tab, ThemeVars } from './types';
+import { getPathSeparator } from '../../utils/pathUtils';
 
 // 드롭 인디케이터 및 패널 하이라이트 전체 해제
 function clearAllDragFeedback() {
@@ -263,7 +264,7 @@ export default memo(function TabBar({
     // 현재 경로 자체에 태그 → 반환
     if (folderTags[tabPath]) return folderTags[tabPath];
     // 부모 경로 순회
-    const sep = tabPath.includes('/') ? '/' : '\\';
+    const sep = getPathSeparator(tabPath);
     const parts = tabPath.split(sep);
     for (let i = parts.length - 1; i >= 1; i--) {
       const parent = parts.slice(0, i).join(sep);

@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize, ViewMode } from '../../types';
-import { ThemeVars } from './types';
+import { ThemeVars, ContextMenuSection } from './types';
+import {
+  ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
+  Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
+} from 'lucide-react';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
@@ -19,10 +23,15 @@ import { cancelAllQueued } from './hooks/invokeQueue';
 import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { isCloudPath } from '../../utils/pathUtils';
+import { isCloudPath, getFileName, getPathSeparator, getParentDir } from '../../utils/pathUtils';
 import GoToFolderModal from './GoToFolderModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import { useUndoStack } from './hooks/useUndoStack';
+import { useModalStates } from './hooks/useModalStates';
+import { useSearchFilter } from './hooks/useSearchFilter';
+import { useClipboard } from './hooks/useClipboard';
+import { useFileOperations } from './hooks/useFileOperations';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -65,10 +74,6 @@ export default function FileExplorer({
   // --- 상태 ---
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
-  // 분할 뷰: 공유 클립보드 사용, 단일 뷰: 내부 상태 사용
-  const [internalClipboard, setInternalClipboard] = useState<ClipboardData | null>(null);
-  const clipboard = sharedClipboard !== undefined ? sharedClipboard : internalClipboard;
-  const setClipboard = onClipboardChange ?? setInternalClipboard;
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>(() => {
     const saved = localStorage.getItem(`qf_sort_by_${instanceId}`);
     return (saved as 'name' | 'size' | 'modified' | 'type') || 'modified';
@@ -83,11 +88,6 @@ export default function FileExplorer({
     return ([40, 60, 80, 100, 120, 160, 200, 240, 280, 320].includes(parsed) ? parsed : 120) as ThumbnailSize;
   });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
-  const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
-  const [pixelatePath, setPixelatePath] = useState<string | null>(null);
-  const [sheetPackPaths, setSheetPackPaths] = useState<string[] | null>(null);
-  const [sheetUnpackPath, setSheetUnpackPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -103,12 +103,8 @@ export default function FileExplorer({
   // --- 실행취소 스택 ---
   const undoStack = useUndoStack();
 
-  // --- 검색/필터 상태 ---
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchActive, setIsSearchActive] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const [activeExtFilters, setActiveExtFilters] = useState<Set<string>>(new Set());
-  const [hideText, setHideText] = useState(false);
+  // --- 모달 상태 (커스텀 훅) ---
+  const modals = useModalStates();
 
   // --- 폴더 태그 (프로젝트명) ---
   const [folderTags, setFolderTags] = useState<Record<string, string>>(() => {
@@ -119,21 +115,7 @@ export default function FileExplorer({
   // --- 스크롤 위치 복원용 ---
   const scrollPositionRef = useRef<Map<string, number>>(new Map());
 
-  // --- 모달 상태 ---
-  const [isGoToFolderOpen, setIsGoToFolderOpen] = useState(false);
-  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const pendingSelectRef = useRef<string | null>(null);
-
-  // --- 동영상 압축 진행률 ---
-  const [videoCompression, setVideoCompression] = useState<{
-    fileName: string;
-    percent: number;  // -1: ffmpeg 다운로드 중, 0~: 인코딩 시간(초)
-    speed: string;
-  } | null>(null);
-
-  // --- 복사 피드백 토스트 ---
-  const [copyToast, setCopyToast] = useState<string | null>(null);
-  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // --- 미리보기 (비디오/이미지/텍스트) ---
   const preview = usePreview();
@@ -172,8 +154,6 @@ export default function FileExplorer({
   const currentPathRef = useRef<string | null>(null); // loadDirectory에서 스크롤 저장용
   // 뒤로/위로 이동 시 이전 폴더를 자동 선택하기 위한 ref
   const lastVisitedChildRef = useRef<string | null>(null);
-
-  // 파생값은 useTabManagement에서 제공 (loadDirectory 뒤에서 초기화)
 
   // --- 디렉토리 로딩 ---
   const loadRequestRef = useRef(0); // 동시 요청 시 마지막 요청만 반영
@@ -315,62 +295,66 @@ export default function FileExplorer({
     localStorage.setItem('qf_folder_tags', JSON.stringify(folderTags));
   }, [folderTags]);
 
-  // 파일 확장자 추출 유틸
-  const getExt = useCallback((entry: FileEntry): string => {
-    if (entry.is_dir) return 'folder';
-    const dot = entry.name.lastIndexOf('.');
-    return dot > 0 ? entry.name.slice(dot + 1).toLowerCase() : 'other';
-  }, []);
+  // --- 검색/필터 (커스텀 훅) ---
+  const searchFilter = useSearchFilter({ entries, currentPath });
+  const { displayEntries } = searchFilter;
 
-  // 현재 디렉토리에 존재하는 확장자 목록 (폴더 포함)
-  const availableExtensions = useMemo(() => {
-    const exts = new Set<string>();
-    entries.forEach(e => exts.add(getExt(e)));
-    return exts;
-  }, [entries, getExt]);
+  // --- 클립보드 (커스텀 훅) ---
+  const clipboardHook = useClipboard({
+    selectedPaths,
+    currentPath,
+    loadDirectory,
+    setSelectedPaths,
+    sharedClipboard,
+    onClipboardChange,
+  });
 
-  // --- 검색 + 확장자 필터로 표시할 항목 파생 ---
-  const displayEntries = useMemo(() => {
-    let result = entries;
-    if (activeExtFilters.size > 0) {
-      result = result.filter(e => activeExtFilters.has(getExt(e)));
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(e => e.name.toLowerCase().includes(q));
-    }
-    return result;
-  }, [entries, activeExtFilters, searchQuery, getExt]);
-
-  // --- 폴더/탭 전환 시 확장자 필터 초기화 ---
-  useEffect(() => {
-    setActiveExtFilters(new Set());
-  }, [currentPath]);
+  // --- 파일 조작 (커스텀 훅) ---
+  const fileOps = useFileOperations({
+    currentPath, entries, selectedPaths,
+    setSelectedPaths, setEntries, setFocusedIndex,
+    loadDirectory, undoStack,
+    sortBy, sortDir, sortEntries,
+    sheetPackPaths: modals.sheetPackPaths,
+    setBulkRenamePaths: modals.setBulkRenamePaths,
+    setSheetPackPaths: modals.setSheetPackPaths,
+    setContextMenu, setRenamingPath: modals.setRenamingPath,
+    setError,
+  });
 
   // --- 컬럼 뷰 초기화/정리 ---
+  // viewMode 변경 시: 컬럼뷰 퇴장 처리
   useEffect(() => {
-    if (viewMode === 'columns' && displayEntries.length > 0 && currentPath) {
-      columnView.initColumns(currentPath, displayEntries);
-      // 첫 번째 항목 자동 선택 + 폴더면 서브컬럼 열기
-      const firstEntry = displayEntries[0];
-      if (firstEntry) {
-        setSelectedPaths([firstEntry.path]);
-        // initColumns 후 selectInColumn으로 서브컬럼 열기
-        requestAnimationFrame(() => {
-          columnView.selectInColumn(0, firstEntry);
-        });
-      }
-    } else if (viewMode !== 'columns') {
+    if (viewMode !== 'columns') {
       columnView.clearColumns();
     }
   }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // displayEntries 변경 시 컬럼 뷰 첫 번째 컬럼 동기화
+  // displayEntries 또는 currentPath 변경 시 컬럼 뷰 동기화
   useEffect(() => {
-    if (viewMode === 'columns' && displayEntries.length > 0) {
+    if (viewMode !== 'columns' || !currentPath) return;
+    // 현재 컬럼의 루트 경로와 currentPath가 불일치하면 전체 재초기화
+    const columnsRootPath = columnView.columns[0]?.path ?? null;
+    if (columnsRootPath !== currentPath) {
+      // 탭 전환 또는 내비게이션: 컬럼 전체 리셋
+      if (displayEntries.length > 0) {
+        columnView.initColumns(currentPath, displayEntries);
+        const firstEntry = displayEntries[0];
+        if (firstEntry) {
+          setSelectedPaths([firstEntry.path]);
+          requestAnimationFrame(() => {
+            columnView.selectInColumn(0, firstEntry);
+          });
+        }
+      } else {
+        // entries가 아직 로드되지 않음 → 빈 상태로 초기화 (loadDirectory 완료 시 다시 호출됨)
+        columnView.clearColumns();
+      }
+    } else {
+      // 같은 경로 내 변경 (검색/필터/파일 목록 갱신) → 첫 번째 컬럼만 업데이트
       columnView.updateFirstColumn(displayEntries);
     }
-  }, [displayEntries]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [displayEntries, currentPath, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
   useEffect(() => {
@@ -387,10 +371,10 @@ export default function FileExplorer({
 
   // navigateTo 래퍼: 검색 상태 초기화
   const handleNavigateTo = useCallback((path: string) => {
-    setSearchQuery('');
-    setIsSearchActive(false);
+    searchFilter.setSearchQuery('');
+    searchFilter.setIsSearchActive(false);
     navigateTo(path);
-  }, [navigateTo]);
+  }, [navigateTo, searchFilter.setSearchQuery, searchFilter.setIsSearchActive]);
 
   // 글로벌 검색 결과 선택 핸들러
   const handleGlobalSearchSelect = useCallback((entry: FileEntry) => {
@@ -399,10 +383,7 @@ export default function FileExplorer({
       handleNavigateTo(entry.path);
     } else {
       // 파일 선택: 부모 폴더로 이동 + 해당 파일 자동 선택
-      const sep = entry.path.includes('/') ? '/' : '\\';
-      const parts = entry.path.split(sep);
-      parts.pop();
-      const parentDir = parts.join(sep);
+      const parentDir = getParentDir(entry.path);
       pendingSelectRef.current = entry.path;
       handleNavigateTo(parentDir);
     }
@@ -417,7 +398,7 @@ export default function FileExplorer({
   // goUp: 상위 경로로 이동
   const goUp = useCallback(() => {
     if (!currentPath) return;
-    const sep = currentPath.includes('/') ? '/' : '\\';
+    const sep = getPathSeparator(currentPath);
     const parts = currentPath.replace(/[/\\]+$/, '').split(sep);
     if (parts.length <= 1) return;
     parts.pop();
@@ -490,252 +471,10 @@ export default function FileExplorer({
     setSelectedPaths(paths);
   }, []);
 
-  // --- 파일 조작 ---
-  const handleCopy = useCallback(async () => {
-    if (selectedPaths.length === 0) return;
-    setClipboard({ paths: selectedPaths, action: 'copy' });
-    // OS 클립보드에도 파일 경로 등록 (외부 앱에서 Ctrl+V 가능)
-    try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
-  }, [selectedPaths]);
-
-  const handleCut = useCallback(async () => {
-    if (selectedPaths.length === 0) return;
-    setClipboard({ paths: selectedPaths, action: 'cut' });
-    // OS 클립보드에도 파일 경로 등록
-    try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
-  }, [selectedPaths]);
-
-  // 중복 파일 확인 다이얼로그 상태
-  const [duplicateConfirm, setDuplicateConfirm] = useState<{
-    duplicates: string[];
-    paths: string[];
-    action: 'copy' | 'cut';
-  } | null>(null);
-
-  // 붙여넣기 후 선택할 파일 경로를 저장하는 ref
-  const pendingPasteSelectRef = useRef<string[]>([]);
-
-  const executePaste = useCallback(async (paths: string[], action: 'copy' | 'cut', overwrite: boolean) => {
-    if (!currentPath) return;
-    try {
-      if (action === 'copy') {
-        await invoke('copy_items', { sources: paths, dest: currentPath, overwrite });
-      } else {
-        await invoke('move_items', { sources: paths, dest: currentPath, overwrite });
-        setClipboard(null);
-      }
-      // 붙여넣기된 파일명으로 대상 경로 생성 (선택용)
-      const sep = currentPath.includes('/') ? '/' : '\\';
-      const pastedPaths = paths.map(p => {
-        const name = p.split(/[/\\]/).pop() ?? '';
-        return currentPath + sep + name;
-      });
-      pendingPasteSelectRef.current = pastedPaths;
-      loadDirectory(currentPath);
-    } catch (e) {
-      console.error('붙여넣기 실패:', e);
-    }
-  }, [currentPath, loadDirectory, setClipboard]);
-
-  const handlePaste = useCallback(async () => {
-    if (!currentPath) return;
-    try {
-      // 내부 클립보드 우선, 없으면 OS 클립보드에서 읽기
-      let paths: string[];
-      let action: 'copy' | 'cut';
-      if (clipboard) {
-        paths = clipboard.paths;
-        action = clipboard.action;
-      } else {
-        const osPaths = await invoke<string[]>('read_files_from_clipboard');
-        if (osPaths && osPaths.length > 0) {
-          paths = osPaths;
-          action = 'copy'; // 외부에서 복사한 파일은 항상 copy
-        } else {
-          // 파일 경로 없으면 이미지 데이터 붙여넣기 시도
-          const savedPath = await invoke<string | null>('paste_image_from_clipboard', { destDir: currentPath });
-          if (savedPath) {
-            loadDirectory(currentPath);
-            setSelectedPaths([savedPath]);
-          }
-          return;
-        }
-      }
-
-      // 중복 파일 체크
-      const duplicates = await invoke<string[]>('check_duplicate_items', { sources: paths, dest: currentPath });
-      if (duplicates.length > 0) {
-        setDuplicateConfirm({ duplicates, paths, action });
-        return;
-      }
-
-      await executePaste(paths, action, false);
-    } catch (e) {
-      console.error('붙여넣기 실패:', e);
-    }
-  }, [clipboard, currentPath, loadDirectory, executePaste]);
-
-  const handleDelete = useCallback(async (paths: string[], permanent = false) => {
-    if (paths.length === 0) return;
-    try {
-      await invoke('delete_items', { paths, useTrash: !permanent });
-      // 휴지통 삭제만 실행취소 가능 (영구삭제는 복원 불가)
-      if (!permanent) {
-        undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath, useTrash: true });
-      }
-      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
-      loadDirectory(currentPath);
-    } catch (e) {
-      console.error('삭제 실패:', e);
-      setError(`삭제 실패: ${e}`);
-    }
-  }, [currentPath, loadDirectory, undoStack]);
-
-  const handleDuplicate = useCallback(async () => {
-    if (selectedPaths.length === 0 || !currentPath) return;
-    try {
-      const newPaths = await invoke<string[]>('duplicate_items', { paths: selectedPaths });
-      await loadDirectory(currentPath);
-      setSelectedPaths(newPaths);
-    } catch (e) {
-      console.error('복제 실패:', e);
-    }
-  }, [selectedPaths, currentPath, loadDirectory]);
-
-  const handleCreateDirectory = useCallback(async () => {
-    if (!currentPath) return;
-    const sep = currentPath.includes('/') ? '/' : '\\';
-    // 중복 방지: "새 폴더", "새 폴더 2", "새 폴더 3"...
-    let baseName = '새 폴더';
-    let candidate = baseName;
-    let counter = 2;
-    const existingNames = new Set(entries.map(e => e.name));
-    while (existingNames.has(candidate)) {
-      candidate = `${baseName} ${counter++}`;
-    }
-    const newPath = `${currentPath}${sep}${candidate}`;
-    try {
-      await invoke('create_directory', { path: newPath });
-      await loadDirectory(currentPath);
-      // 생성 후 바로 인라인 이름변경 시작
-      setRenamingPath(newPath);
-      setSelectedPaths([newPath]);
-    } catch (e) {
-      console.error('폴더 생성 실패:', e);
-    }
-  }, [currentPath, loadDirectory, entries]);
-
-  const handleRenameStart = useCallback((path: string) => {
-    setRenamingPath(path);
-    setContextMenu(null);
-  }, []);
-
-  // 일괄 이름변경 모달 열기
-  const handleBulkRename = useCallback((paths: string[]) => {
-    setBulkRenamePaths(paths);
-    setContextMenu(null);
-  }, []);
-
-  // 일괄 이름변경 적용
-  const handleBulkRenameApply = useCallback(async (renames: { oldPath: string; newPath: string }[]) => {
-    for (const { oldPath, newPath } of renames) {
-      await invoke('rename_item', { oldPath, newPath });
-    }
-    if (currentPath) {
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
-      setEntries(sortEntries(result, sortBy, sortDir));
-    }
-    setSelectedPaths([]);
-    window.dispatchEvent(new Event('qf-files-changed'));
-  }, [currentPath, sortBy, sortDir]);
-
-  // 토스트 표시 헬퍼
-  const showCopyToast = useCallback((msg: string) => {
-    if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
-    setCopyToast(msg);
-    copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
-  }, []);
-
-  // 선택된 파일들을 새 폴더로 그룹화 (Ctrl+G)
-  const handleGroupIntoFolder = useCallback(async () => {
-    if (!currentPath || selectedPaths.length === 0) return;
-    const sep = currentPath.includes('/') ? '/' : '\\';
-    // 중복 방지: "새 폴더", "새 폴더 2"...
-    let baseName = '새 폴더';
-    let candidate = baseName;
-    let counter = 2;
-    const existingNames = new Set(entries.map(e => e.name));
-    while (existingNames.has(candidate)) {
-      candidate = `${baseName} ${counter++}`;
-    }
-    const newPath = `${currentPath}${sep}${candidate}`;
-    try {
-      const sourcePaths = [...selectedPaths];
-      await invoke('create_directory', { path: newPath });
-      await invoke('move_items', { sources: selectedPaths, dest: newPath });
-      undoStack.push({
-        type: 'move_group',
-        sources: sourcePaths,
-        createdDir: newPath,
-        parentDir: currentPath,
-      });
-      await loadDirectory(currentPath);
-      setSelectedPaths([newPath]);
-      setRenamingPath(newPath);
-    } catch (e) {
-      showCopyToast(`그룹화 실패: ${e}`);
-    }
-  }, [currentPath, selectedPaths, entries, loadDirectory, showCopyToast, undoStack]);
-
-  // 픽셀화 적용
-  const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
-    const output = await invoke<string>('pixelate_image', { input: path, pixelSize, scale, maxColors });
-    if (currentPath) {
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
-      setEntries(sortEntries(result, sortBy, sortDir));
-    }
-    showCopyToast(`픽셀화 완료: ${output.split(/[/\\]/).pop()}`);
-  }, [currentPath, sortBy, sortDir, showCopyToast]);
-
-  // 스프라이트 시트 패킹
-  const handleSpritePack = useCallback(async (paths: string[]) => {
-    if (paths.length === 1) {
-      // 폴더: 폴더 내 이미지 목록 조회
-      const result = await invoke<FileEntry[]>('list_directory', { path: paths[0] });
-      const imageExts = /\.(png|jpe?g|gif|webp|bmp)$/i;
-      const imgs = result.filter(e => !e.is_dir && imageExts.test(e.name)).map(e => e.path);
-      if (imgs.length === 0) { showCopyToast('이미지 파일이 없습니다'); return; }
-      setSheetPackPaths(imgs);
-    } else {
-      setSheetPackPaths(paths);
-    }
-  }, [showCopyToast]);
-
-  // 시트 패킹 기본 파일명
-  const sheetPackDefaultName = useMemo(() => {
-    if (!sheetPackPaths || sheetPackPaths.length === 0) return 'sprite';
-    const names = sheetPackPaths.map(p => p.split(/[/\\]/).pop() ?? '');
-    // 공통 접두사 찾기
-    if (names.length > 1) {
-      let prefix = names[0];
-      for (let i = 1; i < names.length; i++) {
-        while (!names[i].startsWith(prefix) && prefix.length > 0) {
-          prefix = prefix.slice(0, -1);
-        }
-      }
-      // 접두사에서 마지막 구분자/숫자 제거
-      prefix = prefix.replace(/[\s_\-.\d]+$/, '');
-      if (prefix.length > 0) return prefix;
-    }
-    return 'sprite';
-  }, [sheetPackPaths]);
-
   // 폴더 태그 추가 (모달 상태 기반)
-  const [tagPrompt, setTagPrompt] = useState<{ path: string; defaultName: string } | null>(null);
   const handleAddTag = useCallback((path: string) => {
-    const name = path.split(/[/\\]/).pop() ?? '';
-    setTagPrompt({ path, defaultName: name });
-  }, []);
+    modals.setTagPrompt({ path, defaultName: getFileName(path) });
+  }, [modals.setTagPrompt]);
 
   // 폴더 태그 해제
   const handleRemoveTag = useCallback((path: string) => {
@@ -746,170 +485,60 @@ export default function FileExplorer({
     });
   }, []);
 
-  const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
-    setRenamingPath(null);
-    if (!newName.trim()) return;
-    const sep = oldPath.includes('/') ? '/' : '\\';
-
-    // 유틸: 파일 베이스명과 확장자 분리
-    const getBaseName = (p: string) => {
-      const name = p.split(/[/\\]/).pop() ?? '';
-      const dot = name.lastIndexOf('.');
-      return dot > 0 ? name.substring(0, dot) : name;
-    };
-    const getExt = (p: string) => {
-      const name = p.split(/[/\\]/).pop() ?? '';
-      const dot = name.lastIndexOf('.');
-      return dot > 0 ? name.substring(dot) : '';
-    };
-
-    // 새 이름에서 베이스명 추출
-    const newBaseName = getBaseName(newName) || newName;
-    const newExt = getExt(newName);
-
-    // 일괄 이름변경 대상 결정: 선택된 파일 중 동일 베이스명만
-    const oldBaseName = getBaseName(oldPath);
-    const batchPaths = selectedPaths.length > 1
-      ? selectedPaths.filter(p => getBaseName(p) === oldBaseName)
-      : [oldPath];
-
-    try {
-      const renamedPaths: string[] = [];
-      const undoRenames: { oldPath: string; newPath: string }[] = [];
-      for (const p of batchPaths) {
-        const dir = p.substring(0, p.lastIndexOf(sep));
-        // 대표 파일은 입력한 확장자 사용, 나머지는 기존 확장자 유지
-        const ext = p === oldPath ? newExt : getExt(p);
-        const targetName = newBaseName + ext;
-        const targetPath = dir + sep + targetName;
-        if (targetPath !== p) {
-          await invoke('rename_item', { oldPath: p, newPath: targetPath });
-          undoRenames.push({ oldPath: p, newPath: targetPath });
-        }
-        renamedPaths.push(targetPath);
-      }
-      // undo 스택에 역순으로 push (마지막 rename부터 되돌리기)
-      for (const r of undoRenames.reverse()) {
-        undoStack.push({ type: 'rename', oldPath: r.newPath, newPath: r.oldPath });
-      }
-
-      // 이름 변경 후 디렉토리 재로드
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
-      const sorted = sortEntries(result, sortBy, sortDir);
-      setEntries(sorted);
-      setSelectedPaths(renamedPaths);
-      const idx = sorted.findIndex(e => renamedPaths.includes(e.path));
-      if (idx >= 0) setFocusedIndex(idx);
-    } catch (e) {
-      const errMsg = String(e);
-      if (errMsg.includes('동일한 이름의 파일이 존재합니다')) {
-        showCopyToast('동일한 이름의 파일이 존재합니다.');
-      } else {
-        console.error('이름 변경 실패:', e);
-      }
-      // 실패 시 디렉토리 재로드하여 원래 이름 복원
-      if (currentPath) {
-        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
-        setEntries(sortEntries(result, sortBy, sortDir));
-      }
-    }
-  }, [currentPath, selectedPaths, sortBy, sortDir, showCopyToast, undoStack]);
-
-  // --- 실행취소 (Ctrl+Z / Cmd+Z) ---
-  const handleUndo = useCallback(async () => {
-    const action = undoStack.pop();
-    if (!action) return;
-
-    try {
-      if (action.type === 'delete') {
-        await invoke('restore_trash_items', { originalPaths: action.paths });
-        showCopyToast('삭제 취소됨');
-      } else if (action.type === 'rename') {
-        await invoke('rename_item', { oldPath: action.oldPath, newPath: action.newPath });
-        showCopyToast('이름 변경 취소됨');
-      } else if (action.type === 'move_group') {
-        // 새 폴더 안의 파일들을 원래 디렉토리로 이동
-        const innerFiles = await invoke<FileEntry[]>('list_directory', { path: action.createdDir });
-        const innerPaths = innerFiles.map((f: FileEntry) => f.path);
-        if (innerPaths.length > 0) {
-          await invoke('move_items', { sources: innerPaths, dest: action.parentDir });
-        }
-        // 빈 폴더 삭제
-        await invoke('delete_items', { paths: [action.createdDir], useTrash: false });
-        showCopyToast('그룹화 취소됨');
-      }
-      if (currentPath) {
-        loadDirectory(currentPath);
-      }
-    } catch (e) {
-      console.error('실행취소 실패:', e);
-      showCopyToast('실행취소 실패');
-    }
-  }, [undoStack, currentPath, loadDirectory, showCopyToast]);
-
-  const handleCopyPath = useCallback(async (path: string) => {
-    try {
-      await invoke('copy_path', { path });
-      showCopyToast('경로가 복사되었습니다');
-    } catch (e) {
-      console.error('경로 복사 실패:', e);
-    }
-  }, [showCopyToast]);
-
-  // --- ZIP 압축 ---
-  const handleCompressZip = useCallback(async (paths: string[]) => {
-    if (paths.length === 0 || !currentPath) return;
-    const sep = currentPath.includes('/') ? '/' : '\\';
-    const firstName = paths[0].split(/[/\\]/).pop() ?? 'archive';
-    const baseName = paths.length === 1 ? firstName.replace(/\.[^.]+$/, '') : (currentPath.split(/[/\\]/).pop() ?? 'archive');
-    const zipPath = `${currentPath}${sep}${baseName}.zip`;
-    try {
-      await invoke('compress_to_zip', { paths, dest: zipPath });
-      loadDirectory(currentPath);
-    } catch (e) {
-      console.error('압축 실패:', e);
-    }
-  }, [currentPath, loadDirectory]);
-
-  // --- 동영상 압축 ---
-  const handleCompressVideo = useCallback(async (path: string, quality: 'low' | 'medium' | 'high' = 'medium') => {
-    const fileName = path.split(/[/\\]/).pop() ?? '';
-    try {
-      // 1. ffmpeg 설치 확인
-      const installed = await invoke<boolean>('check_ffmpeg');
-      if (!installed) {
-        setVideoCompression({ fileName, percent: -1, speed: 'ffmpeg 다운로드 중...' });
-        await invoke('download_ffmpeg');
-      }
-
-      // 2. Channel 생성 + 압축 시작
-      const { Channel } = await import('@tauri-apps/api/core');
-      const onProgress = new Channel<{ percent: number; speed: string; fps: number }>();
-      let lastSpeed = '';
-      onProgress.onmessage = (p) => {
-        if (p.percent === -2) {
-          // 스피드만 업데이트
-          lastSpeed = p.speed;
-        } else if (p.percent >= 0) {
-          setVideoCompression(prev => ({
-            fileName,
-            percent: p.percent,
-            speed: p.speed || lastSpeed || prev?.speed || '',
-          }));
-        }
-      };
-
-      setVideoCompression({ fileName, percent: 0, speed: '준비 중...' });
-      const output = await invoke<string>('compress_video', { input: path, quality, onProgress });
-
-      setVideoCompression(null);
-      if (currentPath) loadDirectory(currentPath);
-      showCopyToast(`압축 완료: ${output.split(/[/\\]/).pop()}`);
-    } catch (e) {
-      setVideoCompression(null);
-      showCopyToast(`압축 실패: ${e}`);
-    }
-  }, [currentPath, loadDirectory, showCopyToast]);
+  // --- 키보드 단축키 (커스텀 훅) ---
+  useKeyboardShortcuts({
+    isFocused,
+    renamingPath: modals.renamingPath,
+    currentPath,
+    viewMode,
+    entries,
+    selectedPaths,
+    focusedIndex,
+    clipboard: clipboardHook.clipboard,
+    isSearchActive: searchFilter.isSearchActive,
+    isMac,
+    tabs,
+    activeTabId,
+    activeTab,
+    thumbnailSize,
+    gridRef,
+    selectionAnchorRef,
+    handleCopy: clipboardHook.handleCopy,
+    handleCut: clipboardHook.handleCut,
+    handlePaste: clipboardHook.handlePaste,
+    handleDuplicate: fileOps.handleDuplicate,
+    handleDelete: fileOps.handleDelete,
+    handleCreateDirectory: fileOps.handleCreateDirectory,
+    handleGroupIntoFolder: fileOps.handleGroupIntoFolder,
+    handleRenameStart: fileOps.handleRenameStart,
+    handleBulkRename: fileOps.handleBulkRename,
+    handleCopyPath: fileOps.handleCopyPath,
+    handleUndo: fileOps.handleUndo,
+    selectAll,
+    deselectAll,
+    goBack,
+    goForward,
+    goUp,
+    openEntry,
+    previewFile,
+    preview,
+    setViewMode,
+    setThumbnailSize,
+    setFocusedIndex,
+    setSelectedPaths,
+    setClipboard: clipboardHook.setClipboard,
+    setSearchQuery: searchFilter.setSearchQuery,
+    setIsSearchActive: searchFilter.setIsSearchActive,
+    setIsGoToFolderOpen: modals.setIsGoToFolderOpen,
+    setIsGlobalSearchOpen: modals.setIsGlobalSearchOpen,
+    setError,
+    searchInputRef: searchFilter.searchInputRef,
+    handleTabSelect,
+    handleTabClose,
+    duplicateTab,
+    closeOtherTabs,
+    columnView,
+  });
 
   // --- 컨텍스트 메뉴 ---
   // 선택된 항목 중 하나를 우클릭하면 선택 전체를 대상으로 메뉴 표시
@@ -926,392 +555,202 @@ export default function FileExplorer({
     setContextMenu(null);
   }, []);
 
-  // --- 키보드 단축키 ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 분할 뷰: 포커스된 패널만 키보드 단축키 응답
-      if (!isFocused) return;
-      if (renamingPath) return;
-      const active = document.activeElement;
-      const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
-      if (isInput && e.key !== 'Escape') return;
+  // --- 컨텍스트 메뉴 섹션 빌더 ---
+  const contextMenuSections = useMemo((): ContextMenuSection[] => {
+    if (!contextMenu) return [];
+    const { paths } = contextMenu;
+    const isSingle = paths.length === 1;
+    const singlePath = paths[0] ?? '';
+    const singleEntry = isSingle ? entries.find(e => e.path === singlePath) : null;
+    const mod = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
 
-      const ctrl = e.ctrlKey || e.metaKey;
+    const sections: ContextMenuSection[] = [];
 
-      // --- 탭 단축키 ---
-      // Ctrl+W (Cmd+W): 현재 탭 닫기 (고정 탭은 닫히지 않음)
-      if (ctrl && !e.altKey && e.code === 'KeyW') {
-        e.preventDefault();
-        if (tabs.length > 1 && activeTabId && !activeTab?.pinned) handleTabClose(activeTabId);
-        return;
-      }
-      // Ctrl+Alt+W (Cmd+Alt+W): 현재 탭만 남기고 나머지 모두 닫기
-      if (ctrl && e.altKey && e.code === 'KeyW') {
-        e.preventDefault();
-        closeOtherTabs();
-        return;
-      }
-      // Ctrl+T (Cmd+T): 현재 탭 복제
-      if (ctrl && e.code === 'KeyT') {
-        e.preventDefault();
-        duplicateTab();
-        return;
-      }
+    // 섹션 1: 열기, 미리보기, Finder에서 열기
+    const openSection: ContextMenuSection = { id: 'open', items: [] };
+    if (isSingle) {
+      openSection.items.push({
+        id: 'open',
+        icon: <ExternalLink size={13} />,
+        label: '열기',
+        onClick: () => { const entry = entries.find(e => e.path === singlePath); if (entry) openEntry(entry); },
+      });
+    }
+    if (isSingle && singleEntry && !singleEntry.is_dir &&
+      (/\.(psd|psb)$/i.test(singleEntry.name) || singleEntry.file_type === 'image')) {
+      openSection.items.push({
+        id: 'preview',
+        icon: <Eye size={13} />,
+        label: '미리보기',
+        onClick: () => preview.handlePreviewImage(singlePath),
+      });
+    }
+    if (isSingle) {
+      openSection.items.push({
+        id: 'open-in-os',
+        icon: <Folder size={13} />,
+        label: 'Finder/탐색기에서 열기',
+        onClick: () => openInOsExplorer(
+          singleEntry?.is_dir ? singlePath : (singlePath.split(/[/\\]/).slice(0, -1).join('/') || singlePath)
+        ),
+      });
+    }
+    sections.push(openSection);
 
-      // Tab / Shift+Tab: 탭 순환
-      if (e.key === 'Tab' && !isInput) {
-        e.preventDefault();
-        if (tabs.length <= 1) return;
-        const currentIdx = tabs.findIndex(t => t.id === activeTabId);
-        if (e.shiftKey) {
-          const prevIdx = (currentIdx - 1 + tabs.length) % tabs.length;
-          handleTabSelect(tabs[prevIdx].id);
-        } else {
-          const nextIdx = (currentIdx + 1) % tabs.length;
-          handleTabSelect(tabs[nextIdx].id);
-        }
-        return;
-      }
+    // 섹션 2: 복사, 잘라내기, 붙여넣기, 복제
+    sections.push({
+      id: 'clipboard',
+      items: [
+        { id: 'copy', icon: <Copy size={13} />, label: '복사', onClick: clipboardHook.handleCopy, disabled: paths.length === 0, shortcut: `${mod}+C` },
+        { id: 'cut', icon: <Scissors size={13} />, label: '잘라내기', onClick: clipboardHook.handleCut, disabled: paths.length === 0, shortcut: `${mod}+X` },
+        { id: 'paste', icon: <ClipboardIcon size={13} />, label: '붙여넣기', onClick: clipboardHook.handlePaste, shortcut: `${mod}+V` },
+        { id: 'duplicate', icon: <CopyPlus size={13} />, label: '복제', onClick: fileOps.handleDuplicate, disabled: paths.length === 0, shortcut: `${mod}+D` },
+      ],
+    });
 
-      // --- 내비게이션 ---
-      if (isMac) {
-        if (ctrl && e.key === '[') { e.preventDefault(); goBack(); return; }
-        if (ctrl && e.key === ']') { e.preventDefault(); goForward(); return; }
-        if (ctrl && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
-        if (ctrl && e.key === 'ArrowDown') {
-          if (selectedPaths.length === 1) {
-            const entry = entries.find(en => en.path === selectedPaths[0]);
-            if (entry) { e.preventDefault(); openEntry(entry); return; }
-          }
-        }
+    // 섹션 3: 이름 바꾸기, 삭제
+    const editSection: ContextMenuSection = { id: 'edit', items: [] };
+    if (isSingle) {
+      editSection.items.push({
+        id: 'rename',
+        icon: <Edit2 size={13} />,
+        label: '이름 바꾸기',
+        onClick: () => fileOps.handleRenameStart(singlePath),
+        shortcut: 'F2',
+      });
+    }
+    if (!isSingle && paths.length > 1) {
+      editSection.items.push({
+        id: 'bulk-rename',
+        icon: <Edit2 size={13} />,
+        label: '이름 모두 바꾸기',
+        onClick: () => fileOps.handleBulkRename(paths),
+      });
+    }
+    editSection.items.push({
+      id: 'delete',
+      icon: <Trash2 size={13} style={{ color: '#f87171' }} />,
+      label: '삭제 (휴지통)',
+      onClick: () => fileOps.handleDelete(paths, false),
+      disabled: paths.length === 0,
+      shortcut: 'Del',
+    });
+    sections.push(editSection);
+
+    // 섹션 4: ZIP 압축, 동영상 압축, 픽셀화, 시트 패킹/언패킹
+    const toolSection: ContextMenuSection = { id: 'tools', items: [] };
+    toolSection.items.push({
+      id: 'zip',
+      icon: <FileArchive size={13} />,
+      label: 'ZIP으로 압축',
+      onClick: () => fileOps.handleCompressZip(paths),
+      disabled: paths.length === 0,
+    });
+    // 동영상 압축 (서브메뉴)
+    if (isSingle && singleEntry && singleEntry.file_type === 'video') {
+      toolSection.items.push({
+        id: 'compress-video',
+        icon: <Film size={13} />,
+        label: '동영상 압축',
+        onClick: () => {}, // 부모 항목 클릭 없음 (서브메뉴 전용)
+        submenu: [
+          { id: 'quality-low', icon: <></>, label: '보통 화질', onClick: () => fileOps.handleCompressVideo(singlePath, 'low') },
+          { id: 'quality-medium', icon: <></>, label: '좋은 화질', onClick: () => fileOps.handleCompressVideo(singlePath, 'medium') },
+          { id: 'quality-high', icon: <></>, label: '최고 화질', onClick: () => fileOps.handleCompressVideo(singlePath, 'high') },
+        ],
+      });
+    }
+    // 픽셀화 (PNG/JPG)
+    if (isSingle && singleEntry && /\.(png|jpe?g)$/i.test(singleEntry.name)) {
+      toolSection.items.push({
+        id: 'pixelate',
+        icon: <Grid3x3 size={13} />,
+        label: '픽셀화',
+        onClick: () => modals.setPixelatePath(singlePath),
+      });
+    }
+    // 스프라이트 시트 패킹 — 폴더 단일 선택
+    if (isSingle && singleEntry?.is_dir) {
+      toolSection.items.push({
+        id: 'sprite-pack',
+        icon: <LayoutGrid size={13} />,
+        label: '시트 패킹',
+        onClick: () => fileOps.handleSpritePack([singlePath]),
+      });
+    }
+    // 스프라이트 시트 패킹 — 다중 이미지 선택
+    if (!isSingle && paths.length > 1) {
+      const allImages = paths.every(p => /\.(png|jpe?g|gif|webp|bmp)$/i.test(p));
+      if (allImages) {
+        toolSection.items.push({
+          id: 'sprite-pack-multi',
+          icon: <LayoutGrid size={13} />,
+          label: '시트 패킹',
+          onClick: () => fileOps.handleSpritePack(paths),
+        });
+      }
+    }
+    // 스프라이트 시트 언패킹 — PNG 단일 선택
+    if (isSingle && singleEntry && /\.(png)$/i.test(singleEntry.name) && !singleEntry.is_dir) {
+      toolSection.items.push({
+        id: 'sheet-unpack',
+        icon: <Ungroup size={13} />,
+        label: '시트 언패킹',
+        onClick: () => modals.setSheetUnpackPath(singlePath),
+      });
+    }
+    sections.push(toolSection);
+
+    // 섹션 5: 경로 복사, 즐겨찾기, 태그
+    const infoSection: ContextMenuSection = { id: 'info', items: [] };
+    if (isSingle) {
+      infoSection.items.push({
+        id: 'copy-path',
+        icon: <Hash size={13} />,
+        label: '경로 복사',
+        onClick: () => fileOps.handleCopyPath(singlePath),
+      });
+    }
+    if (isSingle && singleEntry?.is_dir) {
+      infoSection.items.push({
+        id: 'add-favorite',
+        icon: <Star size={13} />,
+        label: '즐겨찾기에 추가',
+        onClick: () => {
+          onAddToFavorites(singlePath, getFileName(singlePath));
+        },
+      });
+    }
+    // 폴더 태그 추가/해제
+    if (isSingle && singleEntry?.is_dir) {
+      const hasTag = folderTags && folderTags[singlePath];
+      if (hasTag) {
+        infoSection.items.push({
+          id: 'remove-tag',
+          icon: <Tag size={13} />,
+          label: '태그 해제',
+          onClick: () => handleRemoveTag(singlePath),
+        });
       } else {
-        if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); return; }
-        if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); return; }
-        if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); goUp(); return; }
-        // Windows: Alt+↓ 로 폴더/파일 진입
-        if (e.altKey && e.key === 'ArrowDown') {
-          if (selectedPaths.length === 1) {
-            const entry = entries.find(en => en.path === selectedPaths[0]);
-            if (entry) { e.preventDefault(); openEntry(entry); return; }
-          }
-        }
-      }
-
-      // Ctrl+Alt+C: 선택된 항목 경로 복사 (없으면 현재 폴더 경로)
-      if (ctrl && e.altKey && e.key === 'c') {
-        e.preventDefault();
-        if (selectedPaths.length > 0) {
-          // 선택된 항목이 있으면 해당 경로 복사 (여러 개면 줄바꿈 구분)
-          const pathsToCopy = selectedPaths.join('\n');
-          handleCopyPath(pathsToCopy);
-        } else if (currentPath && currentPath !== RECENT_PATH) {
-          handleCopyPath(currentPath);
-        }
-        return;
-      }
-
-      // Ctrl+Alt+O (Cmd+Option+O): Photoshop에서 열기
-      if (ctrl && e.altKey && e.code === 'KeyO') {
-        e.preventDefault();
-        const imageExts = new Set([
-          'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'psd', 'psb',
-          'tiff', 'tif', 'svg', 'ico', 'raw', 'cr2', 'nef', 'arw',
-        ]);
-        const imagePaths = selectedPaths.filter(p => {
-          const ext = p.split('.').pop()?.toLowerCase() ?? '';
-          return imageExts.has(ext);
+        infoSection.items.push({
+          id: 'add-tag',
+          icon: <Tag size={13} />,
+          label: '태그 추가',
+          onClick: () => handleAddTag(singlePath),
         });
-        if (imagePaths.length > 0) {
-          invoke('open_in_photoshop', { paths: imagePaths }).catch((err: unknown) => {
-            setError(`Photoshop 열기 실패: ${err}`);
-          });
-        }
-        return;
       }
+    }
+    sections.push(infoSection);
 
-      // Ctrl+Shift+G: 폴더로 이동
-      if (ctrl && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
-        e.preventDefault();
-        setIsGoToFolderOpen(true);
-        return;
-      }
-
-      // Ctrl+Shift+F: 글로벌 검색 (하위 폴더 재귀)
-      if (ctrl && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
-        e.preventDefault();
-        if (currentPath && currentPath !== RECENT_PATH) {
-          setIsGlobalSearchOpen(true);
-        }
-        return;
-      }
-
-      // Ctrl+F: 검색 토글
-      if (ctrl && e.key === 'f') {
-        e.preventDefault();
-        setIsSearchActive(prev => {
-          if (prev) { setSearchQuery(''); return false; }
-          setTimeout(() => searchInputRef.current?.focus(), 0);
-          return true;
-        });
-        return;
-      }
-
-      // ESC: 검색 닫기 → 클립보드 해제 → 선택 해제
-      if (e.key === 'Escape') {
-        if (isSearchActive) { setSearchQuery(''); setIsSearchActive(false); return; }
-        if (clipboard) { setClipboard(null); return; }
-        deselectAll();
-        return;
-      }
-
-      // Mac: ⌫/Delete 키로 파일 삭제 (선택 있을 때), 미선택 시 뒤로 이동
-      if (e.key === 'Backspace' || e.key === 'Delete') {
-        e.preventDefault();
-        if (selectedPaths.length > 0) {
-          handleDelete(selectedPaths, e.shiftKey);
-          return;
-        }
-        if (e.key === 'Backspace' && !ctrl) { goBack(); return; }
-      }
-
-      if (e.key === 'Enter') {
-        if (viewMode === 'columns') {
-          // 컬럼 뷰: 포커스된 항목으로 진입
-          const col = columnView.columns[columnView.focusedCol];
-          if (col) {
-            const entry = col.entries[columnView.focusedRow];
-            if (entry) { e.preventDefault(); openEntry(entry); return; }
-          }
-        } else if (selectedPaths.length === 1) {
-          const entry = entries.find(en => en.path === selectedPaths[0]);
-          if (entry) { e.preventDefault(); openEntry(entry); return; }
-        }
-        return;
-      }
-
-      // --- Quick Look / 미리보기 (Spacebar 토글) ---
-      if (e.key === ' ') {
-        e.preventDefault();
-        // 컬럼뷰에서는 이미 미리보기 패널이 있으므로 스페이스바 미리보기 비활성화
-        if (viewMode === 'columns') return;
-        // 동영상 재생 중이면 스페이스바로 닫지 않음 (플레이/스탑 역할)
-        if (preview.videoPlayerPath) return;
-        // 이미지/텍스트 미리보기가 열려있으면 닫기
-        if (preview.isAnyPreviewOpen) {
-          preview.closeAllPreviews();
-          return;
-        }
-        // 선택된 파일이 하나일 때만 미리보기 열기
-        if (selectedPaths.length !== 1) return;
-        const entry = entries.find(en => en.path === selectedPaths[0]);
-        if (entry) previewFile(entry);
-        return;
-      }
-
-      // --- Ctrl+1~4 / Cmd+1~4: 뷰 모드 전환 ---
-      if (ctrl && ['1', '2', '3', '4'].includes(e.key)) {
-        e.preventDefault();
-        const modes: ViewMode[] = ['grid', 'columns', 'list', 'details'];
-        setViewMode(modes[parseInt(e.key) - 1]);
-        return;
-      }
-
-      // --- 탐색기 줌 (Ctrl +/-) ---
-      if (ctrl && (e.key === '=' || e.key === '+')) {
-        e.preventDefault();
-        cancelAllQueued();
-        setThumbnailSize(prev => {
-          const idx = THUMBNAIL_SIZES.indexOf(prev);
-          return THUMBNAIL_SIZES[Math.min(THUMBNAIL_SIZES.length - 1, idx + 1)];
-        });
-        return;
-      }
-      if (ctrl && e.key === '-') {
-        e.preventDefault();
-        cancelAllQueued();
-        setThumbnailSize(prev => {
-          const idx = THUMBNAIL_SIZES.indexOf(prev);
-          return THUMBNAIL_SIZES[Math.max(0, idx - 1)];
-        });
-        return;
-      }
-      if (ctrl && e.key === '0') {
-        e.preventDefault();
-        cancelAllQueued();
-        setThumbnailSize(120);
-        return;
-      }
-
-      // --- 파일 조작 ---
-      if (ctrl && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
-      if (ctrl && e.key === 'a') { e.preventDefault(); selectAll(); return; }
-      if (ctrl && e.key === 'c') { handleCopy(); return; }
-      if (ctrl && e.key === 'x') { handleCut(); return; }
-      if (ctrl && e.key === 'v') { handlePaste(); return; }
-      if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
-      // Ctrl+G: 선택된 파일들을 새 폴더로 그룹화
-      if (ctrl && !e.shiftKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
-      if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
-
-      if (e.key === 'F2') {
-        if (selectedPaths.length === 1) {
-          handleRenameStart(selectedPaths[0]);
-        } else if (selectedPaths.length > 1) {
-          // 동일 베이스명(확장자만 다름) → 인라인 이름변경 (커밋 시 일괄 적용)
-          // 다른 이름 섞임 → 일괄 이름변경 모달
-          const getBaseName = (p: string) => {
-            const name = p.split(/[/\\]/).pop() ?? '';
-            const dot = name.lastIndexOf('.');
-            return dot > 0 ? name.substring(0, dot) : name;
-          };
-          const baseNames = new Set(selectedPaths.map(getBaseName));
-          if (baseNames.size === 1) {
-            handleRenameStart(selectedPaths[0]);
-          } else {
-            handleBulkRename(selectedPaths);
-          }
-        }
-        return;
-      }
-
-      // Windows: Delete 키로 파일 삭제
-      if (e.key === 'Delete') {
-        if (selectedPaths.length > 0) {
-          handleDelete(selectedPaths, e.shiftKey);
-        }
-        return;
-      }
-
-      // --- 방향키 포커스 이동 ---
-      if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
-        e.preventDefault();
-
-        // 컬럼 뷰 방향키 처리
-        if (viewMode === 'columns') {
-          const { columns: cols, focusedCol: fc, focusedRow: fr } = columnView;
-          if (cols.length === 0) return;
-          const currentCol = cols[fc];
-          if (!currentCol) return;
-
-          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            const nextRow = e.key === 'ArrowUp' ? fr - 1 : fr + 1;
-            if (nextRow < 0 || nextRow >= currentCol.entries.length) return;
-            columnView.setFocusedRow(nextRow);
-            const entry = currentCol.entries[nextRow];
-            if (!entry) return;
-
-            if (e.shiftKey) {
-              // Shift+위/아래: 앵커 기반 범위 선택 (컬럼 구조 변경 없음)
-              if (selectionAnchorRef.current < 0) selectionAnchorRef.current = fr;
-              const from = Math.min(selectionAnchorRef.current, nextRow);
-              const to = Math.max(selectionAnchorRef.current, nextRow);
-              setSelectedPaths(currentCol.entries.slice(from, to + 1).map(e => e.path));
-            } else {
-              // 일반 위/아래: 단일 선택 + 컬럼 탐색
-              selectionAnchorRef.current = -1;
-              columnView.selectInColumn(fc, entry);
-              setSelectedPaths([entry.path]);
-            }
-          } else if (e.key === 'ArrowRight') {
-            // 선택된 항목이 폴더면 다음 컬럼으로
-            const selectedEntry = currentCol.entries[fr];
-            if (selectedEntry?.is_dir) {
-              const nextCol = cols[fc + 1];
-              if (nextCol && nextCol.entries.length > 0) {
-                // 이미 열린 컬럼이면 포커스만 이동
-                columnView.setFocusedCol(fc + 1);
-                columnView.setFocusedRow(0);
-                const firstEntry = nextCol.entries[0];
-                if (firstEntry) {
-                  columnView.selectInColumn(fc + 1, firstEntry);
-                  setSelectedPaths([firstEntry.path]);
-                }
-              } else if (!nextCol) {
-                // 아직 열리지 않은 폴더: selectInColumn으로 열기
-                columnView.selectInColumn(fc, selectedEntry);
-                setSelectedPaths([selectedEntry.path]);
-              }
-            }
-          } else if (e.key === 'ArrowLeft') {
-            // 이전 컬럼으로 포커스 이동: 현재 컬럼의 서브 컬럼만 제거
-            if (fc > 0) {
-              const prevCol = cols[fc - 1];
-              // 현재 컬럼(fc)까지 유지하고, 그 뒤(fc+1~)만 제거
-              columnView.trimColumnsAfter(fc);
-              columnView.setFocusedCol(fc - 1);
-              if (prevCol?.selectedPath) {
-                const rowIdx = prevCol.entries.findIndex(e => e.path === prevCol.selectedPath);
-                if (rowIdx >= 0) columnView.setFocusedRow(rowIdx);
-                setSelectedPaths([prevCol.selectedPath]);
-              }
-            }
-          }
-          return;
-        }
-
-        if (entries.length === 0) return;
-
-        // list/details 뷰는 1행에 1개 항목, grid 뷰만 열 수 계산
-        const cols = (() => {
-          if (viewMode === 'list' || viewMode === 'details') return 1;
-          if (!gridRef.current) return 4;
-          // 컨테이너 패딩(p-3=24px) 차감, flex gap(gap-2=8px) 보정
-          const available = gridRef.current.clientWidth - 24;
-          const cardWidth = thumbnailSize + 16; // FileCard 실제 너비
-          const gap = 8; // gap-2
-          return Math.max(1, Math.floor((available + gap) / (cardWidth + gap)));
-        })();
-
-        // 포커스 없으면 첫 번째 항목에 포커스+선택만 (이동하지 않음)
-        if (focusedIndex < 0) {
-          setFocusedIndex(0);
-          setSelectedPaths([entries[0].path]);
-          selectionAnchorRef.current = -1;
-          return;
-        }
-
-        const current = focusedIndex;
-        let next = current;
-
-        // 경계에서 멈추기: 이동 가능한 경우에만 이동
-        if (e.key === 'ArrowRight' && current < entries.length - 1) next = current + 1;
-        else if (e.key === 'ArrowLeft' && current > 0) next = current - 1;
-        else if (e.key === 'ArrowDown' && current + cols <= entries.length - 1) next = current + cols;
-        else if (e.key === 'ArrowUp' && current - cols >= 0) next = current - cols;
-
-        setFocusedIndex(next);
-
-        if (e.shiftKey) {
-          // Shift+방향키: 앵커~이동 위치까지 범위 선택 (반대 방향 이동 시 축소)
-          if (selectionAnchorRef.current < 0) selectionAnchorRef.current = current;
-          const from = Math.min(selectionAnchorRef.current, next);
-          const to = Math.max(selectionAnchorRef.current, next);
-          setSelectedPaths(entries.slice(from, to + 1).map(e => e.path));
-        } else {
-          selectionAnchorRef.current = -1;
-          setSelectedPaths([entries[next].path]);
-        }
-
-        // 포커스된 항목이 화면에 보이도록 자동 스크롤
-        requestAnimationFrame(() => {
-          const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(entries[next].path)}"]`);
-          el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        });
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return sections;
   }, [
-    isFocused, renamingPath, selectAll, deselectAll, handleUndo, handleCopy, handleCut, handlePaste, handleDuplicate,
-    handleCreateDirectory, handleGroupIntoFolder, handleRenameStart, handleDelete, handleCopyPath,
-    goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
-    thumbnailSize, focusedIndex, clipboard, isSearchActive,
-    tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
-    previewFile, preview.isAnyPreviewOpen, preview.closeAllPreviews,
-    viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
-    columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
+    contextMenu, entries, clipboardHook.clipboard, folderTags,
+    openEntry, openInOsExplorer, preview.handlePreviewImage,
+    clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
+    fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleDelete,
+    fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleCopyPath,
+    fileOps.handleSpritePack, handleAddTag, handleRemoveTag,
+    onAddToFavorites, modals.setPixelatePath, modals.setSheetUnpackPath,
   ]);
 
   // --- 미리보기 열려있을 때 선택 변경 시 자동 갱신 ---
@@ -1342,8 +781,8 @@ export default function FileExplorer({
 
   // --- 붙여넣기 후 파일 자동 선택 ---
   useEffect(() => {
-    if (pendingPasteSelectRef.current.length === 0) return;
-    const targets = pendingPasteSelectRef.current;
+    if (clipboardHook.pendingPasteSelectRef.current.length === 0) return;
+    const targets = clipboardHook.pendingPasteSelectRef.current;
     const matched = entries.filter(e => targets.includes(e.path));
     if (matched.length > 0) {
       const matchedPaths = matched.map(e => e.path);
@@ -1351,7 +790,7 @@ export default function FileExplorer({
       // 첫 번째 항목에 포커스
       const firstIdx = entries.findIndex(e => e.path === matchedPaths[0]);
       if (firstIdx >= 0) setFocusedIndex(firstIdx);
-      pendingPasteSelectRef.current = [];
+      clipboardHook.pendingPasteSelectRef.current = [];
       // 첫 번째 항목으로 스크롤
       requestAnimationFrame(() => {
         const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
@@ -1367,7 +806,7 @@ export default function FileExplorer({
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     const handleFocus = () => {
-      if (!currentPath || renamingPath) return;
+      if (!currentPath || modals.renamingPath) return;
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
         try {
@@ -1384,7 +823,7 @@ export default function FileExplorer({
     };
     window.addEventListener('focus', handleFocus);
     return () => { window.removeEventListener('focus', handleFocus); clearTimeout(timeoutId); };
-  }, [currentPath, renamingPath, sortBy, sortDir]);
+  }, [currentPath, modals.renamingPath, sortBy, sortDir]);
 
   // --- 다른 패널에서 파일 이동 시 새로고침 ---
   useEffect(() => {
@@ -1394,14 +833,11 @@ export default function FileExplorer({
   }, [currentPath, loadDirectory]);
 
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
-  // 터치패드 완전 차단: deltaMode=1(라인 단위) = 마우스 휠만 허용
-  // deltaMode=0(픽셀 단위) = 터치패드이므로 차단 (핀치/스크롤 모두)
   useEffect(() => {
     const handler = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       // 마우스 휠만 허용 (deltaMode=1: 라인 단위)
-      // 터치패드는 deltaMode=0(픽셀 단위)이므로 모두 차단
       if (e.deltaMode === 0) return;
       cancelAllQueued();
       const direction = e.deltaY < 0 ? 1 : -1;
@@ -1441,16 +877,13 @@ export default function FileExplorer({
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      // Tauri는 물리 픽셀 좌표를 전달할 수 있으므로 두 좌표 체계 모두 확인
       const inBounds = (px: number, py: number) =>
         px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom;
       if (!inBounds(pos.x, pos.y) && !inBounds(pos.x / dpr, pos.y / dpr)) return;
 
       // 이미 같은 디렉토리에 있는 파일은 제외
       const filtered = droppedPaths.filter(p => {
-        const sep = p.includes('/') ? '/' : '\\';
-        const dir = p.substring(0, p.lastIndexOf(sep));
-        return dir !== currentPath;
+        return getParentDir(p) !== currentPath;
       });
       if (filtered.length === 0) return;
 
@@ -1502,7 +935,7 @@ export default function FileExplorer({
       }}
     >
       {/* 복사 완료 토스트 */}
-      {copyToast && (
+      {fileOps.copyToast && (
         <div
           className="absolute top-2 left-1/2 -translate-x-1/2 z-[9999] px-3 py-1.5 rounded-md text-xs shadow-lg animate-fade-in"
           style={{
@@ -1511,7 +944,7 @@ export default function FileExplorer({
             border: `1px solid ${themeVars?.border ?? '#334155'}`,
           }}
         >
-          {copyToast}
+          {fileOps.copyToast}
         </div>
       )}
 
@@ -1541,7 +974,7 @@ export default function FileExplorer({
             onForward={goForward}
             onUp={goUp}
             onNavigate={handleNavigateTo}
-            onCreateDirectory={handleCreateDirectory}
+            onCreateDirectory={fileOps.handleCreateDirectory}
             sortBy={sortBy}
             sortDir={sortDir}
             onSortChange={(by, dir) => { setSortBy(by); setSortDir(dir); }}
@@ -1549,30 +982,30 @@ export default function FileExplorer({
             onThumbnailSizeChange={setThumbnailSize}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            isSearchActive={isSearchActive}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
+            isSearchActive={searchFilter.isSearchActive}
+            searchQuery={searchFilter.searchQuery}
+            onSearchQueryChange={searchFilter.setSearchQuery}
             onSearchToggle={() => {
-              setIsSearchActive(prev => {
-                if (prev) { setSearchQuery(''); return false; }
-                setTimeout(() => searchInputRef.current?.focus(), 0);
+              searchFilter.setIsSearchActive(prev => {
+                if (prev) { searchFilter.setSearchQuery(''); return false; }
+                setTimeout(() => searchFilter.searchInputRef.current?.focus(), 0);
                 return true;
               });
             }}
-            searchInputRef={searchInputRef}
-            activeExtFilters={activeExtFilters}
-            availableExtensions={availableExtensions}
+            searchInputRef={searchFilter.searchInputRef}
+            activeExtFilters={searchFilter.activeExtFilters}
+            availableExtensions={searchFilter.availableExtensions}
             onExtFilterToggle={(ext: string) => {
-              setActiveExtFilters(prev => {
+              searchFilter.setActiveExtFilters(prev => {
                 const next = new Set(prev);
                 if (next.has(ext)) next.delete(ext);
                 else next.add(ext);
                 return next;
               });
             }}
-            onExtFilterClear={() => setActiveExtFilters(new Set())}
-            hideText={hideText}
-            onHideTextToggle={() => setHideText(v => !v)}
+            onExtFilterClear={() => searchFilter.setActiveExtFilters(new Set())}
+            hideText={searchFilter.hideText}
+            onHideTextToggle={() => searchFilter.setHideText(v => !v)}
             splitMode={splitMode}
             onSplitModeChange={onSplitModeChange}
             themeVars={themeVars}
@@ -1625,8 +1058,8 @@ export default function FileExplorer({
             <FileGrid
               entries={displayEntries}
               selectedPaths={selectedPaths}
-              clipboard={clipboard}
-              renamingPath={renamingPath}
+              clipboard={clipboardHook.clipboard}
+              renamingPath={modals.renamingPath}
               thumbnailSize={thumbnailSize}
               viewMode={viewMode}
               sortBy={sortBy}
@@ -1642,7 +1075,7 @@ export default function FileExplorer({
               onDeselectAll={deselectAll}
               onOpen={openEntry}
               onContextMenu={handleContextMenu}
-              onRenameCommit={handleRenameCommit}
+              onRenameCommit={fileOps.handleRenameCommit}
               onSortChange={(by) => {
                 const typedBy = by as 'name' | 'size' | 'modified' | 'type';
                 if (sortBy === typedBy) {
@@ -1653,25 +1086,25 @@ export default function FileExplorer({
                 }
               }}
               themeVars={themeVars}
-              hideText={hideText}
+              hideText={searchFilter.hideText}
               folderTags={folderTags}
               instanceId={instanceId}
             />
           )}
 
           {/* 동영상 압축 진행률 */}
-          {videoCompression && (
+          {fileOps.videoCompression && (
             <div
               className="flex items-center gap-2 px-3 py-1.5 text-xs"
               style={{ backgroundColor: 'var(--qf-surface-2)', color: 'var(--qf-text)', borderTop: '1px solid var(--qf-border)' }}
             >
-              {videoCompression.percent === -1 ? (
+              {fileOps.videoCompression.percent === -1 ? (
                 <span>⏳ ffmpeg 다운로드 중...</span>
               ) : (
                 <>
-                  <span className="shrink-0">🎬 압축 중... {videoCompression.fileName}</span>
+                  <span className="shrink-0">🎬 압축 중... {fileOps.videoCompression.fileName}</span>
                   <span className="text-[var(--qf-muted)]">
-                    ({Math.floor(videoCompression.percent)}초{videoCompression.speed ? ` · ${videoCompression.speed}` : ''})
+                    ({Math.floor(fileOps.videoCompression.percent)}초{fileOps.videoCompression.speed ? ` · ${fileOps.videoCompression.speed}` : ''})
                   </span>
                 </>
               )}
@@ -1702,97 +1135,69 @@ export default function FileExplorer({
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          paths={contextMenu.paths}
-          clipboard={clipboard}
-          entries={entries}
+          sections={contextMenuSections}
           onClose={closeContextMenu}
-          onOpen={(path) => {
-            const entry = entries.find(e => e.path === path);
-            if (entry) openEntry(entry);
-          }}
-          onOpenInOs={openInOsExplorer}
-          onCopy={handleCopy}
-          onCut={handleCut}
-          onPaste={handlePaste}
-          onDelete={(paths) => handleDelete(paths, false)}
-          onDuplicate={handleDuplicate}
-          onRename={handleRenameStart}
-          onCopyPath={handleCopyPath}
-          onAddToFavorites={(path) => {
-            const name = path.split(/[/\\]/).pop() ?? path;
-            onAddToFavorites(path, name);
-          }}
-          onCompressZip={handleCompressZip}
-          onCompressVideo={handleCompressVideo}
-          onPreviewPsd={preview.handlePreviewImage}
-          onBulkRename={handleBulkRename}
-          onPixelate={(path) => setPixelatePath(path)}
-          onSpritePack={handleSpritePack}
-          onSheetUnpack={(path) => setSheetUnpackPath(path)}
-          onAddTag={handleAddTag}
-          onRemoveTag={handleRemoveTag}
-          folderTags={folderTags}
         />
       )}
 
       {/* 태그 입력 다이얼로그 */}
-      {tagPrompt && (
+      {modals.tagPrompt && (
         <TagInputDialog
-          defaultName={tagPrompt.defaultName}
+          defaultName={modals.tagPrompt.defaultName}
           themeVars={themeVars}
           onConfirm={(tag) => {
-            setFolderTags(prev => ({ ...prev, [tagPrompt.path]: tag }));
-            setTagPrompt(null);
+            setFolderTags(prev => ({ ...prev, [modals.tagPrompt!.path]: tag }));
+            modals.setTagPrompt(null);
           }}
-          onCancel={() => setTagPrompt(null)}
+          onCancel={() => modals.setTagPrompt(null)}
         />
       )}
 
       {/* 픽셀화 모달 */}
-      {pixelatePath && (
+      {modals.pixelatePath && (
         <PixelateModal
-          path={pixelatePath}
-          onClose={() => setPixelatePath(null)}
-          onApply={handlePixelateApply}
+          path={modals.pixelatePath}
+          onClose={() => modals.setPixelatePath(null)}
+          onApply={fileOps.handlePixelateApply}
           themeVars={themeVars}
         />
       )}
 
       {/* 시트 패킹 모달 */}
-      {sheetPackPaths && (
+      {modals.sheetPackPaths && (
         <SheetPackerModal
-          imagePaths={sheetPackPaths}
-          defaultName={sheetPackDefaultName}
+          imagePaths={modals.sheetPackPaths}
+          defaultName={fileOps.sheetPackDefaultName}
           currentPath={currentPath!}
-          onClose={() => { setSheetPackPaths(null); if (currentPath) loadDirectory(currentPath); }}
+          onClose={() => { modals.setSheetPackPaths(null); if (currentPath) loadDirectory(currentPath); }}
           themeVars={themeVars}
         />
       )}
 
       {/* 시트 언패킹 모달 */}
-      {sheetUnpackPath && (
+      {modals.sheetUnpackPath && (
         <SheetUnpackModal
-          path={sheetUnpackPath}
+          path={modals.sheetUnpackPath}
           currentPath={currentPath!}
-          onClose={() => { setSheetUnpackPath(null); if (currentPath) loadDirectory(currentPath); }}
+          onClose={() => { modals.setSheetUnpackPath(null); if (currentPath) loadDirectory(currentPath); }}
           themeVars={themeVars}
         />
       )}
 
       {/* 일괄 이름변경 모달 */}
-      {bulkRenamePaths && (
+      {modals.bulkRenamePaths && (
         <BulkRenameModal
-          paths={bulkRenamePaths}
-          onClose={() => setBulkRenamePaths(null)}
-          onApply={handleBulkRenameApply}
+          paths={modals.bulkRenamePaths}
+          onClose={() => modals.setBulkRenamePaths(null)}
+          onApply={fileOps.handleBulkRenameApply}
           themeVars={themeVars}
         />
       )}
 
       {/* 폴더로 이동 모달 */}
       <GoToFolderModal
-        isOpen={isGoToFolderOpen}
-        onClose={() => setIsGoToFolderOpen(false)}
+        isOpen={modals.isGoToFolderOpen}
+        onClose={() => modals.setIsGoToFolderOpen(false)}
         onNavigate={handleNavigateTo}
         themeVars={themeVars}
       />
@@ -1800,8 +1205,8 @@ export default function FileExplorer({
       {/* 글로벌 검색 모달 */}
       {currentPath && currentPath !== RECENT_PATH && (
         <GlobalSearchModal
-          isOpen={isGlobalSearchOpen}
-          onClose={() => setIsGlobalSearchOpen(false)}
+          isOpen={modals.isGlobalSearchOpen}
+          onClose={() => modals.setIsGlobalSearchOpen(false)}
           currentPath={currentPath}
           onSelect={handleGlobalSearchSelect}
           themeVars={themeVars}
@@ -1809,7 +1214,7 @@ export default function FileExplorer({
       )}
 
       {/* 중복 파일 확인 다이얼로그 */}
-      {duplicateConfirm && (
+      {clipboardHook.duplicateConfirm && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div
             className="rounded-lg shadow-2xl max-w-sm w-full mx-4 overflow-hidden"
@@ -1820,7 +1225,7 @@ export default function FileExplorer({
           >
             <div className="px-5 pt-5 pb-3">
               <p className="text-sm font-medium mb-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                같은 이름의 파일이 {duplicateConfirm.duplicates.length}개 존재합니다.
+                같은 이름의 파일이 {clipboardHook.duplicateConfirm.duplicates.length}개 존재합니다.
               </p>
               <p className="text-xs mb-3" style={{ color: themeVars?.muted ?? '#94a3b8' }}>
                 덮어씌우시겠습니까?
@@ -1829,7 +1234,7 @@ export default function FileExplorer({
                 className="text-xs rounded-md px-3 py-2 max-h-[120px] overflow-y-auto"
                 style={{ backgroundColor: themeVars?.surface ?? '#111827' }}
               >
-                {duplicateConfirm.duplicates.map((name, i) => (
+                {clipboardHook.duplicateConfirm.duplicates.map((name, i) => (
                   <div key={i} className="py-0.5 truncate" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
                     {name}
                   </div>
@@ -1844,7 +1249,7 @@ export default function FileExplorer({
                   color: themeVars?.text ?? '#e5e7eb',
                   border: `1px solid ${themeVars?.border ?? '#334155'}`,
                 }}
-                onClick={() => setDuplicateConfirm(null)}
+                onClick={() => clipboardHook.setDuplicateConfirm(null)}
               >
                 취소
               </button>
@@ -1855,9 +1260,9 @@ export default function FileExplorer({
                   color: '#fff',
                 }}
                 onClick={async () => {
-                  const { paths, action } = duplicateConfirm;
-                  setDuplicateConfirm(null);
-                  await executePaste(paths, action, true);
+                  const { paths, action } = clipboardHook.duplicateConfirm!;
+                  clipboardHook.setDuplicateConfirm(null);
+                  await clipboardHook.executePaste(paths, action, true);
                 }}
               >
                 덮어쓰기

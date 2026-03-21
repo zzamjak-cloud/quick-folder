@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
 import { Folder } from 'lucide-react';
+import { getPathSeparator } from '../../utils/pathUtils';
 
 interface GoToFolderModalProps {
   isOpen: boolean;
@@ -139,7 +140,7 @@ export default function GoToFolderModal({ isOpen, onClose, onNavigate, themeVars
 
   // 제안 선택: 입력 필드를 해당 경로로 동기화 + 하위 폴더 조회
   const handleSelectSuggestion = (entry: FileEntry) => {
-    const sep = entry.path.includes('/') ? '/' : '\\';
+    const sep = getPathSeparator(entry.path);
     const newPath = entry.path + sep;
     skipFetchRef.current = false; // 이 경우는 하위 조회를 해야 함
     setInputPath(newPath);

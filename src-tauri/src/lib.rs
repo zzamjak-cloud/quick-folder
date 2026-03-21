@@ -1,3 +1,6 @@
+mod helpers;
+use helpers::*;
+
 // 파일 타입 enum (프론트엔드 FileType 유니온과 1:1 매핑)
 #[derive(serde::Serialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
@@ -407,13 +410,7 @@ async fn pixelate_image(input: String, pixel_size: u32, scale: u32, max_colors: 
             .and_then(|s| s.to_str())
             .unwrap_or("image");
 
-        let base_name = format!("{}_pixel.png", stem);
-        let mut output_path = parent.join(&base_name);
-        let mut counter = 2u32;
-        while output_path.exists() {
-            output_path = parent.join(format!("{}_pixel_{}.png", stem, counter));
-            counter += 1;
-        }
+        let output_path = find_unique_path(parent, stem, "_pixel", ".png");
 
         // PNG 파일로 저장
         pixelated
@@ -439,23 +436,10 @@ async fn sprite_sheet_preview(
     rows: u32,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        use image::{imageops, RgbaImage};
+        use image::imageops;
 
-        let canvas_w = cols * cell_width;
-        let canvas_h = rows * cell_height;
-        let mut canvas = RgbaImage::new(canvas_w, canvas_h);
-
-        for (i, path) in images.iter().enumerate() {
-            let idx = i as u32;
-            if idx >= cols * rows { break; }
-
-            let img = image::open(path).map_err(|e| format!("이미지 열기 실패 ({}): {}", path, e))?;
-            let resized = image::imageops::resize(&img, cell_width, cell_height, imageops::FilterType::Lanczos3);
-
-            let x = (idx % cols) * cell_width;
-            let y = (idx / cols) * cell_height;
-            imageops::overlay(&mut canvas, &resized, x as i64, y as i64);
-        }
+        let canvas = create_sprite_canvas(&images, cell_width, cell_height, cols, rows)?;
+        let (canvas_w, canvas_h) = (cols * cell_width, rows * cell_height);
 
         // 미리보기용: 긴 변 > 800px이면 축소
         let (w, h) = (canvas_w, canvas_h);
@@ -491,23 +475,7 @@ async fn save_sprite_sheet(
     output: String,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        use image::{imageops, RgbaImage};
-
-        let canvas_w = cols * cell_width;
-        let canvas_h = rows * cell_height;
-        let mut canvas = RgbaImage::new(canvas_w, canvas_h);
-
-        for (i, path) in images.iter().enumerate() {
-            let idx = i as u32;
-            if idx >= cols * rows { break; }
-
-            let img = image::open(path).map_err(|e| format!("이미지 열기 실패 ({}): {}", path, e))?;
-            let resized = image::imageops::resize(&img, cell_width, cell_height, imageops::FilterType::Lanczos3);
-
-            let x = (idx % cols) * cell_width;
-            let y = (idx / cols) * cell_height;
-            imageops::overlay(&mut canvas, &resized, x as i64, y as i64);
-        }
+        let canvas = create_sprite_canvas(&images, cell_width, cell_height, cols, rows)?;
 
         // 출력 경로 결정: 중복 시 _sheet_2.png, _sheet_3.png ... 순서
         let output_path = std::path::Path::new(&output);
@@ -517,13 +485,7 @@ async fn save_sprite_sheet(
             .and_then(|s| s.to_str())
             .unwrap_or("sprite");
 
-        let base_name = format!("{}_sheet.png", stem);
-        let mut final_path = parent.join(&base_name);
-        let mut counter = 2u32;
-        while final_path.exists() {
-            final_path = parent.join(format!("{}_sheet_{}.png", stem, counter));
-            counter += 1;
-        }
+        let final_path = find_unique_path(parent, stem, "_sheet", ".png");
 
         canvas
             .save_with_format(&final_path, image::ImageFormat::Png)
@@ -619,21 +581,7 @@ async fn copy_items(sources: Vec<String>, dest: String, overwrite: Option<bool>)
             let stem = src_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
             let ext = src_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
             let is_dir = src_path.is_dir();
-            if is_dir {
-                dest_path = std::path::Path::new(&dest).join(format!("{} (복사)", stem));
-                let mut counter = 2u32;
-                while dest_path.exists() {
-                    dest_path = std::path::Path::new(&dest).join(format!("{} (복사 {})", stem, counter));
-                    counter += 1;
-                }
-            } else {
-                dest_path = std::path::Path::new(&dest).join(format!("{} (복사){}", stem, ext));
-                let mut counter = 2u32;
-                while dest_path.exists() {
-                    dest_path = std::path::Path::new(&dest).join(format!("{} (복사 {}){}", stem, counter, ext));
-                    counter += 1;
-                }
-            }
+            dest_path = get_copy_destination(std::path::Path::new(&dest), &stem, &ext, is_dir);
         } else if dest_path.exists() && overwrite {
             // 덮어쓰기: 기존 파일/폴더 삭제 후 복사
             if dest_path.is_dir() {
@@ -685,22 +633,7 @@ async fn duplicate_items(paths: Vec<String>) -> Result<Vec<String>, String> {
         let is_dir = src.is_dir();
 
         // 충돌 방지: " (복사)", " (복사 2)", " (복사 3)" ...
-        let mut dest_path;
-        if is_dir {
-            dest_path = parent.join(format!("{} (복사)", stem));
-            let mut counter = 2u32;
-            while dest_path.exists() {
-                dest_path = parent.join(format!("{} (복사 {})", stem, counter));
-                counter += 1;
-            }
-        } else {
-            dest_path = parent.join(format!("{} (복사){}", stem, ext));
-            let mut counter = 2u32;
-            while dest_path.exists() {
-                dest_path = parent.join(format!("{} (복사 {}){}", stem, counter, ext));
-                counter += 1;
-            }
-        }
+        let dest_path = get_copy_destination(parent, &stem, &ext, is_dir);
 
         if is_dir {
             copy_dir_recursive(src, &dest_path)?;
@@ -1860,12 +1793,7 @@ async fn compress_video(
     let ext = input_path.extension().unwrap_or_default().to_string_lossy();
     let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
 
-    let mut output_path = parent.join(format!("{}_comp.{}", stem, ext));
-    let mut counter = 2u32;
-    while output_path.exists() {
-        output_path = parent.join(format!("{}_comp_{}.{}", stem, counter, ext));
-        counter += 1;
-    }
+    let output_path = find_unique_path(parent, &stem, "_comp", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
     // ffmpeg 경로 결정 (sidecar → 시스템 PATH 순)

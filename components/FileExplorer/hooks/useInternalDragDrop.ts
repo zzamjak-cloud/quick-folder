@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { DRAG_IMAGE } from '../fileUtils';
-import { isCloudPath } from '../../../utils/pathUtils';
+import { isCloudPath, getFileName } from '../../../utils/pathUtils';
 
 interface UseInternalDragDropOptions {
   selectedPaths: string[];
@@ -83,7 +83,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
       // 파일명
       const nameEl = document.createElement('span');
-      nameEl.textContent = paths[0].split(/[/\\]/).pop() ?? '';
+      nameEl.textContent = getFileName(paths[0]);
       nameEl.style.cssText = 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;';
       ghost.appendChild(nameEl);
 
@@ -221,7 +221,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
         for (const p of paths) {
           const isDir = await invoke<boolean>('is_directory', { path: p }).catch(() => false);
           if (isDir) {
-            const name = p.split(/[/\\]/).pop() ?? p;
+            const name = getFileName(p);
             onAddToCategory(catTarget, p, name);
           }
         }

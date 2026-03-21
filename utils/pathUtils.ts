@@ -1,3 +1,34 @@
+/** 경로에서 파일명 추출 (확장자 포함) */
+export function getFileName(path: string): string {
+  return path.split(/[/\\]/).pop() ?? path;
+}
+
+/** 경로의 구분자 감지 ('/' 또는 '\\') */
+export function getPathSeparator(path: string): string {
+  return path.includes('/') ? '/' : '\\';
+}
+
+/** 파일명에서 확장자 제외한 베이스명 추출 */
+export function getBaseName(path: string): string {
+  const name = getFileName(path);
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.substring(0, dot) : name;
+}
+
+/** 파일명에서 확장자 추출 (점 포함, 예: '.png') */
+export function getExtension(path: string): string {
+  const name = getFileName(path);
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.substring(dot) : '';
+}
+
+/** 경로에서 부모 디렉토리 추출 */
+export function getParentDir(path: string): string {
+  const sep = getPathSeparator(path);
+  const idx = path.lastIndexOf(sep);
+  return idx > 0 ? path.substring(0, idx) : path;
+}
+
 // 클라우드 스토리지 경로 감지 (Google Drive, Dropbox, OneDrive, iCloud)
 export function isCloudPath(path: string): boolean {
   const lower = path.toLowerCase();

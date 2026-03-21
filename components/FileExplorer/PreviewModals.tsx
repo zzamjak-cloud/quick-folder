@@ -2,6 +2,7 @@ import React from 'react';
 import VideoPlayer from './VideoPlayer';
 import { ThemeVars } from './types';
 import { PreviewState } from './hooks/usePreview';
+import { getFileName } from '../../utils/pathUtils';
 
 interface PreviewModalsProps {
   preview: PreviewState;
@@ -36,7 +37,7 @@ export function PreviewModals({ preview, themeVars }: PreviewModalsProps) {
             {/* 헤더 */}
             <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
               <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                {preview.previewImagePath.split(/[/\\]/).pop()}
+                {getFileName(preview.previewImagePath)}
               </span>
               <button
                 className="text-lg px-2 hover:opacity-70"
@@ -82,7 +83,7 @@ export function PreviewModals({ preview, themeVars }: PreviewModalsProps) {
             {/* 헤더 */}
             <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
               <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                {preview.previewTextPath.split(/[/\\]/).pop()}
+                {getFileName(preview.previewTextPath)}
               </span>
               <button
                 className="text-lg px-2 hover:opacity-70"

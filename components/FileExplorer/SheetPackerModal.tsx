@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Play, Pause } from 'lucide-react';
+import { Play, Pause } from 'lucide-react';
 import { ThemeVars } from './types';
+import ModalShell from './ui/ModalShell';
+import { checkerboardStyle, getInputStyle, Spinner } from './ui/modalStyles';
+import { getFileName, getPathSeparator } from '../../utils/pathUtils';
 
 // 기본 프리셋
 const DEFAULT_PRESETS = [
@@ -76,8 +79,8 @@ export default function SheetPackerModal({
   // 자연 정렬된 이미지 경로
   const sortedPaths = useMemo(() => {
     return [...imagePaths].sort((a, b) => {
-      const nameA = a.split(/[/\\]/).pop() ?? '';
-      const nameB = b.split(/[/\\]/).pop() ?? '';
+      const nameA = getFileName(a);
+      const nameB = getFileName(b);
       return nameA.localeCompare(nameB, undefined, { numeric: true });
     });
   }, [imagePaths]);
@@ -145,23 +148,14 @@ export default function SheetPackerModal({
     };
   }, [isPlaying, fps, count]);
 
-  // ESC 닫기
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saving, onClose]);
-
   // 저장
   const handleSave = async () => {
     setSaving(true);
     setError('');
     try {
-      const sep = currentPath.includes('/') ? '/' : '\\';
+      const sep = getPathSeparator(currentPath);
       const output = `${currentPath}${sep}${defaultName}`;
-      const savedPath = await invoke<string>('save_sprite_sheet', {
+      await invoke<string>('save_sprite_sheet', {
         images: sortedPaths,
         cellWidth,
         cellHeight,
@@ -169,7 +163,6 @@ export default function SheetPackerModal({
         rows,
         output,
       });
-      const fileName = savedPath.split(/[/\\]/).pop() ?? savedPath;
       // 저장 성공 알림은 onClose에서 loadDirectory로 처리
       onClose();
     } catch (e) {
@@ -190,315 +183,231 @@ export default function SheetPackerModal({
   };
 
   // 공통 스타일
-  const btnBase: React.CSSProperties = {
-    padding: '5px 14px',
-    fontSize: 12,
-    borderRadius: 6,
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    cursor: 'pointer',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
-    padding: '4px 8px',
-    fontSize: 12,
-    borderRadius: 4,
-    outline: 'none',
-    width: 60,
-  };
-
-  const checkerboardStyle: React.CSSProperties = {
-    backgroundImage:
-      'linear-gradient(45deg, #808080 25%, transparent 25%), ' +
-      'linear-gradient(-45deg, #808080 25%, transparent 25%), ' +
-      'linear-gradient(45deg, transparent 75%, #808080 75%), ' +
-      'linear-gradient(-45deg, transparent 75%, #808080 75%)',
-    backgroundSize: '16px 16px',
-    backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-  };
-
-  const spinner = (
-    <div className="flex items-center justify-center">
-      <div
-        className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
-        style={{ borderColor: `${themeVars?.accent ?? '#3b82f6'} transparent transparent transparent` }}
-      />
-    </div>
-  );
+  const inputStyle = getInputStyle(themeVars);
 
   // 프레임 재생 영역: CSS clip으로 현재 프레임만 표시
   const frameCol = currentFrame % cols;
   const frameRow = Math.floor(currentFrame / cols);
 
   return (
-    <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+    <ModalShell
+      title={`시트 패킹 — ${defaultName} (${count}장)`}
+      maxWidth="52rem"
+      saving={saving}
+      saveLabel="저장"
+      onClose={onClose}
+      onSave={handleSave}
+      themeVars={themeVars}
     >
-      <div
-        className="rounded-lg shadow-2xl flex flex-col"
-        style={{
-          backgroundColor: themeVars?.surface2 ?? '#1e293b',
-          border: `1px solid ${themeVars?.border ?? '#334155'}`,
-          width: '100%',
-          maxWidth: '52rem',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* 헤더 */}
-        <div
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}
-        >
-          <span className="text-sm font-medium truncate flex-1 mr-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-            시트 패킹 — {defaultName} ({count}장)
-          </span>
-          <button
-            className="p-1 hover:opacity-70 flex-shrink-0"
-            style={{ color: themeVars?.muted }}
-            onClick={onClose}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* 본문 */}
-        <div className="px-4 py-4 flex flex-col gap-4">
-          {/* 미리보기 영역 */}
-          <div className="flex gap-3">
-            {/* 시트 프리뷰 */}
-            <div className="flex-1 flex flex-col items-center gap-1.5">
-              <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>시트 프리뷰</span>
-              <div
-                className="flex items-center justify-center rounded-md overflow-hidden w-full"
-                style={{
-                  height: 280,
-                  ...checkerboardStyle,
-                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
-                }}
-              >
-                {loading && spinner}
-                {!loading && preview && (
-                  <img
-                    src={`data:image/png;base64,${preview}`}
-                    alt="시트 프리뷰"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      objectFit: 'contain',
-                    }}
-                  />
-                )}
-                {!loading && !preview && !error && (
-                  <span className="text-xs" style={{ color: themeVars?.muted }}>미리보기 없음</span>
-                )}
-              </div>
-            </div>
-
-            {/* 프레임 재생 영역 */}
-            <div className="flex flex-col items-center gap-1.5" style={{ width: 200 }}>
-              <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
-                프레임 {currentFrame + 1}/{count}
-              </span>
-              <div
-                className="flex items-center justify-center rounded-md overflow-hidden w-full"
-                style={{
-                  height: 200,
-                  ...checkerboardStyle,
-                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
-                }}
-              >
-                {preview && (() => {
-                  // 컨테이너(200×200)에 맞게 프레임 스케일 계산
-                  const containerSize = 200;
-                  const scale = Math.min(containerSize / cellWidth, containerSize / cellHeight, 1);
-                  const displayW = cellWidth * scale;
-                  const displayH = cellHeight * scale;
-                  return (
-                    <div
-                      style={{
-                        width: displayW,
-                        height: displayH,
-                        overflow: 'hidden',
-                        position: 'relative',
-                      }}
-                    >
-                      <img
-                        src={`data:image/png;base64,${preview}`}
-                        alt={`프레임 ${currentFrame + 1}`}
-                        style={{
-                          position: 'absolute',
-                          width: cols * cellWidth * scale,
-                          height: rows * cellHeight * scale,
-                          maxWidth: 'none',
-                          left: -(frameCol * cellWidth * scale),
-                          top: -(frameRow * cellHeight * scale),
-                          imageRendering: 'auto',
-                        }}
-                      />
-                    </div>
-                  );
-                })()}
-              </div>
-              {/* 재생 컨트롤 */}
-              <div className="flex items-center gap-2 w-full">
-                <button
-                  className="p-1.5 rounded-md transition-colors cursor-pointer"
+      {/* 본문 */}
+      <div className="px-4 py-4 flex flex-col gap-4">
+        {/* 미리보기 영역 */}
+        <div className="flex gap-3">
+          {/* 시트 프리뷰 */}
+          <div className="flex-1 flex flex-col items-center gap-1.5">
+            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>시트 프리뷰</span>
+            <div
+              className="flex items-center justify-center rounded-md overflow-hidden w-full"
+              style={{
+                height: 280,
+                ...checkerboardStyle,
+                border: `1px solid ${themeVars?.border ?? '#334155'}`,
+              }}
+            >
+              {loading && <Spinner themeVars={themeVars} />}
+              {!loading && preview && (
+                <img
+                  src={`data:image/png;base64,${preview}`}
+                  alt="시트 프리뷰"
                   style={{
-                    backgroundColor: isPlaying ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.surface ?? '#111827'),
-                    color: isPlaying ? '#fff' : (themeVars?.text ?? '#e5e7eb'),
-                    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
                   }}
-                  onClick={() => setIsPlaying(!isPlaying)}
-                >
-                  {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-                </button>
-                <label className="text-[10px]" style={{ color: themeVars?.muted }}>FPS</label>
-                <input
-                  type="number"
-                  value={fps}
-                  min={1}
-                  max={60}
-                  onChange={e => setFps(Math.max(1, Math.min(60, Number(e.target.value))))}
-                  onKeyDown={e => e.stopPropagation()}
-                  style={{ ...inputStyle, width: 44 }}
                 />
-              </div>
+              )}
+              {!loading && !preview && !error && (
+                <span className="text-xs" style={{ color: themeVars?.muted }}>미리보기 없음</span>
+              )}
             </div>
           </div>
 
-          {/* 컨트롤 영역 */}
-          <div className="flex flex-col gap-3">
-            {/* 행/열 */}
-            <div className="flex items-center gap-3">
-              <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-                열 × 행
-              </label>
-              <input
-                type="number"
-                value={cols}
-                min={1}
-                max={count}
-                onChange={e => handleColsChange(Number(e.target.value))}
-                onKeyDown={e => e.stopPropagation()}
-                style={inputStyle}
-              />
-              <span className="text-xs" style={{ color: themeVars?.muted }}>×</span>
-              <input
-                type="number"
-                value={rows}
-                min={1}
-                max={count}
-                onChange={e => handleRowsChange(Number(e.target.value))}
-                onKeyDown={e => e.stopPropagation()}
-                style={inputStyle}
-              />
-              <span className="text-[10px]" style={{ color: themeVars?.muted }}>
-                ({cols * rows}칸, {count}장)
-              </span>
-            </div>
-
-            {/* 셀 크기 + 프리셋 */}
-            <div className="flex items-center gap-3">
-              <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-                셀 크기
-              </label>
-              <input
-                type="number"
-                value={cellWidth}
-                min={8}
-                max={4096}
-                onChange={e => setCellWidth(Math.max(8, Number(e.target.value)))}
-                onKeyDown={e => e.stopPropagation()}
-                style={inputStyle}
-              />
-              <span className="text-xs" style={{ color: themeVars?.muted }}>×</span>
-              <input
-                type="number"
-                value={cellHeight}
-                min={8}
-                max={4096}
-                onChange={e => setCellHeight(Math.max(8, Number(e.target.value)))}
-                onKeyDown={e => e.stopPropagation()}
-                style={inputStyle}
-              />
-              {/* 프리셋 버튼들 */}
-              <div className="flex gap-1 flex-wrap">
-                {allPresets.map(p => (
-                  <button
-                    key={p.label}
-                    className="px-2 py-1 text-[10px] rounded-md transition-colors cursor-pointer"
+          {/* 프레임 재생 영역 */}
+          <div className="flex flex-col items-center gap-1.5" style={{ width: 200 }}>
+            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
+              프레임 {currentFrame + 1}/{count}
+            </span>
+            <div
+              className="flex items-center justify-center rounded-md overflow-hidden w-full"
+              style={{
+                height: 200,
+                ...checkerboardStyle,
+                border: `1px solid ${themeVars?.border ?? '#334155'}`,
+              }}
+            >
+              {preview && (() => {
+                // 컨테이너(200×200)에 맞게 프레임 스케일 계산
+                const containerSize = 200;
+                const scale = Math.min(containerSize / cellWidth, containerSize / cellHeight, 1);
+                const displayW = cellWidth * scale;
+                const displayH = cellHeight * scale;
+                return (
+                  <div
                     style={{
-                      backgroundColor: cellWidth === p.w && cellHeight === p.h
-                        ? (themeVars?.accent ?? '#3b82f6')
-                        : (themeVars?.surface ?? '#111827'),
-                      color: cellWidth === p.w && cellHeight === p.h ? '#fff' : (themeVars?.text ?? '#e5e7eb'),
-                      border: `1px solid ${cellWidth === p.w && cellHeight === p.h ? 'transparent' : (themeVars?.border ?? '#334155')}`,
+                      width: displayW,
+                      height: displayH,
+                      overflow: 'hidden',
+                      position: 'relative',
                     }}
-                    onClick={() => { setCellWidth(p.w); setCellHeight(p.h); }}
                   >
-                    {p.label}
-                  </button>
-                ))}
+                    <img
+                      src={`data:image/png;base64,${preview}`}
+                      alt={`프레임 ${currentFrame + 1}`}
+                      style={{
+                        position: 'absolute',
+                        width: cols * cellWidth * scale,
+                        height: rows * cellHeight * scale,
+                        maxWidth: 'none',
+                        left: -(frameCol * cellWidth * scale),
+                        top: -(frameRow * cellHeight * scale),
+                        imageRendering: 'auto',
+                      }}
+                    />
+                  </div>
+                );
+              })()}
+            </div>
+            {/* 재생 컨트롤 */}
+            <div className="flex items-center gap-2 w-full">
+              <button
+                className="p-1.5 rounded-md transition-colors cursor-pointer"
+                style={{
+                  backgroundColor: isPlaying ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.surface ?? '#111827'),
+                  color: isPlaying ? '#fff' : (themeVars?.text ?? '#e5e7eb'),
+                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                }}
+                onClick={() => setIsPlaying(!isPlaying)}
+              >
+                {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+              </button>
+              <label className="text-[10px]" style={{ color: themeVars?.muted }}>FPS</label>
+              <input
+                type="number"
+                value={fps}
+                min={1}
+                max={60}
+                onChange={e => setFps(Math.max(1, Math.min(60, Number(e.target.value))))}
+                onKeyDown={e => e.stopPropagation()}
+                style={{ ...inputStyle, width: 44 }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 컨트롤 영역 */}
+        <div className="flex flex-col gap-3">
+          {/* 행/열 */}
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
+              열 × 행
+            </label>
+            <input
+              type="number"
+              value={cols}
+              min={1}
+              max={count}
+              onChange={e => handleColsChange(Number(e.target.value))}
+              onKeyDown={e => e.stopPropagation()}
+              style={inputStyle}
+            />
+            <span className="text-xs" style={{ color: themeVars?.muted }}>×</span>
+            <input
+              type="number"
+              value={rows}
+              min={1}
+              max={count}
+              onChange={e => handleRowsChange(Number(e.target.value))}
+              onKeyDown={e => e.stopPropagation()}
+              style={inputStyle}
+            />
+            <span className="text-[10px]" style={{ color: themeVars?.muted }}>
+              ({cols * rows}칸, {count}장)
+            </span>
+          </div>
+
+          {/* 셀 크기 + 프리셋 */}
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
+              셀 크기
+            </label>
+            <input
+              type="number"
+              value={cellWidth}
+              min={8}
+              max={4096}
+              onChange={e => setCellWidth(Math.max(8, Number(e.target.value)))}
+              onKeyDown={e => e.stopPropagation()}
+              style={inputStyle}
+            />
+            <span className="text-xs" style={{ color: themeVars?.muted }}>×</span>
+            <input
+              type="number"
+              value={cellHeight}
+              min={8}
+              max={4096}
+              onChange={e => setCellHeight(Math.max(8, Number(e.target.value)))}
+              onKeyDown={e => e.stopPropagation()}
+              style={inputStyle}
+            />
+            {/* 프리셋 버튼들 */}
+            <div className="flex gap-1 flex-wrap">
+              {allPresets.map(p => (
                 <button
+                  key={p.label}
                   className="px-2 py-1 text-[10px] rounded-md transition-colors cursor-pointer"
                   style={{
-                    backgroundColor: themeVars?.surface ?? '#111827',
-                    color: themeVars?.muted ?? '#94a3b8',
-                    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                    backgroundColor: cellWidth === p.w && cellHeight === p.h
+                      ? (themeVars?.accent ?? '#3b82f6')
+                      : (themeVars?.surface ?? '#111827'),
+                    color: cellWidth === p.w && cellHeight === p.h ? '#fff' : (themeVars?.text ?? '#e5e7eb'),
+                    border: `1px solid ${cellWidth === p.w && cellHeight === p.h ? 'transparent' : (themeVars?.border ?? '#334155')}`,
                   }}
-                  onClick={handleAddCustomPreset}
-                  title="현재 크기를 프리셋으로 저장"
+                  onClick={() => { setCellWidth(p.w); setCellHeight(p.h); }}
                 >
-                  + 저장
+                  {p.label}
                 </button>
-              </div>
-            </div>
-
-            {/* 출력 크기 정보 */}
-            <div className="flex items-center gap-3">
-              <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-                출력 크기
-              </label>
-              <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                {cols * cellWidth} × {rows * cellHeight} px
-              </span>
+              ))}
+              <button
+                className="px-2 py-1 text-[10px] rounded-md transition-colors cursor-pointer"
+                style={{
+                  backgroundColor: themeVars?.surface ?? '#111827',
+                  color: themeVars?.muted ?? '#94a3b8',
+                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                }}
+                onClick={handleAddCustomPreset}
+                title="현재 크기를 프리셋으로 저장"
+              >
+                + 저장
+              </button>
             </div>
           </div>
 
-          {/* 에러 메시지 */}
-          {error && (
-            <div className="text-xs" style={{ color: '#f87171' }}>{error}</div>
-          )}
+          {/* 출력 크기 정보 */}
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
+              출력 크기
+            </label>
+            <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+              {cols * cellWidth} × {rows * cellHeight} px
+            </span>
+          </div>
         </div>
 
-        {/* 하단 버튼 */}
-        <div
-          className="flex justify-end gap-2 px-4 py-3"
-          style={{ borderTop: `1px solid ${themeVars?.border ?? '#334155'}` }}
-        >
-          <button style={btnBase} onClick={onClose} disabled={saving}>
-            취소
-          </button>
-          <button
-            style={{
-              ...btnBase,
-              backgroundColor: themeVars?.accent ?? '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              opacity: saving ? 0.5 : 1,
-            }}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? '저장 중...' : '저장'}
-          </button>
-        </div>
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="text-xs" style={{ color: '#f87171' }}>{error}</div>
+        )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
