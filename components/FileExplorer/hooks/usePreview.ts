@@ -64,6 +64,8 @@ export function usePreview(): PreviewState {
   }, []);
 
   const handlePreviewText = useCallback(async (path: string) => {
+    // 같은 파일이면 리로드하지 않음 (깜빡임 방지)
+    if (path === previewTextPath) return;
     setPreviewTextPath(path);
     setPreviewTextContent(null);
     try {
@@ -72,7 +74,7 @@ export function usePreview(): PreviewState {
     } catch {
       setPreviewTextContent('파일을 읽을 수 없습니다.');
     }
-  }, []);
+  }, [previewTextPath]);
 
   const closeTextPreview = useCallback(() => {
     setPreviewTextPath(null);

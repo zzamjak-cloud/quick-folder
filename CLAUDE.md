@@ -15,6 +15,8 @@ QuickFolder Widget is a **Tauri 2.x** desktop application for managing local fol
 - **tauri-plugin-drag** - OS-level file drag export
 - **TailwindCSS** - Styling via utility classes
 - **Lucide React** - Icon library
+- **TipTap** - WYSIWYG 마크다운 편집기 (ProseMirror 기반)
+- **marked / turndown** - MD↔HTML 변환
 
 ## Development Commands
 
@@ -45,7 +47,7 @@ npm run preview
 3. `handleUndo`에 해당 타입의 복원 로직 구현
 4. 복원 후 `loadDirectory(currentPath)`로 UI 갱신
 
-현재 지원: `delete` (휴지통 복원), `rename` (이름 되돌리기), `move_group` (그룹화 되돌리기)
+현재 지원: `delete` (휴지통 복원), `rename` (이름 되돌리기), `move_group` (그룹화 되돌리기), `create_file` (파일 생성 취소)
 
 ## Architecture
 
@@ -84,6 +86,8 @@ The app uses Tauri's command pattern:
    - `copy_items` / `move_items` - Copies or moves files
    - `create_directory` - Creates new directory
    - `is_directory` - Checks if path is a directory
+   - `create_text_file` - Creates empty text file
+   - `write_text_file` - Writes content to text file
 
 2. **Frontend** calls these via `invoke()` from `@tauri-apps/api/core`
 
@@ -140,6 +144,16 @@ index.tsx에서 분리된 도메인별 훅:
 - **`usePreview.ts`** - 이미지/동영상/텍스트 미리보기 상태
 - **`useInternalDragDrop.ts`** - 내부 드래그 → 폴더 이동 / 즐겨찾기 등록
 - **`useUndoStack.ts`** - 실행취소 스택 관리
+
+### 마크다운 편집기 (`components/FileExplorer/MarkdownEditor.tsx`)
+
+TipTap(ProseMirror) 기반 WYSIWYG 편집기. 독립 모달로 구현 (ModalShell 미사용 — ESC 차단 + 푸터 불필요).
+- **TipTap 확장**: StarterKit, TaskList, TaskItem, Placeholder
+- **MD↔HTML 변환**: `marked` (로드 시 MD→HTML), `turndown` (저장 시 HTML→MD)
+- **자동 저장**: 1.5초 디바운스 + Ctrl+S 즉시 저장
+- **단축키 격리**: 캡처 단계 키 리스너로 글로벌 단축키 차단 (`stopImmediatePropagation`)
+- **열기**: .md 파일 선택 후 Enter 키 (더블클릭은 OS 기본 앱)
+- **생성**: 빈 공간 우클릭 → "마크다운" 메뉴 → 인라인 이름변경
 
 ### 공유 유틸리티 (`utils/pathUtils.ts`)
 

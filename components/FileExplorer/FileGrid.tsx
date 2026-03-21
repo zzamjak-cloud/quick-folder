@@ -445,6 +445,13 @@ export default memo(function FileGrid({
     skipNextClick.current = false;
   }, [selectedPaths]);
 
+  // 컨테이너 빈 공간 우클릭 시 빈 paths로 컨텍스트 메뉴 호출
+  const handleContainerContextMenu = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-file-path]')) return;
+    e.preventDefault();
+    onContextMenu(e, []);
+  }, [onContextMenu]);
+
   // 컨테이너 클릭 시 선택 해제 (박스 드래그 후에는 스킵)
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
     if (skipNextClick.current) {
@@ -487,6 +494,7 @@ export default memo(function FileGrid({
         className="flex-1 flex flex-col items-center justify-center gap-2 select-none"
         style={{ color: themeVars?.muted ?? '#94a3b8' }}
         onClick={handleContainerClick}
+        onContextMenu={handleContainerContextMenu}
       >
         <div className="text-4xl opacity-30">📂</div>
         <p className="text-xs">폴더가 비어 있습니다</p>
@@ -500,6 +508,7 @@ export default memo(function FileGrid({
       className="flex-1 overflow-y-auto p-3 relative"
       style={{ backgroundColor: themeVars?.bg ?? '#0f172a' }}
       onClick={handleContainerClick}
+      onContextMenu={handleContainerContextMenu}
       onMouseDown={handleContainerMouseDown}
     >
       {/* 백그라운드 로딩 인디케이터 (기존 파일 표시 중 새 디렉토리 로드) */}

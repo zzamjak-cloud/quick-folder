@@ -64,4 +64,5 @@ export interface ToastMessage {
 export type UndoAction =
   | { type: 'delete'; paths: string[]; directory: string; useTrash: boolean }
   | { type: 'rename'; oldPath: string; newPath: string }
-  | { type: 'move_group'; sources: string[]; createdDir: string; parentDir: string };
+  | { type: 'move_group'; sources: string[]; createdDir: string; parentDir: string }
+  | { type: 'create_file'; path: string };

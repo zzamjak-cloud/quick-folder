@@ -65,6 +65,7 @@ export interface UseKeyboardShortcutsConfig {
   duplicateTab: () => void;
   closeOtherTabs: () => void;
   columnView: ReturnType<typeof useColumnView>;
+  setMarkdownEditorPath: (path: string | null) => void;
 }
 
 /**
@@ -88,6 +89,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     searchInputRef,
     handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     columnView,
+    setMarkdownEditorPath,
   } = config;
 
   useEffect(() => {
@@ -95,7 +97,9 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       // 분할 뷰: 포커스된 패널만 키보드 단축키 응답
       if (!isFocused) return;
       if (renamingPath) return;
+      // 마크다운 편집기 열려 있으면 모든 단축키 무시
       const active = document.activeElement;
+      if (active && (active as HTMLElement).isContentEditable) return;
       const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
       if (isInput && e.key !== 'Escape') return;
 
@@ -243,11 +247,29 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           const col = columnView.columns[columnView.focusedCol];
           if (col) {
             const entry = col.entries[columnView.focusedRow];
-            if (entry) { e.preventDefault(); openEntry(entry); return; }
+            if (entry) {
+              e.preventDefault();
+              // .md 파일이면 편집기로 열기
+              if (!entry.is_dir && /\.md$/i.test(entry.name)) {
+                setMarkdownEditorPath(entry.path);
+              } else {
+                openEntry(entry);
+              }
+              return;
+            }
           }
         } else if (selectedPaths.length === 1) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
-          if (entry) { e.preventDefault(); openEntry(entry); return; }
+          if (entry) {
+            e.preventDefault();
+            // .md 파일이면 편집기로 열기
+            if (!entry.is_dir && /\.md$/i.test(entry.name)) {
+              setMarkdownEditorPath(entry.path);
+            } else {
+              openEntry(entry);
+            }
+            return;
+          }
         }
         return;
       }
@@ -264,10 +286,10 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           preview.closeAllPreviews();
           return;
         }
-        // 선택된 파일이 하나일 때만 미리보기 열기
+        // 선택된 파일이 하나일 때만 미리보기 열기 (폴더 제외)
         if (selectedPaths.length !== 1) return;
         const entry = entries.find(en => en.path === selectedPaths[0]);
-        if (entry) previewFile(entry);
+        if (entry && !entry.is_dir) previewFile(entry);
         return;
       }
 

@@ -5,6 +5,7 @@ import { ThemeVars, ContextMenuSection } from './types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
+  FolderPlus, FileText,
 } from 'lucide-react';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
@@ -13,6 +14,7 @@ import BulkRenameModal from './BulkRenameModal';
 import PixelateModal from './PixelateModal';
 import SheetPackerModal from './SheetPackerModal';
 import SheetUnpackModal from './SheetUnpackModal';
+import MarkdownEditor from './MarkdownEditor';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
@@ -129,22 +131,34 @@ export default function FileExplorer({
 
   // 파일 미리보기 실행 (Space키 + 화살표 이동 시 공용)
   const previewFile = useCallback((entry: FileEntry) => {
-    // 타입 전환 시 이전 미리보기 정리 (이미지→동영상 등)
-    preview.closeAllPreviews();
+    // 폴더는 미리보기 대상이 아님
+    if (entry.is_dir) return;
 
-    if (entry.file_type === 'video') {
+    const isVideo = entry.file_type === 'video';
+    const isImage = entry.file_type === 'image' || /\.psd$/i.test(entry.name);
+    const isPsb = /\.psb$/i.test(entry.name);
+    const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
+    const isText = TEXT_PREVIEW_EXTS.has(ext);
+
+    // 같은 타입이면 closeAll 없이 직접 교체 (깜빡임 방지)
+    if (isVideo) {
+      if (!preview.videoPlayerPath) preview.closeAllPreviews();
       preview.setVideoPlayerPath(entry.path);
-    } else if (entry.file_type === 'image' || /\.psd$/i.test(entry.name)) {
+    } else if (isImage) {
+      if (!preview.previewImagePath) preview.closeAllPreviews();
       preview.handlePreviewImage(entry.path);
-    } else if (/\.psb$/i.test(entry.name)) {
+    } else if (isPsb) {
+      preview.closeAllPreviews();
       if (isMac) {
         invoke('quick_look', { path: entry.path }).catch(console.error);
       } else {
         preview.handlePreviewImage(entry.path);
       }
-    } else if (TEXT_PREVIEW_EXTS.has(entry.name.split('.').pop()?.toLowerCase() ?? '')) {
+    } else if (isText) {
+      if (!preview.previewTextPath) preview.closeAllPreviews();
       preview.handlePreviewText(entry.path);
-    } else if (isMac) {
+    } else if (isMac && !entry.is_dir) {
+      preview.closeAllPreviews();
       invoke('quick_look', { path: entry.path }).catch(console.error);
     }
   }, [isMac, TEXT_PREVIEW_EXTS, preview]);
@@ -359,6 +373,8 @@ export default function FileExplorer({
   // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
   useEffect(() => {
     if (!initialPath) return;
+    // 현재 활성 탭이 이미 같은 경로면 openTab 호출 불필요 (탭 전환 방지)
+    if (activeTab && activeTab.path === initialPath) return;
     openTab(initialPath);
   }, [initialPath, initialPathKey]);
 
@@ -538,6 +554,7 @@ export default function FileExplorer({
     duplicateTab,
     closeOtherTabs,
     columnView,
+    setMarkdownEditorPath: modals.setMarkdownEditorPath,
   });
 
   // --- 컨텍스트 메뉴 ---
@@ -742,6 +759,24 @@ export default function FileExplorer({
     }
     sections.push(infoSection);
 
+    // 섹션 6: 빈 공간 전용 (새로 만들기)
+    if (paths.length === 0) {
+      const createSection: ContextMenuSection = { id: 'create', items: [] };
+      createSection.items.push({
+        id: 'new-folder',
+        icon: <FolderPlus size={13} />,
+        label: '새 폴더',
+        onClick: () => fileOps.handleCreateDirectory(),
+      });
+      createSection.items.push({
+        id: 'new-markdown',
+        icon: <FileText size={13} />,
+        label: '마크다운',
+        onClick: () => fileOps.handleCreateMarkdown(),
+      });
+      sections.push(createSection);
+    }
+
     return sections;
   }, [
     contextMenu, entries, clipboardHook.clipboard, folderTags,
@@ -749,7 +784,8 @@ export default function FileExplorer({
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
     fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleDelete,
     fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleCopyPath,
-    fileOps.handleSpritePack, handleAddTag, handleRemoveTag,
+    fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
+    handleAddTag, handleRemoveTag,
     onAddToFavorites, modals.setPixelatePath, modals.setSheetUnpackPath,
   ]);
 
@@ -759,8 +795,14 @@ export default function FileExplorer({
     // 동영상 재생 중이면 자동 갱신하지 않음 (시청 중 의도치 않은 전환 방지)
     if (preview.videoPlayerPath) return;
     const entry = entries.find(e => e.path === selectedPaths[0]);
-    if (entry) previewFile(entry);
-  }, [selectedPaths, preview.isAnyPreviewOpen, preview.videoPlayerPath, entries, previewFile]);
+    if (!entry) return;
+    // 폴더 선택 시 미리보기 닫기
+    if (entry.is_dir) {
+      preview.closeAllPreviews();
+      return;
+    }
+    previewFile(entry);
+  }, [selectedPaths, preview.isAnyPreviewOpen, preview.videoPlayerPath, entries, previewFile, preview]);
 
   // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
   useEffect(() => {
@@ -1210,6 +1252,18 @@ export default function FileExplorer({
           currentPath={currentPath}
           onSelect={handleGlobalSearchSelect}
           themeVars={themeVars}
+        />
+      )}
+
+      {/* 마크다운 편집기 */}
+      {modals.markdownEditorPath && (
+        <MarkdownEditor
+          path={modals.markdownEditorPath}
+          themeVars={themeVars}
+          onClose={() => {
+            modals.setMarkdownEditorPath(null);
+            if (currentPath) loadDirectory(currentPath);
+          }}
         />
       )}
 

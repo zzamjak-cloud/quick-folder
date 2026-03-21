@@ -21,6 +21,8 @@ export function useModalStates() {
   const [tagPrompt, setTagPrompt] = useState<{ path: string; defaultName: string } | null>(null);
   // 인라인 이름변경 대상 경로
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  // 마크다운 편집기 대상 경로
+  const [markdownEditorPath, setMarkdownEditorPath] = useState<string | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -31,5 +33,6 @@ export function useModalStates() {
     isGlobalSearchOpen, setIsGlobalSearchOpen,
     tagPrompt, setTagPrompt,
     renamingPath, setRenamingPath,
+    markdownEditorPath, setMarkdownEditorPath,
   };
 }

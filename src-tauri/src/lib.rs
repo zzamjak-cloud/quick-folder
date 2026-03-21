@@ -822,6 +822,22 @@ async fn create_directory(path: String) -> Result<(), String> {
     std::fs::create_dir_all(&path).map_err(|e| format!("폴더 생성 실패: {}", e))
 }
 
+// 빈 텍스트 파일 생성
+#[tauri::command]
+async fn create_text_file(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if p.exists() {
+        return Err("이미 존재하는 파일입니다".to_string());
+    }
+    std::fs::write(&path, "").map_err(|e| format!("파일 생성 실패: {}", e))
+}
+
+// 텍스트 파일에 내용 쓰기
+#[tauri::command]
+async fn write_text_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(|e| format!("파일 저장 실패: {}", e))
+}
+
 // 경로가 디렉토리인지 확인
 #[tauri::command]
 fn is_directory(path: String) -> bool {
@@ -2653,6 +2669,8 @@ pub fn run() {
         delete_items,
         restore_trash_items,
         create_directory,
+        create_text_file,
+        write_text_file,
         rename_item,
         quick_look,
         is_directory,

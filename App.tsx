@@ -149,6 +149,9 @@ export default function App() {
   // --- 글로벌 키보드 단축키 (Ctrl+\: 분할 뷰, Ctrl+B: 사이드바 토글) ---
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // 마크다운 편집기가 열려있으면 글로벌 단축키 무시
+      if (document.querySelector('[data-markdown-editor]')) return;
+
       if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
         e.preventDefault();
         setSplitMode(prev => {

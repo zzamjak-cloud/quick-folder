@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-03-21
+
+### Added
+- **내장 마크다운 편집기**: 탐색기 빈 공간 우클릭 → "마크다운" 메뉴로 .md 파일 생성, Enter 키로 TipTap WYSIWYG 편집기 열기
+  - 서식 툴바: Bold, Italic, H1~H3, 목록, 체크리스트, 코드 블록, 인용, 구분선
+  - 마크다운 단축 입력: `# ` → H1, `- ` → 목록, `[] ` → 체크리스트 등 (Notion 스타일)
+  - 자동 저장 (1.5초 디바운스) + Ctrl+S/Cmd+S 수동 저장
+  - 닫기 시 미저장 내용 자동 flush
+  - 파일 생성 Undo (Ctrl+Z) 지원
+- **빈 공간 컨텍스트 메뉴**: 탐색기 빈 공간 우클릭 시 "새 폴더" + "마크다운" 메뉴 표시
+- **Rust 백엔드 커맨드**: `create_text_file`, `write_text_file` 추가
+
+### Fixed
+- **미리보기 깜빡임 수정**: 같은 타입 파일 간 미리보기 전환 시 불필요한 닫기/열기 제거
+- **폴더 미리보기 차단**: 스페이스바 및 화살표 이동 시 폴더에 대해 미리보기 실행되지 않도록 수정
+- **탭 포커스 유지**: 상위 폴더로 이동 시 동일 경로의 다른 탭으로 자동 전환되던 문제 수정
+- **편집기 단축키 충돌**: 마크다운 편집기 내에서 Cmd+B 등 글로벌 단축키가 동작하던 문제 수정
+
 ## [1.22.0] - 2026-03-21
 
 ### Added

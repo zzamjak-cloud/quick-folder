@@ -114,6 +114,30 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, loadDirectory, entries, setRenamingPath, setSelectedPaths]);
 
+  // --- 마크다운 파일 생성 ---
+  const handleCreateMarkdown = useCallback(async () => {
+    if (!currentPath) return;
+    const sep = getPathSeparator(currentPath);
+    let base = '새 문서';
+    let candidate = `${base}.md`;
+    let counter = 2;
+    const existingNames = new Set(entries.map(e => e.name));
+    while (existingNames.has(candidate)) {
+      candidate = `${base} ${counter++}.md`;
+    }
+    const newPath = `${currentPath}${sep}${candidate}`;
+    try {
+      await invoke('create_text_file', { path: newPath });
+      undoStack.push({ type: 'create_file', path: newPath });
+      await loadDirectory(currentPath);
+      // 생성 후 바로 인라인 이름변경 시작
+      setRenamingPath(newPath);
+      setSelectedPaths([newPath]);
+    } catch (e) {
+      console.error('마크다운 파일 생성 실패:', e);
+    }
+  }, [currentPath, loadDirectory, entries, undoStack, setRenamingPath, setSelectedPaths]);
+
   // --- 인라인 이름변경 시작 ---
   const handleRenameStart = useCallback((path: string) => {
     setRenamingPath(path);
@@ -363,6 +387,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         // 빈 폴더 삭제
         await invoke('delete_items', { paths: [action.createdDir], useTrash: false });
         showCopyToast('그룹화 취소됨');
+      } else if (action.type === 'create_file') {
+        await invoke('delete_items', { paths: [action.path], useTrash: true });
+        showCopyToast('파일 생성 취소됨');
       }
       if (currentPath) {
         loadDirectory(currentPath);
@@ -378,6 +405,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleDelete,
     handleDuplicate,
     handleCreateDirectory,
+    handleCreateMarkdown,
     handleRenameStart,
     handleRenameCommit,
     handleBulkRename,
