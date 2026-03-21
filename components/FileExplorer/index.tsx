@@ -7,6 +7,8 @@ import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import BulkRenameModal from './BulkRenameModal';
 import PixelateModal from './PixelateModal';
+import SheetPackerModal from './SheetPackerModal';
+import SheetUnpackModal from './SheetUnpackModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
@@ -84,6 +86,8 @@ export default function FileExplorer({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [bulkRenamePaths, setBulkRenamePaths] = useState<string[] | null>(null);
   const [pixelatePath, setPixelatePath] = useState<string | null>(null);
+  const [sheetPackPaths, setSheetPackPaths] = useState<string[] | null>(null);
+  const [sheetUnpackPath, setSheetUnpackPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -666,15 +670,22 @@ export default function FileExplorer({
     }
     const newPath = `${currentPath}${sep}${candidate}`;
     try {
+      const sourcePaths = [...selectedPaths];
       await invoke('create_directory', { path: newPath });
       await invoke('move_items', { sources: selectedPaths, dest: newPath });
+      undoStack.push({
+        type: 'move_group',
+        sources: sourcePaths,
+        createdDir: newPath,
+        parentDir: currentPath,
+      });
       await loadDirectory(currentPath);
       setSelectedPaths([newPath]);
       setRenamingPath(newPath);
     } catch (e) {
       showCopyToast(`그룹화 실패: ${e}`);
     }
-  }, [currentPath, selectedPaths, entries, loadDirectory, showCopyToast]);
+  }, [currentPath, selectedPaths, entries, loadDirectory, showCopyToast, undoStack]);
 
   // 픽셀화 적용
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
@@ -685,6 +696,39 @@ export default function FileExplorer({
     }
     showCopyToast(`픽셀화 완료: ${output.split(/[/\\]/).pop()}`);
   }, [currentPath, sortBy, sortDir, showCopyToast]);
+
+  // 스프라이트 시트 패킹
+  const handleSpritePack = useCallback(async (paths: string[]) => {
+    if (paths.length === 1) {
+      // 폴더: 폴더 내 이미지 목록 조회
+      const result = await invoke<FileEntry[]>('list_directory', { path: paths[0] });
+      const imageExts = /\.(png|jpe?g|gif|webp|bmp)$/i;
+      const imgs = result.filter(e => !e.is_dir && imageExts.test(e.name)).map(e => e.path);
+      if (imgs.length === 0) { showCopyToast('이미지 파일이 없습니다'); return; }
+      setSheetPackPaths(imgs);
+    } else {
+      setSheetPackPaths(paths);
+    }
+  }, [showCopyToast]);
+
+  // 시트 패킹 기본 파일명
+  const sheetPackDefaultName = useMemo(() => {
+    if (!sheetPackPaths || sheetPackPaths.length === 0) return 'sprite';
+    const names = sheetPackPaths.map(p => p.split(/[/\\]/).pop() ?? '');
+    // 공통 접두사 찾기
+    if (names.length > 1) {
+      let prefix = names[0];
+      for (let i = 1; i < names.length; i++) {
+        while (!names[i].startsWith(prefix) && prefix.length > 0) {
+          prefix = prefix.slice(0, -1);
+        }
+      }
+      // 접두사에서 마지막 구분자/숫자 제거
+      prefix = prefix.replace(/[\s_\-.\d]+$/, '');
+      if (prefix.length > 0) return prefix;
+    }
+    return 'sprite';
+  }, [sheetPackPaths]);
 
   // 폴더 태그 추가 (모달 상태 기반)
   const [tagPrompt, setTagPrompt] = useState<{ path: string; defaultName: string } | null>(null);
@@ -783,6 +827,16 @@ export default function FileExplorer({
       } else if (action.type === 'rename') {
         await invoke('rename_item', { oldPath: action.oldPath, newPath: action.newPath });
         showCopyToast('이름 변경 취소됨');
+      } else if (action.type === 'move_group') {
+        // 새 폴더 안의 파일들을 원래 디렉토리로 이동
+        const innerFiles = await invoke<FileEntry[]>('list_directory', { path: action.createdDir });
+        const innerPaths = innerFiles.map((f: FileEntry) => f.path);
+        if (innerPaths.length > 0) {
+          await invoke('move_items', { sources: innerPaths, dest: action.parentDir });
+        }
+        // 빈 폴더 삭제
+        await invoke('delete_items', { paths: [action.createdDir], useTrash: false });
+        showCopyToast('그룹화 취소됨');
       }
       if (currentPath) {
         loadDirectory(currentPath);
@@ -1673,6 +1727,8 @@ export default function FileExplorer({
           onPreviewPsd={preview.handlePreviewImage}
           onBulkRename={handleBulkRename}
           onPixelate={(path) => setPixelatePath(path)}
+          onSpritePack={handleSpritePack}
+          onSheetUnpack={(path) => setSheetUnpackPath(path)}
           onAddTag={handleAddTag}
           onRemoveTag={handleRemoveTag}
           folderTags={folderTags}
@@ -1698,6 +1754,27 @@ export default function FileExplorer({
           path={pixelatePath}
           onClose={() => setPixelatePath(null)}
           onApply={handlePixelateApply}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 시트 패킹 모달 */}
+      {sheetPackPaths && (
+        <SheetPackerModal
+          imagePaths={sheetPackPaths}
+          defaultName={sheetPackDefaultName}
+          currentPath={currentPath!}
+          onClose={() => { setSheetPackPaths(null); if (currentPath) loadDirectory(currentPath); }}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 시트 언패킹 모달 */}
+      {sheetUnpackPath && (
+        <SheetUnpackModal
+          path={sheetUnpackPath}
+          currentPath={currentPath!}
+          onClose={() => { setSheetUnpackPath(null); if (currentPath) loadDirectory(currentPath); }}
           themeVars={themeVars}
         />
       )}

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-03-21
+
+### Added
+- **Ctrl+G 그룹핑 Undo**: 파일 그룹화(Ctrl+G) 후 Ctrl+Z로 되돌리기 지원 (파일 원위치 복원 + 빈 폴더 삭제)
+- **스프라이트 시트 패킹**: 폴더 또는 다중 이미지 선택 → 우클릭 "시트 패킹"으로 스프라이트 시트 생성 (행/열/셀 크기 조절, 프리셋, 시퀀스 재생 미리보기)
+- **스프라이트 시트 언패킹**: PNG 파일 우클릭 → "시트 언패킹"으로 시트를 개별 프레임으로 분할 저장
+- **컬럼 뷰 동영상 재생**: 컬럼 뷰에서 동영상 선택 시 인라인 비디오 플레이어 표시 (Space 재생/정지, 좌우 화살표 탐색)
+- **컬럼 뷰 텍스트 미리보기**: 코드, 마크다운, 텍스트 파일의 내용을 컬럼 뷰 미리보기에 표시
+
+### Fixed
+- **컬럼 뷰 이미지 맞춤**: 큰 이미지가 패널 크기에 맞게 자동 축소 (스크롤 제거)
+- **시트 패킹 프레임 미리보기**: 셀 크기가 커져도 프레임이 잘리지 않도록 스케일링 적용
+
+### Changed
+- **컬럼 뷰 성능 최적화**: 이중 리렌더 제거, selectedPaths Set 변환, 안정적 핸들러 참조로 폴더 탐색 체감 속도 개선
+- **CLAUDE.md Undo 규칙**: 모든 파일 조작 기능에 Ctrl+Z 실행취소 필수 지원 규칙 추가
+
 ## [1.20.1] - 2026-03-20
 
 ### Fixed

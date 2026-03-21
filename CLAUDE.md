@@ -35,6 +35,18 @@ npm run build
 npm run preview
 ```
 
+## 개발 규칙: Undo (Ctrl+Z) 필수 지원
+
+**모든 파일 조작 기능은 반드시 Ctrl+Z 실행취소를 지원해야 한다.** 이것은 기본 기능이며 빠뜨리면 안 된다.
+
+새로운 파일 조작 기능 추가 시 체크리스트:
+1. `types.ts`의 `UndoAction`에 해당 액션 변형(variant) 추가
+2. 조작 성공 후 `undoStack.push()`로 역방향 복원 정보 기록
+3. `handleUndo`에 해당 타입의 복원 로직 구현
+4. 복원 후 `loadDirectory(currentPath)`로 UI 갱신
+
+현재 지원: `delete` (휴지통 복원), `rename` (이름 되돌리기), `move_group` (그룹화 되돌리기)
+
 ## Architecture
 
 ### Entry Points

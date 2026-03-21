@@ -15,6 +15,8 @@ export interface ColumnData {
 export interface ColumnPreviewData {
   entry: FileEntry;
   thumbnail: string | null;     // base64 데이터 URL
+  textContent: string | null;   // 텍스트/마크다운/코드 파일 내용
+  videoPath: string | null;     // 동영상 경로 (convertFileSrc용)
   loading: boolean;
 }
 
@@ -63,7 +65,7 @@ export function useColumnView() {
     }
   }, []);
 
-  // 썸네일 로딩 헬퍼
+  // 썸네일 로딩 헬퍼 (이미지, PSD, 동영상, 텍스트/코드/문서 지원)
   const loadThumbnail = useCallback((entry: FileEntry) => {
     // 이전 썸네일 로딩 취소
     if (thumbnailCancelRef.current) {
@@ -72,43 +74,80 @@ export function useColumnView() {
     }
 
     const isPsd = /\.(psd|psb)$/i.test(entry.name);
+    const isVideo = entry.file_type === 'video';
+    const isText = entry.file_type === 'code' || entry.file_type === 'document' ||
+      /\.(txt|md|json|xml|yaml|yml|toml|ini|cfg|log|csv|tsx?|jsx?|py|rs|go|java|c|cpp|h|hpp|css|scss|less|html?|sh|bash|zsh|bat|ps1|sql|rb|php|swift|kt|dart|lua|r|m|mm)$/i.test(entry.name);
 
-    // 이미지 또는 PSD/PSB만 썸네일 로딩
-    if (entry.file_type !== 'image' && !isPsd) {
-      setPreview({ entry, thumbnail: null, loading: false });
-      return;
-    }
-
-    setPreview({ entry, thumbnail: null, loading: true });
-
-    // PSD/PSB는 get_psd_thumbnail, 일반 이미지는 get_file_thumbnail
-    const cmd = isPsd ? 'get_psd_thumbnail' : 'get_file_thumbnail';
-    const { promise, cancel } = queuedInvoke<string | null>(
-      cmd,
-      { path: entry.path, size: 1024 },
-    );
-    thumbnailCancelRef.current = cancel;
-
-    promise
-      .then(b64 => {
-        if (b64) {
+    // 동영상: 썸네일 + videoPath 설정
+    if (isVideo) {
+      setPreview({ entry, thumbnail: null, textContent: null, videoPath: entry.path, loading: true });
+      const { promise, cancel } = queuedInvoke<string | null>(
+        'get_video_thumbnail',
+        { path: entry.path, size: 1024 },
+      );
+      thumbnailCancelRef.current = cancel;
+      promise
+        .then(b64 => {
           setPreview(prev => {
             if (!prev || prev.entry.path !== entry.path) return prev;
-            return { ...prev, thumbnail: `data:image/png;base64,${b64}`, loading: false };
+            return { ...prev, thumbnail: b64 ? `data:image/png;base64,${b64}` : null, loading: false };
           });
-        } else {
+        })
+        .catch(() => {
           setPreview(prev => {
             if (!prev || prev.entry.path !== entry.path) return prev;
             return { ...prev, loading: false };
           });
-        }
-      })
-      .catch(() => {
-        setPreview(prev => {
-          if (!prev || prev.entry.path !== entry.path) return prev;
-          return { ...prev, loading: false };
         });
-      });
+      return;
+    }
+
+    // 텍스트/코드/문서: 텍스트 내용 로딩
+    if (isText) {
+      setPreview({ entry, thumbnail: null, textContent: null, videoPath: null, loading: true });
+      invoke<string>('read_text_file', { path: entry.path, maxBytes: 8192 })
+        .then(content => {
+          setPreview(prev => {
+            if (!prev || prev.entry.path !== entry.path) return prev;
+            return { ...prev, textContent: content, loading: false };
+          });
+        })
+        .catch(() => {
+          setPreview(prev => {
+            if (!prev || prev.entry.path !== entry.path) return prev;
+            return { ...prev, loading: false };
+          });
+        });
+      return;
+    }
+
+    // 이미지 또는 PSD/PSB: 썸네일 로딩
+    if (entry.file_type === 'image' || isPsd) {
+      setPreview({ entry, thumbnail: null, textContent: null, videoPath: null, loading: true });
+      const cmd = isPsd ? 'get_psd_thumbnail' : 'get_file_thumbnail';
+      const { promise, cancel } = queuedInvoke<string | null>(
+        cmd,
+        { path: entry.path, size: 1024 },
+      );
+      thumbnailCancelRef.current = cancel;
+      promise
+        .then(b64 => {
+          setPreview(prev => {
+            if (!prev || prev.entry.path !== entry.path) return prev;
+            return { ...prev, thumbnail: b64 ? `data:image/png;base64,${b64}` : null, loading: false };
+          });
+        })
+        .catch(() => {
+          setPreview(prev => {
+            if (!prev || prev.entry.path !== entry.path) return prev;
+            return { ...prev, loading: false };
+          });
+        });
+      return;
+    }
+
+    // 기타 파일: 미리보기 없음
+    setPreview({ entry, thumbnail: null, textContent: null, videoPath: null, loading: false });
   }, []);
 
   // 정렬 함수 (폴더 우선, 이름순 - 자연 정렬)
@@ -137,35 +176,26 @@ export function useColumnView() {
     });
   }, []);
 
-  // 컬럼 내 항목 선택
+  // 컬럼 내 항목 선택 — 단일 setColumns로 리렌더 최소화
   const selectInColumn = useCallback((colIndex: number, entry: FileEntry) => {
-    // 해당 컬럼의 선택 상태 업데이트 + 오른쪽 컬럼 모두 제거
+    // 포커스 위치 업데이트 (columns ref 없이 setColumns 내부에서 계산)
+    setFocusedCol(colIndex);
     setColumns(prev => {
-      const updated = prev.slice(0, colIndex + 1).map((col, i) => {
-        if (i === colIndex) {
-          return { ...col, selectedPath: entry.path };
-        }
-        return col;
-      });
-      return updated;
+      const col = prev[colIndex];
+      if (col) {
+        const rowIdx = col.entries.findIndex(e => e.path === entry.path);
+        if (rowIdx >= 0) setFocusedRow(rowIdx);
+      }
+      return prev; // 실제 업데이트는 아래에서
     });
 
-    // 포커스 위치 업데이트
-    setFocusedCol(colIndex);
-    const col = columns[colIndex];
-    if (col) {
-      const rowIdx = col.entries.findIndex(e => e.path === entry.path);
-      if (rowIdx >= 0) setFocusedRow(rowIdx);
-    }
-
     if (entry.is_dir) {
-      // 폴더: 새 컬럼 추가 (로딩 상태)
+      // 폴더: 선택 상태 업데이트 + 로딩 컬럼 추가를 한 번에
       setPreview(null);
       const newColIndex = colIndex + 1;
       const requestPath = entry.path;
       loadRequestRef.current.set(newColIndex, requestPath);
 
-      // 로딩 컬럼 추가
       setColumns(prev => {
         const updated = prev.slice(0, colIndex + 1).map((col, i) => {
           if (i === colIndex) return { ...col, selectedPath: entry.path };
@@ -183,12 +213,10 @@ export function useColumnView() {
       // 디렉토리 로딩
       invoke<FileEntry[]>('list_directory', { path: requestPath })
         .then(result => {
-          // stale 응답 무시
           if (loadRequestRef.current.get(newColIndex) !== requestPath) return;
           loadRequestRef.current.delete(newColIndex);
           const sorted = sortEntries(result);
           setColumns(prev => {
-            // 해당 컬럼이 아직 존재하는지 확인
             if (prev.length <= newColIndex) return prev;
             if (prev[newColIndex].path !== requestPath) return prev;
             const updated = [...prev];
@@ -216,10 +244,17 @@ export function useColumnView() {
           });
         });
     } else {
-      // 파일: 미리보기 표시
+      // 파일: 선택 상태만 업데이트
+      setColumns(prev => {
+        const updated = prev.slice(0, colIndex + 1).map((col, i) => {
+          if (i === colIndex) return { ...col, selectedPath: entry.path };
+          return col;
+        });
+        return updated;
+      });
       loadThumbnail(entry);
     }
-  }, [columns, sortEntries, loadThumbnail]);
+  }, [sortEntries, loadThumbnail]);
 
   // 지정 컬럼 이후의 모든 컬럼 제거 (← 화살표 뒤로 이동 시)
   // 마지막 유지 컬럼의 selectedPath도 초기화 (서브 컬럼이 제거되었으므로)

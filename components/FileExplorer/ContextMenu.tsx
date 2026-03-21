@@ -15,6 +15,8 @@ import {
   Film,
   ChevronRight,
   Grid3x3,
+  LayoutGrid,
+  Ungroup,
   Tag,
 } from 'lucide-react';
 import { FileEntry, ClipboardData } from '../../types';
@@ -41,6 +43,8 @@ interface ContextMenuProps {
   onPreviewPsd?: (path: string) => void;
   onBulkRename?: (paths: string[]) => void;
   onPixelate?: (path: string) => void;
+  onSpritePack?: (paths: string[]) => void;
+  onSheetUnpack?: (path: string) => void;
   onAddTag?: (path: string) => void;
   onRemoveTag?: (path: string) => void;
   folderTags?: Record<string, string>; // 태그 존재 여부 확인용
@@ -68,6 +72,8 @@ export default memo(function ContextMenu({
   onPreviewPsd,
   onBulkRename,
   onPixelate,
+  onSpritePack,
+  onSheetUnpack,
   onAddTag,
   onRemoveTag,
   folderTags,
@@ -225,6 +231,20 @@ export default memo(function ContextMenu({
             '픽셀화',
             () => onPixelate(singlePath),
           )}
+
+        {/* 스프라이트 시트 패킹 — 폴더 단일 선택 */}
+        {isSingle && singleEntry?.is_dir && onSpritePack &&
+          item(<LayoutGrid size={13} />, '시트 패킹', () => onSpritePack([singlePath]))}
+
+        {/* 스프라이트 시트 패킹 — 다중 이미지 선택 */}
+        {!isSingle && paths.length > 1 && onSpritePack && (() => {
+          const allImages = paths.every(p => /\.(png|jpe?g|gif|webp|bmp)$/i.test(p));
+          return allImages ? item(<LayoutGrid size={13} />, '시트 패킹', () => onSpritePack(paths)) : null;
+        })()}
+
+        {/* 스프라이트 시트 언패킹 — PNG 단일 선택 */}
+        {isSingle && singleEntry && /\.(png)$/i.test(singleEntry.name) && !singleEntry.is_dir &&
+          onSheetUnpack && item(<Ungroup size={13} />, '시트 언패킹', () => onSheetUnpack(singlePath))}
 
         {divider('d4')}
 

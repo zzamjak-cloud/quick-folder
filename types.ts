@@ -63,4 +63,5 @@ export interface ToastMessage {
 // 실행취소 액션 타입
 export type UndoAction =
   | { type: 'delete'; paths: string[]; directory: string; useTrash: boolean }
-  | { type: 'rename'; oldPath: string; newPath: string };
+  | { type: 'rename'; oldPath: string; newPath: string }
+  | { type: 'move_group'; sources: string[]; createdDir: string; parentDir: string };

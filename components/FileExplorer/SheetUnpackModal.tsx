@@ -1,0 +1,329 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { X } from 'lucide-react';
+import { ThemeVars } from './types';
+
+interface SheetUnpackModalProps {
+  path: string;
+  currentPath: string;
+  onClose: () => void;
+  themeVars: ThemeVars | null;
+}
+
+export default function SheetUnpackModal({
+  path,
+  currentPath,
+  onClose,
+  themeVars,
+}: SheetUnpackModalProps) {
+  // 열/행 상태
+  const [cols, setCols] = useState(4);
+  const [rows, setRows] = useState(4);
+
+  // 원본 이미지 미리보기 (base64)
+  const [preview, setPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // 프레임 수 계산
+  const frameCount = cols * rows;
+
+  // 파일명 추출
+  const fileName = useMemo(() => {
+    const sep = path.includes('/') ? '/' : '\\';
+    return path.split(sep).pop() ?? path;
+  }, [path]);
+
+  // 확장자 제외한 파일명 (저장용)
+  const baseName = useMemo(() => {
+    const name = fileName;
+    const dotIdx = name.lastIndexOf('.');
+    return dotIdx > 0 ? name.substring(0, dotIdx) : name;
+  }, [fileName]);
+
+  // 마운트 시 원본 이미지 썸네일 로드
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const base64 = await invoke<string>('get_file_thumbnail', {
+          path,
+          size: 1024,
+        });
+        if (!cancelled) setPreview(base64);
+      } catch (e) {
+        if (!cancelled) setError(`미리보기 로드 실패: ${e}`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [path]);
+
+  // ESC 키로 닫기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saving, onClose]);
+
+  // 저장 처리
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await invoke('split_sprite_sheet', {
+        input: path,
+        cols,
+        rows,
+        outputDir: currentPath,
+        baseName,
+      });
+      onClose();
+    } catch (e) {
+      setError(`저장 실패: ${e}`);
+    } finally {
+      setSaving(false);
+    }
+  }, [path, cols, rows, currentPath, baseName, onClose]);
+
+  // 공통 스타일
+  const btnBase: React.CSSProperties = {
+    padding: '5px 14px',
+    fontSize: 12,
+    borderRadius: 6,
+    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+    backgroundColor: themeVars?.surface ?? '#111827',
+    color: themeVars?.text ?? '#e5e7eb',
+    cursor: 'pointer',
+  };
+
+  const inputStyle: React.CSSProperties = {
+    backgroundColor: themeVars?.surface ?? '#111827',
+    color: themeVars?.text ?? '#e5e7eb',
+    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+    padding: '4px 8px',
+    fontSize: 12,
+    borderRadius: 4,
+    outline: 'none',
+    width: 60,
+  };
+
+  const checkerboardStyle: React.CSSProperties = {
+    backgroundImage:
+      'linear-gradient(45deg, #808080 25%, transparent 25%), ' +
+      'linear-gradient(-45deg, #808080 25%, transparent 25%), ' +
+      'linear-gradient(45deg, transparent 75%, #808080 75%), ' +
+      'linear-gradient(-45deg, transparent 75%, #808080 75%)',
+    backgroundSize: '16px 16px',
+    backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+  };
+
+  // 프레임 미리보기 그리드 렌더링 — 고정 크기 셀로 클리핑
+  const thumbSize = useMemo(() => {
+    // 그리드 영역(약 380px)에 맞게 셀 크기 계산
+    const maxGridWidth = 380;
+    return Math.max(24, Math.min(80, Math.floor(maxGridWidth / cols)));
+  }, [cols]);
+
+  const frameGrid = useMemo(() => {
+    if (!preview) return null;
+    const frames: React.ReactNode[] = [];
+    const imgW = thumbSize * cols;
+    const imgH = thumbSize * rows;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const idx = r * cols + c;
+        frames.push(
+          <div
+            key={idx}
+            className="rounded overflow-hidden"
+            style={{
+              width: thumbSize,
+              height: thumbSize,
+              position: 'relative',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+              ...checkerboardStyle,
+            }}
+          >
+            <img
+              src={`data:image/png;base64,${preview}`}
+              alt={`프레임 ${idx + 1}`}
+              style={{
+                position: 'absolute',
+                width: imgW,
+                height: imgH,
+                maxWidth: 'none',
+                left: -(c * thumbSize),
+                top: -(r * thumbSize),
+                imageRendering: 'auto',
+              }}
+            />
+          </div>
+        );
+      }
+    }
+    return frames;
+  }, [preview, cols, rows, thumbSize, themeVars?.border]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+    >
+      <div
+        className="rounded-lg shadow-2xl flex flex-col"
+        style={{
+          backgroundColor: themeVars?.surface2 ?? '#1e293b',
+          border: `1px solid ${themeVars?.border ?? '#334155'}`,
+          width: '100%',
+          maxWidth: '52rem',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* 헤더 */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}
+        >
+          <span className="text-sm font-medium truncate flex-1 mr-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+            시트 언패킹 — {fileName} ({cols}×{rows}프레임)
+          </span>
+          <button
+            className="p-1 hover:opacity-70 flex-shrink-0"
+            style={{ color: themeVars?.muted }}
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* 본문 */}
+        <div className="px-4 py-4 flex flex-col gap-4">
+          {/* 미리보기 영역 — 좌: 원본, 우: 프레임 그리드 */}
+          <div className="flex gap-3">
+            {/* 원본 이미지 미리보기 */}
+            <div className="flex-1 flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>원본 이미지</span>
+              <div
+                className="flex items-center justify-center rounded-md overflow-hidden w-full"
+                style={{
+                  maxHeight: 300,
+                  ...checkerboardStyle,
+                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                }}
+              >
+                {preview ? (
+                  <img
+                    src={`data:image/png;base64,${preview}`}
+                    alt="원본 이미지"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: 300,
+                      objectFit: 'contain',
+                    }}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center" style={{ height: 200 }}>
+                    {error ? (
+                      <span className="text-xs" style={{ color: '#f87171' }}>{error}</span>
+                    ) : (
+                      <div
+                        className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
+                        style={{ borderColor: `${themeVars?.accent ?? '#3b82f6'} transparent transparent transparent` }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 프레임 미리보기 그리드 */}
+            <div className="flex-1 flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
+                프레임 미리보기 ({frameCount}장)
+              </span>
+              <div
+                className="rounded-md overflow-auto w-full"
+                style={{
+                  maxHeight: 300,
+                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                  backgroundColor: themeVars?.surface ?? '#111827',
+                }}
+              >
+                <div
+                  className="grid gap-1 p-2"
+                  style={{
+                    gridTemplateColumns: `repeat(${cols}, ${thumbSize}px)`,
+                  }}
+                >
+                  {frameGrid}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 열/행 입력 */}
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
+              열(cols)
+            </label>
+            <input
+              type="number"
+              value={cols}
+              min={1}
+              max={64}
+              onChange={e => setCols(Math.max(1, Number(e.target.value)))}
+              onKeyDown={e => e.stopPropagation()}
+              style={inputStyle}
+            />
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
+              행(rows)
+            </label>
+            <input
+              type="number"
+              value={rows}
+              min={1}
+              max={64}
+              onChange={e => setRows(Math.max(1, Number(e.target.value)))}
+              onKeyDown={e => e.stopPropagation()}
+              style={inputStyle}
+            />
+            <span className="text-[10px]" style={{ color: themeVars?.muted }}>
+              ({frameCount}프레임)
+            </span>
+          </div>
+
+          {/* 에러 메시지 */}
+          {error && (
+            <div className="text-xs" style={{ color: '#f87171' }}>{error}</div>
+          )}
+        </div>
+
+        {/* 하단 버튼 */}
+        <div
+          className="flex justify-end gap-2 px-4 py-3"
+          style={{ borderTop: `1px solid ${themeVars?.border ?? '#334155'}` }}
+        >
+          <button style={btnBase} onClick={onClose} disabled={saving}>
+            취소
+          </button>
+          <button
+            style={{
+              ...btnBase,
+              backgroundColor: themeVars?.accent ?? '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              opacity: saving ? 0.5 : 1,
+            }}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

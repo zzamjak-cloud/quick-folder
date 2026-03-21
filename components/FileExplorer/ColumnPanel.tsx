@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useCallback } from 'react';
+import React, { memo, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
@@ -65,7 +65,7 @@ const ColumnRow = memo(function ColumnRow({
       {/* 파일명 */}
       <span
         className="flex-1 min-w-0 truncate"
-        style={{ color: isSelected ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.text ?? '#e5e7eb') }}
+        style={{ color: themeVars?.text ?? '#e5e7eb' }}
       >
         {entry.name}
       </span>
@@ -109,6 +109,9 @@ export default memo(function ColumnPanel({
 }: ColumnPanelProps) {
   const resizeStartRef = useRef<number | null>(null);
 
+  // selectedPaths를 Set으로 변환 — O(1) 조회
+  const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
+
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -129,6 +132,21 @@ export default memo(function ColumnPanel({
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [onResize]);
+
+  // 안정적인 핸들러 참조 — colIndex를 ref로 캡처하여 인라인 클로저 제거
+  const colIndexRef = useRef(colIndex);
+  colIndexRef.current = colIndex;
+
+  const handleClick = useCallback((e: React.MouseEvent, entry: FileEntry) => {
+    e.stopPropagation();
+    onSelect(colIndexRef.current, entry, e.ctrlKey || e.metaKey, e.shiftKey);
+  }, [onSelect]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, path: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onContextMenu(e, [path]);
+  }, [onContextMenu]);
 
   return (
     <div
@@ -154,19 +172,12 @@ export default memo(function ColumnPanel({
           <ColumnRow
             key={entry.path}
             entry={entry}
-            isSelected={selectedPaths.includes(entry.path)}
+            isSelected={selectedSet.has(entry.path)}
             isFocused={isFocusedCol && focusedRow === rowIdx}
             themeVars={themeVars}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(colIndex, entry, e.ctrlKey || e.metaKey, e.shiftKey);
-            }}
+            onClick={(e) => handleClick(e, entry)}
             onDoubleClick={() => onOpen(entry)}
-            onContextMenu={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onContextMenu(e, [entry.path]);
-            }}
+            onContextMenu={(e) => handleContextMenu(e, entry.path)}
             onDragMouseDown={onDragMouseDown}
           />
         ))
