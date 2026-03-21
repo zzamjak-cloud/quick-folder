@@ -5,6 +5,8 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import { Extension } from '@tiptap/core';
+import { InputRule } from '@tiptap/core';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { ThemeVars } from '../../types';
@@ -23,10 +25,44 @@ const turndown = new TurndownService({
   codeBlockStyle: 'fenced',
 });
 
+// --- 화살표 자동 변환 확장 ---
+const ArrowReplace = Extension.create({
+  name: 'arrowReplace',
+  addInputRules() {
+    return [
+      // <-> + 스페이스 → ↔
+      new InputRule({
+        find: /<->\s$/,
+        handler: ({ state, range }) => {
+          const { tr } = state;
+          tr.insertText('↔ ', range.from, range.to);
+        },
+      }),
+      // -> + 스페이스 → → (앞에 <가 없을 때만)
+      new InputRule({
+        find: /(?<!<)->\s$/,
+        handler: ({ state, range }) => {
+          const { tr } = state;
+          tr.insertText('→ ', range.from, range.to);
+        },
+      }),
+      // <- + 스페이스 → ← (<->는 위에서 이미 처리됨)
+      new InputRule({
+        find: /<-\s$/,
+        handler: ({ state, range }) => {
+          const { tr } = state;
+          tr.insertText('← ', range.from, range.to);
+        },
+      }),
+    ];
+  },
+});
+
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClose }) => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [loaded, setLoaded] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
   const fileName = getFileName(path);
 
   // --- TipTap 에디터 초기화 ---
@@ -38,6 +74,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       Placeholder.configure({
         placeholder: '마크다운을 작성하세요…',
       }),
+      ArrowReplace,
     ],
     content: '<p></p>',
     editorProps: {
@@ -93,12 +130,35 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     })();
   }, [editor, path]);
 
-  // --- 편집기 열려있을 때 글로벌 단축키 차단 + Ctrl+S 저장 ---
+  // --- 닫기 시 미저장 내용 flush ---
+  const handleClose = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      saveRef.current?.().then(onClose);
+    } else {
+      onClose();
+    }
+  }, [onClose]);
+
+  // --- handleClose를 ref로 감싸서 useEffect 안에서 최신 값 참조 ---
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
+
+  // --- 편집기 열려있을 때 글로벌 단축키 차단 + ESC 닫기 + Ctrl+S 저장 ---
   useEffect(() => {
     const handleCapture = (e: KeyboardEvent) => {
       // 편집기 모달 내부의 이벤트만 처리
       const modal = document.querySelector('[data-markdown-editor]');
       if (!modal) return;
+
+      // ESC: 편집기 닫기
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        handleCloseRef.current();
+        return;
+      }
 
       // Ctrl+S: 즉시 저장
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -120,17 +180,6 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     window.addEventListener('keydown', handleCapture, true);
     return () => window.removeEventListener('keydown', handleCapture, true);
   }, []);
-
-  // --- 닫기 시 미저장 내용 flush ---
-  const handleClose = useCallback(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-      saveRef.current?.().then(onClose);
-    } else {
-      onClose();
-    }
-  }, [onClose]);
 
   // --- 서식 버튼 정의 ---
   const toolbarButtons = [
@@ -193,6 +242,19 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       action: () => editor?.chain().focus().toggleBlockquote().run(),
       isActive: () => editor?.isActive('blockquote'),
     },
+    { type: 'separator' as const },
+    {
+      label: '→', title: '오른쪽 화살표 (-> + 스페이스)',
+      action: () => editor?.chain().focus().insertContent('→').run(),
+    },
+    {
+      label: '←', title: '왼쪽 화살표 (<- + 스페이스)',
+      action: () => editor?.chain().focus().insertContent('←').run(),
+    },
+    {
+      label: '↔', title: '양방향 화살표 (<-> + 스페이스)',
+      action: () => editor?.chain().focus().insertContent('↔').run(),
+    },
   ];
 
   const statusText = saveStatus === 'saved' ? '저장됨' : saveStatus === 'saving' ? '저장 중...' : '미저장';
@@ -203,9 +265,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       className="fixed inset-0 z-[10000] flex items-center justify-center"
       data-markdown-editor="true"
       style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+      onClick={handleClose}
     >
       <div
         className="flex flex-col rounded-lg shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
         style={{
           width: '60vw',
           height: '90vh',
@@ -228,6 +292,29 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
             <span style={{ color: statusColor, fontSize: 12 }}>
               {saveStatus === 'saved' ? '✓' : saveStatus === 'saving' ? '⟳' : '●'} {statusText}
             </span>
+            <button
+              onClick={async () => {
+                if (!editor) return;
+                const html = editor.getHTML();
+                const md = turndown.turndown(html);
+                try {
+                  await navigator.clipboard.writeText(md);
+                  setCopyFeedback(true);
+                  setTimeout(() => setCopyFeedback(false), 1500);
+                } catch (e) {
+                  console.error('복사 실패:', e);
+                }
+              }}
+              className="text-gray-400 hover:text-white transition-colors px-2 py-0.5 rounded text-xs"
+              style={{
+                background: themeVars?.surface ?? '#333',
+                border: `1px solid ${themeVars?.border ?? '#444'}`,
+                cursor: 'pointer',
+              }}
+              title="마크다운 원본 복사"
+            >
+              {copyFeedback ? '✓ 복사됨' : '복사'}
+            </button>
             <button
               onClick={handleClose}
               className="text-gray-400 hover:text-white transition-colors"

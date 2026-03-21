@@ -5,18 +5,21 @@ import { useSortable } from '@dnd-kit/sortable';
 import { FolderShortcut } from '../types';
 import { useFolderIcon } from './FileExplorer/hooks/useNativeIcon';
 import { LEGACY_TEXT_CLASS_TO_HEX } from '../hooks/useCategoryManagement';
+import { adjustColorForTheme } from '../hooks/useThemeManagement';
 
 export interface SortableShortcutItemProps {
   shortcut: FolderShortcut;
   categoryId: string;
   handleOpenFolder: (path: string) => void;
+  handleOpenInNewTab: (path: string) => void;
+  isDark: boolean;
   handleCopyPath: (path: string) => void;
   deleteShortcut: (catId: string, sId: string) => void;
   openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
   showIndicatorBefore?: boolean;
 }
 
-export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleCopyPath, deleteShortcut, openEditFolderModal, showIndicatorBefore }: SortableShortcutItemProps) {
+export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, handleOpenInNewTab, isDark, handleCopyPath, deleteShortcut, openEditFolderModal, showIndicatorBefore }: SortableShortcutItemProps) {
   const {
     attributes,
     listeners,
@@ -84,8 +87,14 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
     >
       <div
         className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-        onClick={() => handleOpenFolder(shortcut.path)}
-        title={`${shortcut.path} (클릭하여 탐색기에서 열기)`}
+        onClick={(e) => {
+          if (e.ctrlKey || e.metaKey) {
+            handleOpenInNewTab(shortcut.path);
+          } else {
+            handleOpenFolder(shortcut.path);
+          }
+        }}
+        title={`${shortcut.path} (클릭: 탐색기에서 열기 / Ctrl+클릭: 새 탭)`}
       >
         <div className="text-[var(--qf-accent)] transition-colors">
           {folderIcon ? (
@@ -98,10 +107,12 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
           <div
             className="text-sm font-medium group-hover/item:opacity-80 truncate"
             style={{
-              color:
-                shortcut.color?.startsWith('#')
+              color: (() => {
+                const raw = shortcut.color?.startsWith('#')
                   ? shortcut.color
-                  : (shortcut.color && LEGACY_TEXT_CLASS_TO_HEX[shortcut.color]) || undefined,
+                  : (shortcut.color && LEGACY_TEXT_CLASS_TO_HEX[shortcut.color]) || undefined;
+                return raw ? adjustColorForTheme(raw, isDark) : undefined;
+              })(),
             }}
           >
             {shortcut.name}

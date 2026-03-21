@@ -265,11 +265,28 @@ export function useTabManagement({
       });
     };
 
+    // 사이드바에서 Ctrl+클릭으로 새 탭 열기
+    const handleOpenNewTab = (e: Event) => {
+      const { path } = (e as CustomEvent).detail;
+      const newTab: Tab = {
+        id: crypto.randomUUID(),
+        path,
+        history: [path],
+        historyIndex: 0,
+        title: pathTitle(path),
+      };
+      setTabs(prev => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+      loadDirectory(path);
+    };
+
     window.addEventListener('qf-tab-rename', handleRename);
     window.addEventListener('qf-tab-delete', handleDelete);
+    window.addEventListener('qf-open-new-tab', handleOpenNewTab);
     return () => {
       window.removeEventListener('qf-tab-rename', handleRename);
       window.removeEventListener('qf-tab-delete', handleDelete);
+      window.removeEventListener('qf-open-new-tab', handleOpenNewTab);
     };
   }, [loadDirectory]);
 

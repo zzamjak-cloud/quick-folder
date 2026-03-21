@@ -370,12 +370,18 @@ export default function FileExplorer({
     }
   }, [displayEntries, currentPath, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- initialPath 변경 시 탭 생성 또는 기존 탭으로 전환 ---
+  // --- initialPath 변경 시 현재 탭 경로 변경 (탭이 없으면 새 탭 생성) ---
   useEffect(() => {
     if (!initialPath) return;
-    // 현재 활성 탭이 이미 같은 경로면 openTab 호출 불필요 (탭 전환 방지)
+    // 현재 활성 탭이 이미 같은 경로면 불필요
     if (activeTab && activeTab.path === initialPath) return;
-    openTab(initialPath);
+    if (activeTab) {
+      // 기존 활성 탭의 경로를 변경 (새 탭 추가 안 함)
+      navigateTo(initialPath);
+    } else {
+      // 탭이 없으면 새 탭 생성
+      openTab(initialPath);
+    }
   }, [initialPath, initialPathKey]);
 
   // 앱 시작 시 저장된 탭이 있으면 마지막 활성 탭 로드

@@ -6,6 +6,7 @@ import {
   LEGACY_TEXT_CLASS_TO_HEX,
   LEGACY_BG_CLASS_TO_HEX,
 } from '../hooks/useCategoryManagement';
+import { adjustColorForTheme } from '../hooks/useThemeManagement';
 import { SortableShortcutItem } from './SortableShortcutItem';
 
 // 드롭 인디케이터 타입
@@ -26,10 +27,11 @@ export interface CategoryColumnProps {
   openEditCategoryModal: (cat: Category) => void;
   deleteCategory: (id: string) => void;
   handleOpenFolder: (path: string) => void;
+  handleOpenInNewTab: (path: string) => void;
   handleCopyPath: (path: string) => void;
   deleteShortcut: (catId: string, sId: string) => void;
   openEditFolderModal: (catId: string, shortcut: FolderShortcut) => void;
-  searchQuery: string;
+  isDark: boolean;
   dropIndicator: DropIndicator | null;
 }
 
@@ -41,10 +43,11 @@ export function CategoryColumn({
   openEditCategoryModal,
   deleteCategory,
   handleOpenFolder,
+  handleOpenInNewTab,
   handleCopyPath,
   deleteShortcut,
   openEditFolderModal,
-  searchQuery,
+  isDark,
   dropIndicator,
 }: CategoryColumnProps) {
   const {
@@ -61,7 +64,7 @@ export function CategoryColumn({
     }
   });
 
-  const isExpanded = !category.isCollapsed || searchQuery.length > 0;
+  const isExpanded = !category.isCollapsed;
 
   const style: React.CSSProperties = {
     opacity: isDragging ? 0.5 : 1,
@@ -73,10 +76,11 @@ export function CategoryColumn({
 
   // 카테고리 드롭 인디케이터: 이 카테고리 앞에 라인 표시
   const showCategoryIndicator = dropIndicator?.type === 'category' && dropIndicator.index === categoryIndex;
-  const categoryTitleHex =
+  const rawCategoryHex =
     category.color?.startsWith('#')
       ? category.color
       : (category.color && (LEGACY_TEXT_CLASS_TO_HEX[category.color] || LEGACY_BG_CLASS_TO_HEX[category.color])) || '';
+  const categoryTitleHex = rawCategoryHex ? adjustColorForTheme(rawCategoryHex, isDark) : '';
 
   // 즐겨찾기 드롭 인디케이터: 이 카테고리의 어떤 인덱스 앞에 라인 표시
   const shortcutIndicatorIndex = dropIndicator?.type === 'shortcut' && dropIndicator.categoryId === category.id
@@ -167,6 +171,8 @@ export function CategoryColumn({
                     shortcut={shortcut}
                     categoryId={category.id}
                     handleOpenFolder={handleOpenFolder}
+                    handleOpenInNewTab={handleOpenInNewTab}
+                    isDark={isDark}
                     handleCopyPath={handleCopyPath}
                     deleteShortcut={deleteShortcut}
                     openEditFolderModal={openEditFolderModal}

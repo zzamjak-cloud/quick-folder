@@ -5,7 +5,6 @@ import {
   Folder,
   Trash2,
   Palette,
-  Search,
   ZoomIn,
   ChevronDown,
   ChevronRight,
@@ -13,6 +12,7 @@ import {
   PanelLeftOpen,
   Clock,
   Download,
+  Monitor,
 } from 'lucide-react';
 import {
   DndContext,
@@ -43,7 +43,7 @@ import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
 import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
-import { downloadDir } from '@tauri-apps/api/path';
+import { downloadDir, desktopDir } from '@tauri-apps/api/path';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ZoomModal } from './components/ZoomModal';
@@ -51,6 +51,7 @@ import { ZoomModal } from './components/ZoomModal';
 // 커스텀 훅
 import {
   useThemeManagement,
+  adjustColorForTheme,
   COLORS,
   FOLDER_TEXT_COLORS,
   normalizeHexColor,
@@ -95,7 +96,6 @@ export default function App() {
   const { categories, setCategories } = catMgmt;
 
   // --- UI 상태 ---
-  const [searchQuery, setSearchQuery] = useState('');
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
 
@@ -223,11 +223,31 @@ export default function App() {
     }
   }, [splitMode, focusedPane, downloadPath]);
 
+  // 데스크탑 폴더 경로
+  const [desktopPath, setDesktopPath] = useState<string | null>(null);
+  useEffect(() => {
+    desktopDir().then(setDesktopPath).catch(console.error);
+  }, []);
+
+  const handleOpenDesktop = useCallback(() => {
+    if (!desktopPath) return;
+    if (splitMode === 'single' || focusedPane === 0) {
+      setExplorerPath(desktopPath);
+    } else {
+      setExplorerPath2(desktopPath);
+    }
+  }, [splitMode, focusedPane, desktopPath]);
+
   // 즐겨찾기 폴더 경로 목록 (FileExplorer에서 최근항목 조회 시 사용)
   const recentRoots = useMemo(() =>
     categories.flatMap(c => c.shortcuts.map(s => s.path)),
     [categories]
   );
+
+  // Ctrl(Cmd)+클릭 시 새 탭에서 열기
+  const handleOpenInNewTab = useCallback((path: string) => {
+    window.dispatchEvent(new CustomEvent('qf-open-new-tab', { detail: { path } }));
+  }, []);
 
   const handleOpenInExplorer = useCallback((path: string) => {
     if (splitMode === 'single' || focusedPane === 0) {
@@ -468,23 +488,6 @@ export default function App() {
     }
   }, [setCategories]);
 
-  // --- 필터 ---
-  const filteredCategories = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return categories.map(cat => {
-      const isTitleMatch = cat.title.toLowerCase().includes(q);
-      const shortcutsToShow = isTitleMatch
-        ? cat.shortcuts
-        : cat.shortcuts.filter(s =>
-          s.name.toLowerCase().includes(q) ||
-          s.path.toLowerCase().includes(q)
-        );
-      return { ...cat, shortcuts: shortcutsToShow };
-    }).filter(cat =>
-      cat.shortcuts.length > 0 ||
-      cat.title.toLowerCase().includes(q)
-    );
-  }, [categories, searchQuery]);
 
   return (
     <div
@@ -558,14 +561,7 @@ export default function App() {
                     <PanelLeftClose size={14} />
                   </button>
                 </div>
-                <div className="flex items-center gap-1.5 px-3 pb-2">
-                  <input
-                    type="text"
-                    placeholder="검색..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-[var(--qf-surface)] border border-[var(--qf-border)] text-[var(--qf-text)] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--qf-accent)] flex-1 min-w-0 transition-all placeholder:text-[var(--qf-muted)]"
-                  />
+                <div className="flex items-center justify-end gap-1.5 px-3 pb-2">
                   <button
                     type="button"
                     onClick={() => setIsZoomModalOpen(true)}
@@ -609,6 +605,15 @@ export default function App() {
             <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
           </div>
 
+          {/* 데스크탑 버튼 */}
+          <div
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+            onClick={handleOpenDesktop}
+          >
+            <Monitor size={14} className="text-[var(--qf-accent)]" />
+            <span className="text-xs font-semibold text-[var(--qf-text)]">데스크탑</span>
+          </div>
+
           {/* 다운로드 버튼 */}
           <div
             className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
@@ -641,7 +646,7 @@ export default function App() {
                 }}
               >
               <SortableContext
-                items={filteredCategories.map(c => c.id)}
+                items={categories.map(c => c.id)}
                 strategy={rectSortingStrategy}
               >
                 {(
@@ -653,7 +658,7 @@ export default function App() {
                       marginTop: '-0.75rem',
                     }}
                   >
-                  {filteredCategories.map((category, idx) => (
+                  {categories.map((category, idx) => (
                     <CategoryColumn
                       key={category.id}
                       category={category}
@@ -663,18 +668,19 @@ export default function App() {
                       openEditCategoryModal={catMgmt.openEditCategoryModal}
                       deleteCategory={catMgmt.deleteCategory}
                       handleOpenFolder={handleOpenInExplorer}
+                      handleOpenInNewTab={handleOpenInNewTab}
                       handleCopyPath={handleCopyPath}
                       deleteShortcut={catMgmt.deleteShortcut}
                       openEditFolderModal={catMgmt.openEditFolderModal}
-                      searchQuery={searchQuery}
+                      isDark={theme.isDark}
                       dropIndicator={dropIndicator}
                     />
                   ))}
 
-                {filteredCategories.length === 0 && (
+                {categories.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-20 text-[var(--qf-muted)]" style={{ breakInside: 'avoid' }}>
-                    <Search size={48} className="mb-4 opacity-50" />
-                    <p className="text-lg font-medium">검색 결과가 없거나 등록된 카테고리가 없습니다.</p>
+                    <Folder size={48} className="mb-4 opacity-50" />
+                    <p className="text-lg font-medium">등록된 카테고리가 없습니다.</p>
                     <Button onClick={catMgmt.openAddCategoryModal} className="mt-4" variant="secondary">
                       새 카테고리 만들기
                     </Button>
@@ -695,13 +701,15 @@ export default function App() {
                         <h2
                           className="font-semibold"
                           style={{
-                            color:
-                              activeCategory.color?.startsWith('#')
+                            color: (() => {
+                              const raw = activeCategory.color?.startsWith('#')
                                 ? activeCategory.color
                                 : (activeCategory.color &&
                                     (LEGACY_TEXT_CLASS_TO_HEX[activeCategory.color] ||
                                       LEGACY_BG_CLASS_TO_HEX[activeCategory.color])) ||
-                                  undefined,
+                                  undefined;
+                              return raw ? adjustColorForTheme(raw, theme.isDark) : undefined;
+                            })(),
                           }}
                         >
                           {activeCategory.title}

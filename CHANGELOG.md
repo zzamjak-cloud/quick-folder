@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-03-22
+
+### Added
+- **사이드바 Ctrl+클릭 → 신규 탭**: 사이드바 폴더를 Ctrl(Cmd)+클릭하면 새 탭으로 열기, 일반 클릭은 현재 탭 경로 변경
+- **데스크탑 바로가기**: 사이드바에 "데스크탑" 기본 항목 추가 (macOS/Windows 자동 경로 감지)
+- **마크다운 편집기 화살표 프리셋**: 툴바에 →, ←, ↔ 삽입 버튼 + `->`, `<-`, `<->` 입력 시 자동 변환
+- **마크다운 원본 복사 버튼**: 편집기 헤더에 "복사" 버튼 — 순수 텍스트 마크다운으로 클립보드 복사 (터미널 붙여넣기 호환)
+
+### Changed
+- **테마 반응형 색상**: 카테고리/폴더 커스텀 색상이 라이트/다크 모드에 따라 명도 자동 조정 (HSL 기반 가독성 확보)
+- **사이드바 검색 제거**: 불필요한 검색 기능 제거, 헤더 버튼 우측 정렬
+
+### Fixed
+- **마크다운 편집기 닫기**: ESC 키 및 외부(오버레이) 클릭으로 편집기 닫기 가능
+- **탭 무한 생성 방지**: 사이드바 폴더 클릭 시 새 탭이 계속 추가되던 문제 수정 — 현재 탭 경로를 변경하는 방식으로 전환
+
 ## [1.23.0] - 2026-03-21
 
 ### Added

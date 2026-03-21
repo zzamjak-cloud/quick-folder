@@ -64,7 +64,7 @@ npm run preview
 
 App.tsx에서 분리된 도메인별 훅:
 
-- **`hooks/useThemeManagement.ts`** - 테마 프리셋, 커스텀 색상, 줌 레벨
+- **`hooks/useThemeManagement.ts`** - 테마 프리셋, 커스텀 색상, 줌 레벨, isDark 판별, adjustColorForTheme()
 - **`hooks/useCategoryManagement.ts`** - 카테고리·즐겨찾기 CRUD, localStorage 영속화
 - **`hooks/useWindowState.ts`** - 창 위치·크기 저장/복원
 - **`hooks/useTauriDragDrop.ts`** - 외부(OS) 폴더 드래그앤드롭 리스너
@@ -147,11 +147,13 @@ index.tsx에서 분리된 도메인별 훅:
 
 ### 마크다운 편집기 (`components/FileExplorer/MarkdownEditor.tsx`)
 
-TipTap(ProseMirror) 기반 WYSIWYG 편집기. 독립 모달로 구현 (ModalShell 미사용 — ESC 차단 + 푸터 불필요).
-- **TipTap 확장**: StarterKit, TaskList, TaskItem, Placeholder
+TipTap(ProseMirror) 기반 WYSIWYG 편집기. 독립 모달로 구현 (ModalShell 미사용 — ESC/외부 클릭으로 닫기).
+- **TipTap 확장**: StarterKit, TaskList, TaskItem, Placeholder, ArrowReplace (커스텀)
 - **MD↔HTML 변환**: `marked` (로드 시 MD→HTML), `turndown` (저장 시 HTML→MD)
 - **자동 저장**: 1.5초 디바운스 + Ctrl+S 즉시 저장
 - **단축키 격리**: 캡처 단계 키 리스너로 글로벌 단축키 차단 (`stopImmediatePropagation`)
+- **화살표 자동 변환**: `->` → `→`, `<-` → `←`, `<->` → `↔` (InputRule 기반)
+- **복사 버튼**: 헤더의 "복사" 버튼으로 순수 마크다운 텍스트 클립보드 복사
 - **열기**: .md 파일 선택 후 Enter 키 (더블클릭은 OS 기본 앱)
 - **생성**: 빈 공간 우클릭 → "마크다운" 메뉴 → 인라인 이름변경
 

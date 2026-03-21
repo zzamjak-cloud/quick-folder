@@ -113,6 +113,60 @@ function relativeLuminance(rgb: { r: number; g: number; b: number }) {
   return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
 }
 
+// --- HSL 변환 유틸 ---
+function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const r = rgb.r / 255, g = rgb.g / 255, b = rgb.b / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return { h, s, l };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const hue2rgb = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  if (s === 0) {
+    const v = Math.round(l * 255);
+    return rgbToHex(v, v, v);
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return rgbToHex(
+    Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+    Math.round(hue2rgb(p, q, h) * 255),
+    Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+  );
+}
+
+/** 테마 밝기에 따라 카테고리/폴더 색상의 명도를 자동 조정 */
+export function adjustColorForTheme(hexColor: string, isDark: boolean): string {
+  const hsl = hexToHsl(hexColor);
+  if (!hsl) return hexColor;
+  let { h, s, l } = hsl;
+  if (isDark) {
+    // 다크 모드: 너무 어두운 색상은 밝게
+    if (l < 0.55) l = 0.55;
+  } else {
+    // 라이트 모드: 너무 밝은 색상은 어둡게
+    if (l > 0.45) l = 0.45;
+  }
+  return hslToHex(h, s, l);
+}
+
 function computeThemeVars(bgHex: string, accentHex: string): ThemeVars | null {
   const bgRgb = hexToRgb(bgHex);
   const accentRgb = hexToRgb(accentHex);
@@ -152,6 +206,7 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
   const [bgInputValue, setBgInputValue] = useState('#0f172a');
   const [accentInputValue, setAccentInputValue] = useState('#3b82f6');
   const [themeVars, setThemeVars] = useState<ThemeVars | null>(null);
+  const [isDark, setIsDark] = useState(true);
   const [zoomPercent, setZoomPercent] = useState(80);
 
   // 저장된 설정 복원
@@ -188,6 +243,9 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
     const accent = themeId === 'custom' ? customAccent : preset.accent;
     const vars = computeThemeVars(bg, accent);
     setThemeVars(vars);
+    // 배경색 기반 다크/라이트 모드 판별
+    const bgRgb = hexToRgb(bg);
+    if (bgRgb) setIsDark(relativeLuminance(bgRgb) < 0.35);
   }, [themeId, customBg, customAccent]);
 
   const applyCustomTheme = useCallback((bgValue: string, accentValue: string) => {
@@ -212,7 +270,7 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
     customBg, customAccent,
     bgInputValue, setBgInputValue,
     accentInputValue, setAccentInputValue,
-    themeVars,
+    themeVars, isDark,
     zoomPercent, setZoomPercent, zoomScale,
     applyCustomTheme,
   };
