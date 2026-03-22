@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ZoomIn, ZoomOut } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import EditorCanvas, { EditorCanvasRef } from './EditorCanvas';
 import Toolbar from './panels/Toolbar';
 import PropertyPanel from './panels/PropertyPanel';
@@ -13,52 +13,41 @@ import { useCropMode } from './hooks/useCropMode';
 import { loadImageFromPath, loadImageFromBase64, getSavePath } from './utils';
 import type { ToolType } from './types';
 
-/** 도구 단축키 매핑 */
 const TOOL_KEYS: Record<string, ToolType> = {
   v: 'select', m: 'rect', c: 'circle', a: 'arrow',
   t: 'text', e: 'eraser', b: 'draw',
 };
 
 const WORKSPACE_MARGIN = 400;
-const ZOOM_STEP = 0.1;
-const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 3;
 
 export default function ImageEditor({ path, themeVars, onClose }: ImageEditorProps) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [stageSize, setStageSize] = useState({ width: 1600, height: 1200 });
   const [imageOffset] = useState({ x: WORKSPACE_MARGIN, y: WORKSPACE_MARGIN });
   const [scale, setScale] = useState(1);
+  const [zoomInput, setZoomInput] = useState('100');
   const [saving, setSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<EditorCanvasRef>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const editorState = useEditorState();
   const layerMgr = useLayers();
   const history = useHistory(layerMgr.restoreLayers, layerMgr.getSnapshot);
   const cropMode = useCropMode();
 
-  // --- 모든 가변 값을 ref로 유지 (키보드 핸들러 안정성) ---
-  const refs = useRef({
-    activeTool: editorState.activeTool,
-    strokeWidth: editorState.strokeWidth,
-    scale,
-    prevTool: null as ToolType | null,
-    onClose,
-    setActiveTool: editorState.setActiveTool,
-    setStrokeWidth: editorState.setStrokeWidth,
-    history,
-    layerMgr,
-  });
-  // 매 렌더마다 최신값으로 갱신
-  refs.current.activeTool = editorState.activeTool;
-  refs.current.strokeWidth = editorState.strokeWidth;
-  refs.current.scale = scale;
-  refs.current.onClose = onClose;
-  refs.current.setActiveTool = editorState.setActiveTool;
-  refs.current.setStrokeWidth = editorState.setStrokeWidth;
-  refs.current.history = history;
-  refs.current.layerMgr = layerMgr;
+  // Ctrl 임시 선택 도구용
+  const prevToolRef = useRef<ToolType | null>(null);
+  // fitScale 기억 (Fit 버튼용)
+  const fitScaleRef = useRef(1);
+
+  // 줌 변경 시 input 동기화
+  useEffect(() => {
+    setZoomInput(String(Math.round(scale * 100)));
+  }, [scale]);
+
+  // 루트 div 자동 포커스
+  useEffect(() => { rootRef.current?.focus(); }, []);
 
   // 이미지 로딩
   useEffect(() => {
@@ -81,7 +70,9 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     if (!containerRef.current) return;
     const cw = containerRef.current.clientWidth;
     const ch = containerRef.current.clientHeight;
-    setScale(Math.min(cw / sw, ch / sh, 1));
+    const s = Math.min(cw / sw, ch / sh, 1);
+    fitScaleRef.current = s;
+    setScale(s);
   }, []);
 
   useEffect(() => {
@@ -90,11 +81,15 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     return () => window.removeEventListener('resize', handler);
   }, [stageSize, fitToContainer]);
 
-  // #3: 줌 인/아웃
-  const zoomIn = useCallback(() => setScale(s => Math.min(ZOOM_MAX, s + ZOOM_STEP)), []);
-  const zoomOut = useCallback(() => setScale(s => Math.max(ZOOM_MIN, s - ZOOM_STEP)), []);
+  // 줌
+  const zoomTo = useCallback((pct: number) => {
+    setScale(Math.max(0.1, Math.min(3, pct / 100)));
+  }, []);
+  const zoomIn = useCallback(() => setScale(s => Math.min(3, +(s + 0.1).toFixed(1))), []);
+  const zoomOut = useCallback(() => setScale(s => Math.max(0.1, +(s - 0.1).toFixed(1))), []);
+  const zoomFit = useCallback(() => setScale(fitScaleRef.current), []);
 
-  // 크롭 모드 시작/종료 — #2: 이미지 크기 기준
+  // 크롭 모드
   useEffect(() => {
     if (editorState.activeTool === 'crop' && !cropMode.isCropping && image) {
       cropMode.startCrop(imageOffset.x, imageOffset.y, image.width, image.height);
@@ -103,34 +98,26 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     }
   }, [editorState.activeTool, image]);
 
-  // 크롭 적용
   const applyCrop = useCallback(async () => {
     if (!cropMode.cropRect || !canvasRef.current || !image) return;
     const stage = canvasRef.current.getStage();
     if (!stage) return;
-
     history.pushSnapshot();
     const cr = cropMode.cropRect;
     const s = scale;
-
     cropMode.cancelCrop();
     await new Promise(r => setTimeout(r, 0));
-
     const dataUrl = stage.toDataURL({
       x: cr.x * s, y: cr.y * s,
       width: cr.width * s, height: cr.height * s,
       pixelRatio: 1 / s,
     });
-
     layerMgr.setLayers(prev => prev.map(l => ({
       ...l,
       elements: l.elements.map(el => ({
-        ...el,
-        x: el.x - cr.x + WORKSPACE_MARGIN,
-        y: el.y - cr.y + WORKSPACE_MARGIN,
+        ...el, x: el.x - cr.x + WORKSPACE_MARGIN, y: el.y - cr.y + WORKSPACE_MARGIN,
       } as typeof el)),
     })));
-
     const img = await loadImageFromBase64(dataUrl);
     setImage(img);
     const sw = img.width + WORKSPACE_MARGIN * 2;
@@ -140,69 +127,57 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     fitToContainer(sw, sh);
   }, [cropMode.cropRect, image, scale, history, layerMgr, editorState, fitToContainer]);
 
-  // #1: 키보드 단축키 — 한 번만 등록, refs로 최신 값 참조
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isTextInput = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
-      if (isTextInput) {
-        if (e.key === 'Escape') {
-          (e.target as HTMLElement).blur();
-          e.stopImmediatePropagation();
-          e.preventDefault();
-        }
-        return;
+  // ============================================================
+  // 키보드 핸들러 — React onKeyDownCapture (window 리스너 불필요)
+  // ============================================================
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const isTextInput = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
+    if (isTextInput) {
+      if (e.key === 'Escape') {
+        (e.target as HTMLElement).blur();
+        e.stopPropagation();
+        e.preventDefault();
       }
+      return;
+    }
 
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      const r = refs.current;
+    e.stopPropagation();
 
-      if (e.key === 'Escape') { r.onClose(); return; }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { r.history.undo(); return; }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { r.history.redo(); return; }
+    if (e.key === 'Escape') { onClose(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); history.undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); history.redo(); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key === '-' || e.key === '_')) { e.preventDefault(); zoomOut(); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { e.preventDefault(); zoomIn(); return; }
 
-      // #3: Ctrl + -/= 줌
-      if ((e.ctrlKey || e.metaKey) && (e.key === '-' || e.key === '_')) { setScale(s => Math.max(ZOOM_MIN, s - ZOOM_STEP)); return; }
-      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { setScale(s => Math.min(ZOOM_MAX, s + ZOOM_STEP)); return; }
+    // Ctrl 키 자체 → 임시 선택 도구
+    if ((e.key === 'Control' || e.key === 'Meta') && !prevToolRef.current) {
+      prevToolRef.current = editorState.activeTool;
+      editorState.setActiveTool('select');
+      return;
+    }
 
-      // Ctrl 키 자체 → 임시 선택 도구
-      if ((e.key === 'Control' || e.key === 'Meta') && !r.prevTool) {
-        r.prevTool = r.activeTool;
-        r.setActiveTool('select');
-        return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); history.pushSnapshot(); layerMgr.removeActiveLayer(); return; }
+    if (e.key === '[') { editorState.setStrokeWidth(Math.max(1, editorState.strokeWidth - 1)); return; }
+    if (e.key === ']') { editorState.setStrokeWidth(Math.min(50, editorState.strokeWidth + 1)); return; }
+
+    // 도구 단축키
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      const tool = TOOL_KEYS[e.key.toLowerCase()];
+      if (tool) {
+        prevToolRef.current = null;
+        editorState.setActiveTool(tool);
       }
+    }
+  }, [onClose, history, layerMgr, editorState, zoomIn, zoomOut]);
 
-      if (e.key === 'Delete' || e.key === 'Backspace') { r.history.pushSnapshot(); r.layerMgr.removeActiveLayer(); return; }
-      if (e.key === '[') { r.setStrokeWidth(Math.max(1, r.strokeWidth - 1)); return; }
-      if (e.key === ']') { r.setStrokeWidth(Math.min(50, r.strokeWidth + 1)); return; }
-
-      // 도구 단축키 — Ctrl/Meta/Alt 없을 때
-      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        const tool = TOOL_KEYS[e.key.toLowerCase()];
-        if (tool) {
-          r.prevTool = null;
-          r.setActiveTool(tool);
-        }
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
-      e.stopImmediatePropagation();
-      const r = refs.current;
-      if ((e.key === 'Control' || e.key === 'Meta') && r.prevTool) {
-        r.setActiveTool(r.prevTool);
-        r.prevTool = null;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    window.addEventListener('keyup', handleKeyUp, true);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('keyup', handleKeyUp, true);
-    };
-  }, []); // 빈 deps — 절대 재등록 안 함
+  const handleKeyUp = useCallback((e: React.KeyboardEvent) => {
+    if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+    e.stopPropagation();
+    if ((e.key === 'Control' || e.key === 'Meta') && prevToolRef.current) {
+      editorState.setActiveTool(prevToolRef.current);
+      prevToolRef.current = null;
+    }
+  }, [editorState]);
 
   const handleReset = useCallback(() => {
     history.pushSnapshot();
@@ -210,9 +185,10 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
       id: crypto.randomUUID(), name: '레이어 1',
       visible: true, locked: false, elements: [],
     }]);
+    rootRef.current?.focus();
   }, [history, layerMgr]);
 
-  // 저장 — scale 보정
+  // #3: JPG 저장
   const handleSave = useCallback(async () => {
     const stage = canvasRef.current?.getStage();
     if (!stage || !image) return;
@@ -241,13 +217,17 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
           }
         }
       }
+      // JPG 포맷으로 저장
       const dataUrl = stage.toDataURL({
         x: minX * s, y: minY * s,
         width: (maxX - minX) * s, height: (maxY - minY) * s,
         pixelRatio: 1 / s,
+        mimeType: 'image/jpeg',
+        quality: 0.92,
       });
       const base64Data = dataUrl.split(',')[1];
-      const savePath = getSavePath(path);
+      // 확장자를 .jpg로 변경
+      const savePath = getSavePath(path).replace(/\.[^.]+$/, '.jpg');
       await invoke('save_image_base64', { path: savePath, base64Data });
       onClose();
     } catch (e) {
@@ -257,7 +237,7 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     }
   }, [image, imageOffset, path, scale, layerMgr.layers, onClose]);
 
-  // #4: 선택된 텍스트 요소의 align 정보
+  // 텍스트 정렬 상태
   const selectedTextAlign = useMemo(() => {
     if (!editorState.selectedElementId) return null;
     for (const layer of layerMgr.layers) {
@@ -276,9 +256,30 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     layerMgr.updateElement(editorState.selectedElementId, { align } as Partial<EditorElement>);
   }, [editorState.selectedElementId, history, layerMgr]);
 
+  // 줌 입력 핸들러
+  const handleZoomInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const val = parseInt(zoomInput, 10);
+      if (!isNaN(val) && val > 0) zoomTo(val);
+      rootRef.current?.focus();
+    }
+  };
+
+  const zoomBtnStyle: React.CSSProperties = {
+    width: 24, height: 24, borderRadius: 4, border: 'none', cursor: 'pointer',
+    backgroundColor: themeVars?.surface2 ?? '#252540', color: themeVars?.text ?? '#e5e7eb',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center"
-      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      onKeyDownCapture={handleKeyDown}
+      onKeyUpCapture={handleKeyUp}
+      className="fixed inset-0 flex items-center justify-center outline-none"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.6)' }}
+    >
       <div className="flex rounded-lg overflow-hidden shadow-2xl"
         style={{
           width: '90vw', height: '90vh',
@@ -288,14 +289,14 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
 
         <Toolbar
           activeTool={editorState.activeTool}
-          setActiveTool={editorState.setActiveTool}
+          setActiveTool={(t) => { editorState.setActiveTool(t); rootRef.current?.focus(); }}
           onReset={handleReset}
           onSave={handleSave}
           themeVars={themeVars}
           canUndo={history.canUndo}
           canRedo={history.canRedo}
-          onUndo={history.undo}
-          onRedo={history.redo}
+          onUndo={() => { history.undo(); rootRef.current?.focus(); }}
+          onRedo={() => { history.redo(); rootRef.current?.focus(); }}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -303,7 +304,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
             className="flex-1 overflow-auto flex items-center justify-center relative"
             style={{ backgroundColor: themeVars?.surface ?? '#1e293b' }}>
 
-            {/* 크롭 버튼 */}
             {cropMode.isCropping && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2" style={{ zIndex: 10 }}>
                 <button onClick={applyCrop}
@@ -319,22 +319,29 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
               </div>
             )}
 
-            {/* #3: 줌 컨트롤 */}
+            {/* #2: 줌 컨트롤 */}
             <div className="absolute top-4 right-4 flex items-center gap-1" style={{ zIndex: 10 }}>
-              <button onClick={zoomOut} title="축소 (Ctrl+-)"
-                style={{ width: 28, height: 28, borderRadius: 4, border: 'none', cursor: 'pointer',
-                  backgroundColor: themeVars?.surface2 ?? '#252540', color: themeVars?.text ?? '#e5e7eb',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ZoomOut size={14} />
+              <button onClick={zoomOut} title="축소 (Ctrl+-)" style={zoomBtnStyle}>
+                <ZoomOut size={13} />
               </button>
-              <span style={{ color: themeVars?.muted ?? '#888', fontSize: 11, minWidth: 40, textAlign: 'center' }}>
-                {Math.round(scale * 100)}%
-              </span>
-              <button onClick={zoomIn} title="확대 (Ctrl+=)"
-                style={{ width: 28, height: 28, borderRadius: 4, border: 'none', cursor: 'pointer',
-                  backgroundColor: themeVars?.surface2 ?? '#252540', color: themeVars?.text ?? '#e5e7eb',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ZoomIn size={14} />
+              <input
+                value={zoomInput}
+                onChange={e => setZoomInput(e.target.value)}
+                onKeyDown={handleZoomInputKeyDown}
+                onBlur={() => { const v = parseInt(zoomInput, 10); if (!isNaN(v) && v > 0) zoomTo(v); }}
+                style={{
+                  width: 48, height: 24, textAlign: 'center', fontSize: 11, borderRadius: 4,
+                  border: `1px solid ${themeVars?.border ?? '#444'}`,
+                  backgroundColor: themeVars?.surface2 ?? '#252540',
+                  color: themeVars?.text ?? '#e5e7eb', outline: 'none',
+                }}
+              />
+              <span style={{ color: themeVars?.muted ?? '#888', fontSize: 10 }}>%</span>
+              <button onClick={zoomIn} title="확대 (Ctrl+=)" style={zoomBtnStyle}>
+                <ZoomIn size={13} />
+              </button>
+              <button onClick={zoomFit} title="화면에 맞춤" style={zoomBtnStyle}>
+                <Maximize size={13} />
               </button>
             </div>
 
