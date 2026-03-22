@@ -12,13 +12,13 @@ import { useCropMode } from './hooks/useCropMode';
 import { loadImageFromPath, loadImageFromBase64, getSavePath } from './utils';
 import type { ToolType } from './types';
 
-/** #9: 도구 단축키 매핑 */
+/** 도구 단축키 매핑 */
 const TOOL_KEYS: Record<string, ToolType> = {
   v: 'select', m: 'rect', c: 'circle', a: 'arrow',
   t: 'text', e: 'eraser', b: 'draw',
 };
 
-/** #2: 이미지 주변 워크스페이스 여백 (이미지 좌표계 기준 px) */
+/** 이미지 주변 워크스페이스 여백 */
 const WORKSPACE_MARGIN = 400;
 
 export default function ImageEditor({ path, themeVars, onClose }: ImageEditorProps) {
@@ -37,12 +37,20 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
   const cropMode = useCropMode(stageSize.width, stageSize.height);
   const { cropRect, setCropRect } = cropMode;
 
-  // #3: refs로 최신 상태 유지 (키보드 핸들러 안정성)
+  // --- 키보드 핸들러용 refs (클로저 안정성 확보) ---
   const activeToolRef = useRef(editorState.activeTool);
   activeToolRef.current = editorState.activeTool;
   const strokeWidthRef = useRef(editorState.strokeWidth);
   strokeWidthRef.current = editorState.strokeWidth;
   const prevToolRef = useRef<ToolType | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const layerMgrRef = useRef(layerMgr);
+  layerMgrRef.current = layerMgr;
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
 
   // 이미지 로딩
   useEffect(() => {
@@ -51,7 +59,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
         const base64 = await loadImageFromPath(path);
         const img = await loadImageFromBase64(base64);
         setImage(img);
-        // #2: 워크스페이스 = 이미지 + 여백
         const sw = img.width + WORKSPACE_MARGIN * 2;
         const sh = img.height + WORKSPACE_MARGIN * 2;
         setImageSize({ width: img.width, height: img.height });
@@ -64,7 +71,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     })();
   }, [path]);
 
-  // 컨테이너에 맞춤 — 워크스페이스 기준
   const fitToContainer = useCallback((sw: number, sh: number) => {
     if (!containerRef.current) return;
     const cw = containerRef.current.clientWidth;
@@ -73,7 +79,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     setScale(s);
   }, []);
 
-  // 윈도우 리사이즈 시 재맞춤
   useEffect(() => {
     const handler = () => { fitToContainer(stageSize.width, stageSize.height); };
     window.addEventListener('resize', handler);
@@ -89,7 +94,7 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     }
   }, [editorState.activeTool]);
 
-  // 크롭 적용
+  // 크롭 적용 — #3: 좌표에 scale 적용
   const applyCrop = useCallback(async () => {
     if (!cropMode.cropRect || !canvasRef.current || !image) return;
     const stage = canvasRef.current.getStage();
@@ -97,23 +102,26 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
 
     history.pushSnapshot();
     const cr = cropMode.cropRect;
+    const s = scale;
 
     cropMode.cancelCrop();
     await new Promise(r => setTimeout(r, 0));
 
+    // Stage의 toDataURL은 픽셀 좌표 (= 내부좌표 × scale)
     const dataUrl = stage.toDataURL({
-      x: cr.x, y: cr.y,
-      width: cr.width, height: cr.height,
-      pixelRatio: 1 / scale,
+      x: cr.x * s,
+      y: cr.y * s,
+      width: cr.width * s,
+      height: cr.height * s,
+      pixelRatio: 1 / s,
     });
 
-    // 레이어 요소 좌표 보정
     layerMgr.setLayers(prev => prev.map(l => ({
       ...l,
       elements: l.elements.map(el => ({
         ...el,
-        x: el.x - cr.x,
-        y: el.y - cr.y,
+        x: el.x - cr.x + WORKSPACE_MARGIN,
+        y: el.y - cr.y + WORKSPACE_MARGIN,
       } as typeof el)),
     })));
 
@@ -128,33 +136,43 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     fitToContainer(sw, sh);
   }, [cropMode.cropRect, image, scale, history, layerMgr, editorState, fitToContainer]);
 
-  // #3: 키보드 단축키 — ref 기반으로 안정적 핸들러
+  // 키보드 단축키 — 빈 deps로 한 번만 등록, refs로 최신 값 참조
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // textarea 내부에서는 도구 단축키 무시
-      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+      const isTextInput = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
+
+      // #2: textarea 내부 ESC → 편집기 닫지 않고 textarea만 blur
+      if (isTextInput) {
+        if (e.key === 'Escape') {
+          (e.target as HTMLElement).blur();
+          e.stopImmediatePropagation();
+          e.preventDefault();
+        }
+        return; // textarea 내부에서는 다른 단축키 무시
+      }
+
       e.stopImmediatePropagation();
 
-      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); history.undo(); return; }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); history.redo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); historyRef.current.undo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); historyRef.current.redo(); return; }
 
-      // #10: Ctrl 누르면 임시 선택 도구
+      // Ctrl 누르면 임시 선택 도구
       if ((e.key === 'Control' || e.key === 'Meta') && !prevToolRef.current) {
         prevToolRef.current = activeToolRef.current;
         editorState.setActiveTool('select');
         return;
       }
 
-      // #11: Delete/Backspace — 활성 레이어 제거
+      // Delete/Backspace — 활성 레이어 제거
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        history.pushSnapshot();
-        layerMgr.removeActiveLayer();
+        historyRef.current.pushSnapshot();
+        layerMgrRef.current.removeActiveLayer();
         return;
       }
 
-      // #12: [ / ] 두께 조절
+      // [ / ] 두께 조절
       if (e.key === '[') {
         editorState.setStrokeWidth(Math.max(1, strokeWidthRef.current - 1));
         return;
@@ -164,11 +182,11 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
         return;
       }
 
-      // #9: 도구 단축키
+      // #1: 도구 단축키 — ctrlKey/metaKey 없을 때만
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         const tool = TOOL_KEYS[e.key.toLowerCase()];
         if (tool) {
-          prevToolRef.current = null; // Ctrl 임시 도구 리셋
+          prevToolRef.current = null;
           editorState.setActiveTool(tool);
           return;
         }
@@ -178,7 +196,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
       e.stopImmediatePropagation();
-      // #10: Ctrl 해제 시 이전 도구로 복원
       if ((e.key === 'Control' || e.key === 'Meta') && prevToolRef.current) {
         editorState.setActiveTool(prevToolRef.current);
         prevToolRef.current = null;
@@ -191,9 +208,9 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', handleKeyUp, true);
     };
-  }, [history, layerMgr, onClose, editorState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 빈 deps — 한 번만 등록, refs로 최신 값 참조
 
-  // 초기화
   const handleReset = useCallback(() => {
     history.pushSnapshot();
     layerMgr.setLayers([{
@@ -202,13 +219,13 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     }]);
   }, [history, layerMgr]);
 
-  // #5: 저장 — 모든 레이어 포함 영역을 이미지 크기로 확장
+  // 저장 — scale 보정 적용
   const handleSave = useCallback(async () => {
     const stage = canvasRef.current?.getStage();
     if (!stage || !image) return;
     setSaving(true);
+    const s = scale;
     try {
-      // 모든 요소의 바운딩 박스 계산
       let minX = imageOffset.x, minY = imageOffset.y;
       let maxX = imageOffset.x + image.width, maxY = imageOffset.y + image.height;
 
@@ -223,8 +240,8 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
               maxY = Math.max(maxY, el.points[i + 1] + el.strokeWidth);
             }
           } else {
-            const w = el.type === 'rect' ? el.width : el.type === 'circle' ? el.radiusX * 2 : el.type === 'text' ? el.width : 0;
-            const h = el.type === 'rect' ? el.height : el.type === 'circle' ? el.radiusY * 2 : el.type === 'text' ? el.fontSize * 2 : 0;
+            const w = el.type === 'rect' ? Math.abs(el.width) : el.type === 'circle' ? el.radiusX * 2 : el.type === 'text' ? el.width : 0;
+            const h = el.type === 'rect' ? Math.abs(el.height) : el.type === 'circle' ? el.radiusY * 2 : el.type === 'text' ? el.fontSize * 2 : 0;
             minX = Math.min(minX, el.x - 10);
             minY = Math.min(minY, el.y - 10);
             maxX = Math.max(maxX, el.x + w + 10);
@@ -236,11 +253,13 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
       const exportWidth = maxX - minX;
       const exportHeight = maxY - minY;
 
+      // Stage의 toDataURL은 픽셀 좌표 사용
       const dataUrl = stage.toDataURL({
-        x: minX, y: minY,
-        width: exportWidth,
-        height: exportHeight,
-        pixelRatio: 1,
+        x: minX * s,
+        y: minY * s,
+        width: exportWidth * s,
+        height: exportHeight * s,
+        pixelRatio: 1 / s,
       });
       const base64Data = dataUrl.split(',')[1];
       const savePath = getSavePath(path);
@@ -251,7 +270,7 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     } finally {
       setSaving(false);
     }
-  }, [image, imageOffset, path, layerMgr.layers, onClose]);
+  }, [image, imageOffset, path, scale, layerMgr.layers, onClose]);
 
   return (
     <div
@@ -266,7 +285,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
           border: `1px solid ${themeVars?.border ?? '#334155'}`,
         }}
       >
-        {/* 좌측 툴바 */}
         <Toolbar
           activeTool={editorState.activeTool}
           setActiveTool={editorState.setActiveTool}
@@ -279,13 +297,11 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
           onRedo={history.redo}
         />
 
-        {/* 캔버스 + 속성패널 */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div ref={containerRef}
             className="flex-1 overflow-auto flex items-center justify-center relative"
             style={{ backgroundColor: themeVars?.surface ?? '#1e293b' }}
           >
-            {/* 크롭 모드 적용/취소 버튼 */}
             {cropMode.isCropping && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2" style={{ zIndex: 10 }}>
                 <button onClick={applyCrop}
@@ -338,7 +354,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
           />
         </div>
 
-        {/* 우측 레이어 패널 */}
         <LayerPanel
           layers={layerMgr.layers}
           activeLayerId={layerMgr.activeLayerId}
