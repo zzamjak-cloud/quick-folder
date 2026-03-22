@@ -21,8 +21,9 @@ interface EditorCanvasProps {
   onCropChange: (rect: CropRect) => void;
   stageWidth: number;
   stageHeight: number;
-  imageOffset: { x: number; y: number };  // #2: 이미지 오프셋
+  imageOffset: { x: number; y: number };
   scale: number;
+  canvasBgColor: string;  // 이미지 영역 배경색 (JPG 저장 시 배경)
 }
 
 export interface EditorCanvasRef {
@@ -317,7 +318,7 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
             <>
               <Rect x={props.imageOffset.x} y={props.imageOffset.y}
                 width={props.image.width} height={props.image.height}
-                fill="#ffffff" listening={false} />
+                fill={props.canvasBgColor} listening={false} />
               <KonvaImage image={props.image}
                 x={props.imageOffset.x} y={props.imageOffset.y} />
             </>
