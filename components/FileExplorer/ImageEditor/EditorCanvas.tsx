@@ -255,6 +255,38 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
         <KonvaLayer>
           <Transformer ref={transformerRef} />
         </KonvaLayer>
+
+        {/* 크롭 오버레이 */}
+        {props.cropRect && (
+          <KonvaLayer>
+            {/* 어두운 마스크 */}
+            <Rect x={0} y={0} width={props.stageWidth} height={props.stageHeight}
+              fill="rgba(0,0,0,0.5)" listening={false} />
+            {/* 밝은 크롭 영역 — 투명 구멍 */}
+            <Rect
+              x={props.cropRect.x} y={props.cropRect.y}
+              width={props.cropRect.width} height={props.cropRect.height}
+              fill="transparent" stroke="#fff" strokeWidth={2}
+              globalCompositeOperation="destination-out"
+              listening={false}
+            />
+            {/* 크롭 영역 테두리 + 드래그 가능 */}
+            <Rect
+              x={props.cropRect.x} y={props.cropRect.y}
+              width={props.cropRect.width} height={props.cropRect.height}
+              fill="transparent" stroke="#fff" strokeWidth={2}
+              dash={[6, 3]}
+              draggable
+              onDragEnd={(e) => {
+                props.onCropChange({
+                  ...props.cropRect!,
+                  x: e.target.x(),
+                  y: e.target.y(),
+                });
+              }}
+            />
+          </KonvaLayer>
+        )}
       </Stage>
     );
   }

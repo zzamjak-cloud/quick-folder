@@ -15,6 +15,7 @@ import PixelateModal from './PixelateModal';
 import SheetPackerModal from './SheetPackerModal';
 import SheetUnpackModal from './SheetUnpackModal';
 import MarkdownEditor from './MarkdownEditor';
+import ImageEditor from './ImageEditor';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
@@ -561,6 +562,7 @@ export default function FileExplorer({
     closeOtherTabs,
     columnView,
     setMarkdownEditorPath: modals.setMarkdownEditorPath,
+    setImageEditorPath: modals.setImageEditorPath,
   });
 
   // --- 컨텍스트 메뉴 ---
@@ -1270,6 +1272,15 @@ export default function FileExplorer({
             modals.setMarkdownEditorPath(null);
             if (currentPath) loadDirectory(currentPath);
           }}
+        />
+      )}
+
+      {/* 이미지 편집기 */}
+      {modals.imageEditorPath && (
+        <ImageEditor
+          path={modals.imageEditorPath}
+          themeVars={themeVars}
+          onClose={() => modals.setImageEditorPath(null)}
         />
       )}
 
