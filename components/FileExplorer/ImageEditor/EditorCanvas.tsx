@@ -97,7 +97,7 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
         const el: EditorElement = {
           id, type: 'text', layerId: 'auto', x: scaledPos.x, y: scaledPos.y,
           text: '', fontSize: props.fontSize, fill: props.strokeColor,
-          width: 200, rotation: 0, visible: true,
+          width: 200, rotation: 0, visible: true, align: 'left' as const,
         };
         props.onAddElement(el);
         props.onSelectElement(id);
@@ -239,7 +239,7 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
           />;
         case 'text':
           return <Text {...commonProps} text={el.text || '텍스트'} fontSize={el.fontSize}
-            fill={el.fill} width={el.width} rotation={el.rotation}
+            fill={el.fill} width={el.width} rotation={el.rotation} align={el.align ?? 'left'}
             onDblClick={() => {
               const stage = stageRef.current;
               if (!stage) return;

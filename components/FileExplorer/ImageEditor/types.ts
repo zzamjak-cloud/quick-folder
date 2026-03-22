@@ -43,6 +43,7 @@ export interface TextElement extends BaseElement {
   fill: string;
   width: number;
   rotation: number;
+  align: 'left' | 'center' | 'right';
 }
 
 export interface DrawElement extends BaseElement {
