@@ -93,7 +93,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     if (!editor) return;
     setSaveStatus('saving');
     const html = editor.getHTML();
-    const md = turndown.turndown(html);
+    let md = turndown.turndown(html);
+    // 제어 문자 제거 (탭, 개행 제외) — 터미널 먹통 방지
+    md = md.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    // zero-width 유니코드 제거
+    md = md.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
     try {
       await invoke('write_text_file', { path, content: md });
       setSaveStatus('saved');
@@ -296,7 +300,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
               onClick={async () => {
                 if (!editor) return;
                 const html = editor.getHTML();
-                const md = turndown.turndown(html);
+                let md = turndown.turndown(html);
+                // 제어 문자 제거 (탭, 개행 제외) — 터미널 먹통 방지
+                md = md.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+                // zero-width 유니코드 제거
+                md = md.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
                 try {
                   await navigator.clipboard.writeText(md);
                   setCopyFeedback(true);
