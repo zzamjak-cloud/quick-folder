@@ -2644,6 +2644,38 @@ fn paste_image_from_clipboard(dest_dir: String) -> Result<Option<String>, String
     Ok(Some(file_path))
 }
 
+/// 이미지 파일을 읽어 data URI(base64) 문자열로 반환
+#[tauri::command]
+async fn read_image_base64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = std::fs::read(&path).map_err(|e| format!("이미지 읽기 실패: {}", e))?;
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "gif" => "image/gif",
+        _ => "image/png",
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
+/// base64 문자열을 디코딩하여 이미지 파일로 저장
+#[tauri::command]
+async fn save_image_base64(path: String, base64_data: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&base64_data)
+        .map_err(|e| format!("Base64 디코딩 실패: {}", e))?;
+    std::fs::write(&path, &bytes).map_err(|e| format!("이미지 저장 실패: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -2693,6 +2725,8 @@ pub fn run() {
         sprite_sheet_preview,
         save_sprite_sheet,
         split_sprite_sheet,
+        read_image_base64,
+        save_image_base64,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
