@@ -18,15 +18,16 @@ interface ToolbarProps {
   onRedo: () => void;
 }
 
-const tools: { type: ToolType; icon: React.ElementType; label: string }[] = [
-  { type: 'select', icon: MousePointer2, label: '선택' },
+// #1: 도구 목록 — 단축키 포함
+const tools: { type: ToolType; icon: React.ElementType; label: string; shortcut?: string }[] = [
+  { type: 'select', icon: MousePointer2, label: '선택', shortcut: 'V' },
   { type: 'crop', icon: Crop, label: '크롭' },
-  { type: 'rect', icon: Square, label: '사각형' },
-  { type: 'circle', icon: Circle, label: '원' },
-  { type: 'arrow', icon: ArrowRight, label: '화살표' },
-  { type: 'text', icon: Type, label: '텍스트' },
-  { type: 'draw', icon: Pencil, label: '펜' },
-  { type: 'eraser', icon: Eraser, label: '지우개' },
+  { type: 'rect', icon: Square, label: '사각형', shortcut: 'M' },
+  { type: 'circle', icon: Circle, label: '원', shortcut: 'C' },
+  { type: 'arrow', icon: ArrowRight, label: '화살표', shortcut: 'A' },
+  { type: 'text', icon: Type, label: '텍스트', shortcut: 'T' },
+  { type: 'draw', icon: Pencil, label: '펜', shortcut: 'B' },
+  { type: 'eraser', icon: Eraser, label: '지우개', shortcut: 'E' },
 ];
 
 export default function Toolbar({
@@ -34,6 +35,7 @@ export default function Toolbar({
   canUndo, canRedo, onUndo, onRedo,
 }: ToolbarProps) {
   const btnStyle = (active: boolean): React.CSSProperties => ({
+    position: 'relative',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     width: 36, height: 36, borderRadius: 6, border: 'none', cursor: 'pointer',
     backgroundColor: active ? (themeVars?.accent ?? '#3b82f6') : 'transparent',
@@ -48,14 +50,24 @@ export default function Toolbar({
         borderRight: `1px solid ${themeVars?.border ?? '#334155'}`,
       }}
     >
-      {tools.map(({ type, icon: Icon, label }) => (
+      {tools.map(({ type, icon: Icon, label, shortcut }) => (
         <button
           key={type}
           style={btnStyle(activeTool === type)}
           onClick={() => setActiveTool(type)}
-          title={label}
+          title={`${label}${shortcut ? ` (${shortcut})` : ''}`}
         >
           <Icon size={18} />
+          {/* #1: 우측 하단 단축키 표시 */}
+          {shortcut && (
+            <span style={{
+              position: 'absolute', right: 2, bottom: 1,
+              fontSize: 8, lineHeight: 1, opacity: 0.5,
+              color: activeTool === type ? '#fff' : (themeVars?.muted ?? '#888'),
+            }}>
+              {shortcut}
+            </span>
+          )}
         </button>
       ))}
 

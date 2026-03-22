@@ -98,6 +98,18 @@ export function useLayers() {
     })));
   }, []);
 
+  // #4: 요소가 속한 레이어 전체 삭제 (지우개용)
+  const removeLayerByElement = useCallback((elementId: string) => {
+    setLayers(prev => {
+      const layerId = prev.find(l => l.elements.some(el => el.id === elementId))?.id;
+      if (!layerId) return prev;
+      if (prev.length <= 1) return prev;
+      const filtered = prev.filter(l => l.id !== layerId);
+      if (activeLayerId === layerId) setActiveLayerId(filtered[filtered.length - 1].id);
+      return filtered;
+    });
+  }, [activeLayerId]);
+
   const restoreLayers = useCallback((snapshot: Layer[]) => {
     setLayers(snapshot);
   }, []);
@@ -110,7 +122,7 @@ export function useLayers() {
     layers, setLayers, activeLayerId, setActiveLayerId,
     addLayer, removeLayer, removeActiveLayer,
     toggleLayerVisibility, toggleLayerLock, renameLayer,
-    addElement, updateElement, removeElement,
+    addElement, updateElement, removeElement, removeLayerByElement,
     restoreLayers, getSnapshot,
   };
 }
