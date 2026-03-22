@@ -10,6 +10,13 @@ import { useLayers } from './hooks/useLayers';
 import { useHistory } from './hooks/useHistory';
 import { useCropMode } from './hooks/useCropMode';
 import { loadImageFromPath, loadImageFromBase64, getSavePath } from './utils';
+import type { ToolType } from './types';
+
+/** #9: 도구 단축키 매핑 */
+const TOOL_KEYS: Record<string, ToolType> = {
+  v: 'select', m: 'rect', c: 'circle', a: 'arrow',
+  t: 'text', e: 'eraser', b: 'draw',
+};
 
 export default function ImageEditor({ path, themeVars, onClose }: ImageEditorProps) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -24,6 +31,9 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
   const history = useHistory(layerMgr.restoreLayers, layerMgr.getSnapshot);
   const cropMode = useCropMode(stageSize.width, stageSize.height);
   const { cropRect, setCropRect } = cropMode;
+
+  // #10: Ctrl 키 누름 상태 — 임시 선택 도구
+  const prevToolRef = useRef<ToolType | null>(null);
 
   // 이미지 로딩
   useEffect(() => {
@@ -74,9 +84,7 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     history.pushSnapshot();
     const cr = cropMode.cropRect;
 
-    // 크롭 오버레이를 숨기고 캔버스 캡처
     cropMode.cancelCrop();
-    // 레이어를 한 프레임 뒤에 캡처 (오버레이 제거 반영)
     await new Promise(r => setTimeout(r, 0));
 
     const dataUrl = stage.toDataURL({
@@ -85,7 +93,6 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
       pixelRatio: 1 / scale,
     });
 
-    // 기존 레이어 요소 좌표를 크롭 오프셋만큼 보정
     layerMgr.setLayers(prev => prev.map(l => ({
       ...l,
       elements: l.elements.map(el => ({
@@ -104,22 +111,66 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
 
   // 키보드 단축키 (캡처 단계 — 글로벌 단축키 차단)
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       e.stopImmediatePropagation();
+
       if (e.key === 'Escape') { onClose(); return; }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); history.undo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); history.redo(); }
+
+      // Ctrl+Z 실행취소, Ctrl+Y 다시실행
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); history.undo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); history.redo(); return; }
+
+      // #10: Ctrl 누르면 임시 선택 도구
+      if ((e.key === 'Control' || e.key === 'Meta') && !prevToolRef.current) {
+        prevToolRef.current = editorState.activeTool;
+        editorState.setActiveTool('select');
+        return;
+      }
+
+      // #11: Delete/Backspace — 활성 레이어 제거
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (editorState.selectedElementId) {
-          history.pushSnapshot();
-          layerMgr.removeElement(editorState.selectedElementId);
-          editorState.setSelectedElementId(null);
+        history.pushSnapshot();
+        layerMgr.removeActiveLayer();
+        return;
+      }
+
+      // #12: [ / ] 두께 조절
+      if (e.key === '[') {
+        editorState.setStrokeWidth(Math.max(1, editorState.strokeWidth - 1));
+        return;
+      }
+      if (e.key === ']') {
+        editorState.setStrokeWidth(Math.min(50, editorState.strokeWidth + 1));
+        return;
+      }
+
+      // #9: 도구 단축키 (Ctrl/Meta 미사용 시만)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tool = TOOL_KEYS[e.key.toLowerCase()];
+        if (tool) {
+          editorState.setActiveTool(tool);
+          return;
         }
       }
     };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [editorState.selectedElementId, history, layerMgr, onClose]);
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      e.stopImmediatePropagation();
+      // #10: Ctrl 해제 시 이전 도구로 복원
+      if ((e.key === 'Control' || e.key === 'Meta') && prevToolRef.current) {
+        editorState.setActiveTool(prevToolRef.current);
+        prevToolRef.current = null;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
+    };
+  }, [editorState.activeTool, editorState.strokeWidth, editorState.selectedElementId,
+      history, layerMgr, onClose]);
 
   // 초기화
   const handleReset = useCallback(() => {
@@ -149,91 +200,101 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
   }, [image, path, scale, onClose]);
 
   return (
+    // #3: 90% 사이즈 편집창
     <div
-      className="fixed inset-0 flex"
-      style={{ zIndex: 10001, backgroundColor: themeVars?.bg ?? '#0f172a' }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.6)' }}
     >
-      {/* 좌측 툴바 */}
-      <Toolbar
-        activeTool={editorState.activeTool}
-        setActiveTool={editorState.setActiveTool}
-        onReset={handleReset}
-        onSave={handleSave}
-        themeVars={themeVars}
-        canUndo={history.canUndo}
-        canRedo={history.canRedo}
-        onUndo={history.undo}
-        onRedo={history.redo}
-      />
+      <div
+        className="flex rounded-lg overflow-hidden shadow-2xl"
+        style={{
+          width: '90vw', height: '90vh',
+          backgroundColor: themeVars?.bg ?? '#0f172a',
+          border: `1px solid ${themeVars?.border ?? '#334155'}`,
+        }}
+      >
+        {/* 좌측 툴바 */}
+        <Toolbar
+          activeTool={editorState.activeTool}
+          setActiveTool={editorState.setActiveTool}
+          onReset={handleReset}
+          onSave={handleSave}
+          themeVars={themeVars}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+          onUndo={history.undo}
+          onRedo={history.redo}
+        />
 
-      {/* 캔버스 + 속성패널 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div ref={containerRef} className="flex-1 overflow-hidden flex items-center justify-center relative"
-          style={{ backgroundColor: '#1a1a2e' }}
-        >
-          {/* 크롭 모드 적용/취소 버튼 */}
-          {cropMode.isCropping && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2" style={{ zIndex: 10 }}>
-              <button onClick={applyCrop}
-                style={{ padding: '6px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  backgroundColor: themeVars?.accent ?? '#3b82f6', color: '#fff', fontSize: 13 }}>
-                적용
-              </button>
-              <button onClick={() => { cropMode.cancelCrop(); editorState.setActiveTool('select'); }}
-                style={{ padding: '6px 16px', borderRadius: 6, border: `1px solid ${themeVars?.border ?? '#444'}`,
-                  cursor: 'pointer', backgroundColor: 'transparent', color: themeVars?.text ?? '#e5e7eb', fontSize: 13 }}>
-                취소
-              </button>
-            </div>
-          )}
-          {image ? (
-            <EditorCanvas
-              ref={canvasRef}
-              image={image}
-              layers={layerMgr.layers}
-              activeTool={editorState.activeTool}
-              strokeColor={editorState.strokeColor}
-              strokeWidth={editorState.strokeWidth}
-              fontSize={editorState.fontSize}
-              selectedElementId={editorState.selectedElementId}
-              onSelectElement={editorState.setSelectedElementId}
-              onAddElement={layerMgr.addElement}
-              onUpdateElement={layerMgr.updateElement}
-              onRemoveElement={layerMgr.removeElement}
-              onPushSnapshot={history.pushSnapshot}
-              cropRect={cropRect}
-              onCropChange={setCropRect}
-              stageWidth={stageSize.width}
-              stageHeight={stageSize.height}
-              scale={scale}
-            />
-          ) : (
-            <span style={{ color: themeVars?.muted ?? '#888' }}>이미지 로딩 중...</span>
-          )}
+        {/* 캔버스 + 속성패널 */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div ref={containerRef} className="flex-1 overflow-hidden flex items-center justify-center relative"
+            style={{ backgroundColor: themeVars?.surface ?? '#1e293b' }}  // #2: 테마 배경색
+          >
+            {/* 크롭 모드 적용/취소 버튼 */}
+            {cropMode.isCropping && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2" style={{ zIndex: 10 }}>
+                <button onClick={applyCrop}
+                  style={{ padding: '6px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    backgroundColor: themeVars?.accent ?? '#3b82f6', color: '#fff', fontSize: 13 }}>
+                  적용
+                </button>
+                <button onClick={() => { cropMode.cancelCrop(); editorState.setActiveTool('select'); }}
+                  style={{ padding: '6px 16px', borderRadius: 6, border: `1px solid ${themeVars?.border ?? '#444'}`,
+                    cursor: 'pointer', backgroundColor: 'transparent', color: themeVars?.text ?? '#e5e7eb', fontSize: 13 }}>
+                  취소
+                </button>
+              </div>
+            )}
+            {image ? (
+              <EditorCanvas
+                ref={canvasRef}
+                image={image}
+                layers={layerMgr.layers}
+                activeTool={editorState.activeTool}
+                strokeColor={editorState.strokeColor}
+                strokeWidth={editorState.strokeWidth}
+                fontSize={editorState.fontSize}
+                selectedElementId={editorState.selectedElementId}
+                onSelectElement={editorState.setSelectedElementId}
+                onAddElement={layerMgr.addElement}
+                onUpdateElement={layerMgr.updateElement}
+                onRemoveElement={layerMgr.removeElement}
+                onPushSnapshot={history.pushSnapshot}
+                cropRect={cropRect}
+                onCropChange={setCropRect}
+                stageWidth={stageSize.width}
+                stageHeight={stageSize.height}
+                scale={scale}
+              />
+            ) : (
+              <span style={{ color: themeVars?.muted ?? '#888' }}>이미지 로딩 중...</span>
+            )}
+          </div>
+          <PropertyPanel
+            strokeColor={editorState.strokeColor}
+            setStrokeColor={editorState.setStrokeColor}
+            strokeWidth={editorState.strokeWidth}
+            setStrokeWidth={editorState.setStrokeWidth}
+            fontSize={editorState.fontSize}
+            setFontSize={editorState.setFontSize}
+            themeVars={themeVars}
+          />
         </div>
-        <PropertyPanel
-          strokeColor={editorState.strokeColor}
-          setStrokeColor={editorState.setStrokeColor}
-          strokeWidth={editorState.strokeWidth}
-          setStrokeWidth={editorState.setStrokeWidth}
-          fontSize={editorState.fontSize}
-          setFontSize={editorState.setFontSize}
+
+        {/* 우측 레이어 패널 */}
+        <LayerPanel
+          layers={layerMgr.layers}
+          activeLayerId={layerMgr.activeLayerId}
+          setActiveLayerId={layerMgr.setActiveLayerId}
+          addLayer={layerMgr.addLayer}
+          removeLayer={layerMgr.removeLayer}
+          toggleVisibility={layerMgr.toggleLayerVisibility}
+          toggleLock={layerMgr.toggleLayerLock}
+          renameLayer={layerMgr.renameLayer}
           themeVars={themeVars}
         />
       </div>
-
-      {/* 우측 레이어 패널 */}
-      <LayerPanel
-        layers={layerMgr.layers}
-        activeLayerId={layerMgr.activeLayerId}
-        setActiveLayerId={layerMgr.setActiveLayerId}
-        addLayer={layerMgr.addLayer}
-        removeLayer={layerMgr.removeLayer}
-        toggleVisibility={layerMgr.toggleLayerVisibility}
-        toggleLock={layerMgr.toggleLayerLock}
-        renameLayer={layerMgr.renameLayer}
-        themeVars={themeVars}
-      />
     </div>
   );
 }

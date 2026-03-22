@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { Stage, Layer as KonvaLayer, Image as KonvaImage, Rect, Ellipse, Arrow, Text, Line, Transformer } from 'react-konva';
+import { Stage, Layer as KonvaLayer, Image as KonvaImage, Rect, Ellipse, Arrow, Text, Line, Transformer, Circle } from 'react-konva';
 import Konva from 'konva';
 import { Layer, EditorElement, ToolType, CropRect } from './types';
 
@@ -25,6 +25,21 @@ interface EditorCanvasProps {
 
 export interface EditorCanvasRef {
   getStage: () => Konva.Stage | null;
+}
+
+/** 크롭 핸들 위치 계산 */
+function getCropHandles(cr: CropRect) {
+  const { x, y, width: w, height: h } = cr;
+  return [
+    { name: 'tl', cx: x, cy: y },
+    { name: 'tm', cx: x + w / 2, cy: y },
+    { name: 'tr', cx: x + w, cy: y },
+    { name: 'ml', cx: x, cy: y + h / 2 },
+    { name: 'mr', cx: x + w, cy: y + h / 2 },
+    { name: 'bl', cx: x, cy: y + h },
+    { name: 'bm', cx: x + w / 2, cy: y + h },
+    { name: 'br', cx: x + w, cy: y + h },
+  ];
 }
 
 const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
@@ -73,17 +88,52 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
         return;
       }
 
-      // 텍스트 도구 — 클릭 시 텍스트 요소 추가
+      // 텍스트 도구 — 클릭 시 textarea 직접 열기
       if (props.activeTool === 'text') {
         props.onPushSnapshot();
         const id = crypto.randomUUID();
+        const stage = stageRef.current;
+        if (!stage) return;
+        const stageBox = stage.container().getBoundingClientRect();
+
+        // 요소 먼저 추가
         const el: EditorElement = {
           id, type: 'text', layerId: 'auto', x: scaledPos.x, y: scaledPos.y,
-          text: '텍스트 입력', fontSize: props.fontSize, fill: props.strokeColor,
+          text: '', fontSize: props.fontSize, fill: props.strokeColor,
           width: 200, rotation: 0, visible: true,
         };
         props.onAddElement(el);
         props.onSelectElement(id);
+
+        // 즉시 textarea 열기
+        setTimeout(() => {
+          const textarea = document.createElement('textarea');
+          textarea.value = '';
+          textarea.placeholder = '텍스트 입력...';
+          textarea.style.position = 'absolute';
+          textarea.style.top = `${stageBox.top + pos.y}px`;
+          textarea.style.left = `${stageBox.left + pos.x}px`;
+          textarea.style.fontSize = `${props.fontSize * props.scale}px`;
+          textarea.style.color = props.strokeColor;
+          textarea.style.background = 'rgba(0,0,0,0.5)';
+          textarea.style.border = '1px solid #3b82f6';
+          textarea.style.outline = 'none';
+          textarea.style.resize = 'none';
+          textarea.style.zIndex = '99999';
+          textarea.style.minWidth = '100px';
+          textarea.style.padding = '4px';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.addEventListener('blur', () => {
+            const text = textarea.value || '텍스트';
+            props.onUpdateElement(id, { text });
+            document.body.removeChild(textarea);
+          });
+          textarea.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') textarea.blur();
+            ev.stopPropagation();
+          }, true);
+        }, 50);
         return;
       }
 
@@ -172,18 +222,60 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
       switch (el.type) {
         case 'rect':
           return <Rect {...commonProps} width={el.width} height={el.height}
-            stroke={el.stroke} strokeWidth={el.strokeWidth} rotation={el.rotation} />;
+            stroke={el.stroke} strokeWidth={el.strokeWidth} rotation={el.rotation}
+            // #5: Transformer로 리사이즈 후 크기 반영
+            onTransformEnd={(e) => {
+              const node = e.target;
+              props.onPushSnapshot();
+              props.onUpdateElement(el.id, {
+                x: node.x(), y: node.y(),
+                width: Math.max(5, node.width() * node.scaleX()),
+                height: Math.max(5, node.height() * node.scaleY()),
+                rotation: node.rotation(),
+              });
+              node.scaleX(1);
+              node.scaleY(1);
+            }}
+          />;
         case 'circle':
           return <Ellipse {...commonProps} radiusX={el.radiusX} radiusY={el.radiusY}
-            stroke={el.stroke} strokeWidth={el.strokeWidth} rotation={el.rotation} />;
+            stroke={el.stroke} strokeWidth={el.strokeWidth} rotation={el.rotation}
+            onTransformEnd={(e) => {
+              const node = e.target;
+              props.onPushSnapshot();
+              props.onUpdateElement(el.id, {
+                x: node.x(), y: node.y(),
+                radiusX: Math.max(5, el.radiusX * node.scaleX()),
+                radiusY: Math.max(5, el.radiusY * node.scaleY()),
+                rotation: node.rotation(),
+              });
+              node.scaleX(1);
+              node.scaleY(1);
+            }}
+          />;
         case 'arrow':
+          // #6: 화살표 — 양쪽 끝점 핸들 대신 Transformer 사용 + 끝점 드래그
           return <Arrow {...commonProps} points={el.points}
-            stroke={el.stroke} strokeWidth={el.strokeWidth} fill={el.stroke} />;
+            stroke={el.stroke} strokeWidth={el.strokeWidth} fill={el.stroke}
+            onTransformEnd={(e) => {
+              const node = e.target;
+              props.onPushSnapshot();
+              // Arrow는 scale로 늘어나므로 points를 재계산
+              const sx = node.scaleX();
+              const sy = node.scaleY();
+              props.onUpdateElement(el.id, {
+                x: node.x(), y: node.y(),
+                points: el.points.map((p, i) => i % 2 === 0 ? p * sx : p * sy),
+              });
+              node.scaleX(1);
+              node.scaleY(1);
+            }}
+          />;
         case 'text':
-          return <Text {...commonProps} text={el.text} fontSize={el.fontSize}
+          return <Text {...commonProps} text={el.text || '텍스트'} fontSize={el.fontSize}
             fill={el.fill} width={el.width} rotation={el.rotation}
+            // #7: 더블클릭으로 텍스트 편집
             onDblClick={() => {
-              // 인라인 텍스트 편집 — textarea 오버레이
               const stage = stageRef.current;
               if (!stage) return;
               const textNode = stage.findOne(`#${el.id}`) as Konva.Text;
@@ -197,21 +289,36 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
               textarea.style.left = `${stageBox.left + textPosition.x * props.scale}px`;
               textarea.style.fontSize = `${el.fontSize * props.scale}px`;
               textarea.style.color = el.fill;
-              textarea.style.background = 'transparent';
+              textarea.style.background = 'rgba(0,0,0,0.5)';
               textarea.style.border = '1px solid #3b82f6';
               textarea.style.outline = 'none';
               textarea.style.resize = 'none';
               textarea.style.zIndex = '99999';
+              textarea.style.minWidth = '100px';
+              textarea.style.padding = '4px';
               document.body.appendChild(textarea);
               textarea.focus();
+              textarea.select();
               textarea.addEventListener('blur', () => {
                 props.onPushSnapshot();
-                props.onUpdateElement(el.id, { text: textarea.value });
+                props.onUpdateElement(el.id, { text: textarea.value || '텍스트' });
                 document.body.removeChild(textarea);
               });
               textarea.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Escape') textarea.blur();
+                ev.stopPropagation();
+              }, true);
+            }}
+            onTransformEnd={(e) => {
+              const node = e.target;
+              props.onPushSnapshot();
+              props.onUpdateElement(el.id, {
+                x: node.x(), y: node.y(),
+                width: Math.max(20, node.width() * node.scaleX()),
+                rotation: node.rotation(),
               });
+              node.scaleX(1);
+              node.scaleY(1);
             }}
           />;
         case 'draw':
@@ -219,6 +326,20 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
             stroke={el.stroke} strokeWidth={el.strokeWidth}
             lineCap="round" lineJoin="round" tension={0.5} />;
       }
+    };
+
+    // 크롭 핸들 드래그
+    const handleCropHandleDrag = (name: string, newX: number, newY: number) => {
+      if (!props.cropRect) return;
+      const cr = { ...props.cropRect };
+      const minSize = 20;
+
+      if (name.includes('l')) { const dx = newX - cr.x; cr.x = newX; cr.width = Math.max(minSize, cr.width - dx); }
+      if (name.includes('r')) { cr.width = Math.max(minSize, newX - cr.x); }
+      if (name.includes('t')) { const dy = newY - cr.y; cr.y = newY; cr.height = Math.max(minSize, cr.height - dy); }
+      if (name.includes('b')) { cr.height = Math.max(minSize, newY - cr.y); }
+
+      props.onCropChange(cr);
     };
 
     return (
@@ -234,6 +355,13 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
         style={{ cursor: props.activeTool === 'eraser' ? 'crosshair' :
           ['rect','circle','arrow','draw','text','crop'].includes(props.activeTool) ? 'crosshair' : 'default' }}
       >
+        {/* #4: 캔버스 경계 표시 배경 */}
+        <KonvaLayer>
+          <Rect x={0} y={0} width={props.stageWidth} height={props.stageHeight}
+            stroke="rgba(255,255,255,0.15)" strokeWidth={1} dash={[4, 4]}
+            listening={false} />
+        </KonvaLayer>
+
         {/* 배경 이미지 레이어 */}
         <KonvaLayer>
           {props.image && <KonvaImage image={props.image} />}
@@ -251,12 +379,20 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
           {drawingElement && renderElement(drawingElement)}
         </KonvaLayer>
 
-        {/* Transformer 레이어 (선택 도구용) */}
+        {/* Transformer 레이어 — #5, #6: 사각형/화살표 리사이즈 핸들 */}
         <KonvaLayer>
-          <Transformer ref={transformerRef} />
+          <Transformer ref={transformerRef}
+            rotateEnabled={true}
+            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right',
+              'top-center', 'bottom-center', 'middle-left', 'middle-right']}
+            boundBoxFunc={(oldBox, newBox) => {
+              if (newBox.width < 5 || newBox.height < 5) return oldBox;
+              return newBox;
+            }}
+          />
         </KonvaLayer>
 
-        {/* 크롭 오버레이 */}
+        {/* #1: 크롭 오버레이 + 리사이즈 핸들 */}
         {props.cropRect && (
           <KonvaLayer>
             {/* 어두운 마스크 */}
@@ -274,7 +410,7 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
             <Rect
               x={props.cropRect.x} y={props.cropRect.y}
               width={props.cropRect.width} height={props.cropRect.height}
-              fill="transparent" stroke="#fff" strokeWidth={2}
+              fill="transparent" stroke="#fff" strokeWidth={1}
               dash={[6, 3]}
               draggable
               onDragEnd={(e) => {
@@ -285,6 +421,22 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
                 });
               }}
             />
+            {/* 리사이즈 핸들 8개 */}
+            {getCropHandles(props.cropRect).map(h => (
+              <Circle
+                key={h.name}
+                x={h.cx} y={h.cy}
+                radius={5}
+                fill="#fff"
+                stroke="#3b82f6"
+                strokeWidth={1}
+                draggable
+                onDragMove={(e) => {
+                  handleCropHandleDrag(h.name, e.target.x(), e.target.y());
+                }}
+                onDragEnd={() => {}}
+              />
+            ))}
           </KonvaLayer>
         )}
       </Stage>
