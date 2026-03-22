@@ -311,10 +311,17 @@ const EditorCanvas = forwardRef<EditorCanvasRef, EditorCanvasProps>(
             listening={false} />
         </KonvaLayer>
 
-        {/* 배경 이미지 — #2: 오프셋 위치에 렌더링 */}
+        {/* 배경 이미지 — 흰색 배경 (JPG 저장 시 배경색) + 이미지 */}
         <KonvaLayer>
-          {props.image && <KonvaImage image={props.image}
-            x={props.imageOffset.x} y={props.imageOffset.y} />}
+          {props.image && (
+            <>
+              <Rect x={props.imageOffset.x} y={props.imageOffset.y}
+                width={props.image.width} height={props.image.height}
+                fill="#ffffff" listening={false} />
+              <KonvaImage image={props.image}
+                x={props.imageOffset.x} y={props.imageOffset.y} />
+            </>
+          )}
         </KonvaLayer>
 
         {/* 편집 레이어들 */}

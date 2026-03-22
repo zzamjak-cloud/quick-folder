@@ -188,54 +188,43 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
     rootRef.current?.focus();
   }, [history, layerMgr]);
 
-  // #3: JPG 저장
+  // 저장 상태 메시지
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // 저장 — 빠른 캡처 방식, JPG + 캔버스 배경색 적용
   const handleSave = useCallback(async () => {
     const stage = canvasRef.current?.getStage();
     if (!stage || !image) return;
     setSaving(true);
-    const s = scale;
+    setSaveMsg('저장 중...');
     try {
-      let minX = imageOffset.x, minY = imageOffset.y;
-      let maxX = imageOffset.x + image.width, maxY = imageOffset.y + image.height;
-      for (const layer of layerMgr.layers) {
-        for (const el of layer.elements) {
-          if (!el.visible) continue;
-          if (el.type === 'arrow' || el.type === 'draw') {
-            for (let i = 0; i < el.points.length; i += 2) {
-              minX = Math.min(minX, el.points[i] - el.strokeWidth);
-              minY = Math.min(minY, el.points[i + 1] - el.strokeWidth);
-              maxX = Math.max(maxX, el.points[i] + el.strokeWidth);
-              maxY = Math.max(maxY, el.points[i + 1] + el.strokeWidth);
-            }
-          } else {
-            const w = el.type === 'rect' ? Math.abs(el.width) : el.type === 'circle' ? el.radiusX * 2 : el.type === 'text' ? el.width : 0;
-            const h = el.type === 'rect' ? Math.abs(el.height) : el.type === 'circle' ? el.radiusY * 2 : el.type === 'text' ? el.fontSize * 2 : 0;
-            minX = Math.min(minX, el.x - 10);
-            minY = Math.min(minY, el.y - 10);
-            maxX = Math.max(maxX, el.x + w + 10);
-            maxY = Math.max(maxY, el.y + h + 10);
-          }
-        }
-      }
-      // JPG 포맷으로 저장
+      // 이미지 영역 기준으로 간단 캡처
+      const s = scale;
+      const ox = imageOffset.x;
+      const oy = imageOffset.y;
+      const iw = image.width;
+      const ih = image.height;
+
       const dataUrl = stage.toDataURL({
-        x: minX * s, y: minY * s,
-        width: (maxX - minX) * s, height: (maxY - minY) * s,
+        x: ox * s, y: oy * s,
+        width: iw * s, height: ih * s,
         pixelRatio: 1 / s,
         mimeType: 'image/jpeg',
         quality: 0.92,
       });
       const base64Data = dataUrl.split(',')[1];
-      // 확장자를 .jpg로 변경
       const savePath = getSavePath(path).replace(/\.[^.]+$/, '.jpg');
       await invoke('save_image_base64', { path: savePath, base64Data });
-      onClose();
+      setSaveMsg('저장 완료!');
+      setTimeout(() => { setSaveMsg(null); }, 1500);
     } catch (e) {
       console.error('저장 실패:', e);
+      setSaveMsg('저장 실패');
+      setTimeout(() => { setSaveMsg(null); }, 2000);
     } finally {
       setSaving(false);
     }
-  }, [image, imageOffset, path, scale, layerMgr.layers, onClose]);
+  }, [image, imageOffset, path, scale]);
 
   // 텍스트 정렬 상태
   const selectedTextAlign = useMemo(() => {
@@ -277,6 +266,12 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
       tabIndex={-1}
       onKeyDownCapture={handleKeyDown}
       onKeyUpCapture={handleKeyUp}
+      // #1: 캔버스 클릭 후 포커스 복원 — 단축키 동작 보장
+      onMouseDown={(e) => {
+        if (!(e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement)) {
+          setTimeout(() => rootRef.current?.focus(), 0);
+        }
+      }}
       className="fixed inset-0 flex items-center justify-center outline-none"
       style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.6)' }}
     >
@@ -319,7 +314,20 @@ export default function ImageEditor({ path, themeVars, onClose }: ImageEditorPro
               </div>
             )}
 
-            {/* #2: 줌 컨트롤 */}
+            {/* 저장 피드백 메시지 */}
+            {saveMsg && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2" style={{ zIndex: 10 }}>
+                <div style={{
+                  padding: '6px 16px', borderRadius: 6, fontSize: 13,
+                  backgroundColor: saveMsg.includes('완료') ? '#22c55e' : saveMsg.includes('실패') ? '#ef4444' : (themeVars?.surface2 ?? '#333'),
+                  color: '#fff',
+                }}>
+                  {saveMsg}
+                </div>
+              </div>
+            )}
+
+            {/* 줌 컨트롤 */}
             <div className="absolute top-4 right-4 flex items-center gap-1" style={{ zIndex: 10 }}>
               <button onClick={zoomOut} title="축소 (Ctrl+-)" style={zoomBtnStyle}>
                 <ZoomOut size={13} />
