@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-03-23
+
+### Added
+- **Ctrl+더블클릭 새 탭**: 탐색기에서 Ctrl+폴더 더블클릭 시 신규 탭으로 열기
+- **ICO/ICNS 변환**: PNG 파일 우클릭 → ".ico 변환" / ".icns 변환" 메뉴 (원본 유지)
+- **엔트리 복제**: 파일/폴더 우클릭 → "엔트리 복제" — 파일명(확장자 제외) 목록을 클립보드에 복사 (구글 시트 행별 붙여넣기 호환)
+- **동영상 플레이 아이콘**: 동영상 썸네일 중앙에 반투명 플레이 아이콘 오버레이
+- **ICNS 미리보기/썸네일**: ICNS 파일 스페이스바 미리보기 + 탐색기 썸네일 지원
+- **ICO/ICNS 규격 표시**: ico/icns 크레이트로 가장 큰 아이콘 크기 표시
+
+### Changed
+- **.md/.sh/.json 아이콘**: FileText(종이 모양) 아이콘 + 문서 색상으로 통일
+- **lucide 아이콘 크기**: OS 네이티브 아이콘과 동일한 비율(thumbnailSize × 0.6)로 조정
+
+### Fixed
+- **선택 해제 시 회색 잔존**: 빈 공간 클릭/박스 드래그 시 focusedIndex 리셋
+- **Ctrl+A 필터 반영**: 확장자 필터 상태에서 표시된 파일만 전체 선택
+- **PSD 스페이스바 깜빡임**: 같은 파일 재로딩 방지
+- **PSD 시스템 아이콘 복원**: 이미지 타입 전체 skip 대신 썸네일 생성 확장자만 skip
+
 ## [1.24.1] - 2026-03-23
 
 ### Fixed
