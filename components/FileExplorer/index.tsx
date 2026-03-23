@@ -493,6 +493,7 @@ export default function FileExplorer({
 
   const deselectAll = useCallback(() => {
     setSelectedPaths([]);
+    setFocusedIndex(-1);
   }, []);
 
   // 박스 드래그 선택용 다중 경로 설정
