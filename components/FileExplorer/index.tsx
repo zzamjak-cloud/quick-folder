@@ -499,6 +499,7 @@ export default function FileExplorer({
   // 박스 드래그 선택용 다중 경로 설정
   const handleSelectPaths = useCallback((paths: string[]) => {
     setSelectedPaths(paths);
+    setFocusedIndex(-1);
   }, []);
 
   // 폴더 태그 추가 (모달 상태 기반)
