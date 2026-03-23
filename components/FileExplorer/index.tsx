@@ -778,18 +778,19 @@ export default function FileExplorer({
           try {
             let names: string[] = [];
             if (isSingle && singleEntry?.is_dir) {
-              // 폴더 선택 → 내부 파일명 목록
               const entries: FileEntry[] = await invoke('list_directory', { path: singlePath });
               names = entries.map(e => e.name);
             } else {
-              // 파일 선택 → 선택된 파일명 목록
               names = paths.map(p => {
                 const sep = p.includes('\\') ? '\\' : '/';
                 return p.split(sep).pop() ?? p;
               });
             }
+            // 줄바꿈 구분 — 구글 시트에서 각 행에 하나씩 붙여넣기됨
             const text = names.join('\n');
-            await navigator.clipboard.writeText(text);
+            // Tauri 클립보드 플러그인 사용 (navigator.clipboard는 웹뷰에서 실패 가능)
+            await invoke('copy_path', { path: text });
+            fileOps.showCopyToast(`${names.length}개 파일명 복사됨`);
           } catch (e) { console.error('엔트리 복제 실패:', e); }
         },
       });
