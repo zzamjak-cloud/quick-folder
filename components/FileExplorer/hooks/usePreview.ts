@@ -36,19 +36,28 @@ export function usePreview(): PreviewState {
   const [previewTextContent, setPreviewTextContent] = useState<string | null>(null);
 
   const handlePreviewImage = useCallback(async (path: string) => {
+    // 같은 파일이면 리로드 안 함 (깜빡임 방지)
+    if (path === previewImagePath) return;
     setPreviewImagePath(path);
     setPreviewImageData(null);
     setPreviewLoading(true);
     try {
       const isPsd = /\.(psd|psb)$/i.test(path);
+      const isIcns = /\.icns$/i.test(path);
       if (isPsd) {
         // PSD/PSB: Rust 변환 필요 (size=0 → 원본 해상도 유지)
         const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 0 });
         if (b64) {
           setPreviewImageData(`data:image/png;base64,${b64}`);
         }
+      } else if (isIcns) {
+        // ICNS: 브라우저 미지원 → Rust로 PNG 변환하여 미리보기
+        const b64 = await invoke<string | null>('get_file_thumbnail', { path, size: 512 });
+        if (b64) {
+          setPreviewImageData(`data:image/png;base64,${b64}`);
+        }
       } else {
-        // 일반 이미지: 원본 파일을 asset 프로토콜로 직접 로딩
+        // 일반 이미지 (PNG, JPG, ICO 등): asset 프로토콜로 직접 로딩
         setPreviewImageData(convertFileSrc(path));
       }
     } catch {
@@ -56,7 +65,7 @@ export function usePreview(): PreviewState {
     } finally {
       setPreviewLoading(false);
     }
-  }, []);
+  }, [previewImagePath]);
 
   const closeImagePreview = useCallback(() => {
     setPreviewImagePath(null);

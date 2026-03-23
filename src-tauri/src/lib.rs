@@ -107,7 +107,7 @@ async fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String
         use std::io::Read;
 
         let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
-        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd", "psb"];
+        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd", "psb", "ico", "icns"];
         if !supported.contains(&ext.as_str()) {
             return Ok(None);
         }
@@ -121,6 +121,19 @@ async fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String
             let h = u32::from_be_bytes([buf[14], buf[15], buf[16], buf[17]]);
             let w = u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]);
             return Ok(Some((w, h)));
+        }
+        if ext == "icns" {
+            // ICNS: 가장 큰 아이콘의 크기를 반환
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            if let Ok(family) = icns::IconFamily::read(file) {
+                let mut max_size = 0u32;
+                for icon_type in family.available_icons() {
+                    let s = icon_type.pixel_width();
+                    if s > max_size { max_size = s; }
+                }
+                if max_size > 0 { return Ok(Some((max_size, max_size))); }
+            }
+            return Ok(None);
         }
         match image::image_dimensions(&path) {
             Ok((w, h)) => Ok(Some((w, h))),
@@ -195,12 +208,37 @@ async fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> R
 
     tauri::async_runtime::spawn_blocking(move || {
         let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
-        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp"];
+        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "icns"];
         if !supported.contains(&ext.as_str()) {
             return Ok(None);
         }
 
         cached_thumbnail(&cache_dir, &path, size, true, || {
+            if ext == "icns" {
+                // ICNS: icns 크레이트로 가장 큰 아이콘을 PNG로 변환
+                let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+                let family = icns::IconFamily::read(file).map_err(|e| format!("ICNS 읽기 실패: {}", e))?;
+                // 가장 큰 아이콘 타입 찾기
+                let mut best_type: Option<icns::IconType> = None;
+                for icon_type in family.available_icons() {
+                    if best_type.map_or(true, |bt| icon_type.pixel_width() > bt.pixel_width()) {
+                        best_type = Some(icon_type);
+                    }
+                }
+                if let Some(icon_type) = best_type {
+                    let icon = family.get_icon_with_type(icon_type)
+                        .map_err(|e| format!("ICNS 아이콘 추출 실패: {}", e))?;
+                    let rgba = image::RgbaImage::from_raw(icon.width(), icon.height(), icon.data().to_vec())
+                        .ok_or_else(|| "ICNS 이미지 변환 실패".to_string())?;
+                    let img = image::DynamicImage::ImageRgba8(rgba);
+                    let thumb = img.thumbnail(size, size);
+                    let mut buf = vec![];
+                    thumb.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                        .map_err(|e| e.to_string())?;
+                    return Ok(Some(buf));
+                }
+                return Ok(None);
+            }
             let img = image::open(&path).map_err(|e| e.to_string())?;
             let thumb = img.thumbnail(size, size);
             let mut buf = vec![];
