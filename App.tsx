@@ -546,7 +546,7 @@ export default function App() {
           <span
             className="text-xs font-semibold text-[var(--qf-muted)] select-none pointer-events-none"
           >
-            QuickFolder
+            QuickFolder <span className="opacity-50 font-normal">v{__APP_VERSION__}</span>
           </span>
         </div>
       )}
