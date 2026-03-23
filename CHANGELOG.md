@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.1] - 2026-03-24
+
+### Added
+- **헤더 버전 표시**: QuickFolder 헤더 제목 옆에 현재 버전 정보 표시
+
+### Fixed
+- **사이드바 경로 동기화**: 폴더 이름 변경 시 사이드바 즐겨찾기 경로 자동 갱신 (부모 폴더 포함)
+- **사이드바 삭제 동기화**: 탐색기에서 폴더 삭제 시 사이드바 즐겨찾기에서 자동 제거
+
 ## [1.25.0] - 2026-03-23
 
 ### Added
