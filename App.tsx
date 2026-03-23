@@ -260,6 +260,21 @@ export default function App() {
     return () => window.removeEventListener('qf-tab-rename', handler);
   }, [setCategories]);
 
+  // 폴더 삭제 시 사이드바 즐겨찾기에서 제거
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { paths } = (e as CustomEvent).detail as { paths: string[] };
+      setCategories(prev => prev.map(cat => ({
+        ...cat,
+        shortcuts: cat.shortcuts.filter(s =>
+          !paths.some(dp => s.path === dp || s.path.startsWith(dp + '/') || s.path.startsWith(dp + '\\'))
+        ),
+      })));
+    };
+    window.addEventListener('qf-tab-delete', handler);
+    return () => window.removeEventListener('qf-tab-delete', handler);
+  }, [setCategories]);
+
   // 즐겨찾기 폴더 경로 목록 (FileExplorer에서 최근항목 조회 시 사용)
   const recentRoots = useMemo(() =>
     categories.flatMap(c => c.shortcuts.map(s => s.path)),
