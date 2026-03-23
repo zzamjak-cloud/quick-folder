@@ -214,7 +214,7 @@ export default memo(function FileCard({
           <div style={{ color: iconColor(entry.file_type, entry.name) }}>
             <FileTypeIcon
               fileType={entry.file_type}
-              size={thumbnailSize >= 120 ? 40 : 28}
+              size={thumbnailSize * 0.6}
               fileName={entry.name}
             />
           </div>
