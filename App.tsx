@@ -238,6 +238,28 @@ export default function App() {
     }
   }, [splitMode, focusedPane, desktopPath]);
 
+  // 폴더 이름 변경 시 사이드바 즐겨찾기 경로 동기화
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { oldPath, newPath } = (e as CustomEvent).detail;
+      setCategories(prev => prev.map(cat => ({
+        ...cat,
+        shortcuts: cat.shortcuts.map(s => {
+          // 정확히 일치하거나 하위 경로인 경우 갱신
+          if (s.path === oldPath) {
+            return { ...s, path: newPath, name: newPath.split(/[/\\]/).pop() ?? s.name };
+          }
+          if (s.path.startsWith(oldPath + '/') || s.path.startsWith(oldPath + '\\')) {
+            return { ...s, path: newPath + s.path.slice(oldPath.length) };
+          }
+          return s;
+        }),
+      })));
+    };
+    window.addEventListener('qf-tab-rename', handler);
+    return () => window.removeEventListener('qf-tab-rename', handler);
+  }, [setCategories]);
+
   // 즐겨찾기 폴더 경로 목록 (FileExplorer에서 최근항목 조회 시 사용)
   const recentRoots = useMemo(() =>
     categories.flatMap(c => c.shortcuts.map(s => s.path)),
