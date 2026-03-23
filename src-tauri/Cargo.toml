@@ -37,6 +37,8 @@ tauri-plugin-drag = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 walkdir = "2"
 ffmpeg-sidecar = "2"
+ico = "0.3"
+icns = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

@@ -5,7 +5,7 @@ import { ThemeVars, ContextMenuSection } from './types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText,
+  FolderPlus, FileText, Image, List,
 } from 'lucide-react';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
@@ -731,6 +731,31 @@ export default function FileExplorer({
         onClick: () => modals.setSheetUnpackPath(singlePath),
       });
     }
+    // ICO/ICNS 변환 — PNG 단일 선택
+    if (isSingle && singleEntry && /\.(png)$/i.test(singleEntry.name) && !singleEntry.is_dir) {
+      toolSection.items.push({
+        id: 'convert-ico',
+        icon: <Image size={13} />,
+        label: '.ico 변환',
+        onClick: async () => {
+          try {
+            await invoke('convert_to_ico', { path: singlePath });
+            loadDirectory(currentPath!);
+          } catch (e) { console.error('ICO 변환 실패:', e); }
+        },
+      });
+      toolSection.items.push({
+        id: 'convert-icns',
+        icon: <Image size={13} />,
+        label: '.icns 변환',
+        onClick: async () => {
+          try {
+            await invoke('convert_to_icns', { path: singlePath });
+            loadDirectory(currentPath!);
+          } catch (e) { console.error('ICNS 변환 실패:', e); }
+        },
+      });
+    }
     sections.push(toolSection);
 
     // 섹션 5: 경로 복사, 즐겨찾기, 태그
@@ -741,6 +766,32 @@ export default function FileExplorer({
         icon: <Hash size={13} />,
         label: '경로 복사',
         onClick: () => fileOps.handleCopyPath(singlePath),
+      });
+    }
+    // 엔트리 복제 — 폴더 선택 시 내부 파일명 목록, 파일 선택 시 선택된 파일명 목록
+    if (paths.length > 0) {
+      infoSection.items.push({
+        id: 'copy-entry-names',
+        icon: <List size={13} />,
+        label: '엔트리 복제',
+        onClick: async () => {
+          try {
+            let names: string[] = [];
+            if (isSingle && singleEntry?.is_dir) {
+              // 폴더 선택 → 내부 파일명 목록
+              const entries: FileEntry[] = await invoke('list_directory', { path: singlePath });
+              names = entries.map(e => e.name);
+            } else {
+              // 파일 선택 → 선택된 파일명 목록
+              names = paths.map(p => {
+                const sep = p.includes('\\') ? '\\' : '/';
+                return p.split(sep).pop() ?? p;
+              });
+            }
+            const text = names.join('\n');
+            await navigator.clipboard.writeText(text);
+          } catch (e) { console.error('엔트리 복제 실패:', e); }
+        },
       });
     }
     if (isSingle && singleEntry?.is_dir) {

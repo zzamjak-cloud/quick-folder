@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
+import { Play } from 'lucide-react';
 import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
@@ -195,13 +196,27 @@ export default memo(function FileCard({
       >
         {/* 표시 우선순위: 이미지 썸네일 > 네이티브 아이콘 > lucide 아이콘 */}
         {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt={entry.name}
-            className="w-full h-full object-contain"
-            loading="lazy"
-            draggable={false}
-          />
+          <>
+            <img
+              src={thumbnail}
+              alt={entry.name}
+              className="w-full h-full object-contain"
+              loading="lazy"
+              draggable={false}
+            />
+            {/* 동영상 플레이 아이콘 오버레이 */}
+            {entry.file_type === 'video' && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div style={{
+                  width: Math.max(20, thumbnailSize * 0.25), height: Math.max(20, thumbnailSize * 0.25),
+                  borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.6)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Play size={Math.max(10, thumbnailSize * 0.14)} fill="#fff" color="#fff" />
+                </div>
+              </div>
+            )}
+          </>
         ) : nativeIcon ? (
           <img
             src={nativeIcon}
