@@ -185,7 +185,10 @@
       "Bash(pkill -f target/debug/app)",
       "Bash(sed -i '' 's/\"\"version\"\": \"\"1.22.0\"\"/\"\"version\"\": \"\"1.23.0\"\"/' package.json src-tauri/tauri.conf.json)",
       "Bash(sed -i '' 's/^version = \"\"1.22.0\"\"/version = \"\"1.23.0\"\"/' src-tauri/Cargo.toml)",
-      "Bash(grep '\"\"version\"\"' package.json src-tauri/tauri.conf.json)"
+      "Bash(grep '\"\"version\"\"' package.json src-tauri/tauri.conf.json)",
+      "Bash(find /Users/woody/Desktop/AI/QuickFolder/quick-folder/src -type f \\\\\\(-name *.tsx -o -name *.ts -o -name types.ts \\\\\\))",
+      "Bash(git:*)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": [],
     "ask": []

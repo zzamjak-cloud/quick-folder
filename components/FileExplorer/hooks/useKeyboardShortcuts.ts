@@ -66,7 +66,6 @@ export interface UseKeyboardShortcutsConfig {
   closeOtherTabs: () => void;
   columnView: ReturnType<typeof useColumnView>;
   setMarkdownEditorPath: (path: string | null) => void;
-  setImageEditorPath: (path: string | null) => void;
 }
 
 /**
@@ -91,7 +90,6 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     columnView,
     setMarkdownEditorPath,
-    setImageEditorPath,
   } = config;
 
   useEffect(() => {
@@ -251,11 +249,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
             const entry = col.entries[columnView.focusedRow];
             if (entry) {
               e.preventDefault();
-              // 이미지 파일이면 이미지 편집기로 열기
-              const imageExts = /\.(png|jpe?g|webp|bmp|gif)$/i;
-              if (!entry.is_dir && imageExts.test(entry.name)) {
-                setImageEditorPath(entry.path);
-              } else if (!entry.is_dir && /\.md$/i.test(entry.name)) {
+              if (!entry.is_dir && /\.md$/i.test(entry.name)) {
                 setMarkdownEditorPath(entry.path);
               } else {
                 openEntry(entry);
@@ -267,11 +261,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
           if (entry) {
             e.preventDefault();
-            // 이미지 파일이면 이미지 편집기로 열기
-            const imageExts = /\.(png|jpe?g|webp|bmp|gif)$/i;
-            if (!entry.is_dir && imageExts.test(entry.name)) {
-              setImageEditorPath(entry.path);
-            } else if (!entry.is_dir && /\.md$/i.test(entry.name)) {
+            if (!entry.is_dir && /\.md$/i.test(entry.name)) {
               setMarkdownEditorPath(entry.path);
             } else {
               openEntry(entry);

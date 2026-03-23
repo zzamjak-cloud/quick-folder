@@ -23,8 +23,6 @@ export function useModalStates() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   // 마크다운 편집기 대상 경로
   const [markdownEditorPath, setMarkdownEditorPath] = useState<string | null>(null);
-  // 이미지 편집기 대상 경로
-  const [imageEditorPath, setImageEditorPath] = useState<string | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -36,6 +34,5 @@ export function useModalStates() {
     tagPrompt, setTagPrompt,
     renamingPath, setRenamingPath,
     markdownEditorPath, setMarkdownEditorPath,
-    imageEditorPath, setImageEditorPath,
   };
 }

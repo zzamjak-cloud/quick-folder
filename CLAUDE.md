@@ -17,7 +17,6 @@ QuickFolder Widget is a **Tauri 2.x** desktop application for managing local fol
 - **Lucide React** - Icon library
 - **TipTap** - WYSIWYG 마크다운 편집기 (ProseMirror 기반)
 - **marked / turndown** - MD↔HTML 변환
-- **Konva / react-konva** - 이미지 편집기 캔버스 엔진
 
 ## Development Commands
 
@@ -89,8 +88,6 @@ The app uses Tauri's command pattern:
    - `is_directory` - Checks if path is a directory
    - `create_text_file` - Creates empty text file
    - `write_text_file` - Writes content to text file
-   - `read_image_base64` - Reads image file as base64 data URI
-   - `save_image_base64` - Saves base64-encoded image data to file
 
 2. **Frontend** calls these via `invoke()` from `@tauri-apps/api/core`
 
@@ -159,17 +156,6 @@ TipTap(ProseMirror) 기반 WYSIWYG 편집기. 독립 모달로 구현 (ModalShel
 - **복사 버튼**: 헤더의 "복사" 버튼으로 순수 마크다운 텍스트 클립보드 복사
 - **열기**: .md 파일 선택 후 Enter 키 (더블클릭은 OS 기본 앱)
 - **생성**: 빈 공간 우클릭 → "마크다운" 메뉴 → 인라인 이름변경
-
-### 이미지 편집기 (`components/FileExplorer/ImageEditor/`)
-
-react-konva(Konva.js) 기반 이미지 어노테이션 편집기. 전체 화면 모달로 구현 (MarkdownEditor 패턴).
-- **도구**: 선택, 크롭, 사각형, 원, 화살표, 텍스트, 펜, 지우개
-- **레이어 시스템**: 포토샵 스타일 레이어 추가/삭제/표시/잠금
-- **패널 구조**: 좌측 Toolbar + 캔버스 + 하단 PropertyPanel + 우측 LayerPanel
-- **저장**: `{파일명}_Desc.{확장자}`로 별도 저장 (Rust `save_image_base64` 커맨드)
-- **열기**: 이미지 파일(png/jpg/webp/bmp/gif) 선택 후 Enter 키
-- **단축키 격리**: 캡처 단계 키 리스너로 글로벌 단축키 차단
-- **실행취소**: 자체 useHistory 훅 (최대 50단계, Ctrl+Z/Y)
 
 ### 공유 유틸리티 (`utils/pathUtils.ts`)
 
