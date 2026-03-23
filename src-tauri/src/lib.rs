@@ -29,7 +29,7 @@ struct FileEntry {
 fn classify_file(name: &str) -> FileType {
     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
-        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" => FileType::Image,
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" | "icns" | "psd" => FileType::Image,
         "mp4" | "mov" | "avi" | "mkv" | "webm" => FileType::Video,
         "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md"
         | "gslides" | "gdoc" | "gsheet" => FileType::Document,
