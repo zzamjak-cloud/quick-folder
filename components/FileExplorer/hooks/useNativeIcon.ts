@@ -14,8 +14,10 @@ function getCacheKey(isDir: boolean, name: string): string {
   return ext;
 }
 
-// 네이티브 아이콘이 부정확하게 표시되는 확장자만 lucide 폴백
+// 네이티브 아이콘이 부정확하게 표시되는 확장자 → lucide 폴백
 const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh', 'exe']);
+// 썸네일이 생성되므로 네이티브 아이콘 불필요한 이미지 확장자
+const THUMBNAIL_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'icns']);
 
 /**
  * OS 네이티브 파일 아이콘 훅 (확장자별 캐시)
@@ -30,7 +32,8 @@ export function useNativeIcon(
   const ext = entry.name.lastIndexOf('.') > 0
     ? entry.name.slice(entry.name.lastIndexOf('.') + 1).toLowerCase()
     : '';
-  const skip = entry.file_type === 'image' || (!entry.is_dir && SKIP_NATIVE_EXTS.has(ext));
+  // PSD 등은 image 타입이지만 시스템 아이콘 사용 (썸네일 미생성)
+  const skip = THUMBNAIL_IMAGE_EXTS.has(ext) || (!entry.is_dir && SKIP_NATIVE_EXTS.has(ext));
 
   const [nativeIcon, setNativeIcon] = useState<string | null>(() => {
     if (skip) return null;

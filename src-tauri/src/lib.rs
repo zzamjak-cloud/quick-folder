@@ -122,6 +122,21 @@ async fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>, String
             let w = u32::from_be_bytes([buf[18], buf[19], buf[20], buf[21]]);
             return Ok(Some((w, h)));
         }
+        if ext == "ico" {
+            // ICO: ico 크레이트로 가장 큰 아이콘 크기 반환
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            if let Ok(icon_dir) = ico::IconDir::read(file) {
+                let mut max_w = 0u32;
+                let mut max_h = 0u32;
+                for entry in icon_dir.entries() {
+                    let w = entry.width();
+                    let h = entry.height();
+                    if w >= max_w && h >= max_h { max_w = w; max_h = h; }
+                }
+                if max_w > 0 { return Ok(Some((max_w, max_h))); }
+            }
+            return Ok(None);
+        }
         if ext == "icns" {
             // ICNS: 가장 큰 아이콘의 크기를 반환
             let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
