@@ -488,8 +488,8 @@ export default function FileExplorer({
   }, [entries, selectedPaths]);
 
   const selectAll = useCallback(() => {
-    setSelectedPaths(entries.map(e => e.path));
-  }, [entries]);
+    setSelectedPaths(displayEntries.map(e => e.path));
+  }, [displayEntries]);
 
   const deselectAll = useCallback(() => {
     setSelectedPaths([]);
