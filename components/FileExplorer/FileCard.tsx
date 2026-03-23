@@ -18,6 +18,7 @@ interface FileCardProps {
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
+  onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
@@ -36,6 +37,7 @@ export default memo(function FileCard({
   onDragMouseDown,
   onSelect,
   onOpen,
+  onOpenInNewTab,
   onContextMenu,
   onRenameCommit,
   themeVars,
@@ -134,8 +136,13 @@ export default memo(function FileCard({
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    onOpen(entry);
-  }, [entry, onOpen]);
+    // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
+    if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) {
+      onOpenInNewTab(entry);
+    } else {
+      onOpen(entry);
+    }
+  }, [entry, onOpen, onOpenInNewTab]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

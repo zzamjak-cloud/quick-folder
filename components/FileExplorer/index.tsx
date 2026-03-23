@@ -445,6 +445,13 @@ export default function FileExplorer({
     }
   }, [handleNavigateTo]);
 
+  // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
+  const openEntryInNewTab = useCallback((entry: FileEntry) => {
+    if (entry.is_dir) {
+      openTab(entry.path);
+    }
+  }, [openTab]);
+
   const openInOsExplorer = useCallback(async (path: string) => {
     try {
       await invoke('open_folder', { path });
@@ -1122,6 +1129,7 @@ export default function FileExplorer({
               onSelectPaths={handleSelectPaths}
               onDeselectAll={deselectAll}
               onOpen={openEntry}
+              onOpenInNewTab={openEntryInNewTab}
               onContextMenu={handleContextMenu}
               onRenameCommit={fileOps.handleRenameCommit}
               onSortChange={(by) => {

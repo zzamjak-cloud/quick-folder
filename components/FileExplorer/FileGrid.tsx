@@ -26,6 +26,7 @@ interface FileGridProps {
   onSelectPaths: (paths: string[]) => void;
   onDeselectAll: () => void;
   onOpen: (entry: FileEntry) => void;
+  onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   onSortChange?: (by: string) => void;
@@ -36,7 +37,7 @@ interface FileGridProps {
 }
 
 // --- ListRow 컴포넌트 ---
-const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -46,6 +47,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
+  onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
@@ -75,7 +77,10 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       style={{ backgroundColor: bg, opacity: isCut ? 0.4 : 1, border }}
       title={formatTooltip(entry)}
       onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
-      onDoubleClick={() => onOpen(entry)}
+      onDoubleClick={(e) => {
+        if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) onOpenInNewTab(entry);
+        else onOpen(entry);
+      }}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
       onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
     >
@@ -109,7 +114,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
 });
 
 // --- DetailsRow 컴포넌트 ---
-const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, themeVars }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -119,6 +124,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
+  onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   themeVars: ThemeVars | null;
@@ -156,7 +162,10 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
       className="cursor-pointer hover:opacity-80"
       title={formatTooltip(entry)}
       onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
-      onDoubleClick={() => onOpen(entry)}
+      onDoubleClick={(e) => {
+        if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) onOpenInNewTab(entry);
+        else onOpen(entry);
+      }}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
       onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
     >
@@ -196,7 +205,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
@@ -208,6 +217,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
+  onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   onSortChange?: (by: string) => void;
@@ -320,6 +330,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
               onDragMouseDown={onDragMouseDown}
               onSelect={onSelect}
               onOpen={onOpen}
+              onOpenInNewTab={onOpenInNewTab}
               onContextMenu={onContextMenu}
               onRenameCommit={onRenameCommit}
               themeVars={themeVars}
@@ -352,6 +363,7 @@ export default memo(function FileGrid({
   onSelectPaths,
   onDeselectAll,
   onOpen,
+  onOpenInNewTab,
   onContextMenu,
   onRenameCommit,
   onSortChange,
@@ -543,6 +555,7 @@ export default memo(function FileGrid({
                   onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
+                  onOpenInNewTab={onOpenInNewTab}
                   onContextMenu={onContextMenu}
                   onRenameCommit={onRenameCommit}
                   themeVars={themeVars}
@@ -578,6 +591,7 @@ export default memo(function FileGrid({
                   onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
+                  onOpenInNewTab={onOpenInNewTab}
                   onContextMenu={onContextMenu}
                   onRenameCommit={onRenameCommit}
                   themeVars={themeVars}
@@ -602,6 +616,7 @@ export default memo(function FileGrid({
           onDragMouseDown={onDragMouseDown}
           onSelect={onSelect}
           onOpen={onOpen}
+          onOpenInNewTab={onOpenInNewTab}
           onContextMenu={onContextMenu}
           onRenameCommit={onRenameCommit}
           onSortChange={onSortChange}

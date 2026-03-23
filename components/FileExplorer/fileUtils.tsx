@@ -11,17 +11,17 @@ function getExt(fileName?: string): string {
 // 네이티브 아이콘이 안 나오는 확장자만 lucide 아이콘 폴백 매핑
 // (이 확장자들은 useNativeIcon의 SKIP_NATIVE_EXTS에도 등록됨)
 const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> = {
-  md: FileText,          // 마크다운 → 문서 아이콘
-  json: FileCode,        // JSON → 코드 아이콘
-  sh: FileCode,          // 셸 스크립트 → 코드 아이콘
+  md: FileText,          // 마크다운 → 문서(종이) 아이콘
+  json: FileText,        // JSON → 문서(종이) 아이콘
+  sh: FileText,          // 셸 스크립트 → 문서(종이) 아이콘
   exe: Cog,              // 실행파일 → 톱니바퀴 아이콘
 };
 
 // 확장자별 전용 색상 (네이티브 아이콘 skip 대상만)
 const EXT_COLOR: Record<string, string> = {
-  md: '#94a3b8',         // 마크다운 그레이
-  json: '#fbbf24',       // JSON 옐로
-  sh: '#22d3ee',         // 셸 스크립트 시안
+  md: '#fbbf24',         // 마크다운 → 문서 옐로
+  json: '#fbbf24',       // JSON → 문서 옐로
+  sh: '#fbbf24',         // 셸 스크립트 → 문서 옐로
   exe: '#60a5fa',        // 실행파일 블루
 };
 
