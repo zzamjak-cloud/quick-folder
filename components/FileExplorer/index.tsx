@@ -779,15 +779,20 @@ export default function FileExplorer({
             let names: string[] = [];
             if (isSingle && singleEntry?.is_dir) {
               const entries: FileEntry[] = await invoke('list_directory', { path: singlePath });
-              names = entries.map(e => e.name);
+              names = entries.map(e => {
+                const dot = e.name.lastIndexOf('.');
+                return dot > 0 && !e.is_dir ? e.name.slice(0, dot) : e.name;
+              });
             } else {
               names = paths.map(p => {
                 const sep = p.includes('\\') ? '\\' : '/';
-                return p.split(sep).pop() ?? p;
+                const fileName = p.split(sep).pop() ?? p;
+                const dot = fileName.lastIndexOf('.');
+                return dot > 0 ? fileName.slice(0, dot) : fileName;
               });
             }
-            // 줄바꿈 구분 — 구글 시트에서 각 행에 하나씩 붙여넣기됨
-            const text = names.join('\n');
+            // CRLF 구분 — 구글 시트에서 각 행에 하나씩 붙여넣기
+            const text = names.join('\r\n');
             // Tauri 클립보드 플러그인 사용 (navigator.clipboard는 웹뷰에서 실패 가능)
             await invoke('copy_path', { path: text });
             fileOps.showCopyToast(`${names.length}개 파일명 복사됨`);
