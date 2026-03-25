@@ -13,6 +13,7 @@ import {
   Clock,
   Download,
   Monitor,
+  HelpCircle,
 } from 'lucide-react';
 import {
   DndContext,
@@ -41,6 +42,7 @@ import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
+import { HelpModal } from './components/HelpModal';
 import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
@@ -98,6 +100,7 @@ export default function App() {
   // --- UI 상태 ---
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   // 좌측 패널 너비
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
@@ -587,44 +590,49 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              /* 펼친 상태: 폴딩 아이콘 행 + 검색/버튼 행 (2줄) */
-              <>
-                <div className="flex items-center px-3" style={{ height: 32 }}>
-                  <button
-                    onClick={() => setSidebarCollapsed(prev => !prev)}
-                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                    title="사이드바 접기 (Ctrl+B)"
-                  >
-                    <PanelLeftClose size={14} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-end gap-1.5 px-3 pb-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsZoomModalOpen(true)}
-                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                    title="확대/축소"
-                  >
-                    <ZoomIn size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsBgModalOpen(true)}
-                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                    title="테마 설정"
-                  >
-                    <Palette size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={catMgmt.openAddCategoryModal}
-                    className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                    title="카테고리 추가"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              </>
+              /* 펼친 상태: 폴딩 아이콘 + 버튼 (한 줄) */
+              <div className="flex items-center px-3 gap-1.5" style={{ height: 36 }}>
+                <button
+                  onClick={() => setSidebarCollapsed(prev => !prev)}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
+                  title="사이드바 접기 (Ctrl+B)"
+                >
+                  <PanelLeftClose size={14} />
+                </button>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => setIsHelpModalOpen(true)}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                  title="도움말"
+                >
+                  <HelpCircle size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsZoomModalOpen(true)}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                  title="확대/축소"
+                >
+                  <ZoomIn size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBgModalOpen(true)}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                  title="테마 설정"
+                >
+                  <Palette size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={catMgmt.openAddCategoryModal}
+                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
+                  title="카테고리 추가"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
             )}
           </div>
 
@@ -945,6 +953,9 @@ export default function App() {
           downloadProgress={autoUpdate.downloadProgress}
         />
       )}
+
+      {/* 도움말 모달 */}
+      <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
 
       {/* Notifications */}
       <ToastContainer toasts={toasts} removeToast={removeToast} />

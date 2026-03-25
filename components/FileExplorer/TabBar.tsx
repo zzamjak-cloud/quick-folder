@@ -3,6 +3,17 @@ import { X, Pin } from 'lucide-react';
 import { Tab, ThemeVars } from './types';
 import { getPathSeparator } from '../../utils/pathUtils';
 
+// accent 색상의 밝기에 따라 대비 텍스트 색상 반환
+function getContrastColor(hexColor: string): string {
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  // 상대 밝기 계산 (WCAG)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#1e293b' : '#ffffff';
+}
+
 // 드롭 인디케이터 및 패널 하이라이트 전체 해제
 function clearAllDragFeedback() {
   document.querySelectorAll('.qf-tab-drop-indicator').forEach(el => el.remove());
@@ -321,7 +332,7 @@ export default memo(function TabBar({
                       backgroundColor: isActive
                         ? (themeVars?.accent ?? '#3b82f6')
                         : ((themeVars?.accent ?? '#3b82f6') + '60'),
-                      color: '#fff',
+                      color: getContrastColor(themeVars?.accent ?? '#3b82f6'),
                       maxWidth: '100%',
                     }}
                   >

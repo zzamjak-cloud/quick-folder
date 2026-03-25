@@ -1062,6 +1062,48 @@ export default function FileExplorer({
         </div>
       )}
 
+      {/* 영구삭제 확인 다이얼로그 */}
+      {fileOps.permanentDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          onClick={() => fileOps.setPermanentDeleteConfirm(null)}
+        >
+          <div
+            className="rounded-lg shadow-2xl p-5 max-w-sm w-full mx-4"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#1e293b',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-sm mb-4" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+              파일을 삭제하면 되돌릴 수 없습니다. 정말 삭제하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs rounded-md transition-colors"
+                style={{
+                  backgroundColor: themeVars?.surface ?? '#334155',
+                  color: themeVars?.text ?? '#e5e7eb',
+                  border: `1px solid ${themeVars?.border ?? '#475569'}`,
+                }}
+                onClick={() => fileOps.setPermanentDeleteConfirm(null)}
+              >
+                취소
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs rounded-md text-white transition-colors"
+                style={{ backgroundColor: '#ef4444' }}
+                onClick={fileOps.executePermanentDelete}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 탭 바 */}
       <TabBar
         tabs={tabs}

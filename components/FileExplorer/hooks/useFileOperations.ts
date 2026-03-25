@@ -52,6 +52,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     speed: string;
   } | null>(null);
 
+  // 영구삭제 확인 다이얼로그
+  const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
+
   // 토스트 표시 헬퍼
   const showCopyToast = useCallback((msg: string) => {
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
@@ -62,12 +65,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // --- 삭제 ---
   const handleDelete = useCallback(async (paths: string[], permanent = false) => {
     if (paths.length === 0) return;
+    if (permanent) {
+      // 영구삭제는 확인 다이얼로그 표시
+      setPermanentDeleteConfirm({ paths: [...paths] });
+      return;
+    }
     try {
-      await invoke('delete_items', { paths, useTrash: !permanent });
-      // 휴지통 삭제만 실행취소 가능 (영구삭제는 복원 불가)
-      if (!permanent) {
-        undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath ?? '', useTrash: true });
-      }
+      await invoke('delete_items', { paths, useTrash: true });
+      undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath ?? '', useTrash: true });
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
       // 삭제된 폴더를 열고 있는 탭 제거 (커스텀 이벤트)
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
@@ -77,6 +82,22 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setError(`삭제 실패: ${e}`);
     }
   }, [currentPath, loadDirectory, undoStack, setSelectedPaths, setError]);
+
+  // --- 영구삭제 확인 후 실행 ---
+  const executePermanentDelete = useCallback(async () => {
+    if (!permanentDeleteConfirm) return;
+    const { paths } = permanentDeleteConfirm;
+    setPermanentDeleteConfirm(null);
+    try {
+      await invoke('delete_items', { paths, useTrash: false });
+      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
+      window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
+      if (currentPath) loadDirectory(currentPath);
+    } catch (e) {
+      console.error('영구삭제 실패:', e);
+      setError(`영구삭제 실패: ${e}`);
+    }
+  }, [permanentDeleteConfirm, currentPath, loadDirectory, setSelectedPaths, setError]);
 
   // --- 복제 ---
   const handleDuplicate = useCallback(async () => {
@@ -422,5 +443,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     copyToast,
     videoCompression,
     sheetPackDefaultName,
+    permanentDeleteConfirm,
+    setPermanentDeleteConfirm,
+    executePermanentDelete,
   };
 }

@@ -3,6 +3,31 @@ import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 
+// GitHub 커밋 메시지로 변경사항 생성
+async function fetchCommitNotes(currentVer: string, newVer: string): Promise<string> {
+  try {
+    const repo = 'zzamjak-cloud/quick-folder';
+    const response = await fetch(
+      `https://api.github.com/repos/${repo}/compare/v${currentVer}...v${newVer}`
+    );
+    if (!response.ok) return '';
+    const data = await response.json();
+    const commits = data.commits as Array<{ commit: { message: string } }>;
+    if (!commits || commits.length === 0) return '';
+
+    // 커밋 메시지에서 변경사항 추출 (첫 줄만, merge commit 제외)
+    const notes = commits
+      .map((c: { commit: { message: string } }) => c.commit.message.split('\n')[0])
+      .filter((msg: string) => !msg.startsWith('Merge'))
+      .map((msg: string) => `- ${msg}`)
+      .join('\n');
+
+    return notes || '';
+  } catch {
+    return '';
+  }
+}
+
 export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' | 'info') => void) {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ version: string; body: string } | null>(null);
@@ -21,10 +46,17 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
       try {
         const update = await check();
         if (update?.available) {
-          setUpdateInfo({
-            version: update.version || 'Unknown',
-            body: update.body || '새로운 버전이 출시되었습니다.',
-          });
+          let body = update.body || '';
+          const currentVer = await getVersion();
+          const newVer = update.version || 'Unknown';
+
+          // release body가 비어있거나 기본 메시지면 커밋 메시지에서 변경사항 추출
+          if (!body || body === '새로운 버전이 출시되었습니다.') {
+            const commitNotes = await fetchCommitNotes(currentVer, newVer);
+            body = commitNotes || '새로운 버전이 출시되었습니다.';
+          }
+
+          setUpdateInfo({ version: newVer, body });
           setIsUpdateModalOpen(true);
         }
       } catch (error) {

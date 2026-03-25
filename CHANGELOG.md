@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.2] - 2026-03-26
+
+### Added
+- **도움말 팝업**: 사이드바 ? 아이콘 클릭 시 단축키/파일 탐색기/사이드바 사용법 안내 (카테고리별 탭)
+- **Shift+Delete 확인 다이얼로그**: 영구삭제 시 "되돌릴 수 없습니다" 최종 확인 팝업 추가
+- **업데이트 변경사항 표시**: 자동 업데이트 팝업에 커밋 기반 변경사항 목록 표시
+
+### Changed
+- **사이드바 헤더 통합**: 접기 아이콘 행 + 버튼 행을 한 줄로 합침
+- **탭 태그 텍스트 가독성**: 밝은 accent 색상에서 태그 텍스트를 어두운 색으로 자동 전환 (WCAG 대비)
+
 ## [1.25.1] - 2026-03-24
 
 ### Added
