@@ -23,6 +23,7 @@ export interface CategoryColumnProps {
   category: Category;
   categoryIndex: number;
   toggleCollapse: (id: string) => void;
+  toggleCollapseAll: () => void;
   handleAddFolder: (catId: string, path?: string, name?: string) => void;
   openEditCategoryModal: (cat: Category) => void;
   deleteCategory: (id: string) => void;
@@ -39,6 +40,7 @@ export function CategoryColumn({
   category,
   categoryIndex,
   toggleCollapse,
+  toggleCollapseAll,
   handleAddFolder,
   openEditCategoryModal,
   deleteCategory,
@@ -119,7 +121,7 @@ export function CategoryColumn({
         >
           <div
             className="flex items-center gap-2 cursor-pointer select-none"
-            onClick={() => toggleCollapse(category.id)}
+            onClick={(e) => e.altKey ? toggleCollapseAll() : toggleCollapse(category.id)}
           >
             {isExpanded ? <ChevronDown size={14} className="text-[var(--qf-muted)]" /> : <ChevronRight size={14} className="text-[var(--qf-muted)]" />}
             <h2

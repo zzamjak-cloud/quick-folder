@@ -193,6 +193,14 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     ));
   }, []);
 
+  // 모든 카테고리 접기/펼기 토글 (하나라도 열려있으면 전부 접기, 아니면 전부 펼기)
+  const toggleCollapseAll = useCallback(() => {
+    setCategories(prev => {
+      const hasExpanded = prev.some(c => !c.isCollapsed);
+      return prev.map(c => ({ ...c, isCollapsed: hasExpanded }));
+    });
+  }, []);
+
   // --- 폴더 관리 ---
   const openAddFolderModal = useCallback((catId: string) => {
     setTargetCategoryId(catId);
@@ -321,7 +329,7 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     catFormTitle, setCatFormTitle,
     catFormColor, setCatFormColor,
     openAddCategoryModal, openEditCategoryModal, handleSaveCategory,
-    deleteCategory, toggleCollapse,
+    deleteCategory, toggleCollapse, toggleCollapseAll,
     // 폴더 모달
     isFolderModalOpen, setIsFolderModalOpen,
     folderFormName, setFolderFormName,

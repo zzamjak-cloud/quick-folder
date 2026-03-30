@@ -105,6 +105,9 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
 
       const ctrl = e.ctrlKey || e.metaKey;
 
+      // 창 도킹 단축키(Ctrl+Alt+Shift+Arrow)는 App.tsx에서 처리
+      if (ctrl && e.altKey && e.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+
       // --- 탭 단축키 ---
       // Ctrl+W (Cmd+W): 현재 탭 닫기 (고정 탭은 닫히지 않음)
       if (ctrl && !e.altKey && e.code === 'KeyW') {
@@ -249,7 +252,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
             const entry = col.entries[columnView.focusedRow];
             if (entry) {
               e.preventDefault();
-              if (!entry.is_dir && /\.md$/i.test(entry.name)) {
+              if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?)$/i.test(entry.name) && entry.name.includes('.')) {
                 setMarkdownEditorPath(entry.path);
               } else {
                 openEntry(entry);
@@ -261,7 +264,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
           if (entry) {
             e.preventDefault();
-            if (!entry.is_dir && /\.md$/i.test(entry.name)) {
+            if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?)$/i.test(entry.name) && entry.name.includes('.')) {
               setMarkdownEditorPath(entry.path);
             } else {
               openEntry(entry);

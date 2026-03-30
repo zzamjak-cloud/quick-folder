@@ -55,6 +55,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // 영구삭제 확인 다이얼로그
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
 
+  // 관리자 권한 삭제 확인 다이얼로그 (Windows)
+  const [elevatedDeleteConfirm, setElevatedDeleteConfirm] = useState<{ paths: string[] } | null>(null);
+
   // 토스트 표시 헬퍼
   const showCopyToast = useCallback((msg: string) => {
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
@@ -78,8 +81,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
       if (currentPath) loadDirectory(currentPath);
     } catch (e) {
-      console.error('삭제 실패:', e);
-      setError(`삭제 실패: ${e}`);
+      const errMsg = String(e);
+      // Windows 권한 에러 감지 → 관리자 권한 삭제 제안
+      if (errMsg.includes('Access is denied') || errMsg.includes('액세스가 거부') || errMsg.includes('Permission denied')) {
+        setElevatedDeleteConfirm({ paths: [...paths] });
+      } else {
+        console.error('삭제 실패:', e);
+        setError(`삭제 실패: ${e}`);
+      }
     }
   }, [currentPath, loadDirectory, undoStack, setSelectedPaths, setError]);
 
@@ -94,10 +103,31 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
       if (currentPath) loadDirectory(currentPath);
     } catch (e) {
-      console.error('영구삭제 실패:', e);
-      setError(`영구삭제 실패: ${e}`);
+      const errMsg = String(e);
+      if (errMsg.includes('Access is denied') || errMsg.includes('액세스가 거부') || errMsg.includes('Permission denied')) {
+        setElevatedDeleteConfirm({ paths: [...paths] });
+      } else {
+        console.error('영구삭제 실패:', e);
+        setError(`영구삭제 실패: ${e}`);
+      }
     }
   }, [permanentDeleteConfirm, currentPath, loadDirectory, setSelectedPaths, setError]);
+
+  // --- 관리자 권한 삭제 실행 (Windows) ---
+  const executeElevatedDelete = useCallback(async () => {
+    if (!elevatedDeleteConfirm) return;
+    const { paths } = elevatedDeleteConfirm;
+    setElevatedDeleteConfirm(null);
+    try {
+      await invoke('delete_items_elevated', { paths });
+      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
+      window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
+      if (currentPath) loadDirectory(currentPath);
+    } catch (e) {
+      console.error('관리자 권한 삭제 실패:', e);
+      setError(`관리자 권한 삭제 실패: ${e}`);
+    }
+  }, [elevatedDeleteConfirm, currentPath, loadDirectory, setSelectedPaths, setError]);
 
   // --- 복제 ---
   const handleDuplicate = useCallback(async () => {
@@ -294,6 +324,35 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, loadDirectory]);
 
+  // --- ZIP 압축 풀기 ---
+  const handleExtractZip = useCallback(async (paths: string[]) => {
+    if (paths.length === 0 || !currentPath) return;
+    const sep = getPathSeparator(currentPath);
+    try {
+      for (const zipPath of paths) {
+        const fileName = getFileName(zipPath);
+        const baseName = fileName.replace(/\.zip$/i, '');
+        // 동일 이름 폴더가 있으면 번호 붙이기
+        let destDir = `${currentPath}${sep}${baseName}`;
+        let counter = 2;
+        // Rust 측에서 디렉토리를 생성하므로, 프론트에서 존재 여부만 확인
+        const existingNames = new Set(entries.map(e => e.name));
+        let folderName = baseName;
+        while (existingNames.has(folderName)) {
+          folderName = `${baseName} (${counter})`;
+          counter++;
+        }
+        destDir = `${currentPath}${sep}${folderName}`;
+        await invoke('extract_zip', { zipPath, destDir });
+      }
+      loadDirectory(currentPath);
+      showCopyToast('압축 풀기 완료');
+    } catch (e) {
+      console.error('압축 풀기 실패:', e);
+      setError(`압축 풀기 실패: ${e}`);
+    }
+  }, [currentPath, entries, loadDirectory, showCopyToast, setError]);
+
   // --- 픽셀화 적용 ---
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
     const output = await invoke<string>('pixelate_image', { input: path, pixelSize, scale, maxColors });
@@ -433,6 +492,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleBulkRenameApply,
     handleGroupIntoFolder,
     handleCompressZip,
+    handleExtractZip,
     handlePixelateApply,
     handleSpritePack,
     handleCompressVideo,
@@ -446,5 +506,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     permanentDeleteConfirm,
     setPermanentDeleteConfirm,
     executePermanentDelete,
+    elevatedDeleteConfirm,
+    setElevatedDeleteConfirm,
+    executeElevatedDelete,
   };
 }

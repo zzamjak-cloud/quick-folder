@@ -5,6 +5,8 @@ import {
   ChevronUp,
   FolderPlus,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   LayoutGrid,
   Columns3,
   List,
@@ -458,7 +460,7 @@ export default memo(function NavigationBar({
           title="정렬"
         >
           <div className="flex items-center gap-1 text-xs">
-            <ArrowUpDown size={13} />
+            {sortDir === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
             <span className="hidden sm:inline">{sortLabels[sortBy]}</span>
           </div>
         </button>

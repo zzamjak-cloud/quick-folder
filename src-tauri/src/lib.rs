@@ -848,6 +848,43 @@ async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<(), String>
     }).await.map_err(|e| format!("삭제 작업 실패: {}", e))?
 }
 
+// Windows 관리자 권한으로 파일/폴더 삭제
+// PowerShell Start-Process -Verb RunAs로 UAC 프롬프트 표시
+#[tauri::command]
+async fn delete_items_elevated(paths: Vec<String>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // PowerShell 스크립트: 각 경로를 강제 삭제
+        let ps_commands: Vec<String> = paths.iter().map(|p| {
+            let escaped = p.replace("'", "''");
+            format!("Remove-Item -LiteralPath '{}' -Recurse -Force", escaped)
+        }).collect();
+        let script = ps_commands.join("; ");
+
+        let output = std::process::Command::new("powershell")
+            .args([
+                "-Command",
+                &format!(
+                    "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -Command \"{}\"'",
+                    script.replace("\"", "\\\"")
+                ),
+            ])
+            .output()
+            .map_err(|e| format!("관리자 권한 삭제 실행 실패: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("관리자 권한 삭제 실패: {}", stderr));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = paths;
+        Err("관리자 권한 삭제는 Windows에서만 지원됩니다".to_string())
+    }
+}
+
 // 휴지통에서 파일 복원 (원래 경로로)
 #[tauri::command]
 async fn restore_trash_items(original_paths: Vec<String>) -> Result<(), String> {
@@ -1862,6 +1899,35 @@ async fn compress_to_zip(paths: Vec<String>, dest: String) -> Result<String, Str
     Ok(dest)
 }
 
+// --- ZIP 압축 풀기 ---
+// zip_path: 압축 파일 경로, dest_dir: 출력 디렉토리 경로
+#[tauri::command]
+async fn extract_zip(zip_path: String, dest_dir: String) -> Result<String, String> {
+    let file = std::fs::File::open(&zip_path).map_err(|e| format!("ZIP 파일 열기 실패: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("ZIP 읽기 실패: {}", e))?;
+    let dest = std::path::Path::new(&dest_dir);
+    std::fs::create_dir_all(dest).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("ZIP 엔트리 읽기 실패: {}", e))?;
+        let out_path = dest.join(entry.mangled_name());
+
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+        } else {
+            // 부모 디렉토리 생성
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+            }
+            let mut outfile = std::fs::File::create(&out_path)
+                .map_err(|e| format!("파일 생성 실패: {}", e))?;
+            std::io::copy(&mut entry, &mut outfile)
+                .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+        }
+    }
+    Ok(dest_dir)
+}
+
 // ffmpeg 바이너리 경로 탐색 (sidecar → 시스템 PATH)
 fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
     // 1. sidecar 경로 (실행 바이너리 옆)
@@ -2782,6 +2848,7 @@ pub fn run() {
         duplicate_items,
         move_items,
         delete_items,
+        delete_items_elevated,
         restore_trash_items,
         create_directory,
         create_text_file,
@@ -2791,6 +2858,7 @@ pub fn run() {
         is_directory,
         get_video_thumbnail,
         compress_to_zip,
+        extract_zip,
         open_with_app,
         open_in_photoshop,
         read_text_file,

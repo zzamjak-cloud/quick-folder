@@ -64,6 +64,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
   const [loaded, setLoaded] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const fileName = getFileName(path);
+  const isMarkdown = /\.md$/i.test(fileName);
 
   // --- TipTap 에디터 초기화 ---
   const editor = useEditor({
@@ -92,14 +93,20 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
   saveRef.current = async () => {
     if (!editor) return;
     setSaveStatus('saving');
-    const html = editor.getHTML();
-    let md = turndown.turndown(html);
-    // 제어 문자 제거 (탭, 개행 제외) — 터미널 먹통 방지
-    md = md.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-    // zero-width 유니코드 제거
-    md = md.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+    let content: string;
+    if (isMarkdown) {
+      const html = editor.getHTML();
+      content = turndown.turndown(html);
+      // 제어 문자 제거 (탭, 개행 제외) — 터미널 먹통 방지
+      content = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      // zero-width 유니코드 제거
+      content = content.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+    } else {
+      // plain text: 에디터 텍스트를 그대로 저장
+      content = editor.getText();
+    }
     try {
-      await invoke('write_text_file', { path, content: md });
+      await invoke('write_text_file', { path, content });
       setSaveStatus('saved');
     } catch (e) {
       console.error('저장 실패:', e);
@@ -124,9 +131,15 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     if (!editor) return;
     (async () => {
       try {
-        const content = await invoke<string>('read_text_file', { path, maxBytes: 1048576 });
-        const html = await marked(content);
-        editor.commands.setContent(html || '<p></p>');
+        const raw = await invoke<string>('read_text_file', { path, maxBytes: 1048576 });
+        if (isMarkdown) {
+          const html = await marked(raw);
+          editor.commands.setContent(html || '<p></p>');
+        } else {
+          // plain text: 줄바꿈을 <p> 태그로 변환하여 표시
+          const paragraphs = raw.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
+          editor.commands.setContent(paragraphs || '<p></p>');
+        }
       } catch {
         editor.commands.setContent('<p></p>');
       }
@@ -299,14 +312,17 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
             <button
               onClick={async () => {
                 if (!editor) return;
-                const html = editor.getHTML();
-                let md = turndown.turndown(html);
-                // 제어 문자 제거 (탭, 개행 제외) — 터미널 먹통 방지
-                md = md.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-                // zero-width 유니코드 제거
-                md = md.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+                let text: string;
+                if (isMarkdown) {
+                  const html = editor.getHTML();
+                  text = turndown.turndown(html);
+                  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+                  text = text.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+                } else {
+                  text = editor.getText();
+                }
                 try {
-                  await navigator.clipboard.writeText(md);
+                  await navigator.clipboard.writeText(text);
                   setCopyFeedback(true);
                   setTimeout(() => setCopyFeedback(false), 1500);
                 } catch (e) {

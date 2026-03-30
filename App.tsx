@@ -46,6 +46,7 @@ import { HelpModal } from './components/HelpModal';
 import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
+import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ZoomModal } from './components/ZoomModal';
@@ -167,9 +168,59 @@ export default function App() {
         e.preventDefault();
         setSidebarCollapsed(prev => !prev);
       }
+
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
+  // --- 창 도킹 단축키: Ctrl(Cmd) + Alt(Opt) + Shift + 화살표 ---
+  // capture 단계에서 처리하여 다른 핸들러보다 먼저 실행
+  useEffect(() => {
+    const handleDockKeyDown = async (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || !e.altKey || !e.shiftKey) return;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      try {
+        const appWindow = getCurrentWindow();
+        const monitors = await availableMonitors();
+        if (monitors.length === 0) return;
+        // 현재 창 위치 기준으로 모니터 탐색
+        const pos = await appWindow.outerPosition();
+        const scaleFactor = await appWindow.scaleFactor();
+        const wx = pos.x / scaleFactor;
+        const wy = pos.y / scaleFactor;
+        // 창이 속한 모니터 찾기 (없으면 첫 번째 모니터 사용)
+        const monitor = monitors.find(m => {
+          const ml = m.position.x / scaleFactor;
+          const mt = m.position.y / scaleFactor;
+          const mr = ml + m.size.width / scaleFactor;
+          const mb = mt + m.size.height / scaleFactor;
+          return wx >= ml && wx < mr && wy >= mt && wy < mb;
+        }) || monitors[0];
+        const mw = Math.round(monitor.size.width / scaleFactor);
+        const mh = Math.round(monitor.size.height / scaleFactor);
+        const mx = Math.round(monitor.position.x / scaleFactor);
+        const my = Math.round(monitor.position.y / scaleFactor);
+
+        let x = mx, y = my, w = mw, h = mh;
+        if (e.key === 'ArrowLeft')  { w = Math.round(mw / 2); }
+        if (e.key === 'ArrowRight') { w = Math.round(mw / 2); x = mx + Math.round(mw / 2); }
+        if (e.key === 'ArrowUp')    { h = Math.round(mh / 2); }
+        if (e.key === 'ArrowDown')  { h = Math.round(mh / 2); y = my + Math.round(mh / 2); }
+
+        console.log('창 도킹:', e.key, { x, y, w, h, scaleFactor });
+        await appWindow.setSize(new LogicalSize(w, h));
+        await appWindow.setPosition(new LogicalPosition(x, y));
+      } catch (err) {
+        console.error('창 도킹 실패:', err);
+      }
+    };
+    window.addEventListener('keydown', handleDockKeyDown, true);
+    return () => window.removeEventListener('keydown', handleDockKeyDown, true);
   }, []);
 
   // --- Tauri 드래그앤드롭 ---
@@ -639,34 +690,32 @@ export default function App() {
           {/* 사이드바 콘텐츠 (접힌 상태에서 숨김) */}
           {!sidebarCollapsed && (
             <>
-              <div className="flex-1 overflow-y-auto p-4">
+              {/* 고정 영역: 최근항목/데스크탑/다운로드 */}
+              <div className="shrink-0 px-4 pt-4 pb-1">
+                <div
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+                  onClick={handleOpenRecent}
+                >
+                  <Clock size={14} className="text-[var(--qf-accent)]" />
+                  <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
+                </div>
+                <div
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+                  onClick={handleOpenDesktop}
+                >
+                  <Monitor size={14} className="text-[var(--qf-accent)]" />
+                  <span className="text-xs font-semibold text-[var(--qf-text)]">데스크탑</span>
+                </div>
+                <div
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+                  onClick={handleOpenDownloads}
+                >
+                  <Download size={14} className="text-[var(--qf-accent)]" />
+                  <span className="text-xs font-semibold text-[var(--qf-text)]">다운로드</span>
+                </div>
+              </div>
 
-          {/* 최근항목 버튼 */}
-          <div
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-            onClick={handleOpenRecent}
-          >
-            <Clock size={14} className="text-[var(--qf-accent)]" />
-            <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
-          </div>
-
-          {/* 데스크탑 버튼 */}
-          <div
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-            onClick={handleOpenDesktop}
-          >
-            <Monitor size={14} className="text-[var(--qf-accent)]" />
-            <span className="text-xs font-semibold text-[var(--qf-text)]">데스크탑</span>
-          </div>
-
-          {/* 다운로드 버튼 */}
-          <div
-            className="flex items-center gap-2 px-2 py-1.5 mb-3 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-            onClick={handleOpenDownloads}
-          >
-            <Download size={14} className="text-[var(--qf-accent)]" />
-            <span className="text-xs font-semibold text-[var(--qf-text)]">다운로드</span>
-          </div>
+              <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
 
           <DndContext
             sensors={sensors}
@@ -709,6 +758,7 @@ export default function App() {
                       category={category}
                       categoryIndex={idx}
                       toggleCollapse={catMgmt.toggleCollapse}
+                      toggleCollapseAll={catMgmt.toggleCollapseAll}
                       handleAddFolder={catMgmt.handleAddFolder}
                       openEditCategoryModal={catMgmt.openEditCategoryModal}
                       deleteCategory={catMgmt.deleteCategory}

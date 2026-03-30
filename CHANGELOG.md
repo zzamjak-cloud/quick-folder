@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.3] - 2026-03-30
+
+### Added
+- **ZIP 압축 풀기**: .zip 파일 우클릭 → "압축 풀기" 메뉴 (파일명 폴더에 해제, 중복 폴더명 자동 회피)
+- **Windows 관리자 권한 삭제**: 파일 삭제 실패 시 "관리자 권한으로 삭제하시겠습니까?" 확인 팝업 (UAC 프롬프트)
+- **창 도킹 단축키**: Ctrl(Cmd)+Alt+Shift+화살표로 창을 디스플레이 절반 크기로 도킹 (좌/우/상/하)
+- **Alt+클릭 전체 접기/펼기**: 사이드바 섹션 타이틀 Alt+클릭 시 모든 카테고리 접기/펼기 토글
+- **텍스트 파일 편집기 확장**: .md 외 .json, .txt, .js, .ts, .css 등 모든 텍스트 파일 편집 지원
+
+### Changed
+- **정렬 화살표 방향 표시**: 오름차순 ↑ / 내림차순 ↓ 아이콘으로 현재 정렬 상태 시각화
+- **사이드바 고정 영역**: 최근항목/데스크탑/다운로드 버튼을 스크롤 영역 밖 상단에 고정
+
 ## [1.25.2] - 2026-03-26
 
 ### Added

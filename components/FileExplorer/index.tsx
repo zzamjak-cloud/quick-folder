@@ -678,6 +678,16 @@ export default function FileExplorer({
       onClick: () => fileOps.handleCompressZip(paths),
       disabled: paths.length === 0,
     });
+    // ZIP 압축 풀기 (.zip 파일이 선택된 경우에만 표시)
+    const zipPaths = paths.filter(p => /\.zip$/i.test(p));
+    if (zipPaths.length > 0) {
+      toolSection.items.push({
+        id: 'extract-zip',
+        icon: <FileArchive size={13} />,
+        label: '압축 풀기',
+        onClick: () => fileOps.handleExtractZip(zipPaths),
+      });
+    }
     // 동영상 압축 (서브메뉴)
     if (isSingle && singleEntry && singleEntry.file_type === 'video') {
       toolSection.items.push({
@@ -1098,6 +1108,48 @@ export default function FileExplorer({
                 onClick={fileOps.executePermanentDelete}
               >
                 확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 권한 삭제 확인 다이얼로그 (Windows) */}
+      {fileOps.elevatedDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          onClick={() => fileOps.setElevatedDeleteConfirm(null)}
+        >
+          <div
+            className="rounded-lg shadow-2xl p-5 max-w-sm w-full mx-4"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#1e293b',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-sm mb-4" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+              파일 삭제에 실패했습니다. 관리자 권한으로 삭제하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs rounded-md transition-colors"
+                style={{
+                  backgroundColor: themeVars?.surface ?? '#334155',
+                  color: themeVars?.text ?? '#e5e7eb',
+                  border: `1px solid ${themeVars?.border ?? '#475569'}`,
+                }}
+                onClick={() => fileOps.setElevatedDeleteConfirm(null)}
+              >
+                취소
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs rounded-md text-white transition-colors"
+                style={{ backgroundColor: '#ef4444' }}
+                onClick={fileOps.executeElevatedDelete}
+              >
+                관리자 권한으로 삭제
               </button>
             </div>
           </div>
