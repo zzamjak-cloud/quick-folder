@@ -599,7 +599,7 @@ export default function App() {
         ['--qf-accent-50' as string]: themeVars?.accent50 ?? 'rgba(59,130,246,0.50)',
       }}
     >
-      {/* macOS 커스텀 타이틀바 (overlay 모드) — Windows는 OS 기본 타이틀바 사용 */}
+      {/* macOS 커스텀 타이틀바 (overlay 모드) — Windows는 OS 타이틀바에 버전 표시 */}
       {isMac && (
         <div
           data-tauri-drag-region

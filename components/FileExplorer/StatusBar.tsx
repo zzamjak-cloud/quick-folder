@@ -38,13 +38,18 @@ export default memo(function StatusBar({ entries, selectedPaths, themeVars }: St
         {totalCount === 0 && '항목 없음'}
       </span>
 
-      {/* 우측: 선택 정보 */}
-      {selectedCount > 0 && (
-        <span>
-          {selectedCount}개 선택됨
-          {selectedSize > 0 && ` · ${formatSize(selectedSize, false)}`}
-        </span>
-      )}
+      {/* 중앙: 선택 정보 */}
+      <span>
+        {selectedCount > 0 && (
+          <>
+            {selectedCount}개 선택됨
+            {selectedSize > 0 && ` · ${formatSize(selectedSize, false)}`}
+          </>
+        )}
+      </span>
+
+      {/* 우측: 버전 정보 */}
+      <span style={{ opacity: 0.5 }}>v{__APP_VERSION__}</span>
     </div>
   );
 });

@@ -23,6 +23,8 @@ export function useModalStates() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   // 마크다운 편집기 대상 경로
   const [markdownEditorPath, setMarkdownEditorPath] = useState<string | null>(null);
+  // 흰색 배경 제거 대상 이미지 경로 목록
+  const [removeWhiteBgPaths, setRemoveWhiteBgPaths] = useState<string[] | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -34,5 +36,6 @@ export function useModalStates() {
     tagPrompt, setTagPrompt,
     renamingPath, setRenamingPath,
     markdownEditorPath, setMarkdownEditorPath,
+    removeWhiteBgPaths, setRemoveWhiteBgPaths,
   };
 }

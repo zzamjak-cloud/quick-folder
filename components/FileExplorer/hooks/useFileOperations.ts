@@ -363,6 +363,20 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     showCopyToast(`픽셀화 완료: ${getFileName(output)}`);
   }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
 
+  // --- 흰색 배경 제거 적용 ---
+  const handleRemoveWhiteBgApply = useCallback(async (paths: string[], threshold: number, feather: number, seeds: [number, number][]) => {
+    const outputs = await invoke<string[]>('remove_white_bg_save', { inputs: paths, threshold, feather, seeds });
+    if (currentPath) {
+      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      setEntries(sortEntries(result, sortBy, sortDir));
+    }
+    if (outputs.length === 1) {
+      showCopyToast(`배경 제거 완료: ${getFileName(outputs[0])}`);
+    } else {
+      showCopyToast(`배경 제거 완료: ${outputs.length}개 파일`);
+    }
+  }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
+
   // --- 스프라이트 시트 패킹 ---
   const handleSpritePack = useCallback(async (paths: string[]) => {
     if (paths.length === 1) {
@@ -494,6 +508,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleCompressZip,
     handleExtractZip,
     handlePixelateApply,
+    handleRemoveWhiteBgApply,
     handleSpritePack,
     handleCompressVideo,
     handleCopyPath,

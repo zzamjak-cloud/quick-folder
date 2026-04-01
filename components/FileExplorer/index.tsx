@@ -5,13 +5,14 @@ import { ThemeVars, ContextMenuSection } from './types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText, Image, List,
+  FolderPlus, FileText, Image, List, Eraser,
 } from 'lucide-react';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import BulkRenameModal from './BulkRenameModal';
 import PixelateModal from './PixelateModal';
+import RemoveWhiteBgModal from './RemoveWhiteBgModal';
 import SheetPackerModal from './SheetPackerModal';
 import SheetUnpackModal from './SheetUnpackModal';
 import MarkdownEditor from './MarkdownEditor';
@@ -711,6 +712,18 @@ export default function FileExplorer({
         onClick: () => modals.setPixelatePath(singlePath),
       });
     }
+    // 배경 제거 (PNG/JPG — 단일 또는 다중 선택)
+    {
+      const imgPaths = paths.filter(p => /\.(png|jpe?g)$/i.test(p));
+      if (imgPaths.length > 0) {
+        toolSection.items.push({
+          id: 'remove-white-bg',
+          icon: <Eraser size={13} />,
+          label: '배경 제거',
+          onClick: () => modals.setRemoveWhiteBgPaths(imgPaths),
+        });
+      }
+    }
     // 스프라이트 시트 패킹 — 폴더 단일 선택
     if (isSingle && singleEntry?.is_dir) {
       toolSection.items.push({
@@ -1368,6 +1381,16 @@ export default function FileExplorer({
           path={modals.pixelatePath}
           onClose={() => modals.setPixelatePath(null)}
           onApply={fileOps.handlePixelateApply}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 배경 제거 모달 */}
+      {modals.removeWhiteBgPaths && (
+        <RemoveWhiteBgModal
+          paths={modals.removeWhiteBgPaths}
+          onClose={() => modals.setRemoveWhiteBgPaths(null)}
+          onApply={fileOps.handleRemoveWhiteBgApply}
           themeVars={themeVars}
         />
       )}

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.4] - 2026-04-01
+
+### Added
+- **배경 제거 기능**: 이미지 우클릭 → "배경 제거"로 흰색 배경을 투명하게 변환
+  - 플러드 필 기반 알파 매팅 + 색상 디컨태미네이션 (프린지/계단 현상 방지)
+  - 마술봉: 클릭으로 제거할 배경 영역 직접 지정
+  - 줌 인/아웃 + 마우스 드래그 패닝 (원본/결과 동기 스크롤)
+  - 미리보기 배경색 전환 (체커보드, 검정, 흰색 등) — 엣지 품질 확인용
+  - 제거 범위/경계 부드러움 슬라이더 (실시간 미리보기)
+  - 다중 파일 일괄 처리 지원
+  - 설정값(threshold, feather, 배경색) localStorage 자동 저장
+- **상태바 버전 표시**: 파일 탐색기 하단바 우측에 버전 정보 표시
+
 ## [1.25.3] - 2026-03-30
 
 ### Added
