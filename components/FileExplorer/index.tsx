@@ -1350,7 +1350,16 @@ export default function FileExplorer({
         </div>
       )}
 
-      <PreviewModals preview={preview} themeVars={themeVars} />
+      <PreviewModals
+        preview={preview}
+        themeVars={themeVars}
+        onCropSave={(outputPath) => {
+          fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
+          if (currentPath) {
+            loadDirectory(currentPath);
+          }
+        }}
+      />
 
       {/* 컨텍스트 메뉴 */}
       {contextMenu && (

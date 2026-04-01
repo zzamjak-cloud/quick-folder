@@ -479,6 +479,47 @@ async fn pixelate_image(input: String, pixel_size: u32, scale: u32, max_colors: 
     .map_err(|e| format!("픽셀레이트 이미지 저장 실패: {}", e))?
 }
 
+// ─── 이미지 크롭 ─────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let img = image::open(&path).map_err(|e| format!("이미지 열기 실패: {}", e))?;
+
+        // 크롭 영역이 이미지 범위 내인지 검증
+        let (iw, ih) = (img.width(), img.height());
+        if x + width > iw || y + height > ih {
+            return Err(format!(
+                "크롭 영역이 이미지 범위를 벗어남: 이미지 {}x{}, 요청 ({},{}) {}x{}",
+                iw, ih, x, y, width, height
+            ));
+        }
+
+        let cropped = img.crop_imm(x, y, width, height);
+
+        // 출력 경로: {stem}_crop.png
+        let input_path = std::path::Path::new(&path);
+        let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = input_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("image");
+
+        let output_path = find_unique_path(parent, stem, "_crop", ".png");
+
+        cropped
+            .save_with_format(&output_path, image::ImageFormat::Png)
+            .map_err(|e| format!("파일 저장 실패: {}", e))?;
+
+        output_path
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| "출력 경로 변환 실패".to_string())
+    })
+    .await
+    .map_err(|e| format!("크롭 이미지 저장 실패: {}", e))?
+}
+
 // ─── 배경 제거 ───────────────────────────────────────────────────
 // 플러드 필 기반: 지정 색상 영역을 투명 처리. 경계에 색상 디컨태미네이션 적용.
 
@@ -3063,6 +3104,7 @@ pub fn run() {
         convert_to_icns,
         remove_white_bg_preview,
         remove_white_bg_save,
+        crop_image,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

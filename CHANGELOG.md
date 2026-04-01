@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.5] - 2026-04-01
+
+### Added
+- **이미지 크롭(영역 추출)**: 이미지 미리보기 모달에서 드래그로 사각형 영역 선택 후 PNG 저장
+  - 모서리 핸들 드래그로 크기 조절, 영역 내 드래그로 이동
+  - Shift+드래그로 1:1 정사각형 비율 고정
+  - 실시간 픽셀 크기 표시 (원본 해상도 기준)
+  - 원본 파일과 같은 폴더에 `{파일명}_crop.png`으로 저장
+
 ## [1.25.4] - 2026-04-01
 
 ### Added
