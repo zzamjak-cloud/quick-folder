@@ -16,6 +16,10 @@ interface ImageCropOverlayProps {
   accentColor?: string;
   /** 크롭 저장 요청 (원본 픽셀 좌표) */
   onSave: (x: number, y: number, width: number, height: number) => void;
+  /** 크롭 영역 존재 여부를 부모에 알림 */
+  onCropChange?: (hasCrop: boolean) => void;
+  /** 외부에서 저장 트리거를 등록하는 콜백 */
+  onRegisterSave?: (saveFn: () => void) => void;
 }
 
 type DragMode = 'none' | 'create' | 'move' | 'nw' | 'ne' | 'sw' | 'se';
@@ -28,6 +32,8 @@ export default function ImageCropOverlay({
   naturalSize,
   accentColor = '#4ade80',
   onSave,
+  onCropChange,
+  onRegisterSave,
 }: ImageCropOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [crop, setCrop] = useState<CropRect | null>(null);
@@ -103,6 +109,24 @@ export default function ImageCropOverlay({
   useEffect(() => {
     drawOverlay();
   }, [drawOverlay]);
+
+  // ESC로 선택 영역 초기화
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && crop) {
+        e.preventDefault();
+        e.stopPropagation();
+        setCrop(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [crop]);
+
+  // 크롭 상태 변경 시 부모에 알림
+  useEffect(() => {
+    onCropChange?.(crop !== null && crop.w >= MIN_CROP_SIZE && crop.h >= MIN_CROP_SIZE);
+  }, [crop, onCropChange]);
 
   // --- 드래그 모드 판별 ---
   const getDragMode = useCallback((mx: number, my: number): DragMode => {
@@ -265,44 +289,26 @@ export default function ImageCropOverlay({
     setCrop(null);
   }, [crop, naturalSize, imageRect, onSave]);
 
+  // 부모에게 저장 함수 등록
+  useEffect(() => {
+    onRegisterSave?.(handleSave);
+  }, [handleSave, onRegisterSave]);
+
   return (
-    <>
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: imageRect.width,
-          height: imageRect.height,
-          cursor: 'crosshair',
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      />
-      {crop && crop.w >= MIN_CROP_SIZE && crop.h >= MIN_CROP_SIZE && (
-        <button
-          onClick={(e) => { e.stopPropagation(); handleSave(); }}
-          style={{
-            position: 'absolute',
-            bottom: 12,
-            right: 12,
-            background: accentColor,
-            color: '#000',
-            border: 'none',
-            padding: '6px 16px',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-            zIndex: 10,
-          }}
-        >
-          PNG 저장
-        </button>
-      )}
-    </>
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: imageRect.width,
+        height: imageRect.height,
+        cursor: 'crosshair',
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    />
   );
 }

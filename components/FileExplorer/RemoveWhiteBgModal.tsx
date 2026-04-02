@@ -13,6 +13,7 @@ interface SavedSettings {
   threshold: number;
   feather: number;
   previewBg: string; // 'checker' 또는 hex 색상
+  trim: boolean;
 }
 
 function loadSettings(): SavedSettings {
@@ -20,7 +21,7 @@ function loadSettings(): SavedSettings {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* 무시 */ }
-  return { threshold: 60, feather: 30, previewBg: 'checker' };
+  return { threshold: 60, feather: 30, previewBg: 'checker', trim: false };
 }
 
 function saveSettings(s: SavedSettings) {
@@ -53,7 +54,7 @@ const BG_PRESETS = [
 interface RemoveWhiteBgModalProps {
   paths: string[];
   onClose: () => void;
-  onApply: (paths: string[], threshold: number, feather: number, seeds: [number, number][]) => Promise<void>;
+  onApply: (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => Promise<void>;
   themeVars: ThemeVars | null;
 }
 
@@ -66,6 +67,9 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
 
   // 미리보기 배경 (체커 또는 단색)
   const [previewBg, setPreviewBg] = useState(saved.previewBg);
+
+  // 투명 여백 트림 여부
+  const [trim, setTrim] = useState(saved.trim);
 
   // 다중 파일 전환
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -114,8 +118,8 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
 
   // 설정 변경 시 localStorage 저장
   useEffect(() => {
-    saveSettings({ threshold, feather, previewBg });
-  }, [threshold, feather, previewBg]);
+    saveSettings({ threshold, feather, previewBg, trim });
+  }, [threshold, feather, previewBg, trim]);
 
   // 원본 이미지 크기 조회
   useEffect(() => {
@@ -263,7 +267,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
     setError('');
     setSaveProgress(isMulti ? `0/${paths.length}` : '');
     try {
-      await onApply(paths, threshold, feather, seedPoints);
+      await onApply(paths, threshold, feather, seedPoints, trim);
       onClose();
     } catch (e) {
       setError(`저장 실패: ${e}`);
@@ -505,6 +509,20 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
               style={{ accentColor: themeVars?.accent ?? '#3b82f6' }}
             />
             <span className="w-10 text-center text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{feather}</span>
+          </div>
+
+          {/* Trim 체크박스 */}
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>여백 제거</label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={trim}
+                onChange={e => setTrim(e.target.checked)}
+                style={{ accentColor: themeVars?.accent ?? '#3b82f6', width: 14, height: 14 }}
+              />
+              <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>투명 영역 Trim</span>
+            </label>
           </div>
         </div>
 

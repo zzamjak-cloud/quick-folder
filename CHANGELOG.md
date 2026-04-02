@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.6] - 2026-04-02
+
+### Added
+- **배경 제거 Trim 옵션**: 배경 제거 시 투명 여백을 자동으로 잘라내는 "여백 제거" 체크박스 추가
+- **이미지 미리보기 배경 제거 바로가기**: 미리보기 모달 헤더에 "배경 제거" 버튼 추가 (크롭 선택 시 "PNG 저장"으로 전환)
+
+### Fixed
+- **마크다운 에디터 Tab 들여쓰기**: 리스트 항목에서 Tab/Shift+Tab으로 들여쓰기/내어쓰기 지원
+- **마크다운 복사 버튼**: .md 파일은 마크다운 서식으로, 그 외는 텍스트로 복사 (툴팁 구분 표시)
+- **크롭 UI 개선**: 저장 버튼을 헤더로 이동, ESC 키로 선택 영역 초기화
+
 ## [1.25.5] - 2026-04-01
 
 ### Added

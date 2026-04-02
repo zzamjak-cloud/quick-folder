@@ -1359,6 +1359,9 @@ export default function FileExplorer({
             loadDirectory(currentPath);
           }
         }}
+        onRemoveBg={(path) => {
+          modals.setRemoveWhiteBgPaths([path]);
+        }}
       />
 
       {/* 컨텍스트 메뉴 */}

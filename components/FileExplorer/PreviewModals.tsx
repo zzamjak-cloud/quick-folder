@@ -10,14 +10,17 @@ interface PreviewModalsProps {
   preview: PreviewState;
   themeVars: ThemeVars | null;
   onCropSave?: (outputPath: string) => void;
+  onRemoveBg?: (path: string) => void;
 }
 
-export function PreviewModals({ preview, themeVars, onCropSave }: PreviewModalsProps) {
+export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: PreviewModalsProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const [imageRect, setImageRect] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [hasCrop, setHasCrop] = useState(false);
+  const cropSaveFnRef = useRef<(() => void) | null>(null);
 
   // 이미지 로드 완료 시 표시 크기와 원본 크기 기록
   const handleImageLoad = useCallback(() => {
@@ -56,6 +59,8 @@ export function PreviewModals({ preview, themeVars, onCropSave }: PreviewModalsP
   const handleCloseImage = useCallback(() => {
     setImageRect(null);
     setNaturalSize(null);
+    setHasCrop(false);
+    cropSaveFnRef.current = null;
     preview.closeImagePreview();
   }, [preview]);
 
@@ -92,13 +97,50 @@ export function PreviewModals({ preview, themeVars, onCropSave }: PreviewModalsP
               <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
                 {getFileName(preview.previewImagePath)}
               </span>
-              <button
-                className="text-lg px-2 hover:opacity-70"
-                style={{ color: themeVars?.muted ?? '#94a3b8' }}
-                onClick={handleCloseImage}
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {isCroppable && hasCrop && (
+                  <button
+                    className="text-xs px-3 py-1 rounded hover:opacity-80"
+                    style={{
+                      background: themeVars?.accent ?? '#4ade80',
+                      color: '#000',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: 'none',
+                    }}
+                    onClick={(e) => { e.stopPropagation(); cropSaveFnRef.current?.(); }}
+                  >
+                    PNG 저장
+                  </button>
+                )}
+                {isCroppable && !hasCrop && onRemoveBg && preview.previewImagePath && (
+                  <button
+                    className="text-xs px-3 py-1 rounded hover:opacity-80"
+                    style={{
+                      background: themeVars?.surface ?? '#333',
+                      color: themeVars?.text ?? '#e5e7eb',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      border: `1px solid ${themeVars?.border ?? '#444'}`,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const path = preview.previewImagePath!;
+                      handleCloseImage();
+                      onRemoveBg(path);
+                    }}
+                  >
+                    배경 제거
+                  </button>
+                )}
+                <button
+                  className="text-lg px-2 hover:opacity-70"
+                  style={{ color: themeVars?.muted ?? '#94a3b8' }}
+                  onClick={handleCloseImage}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             {/* 이미지 + 크롭 오버레이 */}
             <div
@@ -131,6 +173,8 @@ export function PreviewModals({ preview, themeVars, onCropSave }: PreviewModalsP
                         naturalSize={naturalSize}
                         accentColor={themeVars?.accent ?? '#4ade80'}
                         onSave={handleCropSave}
+                        onCropChange={setHasCrop}
+                        onRegisterSave={(fn) => { cropSaveFnRef.current = fn; }}
                       />
                     </div>
                   )}

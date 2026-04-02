@@ -676,7 +676,7 @@ async fn remove_white_bg_preview(input: String, threshold: u8, feather: u8, seed
 
 // 배경 제거 저장 (다중 파일)
 #[tauri::command]
-async fn remove_white_bg_save(inputs: Vec<String>, threshold: u8, feather: u8, seeds: Vec<[u32; 2]>) -> Result<Vec<String>, String> {
+async fn remove_white_bg_save(inputs: Vec<String>, threshold: u8, feather: u8, seeds: Vec<[u32; 2]>, trim: bool) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut outputs = Vec::new();
         for input in &inputs {
@@ -688,7 +688,34 @@ async fn remove_white_bg_save(inputs: Vec<String>, threshold: u8, feather: u8, s
             let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
             let output_path = find_unique_path(parent, stem, "_nobg", ".png");
 
-            image::DynamicImage::ImageRgba8(result)
+            // Trim: 투명 픽셀 여백 제거
+            let final_img = if trim {
+                let (w, h) = (result.width(), result.height());
+                let mut min_x = w;
+                let mut min_y = h;
+                let mut max_x = 0u32;
+                let mut max_y = 0u32;
+                for y in 0..h {
+                    for x in 0..w {
+                        if result[(x, y)][3] > 0 {
+                            min_x = min_x.min(x);
+                            min_y = min_y.min(y);
+                            max_x = max_x.max(x);
+                            max_y = max_y.max(y);
+                        }
+                    }
+                }
+                if max_x >= min_x && max_y >= min_y {
+                    let cropped = image::imageops::crop_imm(&result, min_x, min_y, max_x - min_x + 1, max_y - min_y + 1);
+                    image::DynamicImage::ImageRgba8(cropped.to_image())
+                } else {
+                    image::DynamicImage::ImageRgba8(result)
+                }
+            } else {
+                image::DynamicImage::ImageRgba8(result)
+            };
+
+            final_img
                 .save_with_format(&output_path, image::ImageFormat::Png)
                 .map_err(|e| format!("파일 저장 실패: {}", e))?;
 

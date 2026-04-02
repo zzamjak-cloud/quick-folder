@@ -364,8 +364,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
 
   // --- 흰색 배경 제거 적용 ---
-  const handleRemoveWhiteBgApply = useCallback(async (paths: string[], threshold: number, feather: number, seeds: [number, number][]) => {
-    const outputs = await invoke<string[]>('remove_white_bg_save', { inputs: paths, threshold, feather, seeds });
+  const handleRemoveWhiteBgApply = useCallback(async (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => {
+    const outputs = await invoke<string[]>('remove_white_bg_save', { inputs: paths, threshold, feather, seeds, trim });
     if (currentPath) {
       const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
       setEntries(sortEntries(result, sortBy, sortDir));

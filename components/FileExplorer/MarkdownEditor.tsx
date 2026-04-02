@@ -76,6 +76,32 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         placeholder: '마크다운을 작성하세요…',
       }),
       ArrowReplace,
+      // Tab 들여쓰기 확장
+      Extension.create({
+        name: 'listIndent',
+        addKeyboardShortcuts() {
+          return {
+            'Tab': () => {
+              if (this.editor.isActive('listItem')) {
+                return this.editor.chain().sinkListItem('listItem').run();
+              }
+              if (this.editor.isActive('taskItem')) {
+                return this.editor.chain().sinkListItem('taskItem').run();
+              }
+              return false;
+            },
+            'Shift-Tab': () => {
+              if (this.editor.isActive('listItem')) {
+                return this.editor.chain().liftListItem('listItem').run();
+              }
+              if (this.editor.isActive('taskItem')) {
+                return this.editor.chain().liftListItem('taskItem').run();
+              }
+              return false;
+            },
+          };
+        },
+      }),
     ],
     content: '<p></p>',
     editorProps: {
@@ -335,7 +361,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
                 border: `1px solid ${themeVars?.border ?? '#444'}`,
                 cursor: 'pointer',
               }}
-              title="마크다운 원본 복사"
+              title={isMarkdown ? '마크다운 원본 복사' : '텍스트 복사'}
             >
               {copyFeedback ? '✓ 복사됨' : '복사'}
             </button>
