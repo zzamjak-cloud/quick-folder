@@ -2,7 +2,10 @@ import React, { useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import VideoPlayer from './VideoPlayer';
 import ImageCropOverlay from './ImageCropOverlay';
+import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
+import PreviewToolbar from './PreviewToolbar';
 import { ThemeVars } from './types';
+import { DrawingTool } from '../../types';
 import { PreviewState } from './hooks/usePreview';
 import { getFileName } from '../../utils/pathUtils';
 
@@ -21,6 +24,12 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
   const [saving, setSaving] = useState(false);
   const [hasCrop, setHasCrop] = useState(false);
   const cropSaveFnRef = useRef<(() => void) | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [activeTool, setActiveTool] = useState<DrawingTool>('pen');
+  const [drawColor, setDrawColor] = useState('#EF4444');
+  const [drawWidth, setDrawWidth] = useState(4);
+  const [hasDrawStrokes, setHasDrawStrokes] = useState(false);
+  const drawingCanvasRef = useRef<DrawingCanvasHandle>(null);
 
   // 이미지 로드 완료 시 표시 크기와 원본 크기 기록
   const handleImageLoad = useCallback(() => {
@@ -55,12 +64,34 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
     }
   }, [preview.previewImagePath, saving, onCropSave]);
 
-  // 이미지 모달 닫을 때 크롭 상태도 초기화
+  // 드로잉 합성 저장 핸들러
+  const handleDrawingSave = useCallback(async () => {
+    if (!preview.previewImagePath || saving || !drawingCanvasRef.current) return;
+    setSaving(true);
+    try {
+      const dataUrl = await drawingCanvasRef.current.compositeToDataUrl();
+      if (!dataUrl) { setSaving(false); return; }
+      const outputPath = await invoke<string>('save_annotated_image', {
+        originalPath: preview.previewImagePath,
+        imageData: dataUrl,
+      });
+      onCropSave?.(outputPath);
+    } catch (e) {
+      console.error('드로잉 저장 실패:', e);
+    } finally {
+      setSaving(false);
+    }
+  }, [preview.previewImagePath, saving, onCropSave]);
+
+  // 이미지 모달 닫을 때 크롭·드로잉 상태도 초기화
   const handleCloseImage = useCallback(() => {
     setImageRect(null);
     setNaturalSize(null);
     setHasCrop(false);
     cropSaveFnRef.current = null;
+    setEditMode(false);
+    setActiveTool('pen');
+    setHasDrawStrokes(false);
     preview.closeImagePreview();
   }, [preview]);
 
@@ -88,17 +119,74 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
           onKeyDown={(e) => { if (e.key === 'Escape') handleCloseImage(); }}
         >
           <div
-            className="relative max-w-[90vw] max-h-[90vh] rounded-lg overflow-hidden shadow-2xl"
-            style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b' }}
+            className="relative max-w-[90vw] max-h-[90vh] rounded-lg overflow-hidden shadow-2xl flex"
+            style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b', minWidth: editMode ? 360 : undefined }}
             onClick={(e) => e.stopPropagation()}
           >
+          {/* 좌측 툴바 — 편집 모드일 때만 표시 */}
+          {isCroppable && editMode && (
+            <PreviewToolbar
+              activeTool={activeTool}
+              onToolChange={setActiveTool}
+              color={drawColor}
+              onColorChange={setDrawColor}
+              lineWidth={drawWidth}
+              onLineWidthChange={setDrawWidth}
+              onClear={() => drawingCanvasRef.current?.clearAll()}
+              onSave={handleDrawingSave}
+              hasStrokes={hasDrawStrokes}
+              themeVars={themeVars}
+            />
+          )}
+            {/* 우측: 헤더 + 이미지 영역 */}
+            <div className="flex flex-col flex-1 min-w-0">
             {/* 헤더 */}
             <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
               <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
                 {getFileName(preview.previewImagePath)}
               </span>
               <div className="flex items-center gap-2">
-                {isCroppable && hasCrop && (
+                {/* 편집 버튼 — 편집 모드가 아닐 때 */}
+                {isCroppable && !editMode && (
+                  <button
+                    className="text-xs px-3 py-1 rounded hover:opacity-80"
+                    style={{
+                      background: themeVars?.surface ?? '#333',
+                      color: themeVars?.text ?? '#e5e7eb',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      border: `1px solid ${themeVars?.border ?? '#444'}`,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditMode(true);
+                      setActiveTool('pen');
+                    }}
+                  >
+                    편집
+                  </button>
+                )}
+                {/* 편집 모드 종료 버튼 */}
+                {editMode && (
+                  <button
+                    className="text-xs px-3 py-1 rounded hover:opacity-80"
+                    style={{
+                      background: themeVars?.accent ?? '#4ade80',
+                      color: '#000',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      border: 'none',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditMode(false);
+                    }}
+                  >
+                    편집 종료
+                  </button>
+                )}
+                {/* 크롭 PNG 저장 — 편집 모드가 아닐 때만 */}
+                {isCroppable && !editMode && hasCrop && (
                   <button
                     className="text-xs px-3 py-1 rounded hover:opacity-80"
                     style={{
@@ -113,7 +201,7 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
                     PNG 저장
                   </button>
                 )}
-                {isCroppable && !hasCrop && onRemoveBg && preview.previewImagePath && (
+                {isCroppable && !editMode && !hasCrop && onRemoveBg && preview.previewImagePath && (
                   <button
                     className="text-xs px-3 py-1 rounded hover:opacity-80"
                     style={{
@@ -168,14 +256,28 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
                       width: imageRect.width,
                       height: imageRect.height,
                     }}>
-                      <ImageCropOverlay
-                        imageRect={imageRect}
-                        naturalSize={naturalSize}
-                        accentColor={themeVars?.accent ?? '#4ade80'}
-                        onSave={handleCropSave}
-                        onCropChange={setHasCrop}
-                        onRegisterSave={(fn) => { cropSaveFnRef.current = fn; }}
-                      />
+                      {!editMode ? (
+                        <ImageCropOverlay
+                          imageRect={imageRect}
+                          naturalSize={naturalSize}
+                          accentColor={themeVars?.accent ?? '#4ade80'}
+                          onSave={handleCropSave}
+                          onCropChange={setHasCrop}
+                          onRegisterSave={(fn) => { cropSaveFnRef.current = fn; }}
+                        />
+                      ) : (
+                        <DrawingCanvas
+                          ref={drawingCanvasRef}
+                          imageRect={imageRect}
+                          naturalSize={naturalSize}
+                          tool={activeTool}
+                          color={drawColor}
+                          lineWidth={drawWidth}
+                          accentColor={themeVars?.accent ?? '#4ade80'}
+                          imageSrc={preview.previewImageData!}
+                          onHasStrokes={setHasDrawStrokes}
+                        />
+                      )}
                     </div>
                   )}
                 </>
@@ -192,6 +294,7 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
                 </div>
               )}
             </div>
+            </div>{/* flex-col 닫기 */}
           </div>
         </div>
       )}

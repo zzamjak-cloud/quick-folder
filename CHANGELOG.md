@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.7] - 2026-04-03
+
+### Fixed
+- **편집 툴바 위치 개선**: 이미지 미리보기 편집 툴바를 화면 좌측 고정에서 모달 내부 좌측으로 이동
+- **편집 툴바 클릭 시 창 닫힘 수정**: 툴바 도구 클릭 시 미리보기가 닫히는 문제 해결
+
 ## [1.25.6] - 2026-04-02
 
 ### Added
