@@ -91,6 +91,7 @@ if (ctrl && e.code === 'KeyT') { /* 탭 복제 */ }
 | `Ctrl+Z` | 실행취소 |
 | `Ctrl+A` | 전체 선택 |
 | `Ctrl+C / X / V` | 복사 / 잘라내기 / 붙여넣기 |
+| `Ctrl+Shift+V` | 클립보드 이미지 PNG 저장 (스크린샷) |
 | `Ctrl+D` | 복제 |
 | `Ctrl+G` | 폴더로 그룹화 |
 | `Ctrl+Alt+C` | 경로 복사 |

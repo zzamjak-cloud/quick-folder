@@ -71,6 +71,7 @@ export interface UseKeyboardShortcutsConfig {
   handleCompressZip: (paths: string[]) => void;
   handleExtractZip: (paths: string[]) => void;
   handleAddTag: (path: string) => void;
+  handlePasteImageFromClipboard: () => void;
 }
 
 /**
@@ -100,6 +101,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handleCompressZip,
     handleExtractZip,
     handleAddTag,
+    handlePasteImageFromClipboard,
   } = config;
 
   useEffect(() => {
@@ -341,9 +343,18 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       // --- 파일 조작 ---
       if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
       if (ctrl && e.key === 'a') { e.preventDefault(); selectAll(); return; }
-      if (ctrl && e.key === 'c') { handleCopy(); return; }
-      if (ctrl && e.key === 'x') { handleCut(); return; }
-      if (ctrl && e.key === 'v') { handlePaste(); return; }
+      if (ctrl && e.key === 'c') { e.preventDefault(); handleCopy(); return; }
+      if (ctrl && e.key === 'x') { e.preventDefault(); handleCut(); return; }
+      if (ctrl && !e.shiftKey && e.key === 'v') { handlePaste(); return; }
+
+      // Ctrl+Shift+V: 클립보드 이미지를 PNG로 즉시 저장
+      if (ctrl && e.shiftKey && e.code === 'KeyV') {
+        e.preventDefault();
+        if (currentPath && currentPath !== RECENT_PATH) {
+          handlePasteImageFromClipboard();
+        }
+        return;
+      }
       if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
       // Ctrl+G: 선택된 파일들을 새 폴더로 그룹화
       if (ctrl && !e.shiftKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
@@ -544,7 +555,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,
-    handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag,
+    handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag, handlePasteImageFromClipboard,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,

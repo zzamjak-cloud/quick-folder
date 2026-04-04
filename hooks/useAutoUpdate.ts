@@ -3,26 +3,32 @@ import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 
-// GitHub 커밋 메시지로 변경사항 생성
-async function fetchCommitNotes(currentVer: string, newVer: string): Promise<string> {
+// GitHub CHANGELOG.md에서 해당 버전 변경사항 추출
+async function fetchChangelogNotes(newVer: string): Promise<string> {
   try {
     const repo = 'zzamjak-cloud/quick-folder';
     const response = await fetch(
-      `https://api.github.com/repos/${repo}/compare/v${currentVer}...v${newVer}`
+      `https://raw.githubusercontent.com/${repo}/main/CHANGELOG.md`
     );
     if (!response.ok) return '';
-    const data = await response.json();
-    const commits = data.commits as Array<{ commit: { message: string } }>;
-    if (!commits || commits.length === 0) return '';
+    const text = await response.text();
 
-    // 커밋 메시지에서 변경사항 추출 (첫 줄만, merge commit 제외)
-    const notes = commits
-      .map((c: { commit: { message: string } }) => c.commit.message.split('\n')[0])
-      .filter((msg: string) => !msg.startsWith('Merge'))
-      .map((msg: string) => `- ${msg}`)
-      .join('\n');
+    // ## [x.y.z] 헤더 사이의 내용을 추출
+    const versionHeader = `## [${newVer}]`;
+    const startIdx = text.indexOf(versionHeader);
+    if (startIdx < 0) return '';
 
-    return notes || '';
+    // 다음 ## 헤더까지의 내용
+    const afterHeader = text.slice(startIdx + versionHeader.length);
+    const nextHeaderIdx = afterHeader.indexOf('\n## ');
+    const section = nextHeaderIdx >= 0
+      ? afterHeader.slice(0, nextHeaderIdx)
+      : afterHeader;
+
+    // 날짜 줄 제거 후 정리
+    return section
+      .replace(/^\s*-\s*\d{4}-\d{2}-\d{2}\s*\n?/, '\n')
+      .trim();
   } catch {
     return '';
   }
@@ -50,10 +56,10 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
           const currentVer = await getVersion();
           const newVer = update.version || 'Unknown';
 
-          // release body가 비어있거나 기본 메시지면 커밋 메시지에서 변경사항 추출
+          // release body가 비어있거나 기본 메시지면 CHANGELOG.md에서 변경사항 추출
           if (!body || body === '새로운 버전이 출시되었습니다.') {
-            const commitNotes = await fetchCommitNotes(currentVer, newVer);
-            body = commitNotes || '새로운 버전이 출시되었습니다.';
+            const changelogNotes = await fetchChangelogNotes(newVer);
+            body = changelogNotes || '새로운 버전이 출시되었습니다.';
           }
 
           setUpdateInfo({ version: newVer, body });

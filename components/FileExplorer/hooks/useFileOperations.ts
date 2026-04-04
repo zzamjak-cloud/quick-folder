@@ -201,6 +201,24 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, loadDirectory, entries, undoStack, setRenamingPath, setSelectedPaths]);
 
+  // --- 클립보드 이미지 PNG 저장 ---
+  const handlePasteImageFromClipboard = useCallback(async () => {
+    if (!currentPath) return;
+    try {
+      const savedPath = await invoke<string | null>('paste_image_from_clipboard', { destDir: currentPath });
+      if (savedPath) {
+        await loadDirectory(currentPath);
+        setSelectedPaths([savedPath]);
+        showCopyToast(`스크린샷 저장: ${getFileName(savedPath)}`);
+      } else {
+        showCopyToast('클립보드에 이미지가 없습니다');
+      }
+    } catch (e) {
+      console.error('클립보드 이미지 저장 실패:', e);
+      setError(`클립보드 이미지 저장 실패: ${e}`);
+    }
+  }, [currentPath, loadDirectory, setSelectedPaths, showCopyToast, setError]);
+
   // --- 인라인 이름변경 시작 ---
   const handleRenameStart = useCallback((path: string) => {
     setRenamingPath(path);
@@ -512,6 +530,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleDuplicate,
     handleCreateDirectory,
     handleCreateMarkdown,
+    handlePasteImageFromClipboard,
     handleRenameStart,
     handleRenameCommit,
     handleBulkRename,

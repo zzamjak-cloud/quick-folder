@@ -2840,39 +2840,27 @@ fn read_files_from_clipboard() -> Result<Vec<String>, String> {
 
 #[cfg(target_os = "macos")]
 fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
-    use objc::runtime::{Class, Object};
-    use objc::{msg_send, sel, sel_impl};
-    use std::ffi::CString;
+    // osascript(AppleScript)로 클립보드에 파일 등록
+    // Finder와 동일한 방식으로 동작하여 Notion, Slack 등 외부 앱 호환
+    let file_refs: Vec<String> = paths.iter()
+        .map(|p| format!("POSIX file \"{}\"", p.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect();
+    let script = if file_refs.len() == 1 {
+        format!("set the clipboard to ({})", file_refs[0])
+    } else {
+        format!("set the clipboard to {{{}}}", file_refs.join(", "))
+    };
 
-    unsafe {
-        let pb_class = Class::get("NSPasteboard").ok_or("NSPasteboard not found")?;
-        let pb: *mut Object = msg_send![pb_class, generalPasteboard];
-        if pb.is_null() { return Err("generalPasteboard is null".into()); }
+    let output = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .map_err(|e| format!("osascript 실행 실패: {}", e))?;
 
-        let _: i64 = msg_send![pb, clearContents];
-
-        let arr_class = Class::get("NSMutableArray").ok_or("NSMutableArray not found")?;
-        let arr: *mut Object = msg_send![arr_class, arrayWithCapacity: paths.len()];
-        if arr.is_null() { return Err("Failed to create array".into()); }
-
-        let url_class = Class::get("NSURL").ok_or("NSURL not found")?;
-        let str_class = Class::get("NSString").ok_or("NSString not found")?;
-
-        for p in paths {
-            let c_path = CString::new(p.as_str()).map_err(|e| e.to_string())?;
-            let ns_path: *mut Object = msg_send![str_class, stringWithUTF8String: c_path.as_ptr()];
-            if ns_path.is_null() { continue; }
-            let url: *mut Object = msg_send![url_class, fileURLWithPath: ns_path];
-            if url.is_null() { continue; }
-            let _: () = msg_send![arr, addObject: url];
-        }
-
-        let ok: i8 = msg_send![pb, writeObjects: arr];
-        if ok == 0 {
-            return Err("writeObjects failed".into());
-        }
-        Ok(())
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("클립보드 설정 실패: {}", stderr));
     }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -3107,19 +3095,13 @@ fn paste_image_from_clipboard(dest_dir: String) -> Result<Option<String>, String
         Err(_) => return Ok(None), // 이미지 데이터 없음
     };
 
-    // 고유 파일명 생성
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let sep = if dest_dir.contains('\\') { "\\" } else { "/" };
-    let mut file_path = format!("{}{}clipboard_{}.png", dest_dir, sep, timestamp);
-
-    // 동일 파일명 존재 시 번호 추가
-    let mut counter = 1;
-    while std::path::Path::new(&file_path).exists() {
-        file_path = format!("{}{}clipboard_{}_{}.png", dest_dir, sep, timestamp, counter);
-        counter += 1;
+    // Screenshot_0.png, Screenshot_1.png, ... 순번 자동 증가
+    let parent = std::path::Path::new(&dest_dir);
+    let mut num = 0u32;
+    let mut file_path = parent.join(format!("Screenshot_{}.png", num));
+    while file_path.exists() {
+        num += 1;
+        file_path = parent.join(format!("Screenshot_{}.png", num));
     }
 
     // RGBA → PNG 저장
@@ -3131,7 +3113,7 @@ fn paste_image_from_clipboard(dest_dir: String) -> Result<Option<String>, String
             .ok_or("이미지 버퍼 생성 실패")?;
     img_buf.save(&file_path).map_err(|e| format!("이미지 저장 실패: {}", e))?;
 
-    Ok(Some(file_path))
+    Ok(Some(file_path.to_string_lossy().to_string()))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

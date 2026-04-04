@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.10] - 2026-04-04
+
+### Added
+- **클립보드 이미지 즉시 저장**: Ctrl+Shift+V로 스크린샷/복사 이미지를 현재 폴더에 Screenshot_N.png로 저장
+- **Notion/Slack 파일 붙여넣기 호환**: macOS에서 파일 복사(Cmd+C) 후 Notion, Slack 등 외부 앱에 붙여넣기 지원
+
+### Fixed
+- **업데이트 팝업 변경사항 표시**: CHANGELOG.md에서 해당 버전의 변경사항을 가져와 업데이트 팝업에 표시
+- **macOS 클립보드 파일 복사**: osascript 방식으로 변경하여 Finder와 동일한 클립보드 포맷 사용
+- **Cmd+C/X 브라우저 간섭 방지**: e.preventDefault() 추가로 WebView 기본 동작이 클립보드를 덮어쓰지 않도록 수정
+
 ## [1.25.9] - 2026-04-04
 
 ### Added
