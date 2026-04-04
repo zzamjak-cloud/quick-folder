@@ -88,6 +88,7 @@ if (ctrl && e.code === 'KeyT') { /* 탭 복제 */ }
 | `Ctrl+Shift+Z` | ZIP 압축 |
 | `Ctrl+Shift+Alt+Z` | ZIP 압축 해제 |
 | `Ctrl+Shift+T` | 태그 추가 |
+| `Ctrl+Shift+Alt+F` | 폰트 병합 (폰트 2개 선택) |
 | `Ctrl+Z` | 실행취소 |
 | `Ctrl+A` | 전체 선택 |
 | `Ctrl+C / X / V` | 복사 / 잘라내기 / 붙여넣기 |
@@ -101,7 +102,7 @@ if (ctrl && e.code === 'KeyT') { /* 탭 복제 */ }
 | `F2` | 이름 변경 |
 | `Delete/Backspace` | 삭제 |
 | `Enter` | 열기 / 편집기 |
-| `Space` | 미리보기 |
+| `Space` | 미리보기 (폰트 파일: 폰트 테스트 팝업) |
 | `Tab/Shift+Tab` | 탭 순환 |
 
 ## Architecture

@@ -72,6 +72,8 @@ export interface UseKeyboardShortcutsConfig {
   handleExtractZip: (paths: string[]) => void;
   handleAddTag: (path: string) => void;
   handlePasteImageFromClipboard: () => void;
+  setFontMergePaths: (paths: string[] | null) => void;
+  setFontPreviewPath: (path: string | null) => void;
 }
 
 /**
@@ -102,6 +104,8 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handleExtractZip,
     handleAddTag,
     handlePasteImageFromClipboard,
+    setFontMergePaths,
+    setFontPreviewPath,
   } = config;
 
   useEffect(() => {
@@ -219,10 +223,20 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // Ctrl+Shift+F: 글로벌 검색 (하위 폴더 재귀)
-      if (ctrl && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+      if (ctrl && e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault();
         if (currentPath && currentPath !== RECENT_PATH) {
           setIsGlobalSearchOpen(true);
+        }
+        return;
+      }
+
+      // Ctrl+Shift+Alt+F: 폰트 병합 (폰트 파일 2개 선택 시)
+      if (ctrl && e.shiftKey && e.altKey && e.code === 'KeyF') {
+        e.preventDefault();
+        const fontPaths = selectedPaths.filter(p => /\.(ttf|otf|woff|woff2|ttc)$/i.test(p));
+        if (fontPaths.length === 2) {
+          setFontMergePaths(fontPaths);
         }
         return;
       }
@@ -302,7 +316,13 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         // 선택된 파일이 하나일 때만 미리보기 열기 (폴더 제외)
         if (selectedPaths.length !== 1) return;
         const entry = entries.find(en => en.path === selectedPaths[0]);
-        if (entry && !entry.is_dir) previewFile(entry);
+        if (entry && !entry.is_dir) {
+          if (/\.(ttf|otf|woff|woff2|ttc)$/i.test(entry.name)) {
+            setFontPreviewPath(entry.path);
+          } else {
+            previewFile(entry);
+          }
+        }
         return;
       }
 
@@ -556,6 +576,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,
     handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag, handlePasteImageFromClipboard,
+    setFontMergePaths, setFontPreviewPath,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,

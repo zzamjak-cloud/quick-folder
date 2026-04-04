@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.25.11"
+version = "1.25.12"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -39,6 +39,7 @@ walkdir = "2"
 ffmpeg-sidecar = "2"
 ico = "0.3"
 icns = "0.3"
+ttf-parser = "0.24"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

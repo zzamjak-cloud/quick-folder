@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.12] - 2026-04-04
+
+### Added
+- **폰트 미리보기**: 폰트 파일 선택 후 Spacebar로 폰트 테스트 팝업 (크기 조절, 프리셋 A-Z/a-z/0-9/가-힣/Random, 텍스트 입력 프리뷰)
+- **폰트 병합**: 2개 폰트 선택 → 우클릭 "폰트 병합" 또는 Ctrl+Shift+Alt+F (A에 없는 글리프를 B에서 복사, Python fonttools 사용)
+- **FileType::Font**: 폰트 파일(TTF/OTF/WOFF/WOFF2/TTC) 전용 분류 추가
+
+### Fixed
+- **폰트 미리보기 로딩**: @font-face format 수정 (truetype/opentype 올바른 포맷명 사용)
+- **폰트 병합 스크립트**: Merger 대신 글리프 단위 복사 방식으로 개선 (cmap/glyf/hmtx 직접 복사)
+- **Random 텍스트**: 글자 조합 → 단어 조합 방식으로 변경 (School, 학생, Pixel, 숲 등)
+
 ## [1.25.11] - 2026-04-04
 
 ### Fixed

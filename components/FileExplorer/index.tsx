@@ -5,7 +5,7 @@ import { ThemeVars, ContextMenuSection } from './types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText, Image, List, Eraser,
+  FolderPlus, FileText, Image, List, Eraser, Type,
 } from 'lucide-react';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
@@ -16,6 +16,8 @@ import RemoveWhiteBgModal from './RemoveWhiteBgModal';
 import SheetPackerModal from './SheetPackerModal';
 import SheetUnpackModal from './SheetUnpackModal';
 import MarkdownEditor from './MarkdownEditor';
+import FontPreviewModal from './FontPreviewModal';
+import FontMergeModal from './FontMergeModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop } from './hooks/useInternalDragDrop';
@@ -583,6 +585,9 @@ export default function FileExplorer({
     handleCompressZip: fileOps.handleCompressZip,
     handleExtractZip: fileOps.handleExtractZip,
     handleAddTag,
+    handlePasteImageFromClipboard: fileOps.handlePasteImageFromClipboard,
+    setFontMergePaths: modals.setFontMergePaths,
+    setFontPreviewPath: modals.setFontPreviewPath,
   });
 
   // --- 컨텍스트 메뉴 ---
@@ -791,6 +796,28 @@ export default function FileExplorer({
         },
       });
     }
+        // 폰트 미리보기 (단일 폰트 선택 시)
+        if (isSingle && singleEntry && /\.(ttf|otf|woff|woff2|ttc)$/i.test(singleEntry.name)) {
+          toolSection.items.push({
+            id: 'font-preview',
+            icon: <Type size={13} />,
+            label: '폰트 미리보기',
+            onClick: () => modals.setFontPreviewPath(singlePath),
+          });
+        }
+
+        // 폰트 병합 (폰트 2개 선택 시)
+        {
+          const fontPaths = paths.filter(p => /\.(ttf|otf|woff|woff2|ttc)$/i.test(p));
+          if (fontPaths.length === 2) {
+            toolSection.items.push({
+              id: 'merge-fonts',
+              icon: <Type size={13} />,
+              label: '폰트 병합',
+              onClick: () => modals.setFontMergePaths(fontPaths),
+            });
+          }
+        }
     sections.push(toolSection);
 
     // 섹션 5: 경로 복사, 즐겨찾기, 태그
@@ -894,6 +921,7 @@ export default function FileExplorer({
     fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
     handleAddTag, handleRemoveTag,
     onAddToFavorites, modals.setPixelatePath, modals.setSheetUnpackPath,
+    modals.setFontPreviewPath, modals.setFontMergePaths,
   ]);
 
   // --- 미리보기 열려있을 때 선택 변경 시 자동 갱신 ---
@@ -1490,6 +1518,28 @@ export default function FileExplorer({
             modals.setMarkdownEditorPath(null);
             if (currentPath) loadDirectory(currentPath);
           }}
+        />
+      )}
+
+      {/* 폰트 미리보기 */}
+      {modals.fontPreviewPath && (
+        <FontPreviewModal
+          path={modals.fontPreviewPath}
+          onClose={() => modals.setFontPreviewPath(null)}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 폰트 병합 */}
+      {modals.fontMergePaths && modals.fontMergePaths.length === 2 && (
+        <FontMergeModal
+          paths={modals.fontMergePaths}
+          onClose={() => modals.setFontMergePaths(null)}
+          onApply={(outputPath) => {
+            modals.setFontMergePaths(null);
+            fileOps.handleMergeFontsComplete(outputPath);
+          }}
+          themeVars={themeVars}
         />
       )}
 

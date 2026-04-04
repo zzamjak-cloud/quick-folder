@@ -25,6 +25,10 @@ export function useModalStates() {
   const [markdownEditorPath, setMarkdownEditorPath] = useState<string | null>(null);
   // 흰색 배경 제거 대상 이미지 경로 목록
   const [removeWhiteBgPaths, setRemoveWhiteBgPaths] = useState<string[] | null>(null);
+  // 폰트 병합 대상 경로 목록
+  const [fontMergePaths, setFontMergePaths] = useState<string[] | null>(null);
+  // 폰트 미리보기 대상 경로
+  const [fontPreviewPath, setFontPreviewPath] = useState<string | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -37,5 +41,7 @@ export function useModalStates() {
     renamingPath, setRenamingPath,
     markdownEditorPath, setMarkdownEditorPath,
     removeWhiteBgPaths, setRemoveWhiteBgPaths,
+    fontMergePaths, setFontMergePaths,
+    fontPreviewPath, setFontPreviewPath,
   };
 }

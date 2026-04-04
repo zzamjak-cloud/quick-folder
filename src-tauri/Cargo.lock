@@ -83,7 +83,7 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "app"
-version = "1.25.11"
+version = "1.25.12"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -106,6 +106,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "trash",
+ "ttf-parser",
  "walkdir",
  "winapi",
  "zip 2.4.2",
@@ -5199,6 +5200,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "ttf-parser"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5be21190ff5d38e8b4a2d3b6a3ae57f612cc39c96e83cedeaf7abc338a8bac4a"
 
 [[package]]
 name = "typeid"

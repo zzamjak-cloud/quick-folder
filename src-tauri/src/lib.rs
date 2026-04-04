@@ -10,6 +10,7 @@ enum FileType {
     Document,
     Code,
     Archive,
+    Font,
     Directory,
     Other,
 }
@@ -36,6 +37,7 @@ fn classify_file(name: &str) -> FileType {
         "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h"
         | "css" | "html" | "json" | "toml" | "yaml" | "yml" => FileType::Code,
         "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" | "unitypackage" => FileType::Archive,
+        "ttf" | "otf" | "woff" | "woff2" | "ttc" => FileType::Font,
         _ => FileType::Other,
     }
 }
@@ -513,6 +515,161 @@ async fn pixelate_image(input: String, pixel_size: u32, scale: u32, max_colors: 
     })
     .await
     .map_err(|e| format!("픽셀레이트 이미지 저장 실패: {}", e))?
+}
+
+// ─── 폰트 처리 ─────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+struct FontInfo {
+    name: String,
+    family: String,
+    style: String,
+    glyph_count: u32,
+}
+
+#[tauri::command]
+fn get_font_info(path: String) -> Result<FontInfo, String> {
+    let data = std::fs::read(&path).map_err(|e| format!("폰트 파일 읽기 실패: {}", e))?;
+    let face = ttf_parser::Face::parse(&data, 0).map_err(|e| format!("폰트 파싱 실패: {}", e))?;
+
+    let mut name = String::new();
+    let mut family = String::new();
+    let mut style = String::new();
+
+    for record in face.names() {
+        // name_id 4 = Full Name, 1 = Family, 2 = Style
+        if let Some(s) = record.to_string() {
+            match record.name_id {
+                ttf_parser::name_id::FULL_NAME => if name.is_empty() { name = s; },
+                ttf_parser::name_id::FAMILY => if family.is_empty() { family = s; },
+                ttf_parser::name_id::SUBFAMILY => if style.is_empty() { style = s; },
+                _ => {}
+            }
+        }
+    }
+
+    if name.is_empty() {
+        // 파일명에서 추출
+        name = std::path::Path::new(&path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+    }
+    if family.is_empty() { family = name.clone(); }
+    if style.is_empty() { style = "Regular".to_string(); }
+
+    Ok(FontInfo {
+        name,
+        family,
+        style,
+        glyph_count: face.number_of_glyphs() as u32,
+    })
+}
+
+#[tauri::command]
+fn read_font_bytes(path: String) -> Result<String, String> {
+    let data = std::fs::read(&path).map_err(|e| format!("폰트 파일 읽기 실패: {}", e))?;
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&data))
+}
+
+#[tauri::command]
+async fn merge_fonts(base_path: String, merge_path: String, output_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Python fonttools를 사용한 폰트 병합
+        // A 폰트를 베이스로, B 폰트에서 A에 없는 글리프만 복사
+        let script = r#"
+import sys
+from fontTools.ttLib import TTFont
+
+base = TTFont(sys.argv[1])
+source = TTFont(sys.argv[2])
+output_path = sys.argv[3]
+
+# cmap 테이블에서 코드포인트 → 글리프 이름 매핑 가져오기
+base_cmap = base.getBestCmap() or {}
+src_cmap = source.getBestCmap() or {}
+
+# B에만 있는 코드포인트 찾기
+missing = set(src_cmap.keys()) - set(base_cmap.keys())
+
+if missing:
+    has_glyf = 'glyf' in base and 'glyf' in source
+
+    for cp in missing:
+        glyph_name = src_cmap[cp]
+
+        # cmap 테이블에 코드포인트 등록
+        for table in base['cmap'].tables:
+            if hasattr(table, 'cmap') and table.format in (4, 12):
+                table.cmap[cp] = glyph_name
+
+        # glyf 테이블에서 글리프 데이터 복사 (TrueType)
+        if has_glyf and glyph_name in source['glyf']:
+            base['glyf'][glyph_name] = source['glyf'][glyph_name]
+
+        # hmtx (수평 메트릭) 복사
+        if 'hmtx' in base and 'hmtx' in source:
+            if glyph_name in source['hmtx'].metrics:
+                base['hmtx'][glyph_name] = source['hmtx'].metrics[glyph_name]
+
+        # vmtx (수직 메트릭) 복사 (존재 시)
+        if 'vmtx' in base and 'vmtx' in source:
+            if glyph_name in source['vmtx'].metrics:
+                base['vmtx'][glyph_name] = source['vmtx'].metrics[glyph_name]
+
+    # 글리프 순서 업데이트
+    new_glyphs = [src_cmap[cp] for cp in missing if src_cmap[cp] not in base.getGlyphOrder()]
+    if new_glyphs:
+        base.setGlyphOrder(base.getGlyphOrder() + new_glyphs)
+
+    # maxp 테이블 업데이트 (글리프 수)
+    if 'maxp' in base:
+        base['maxp'].numGlyphs = len(base.getGlyphOrder())
+
+base.save(output_path)
+count = len(missing)
+print(f'OK:{count}')
+"#;
+
+        // python3 시도, 실패 시 python 시도
+        let python = find_python().ok_or(
+            "Python이 설치되어 있지 않습니다. 폰트 병합을 위해 Python과 fonttools 패키지가 필요합니다.\n\n설치 방법:\n1. Python 설치: https://www.python.org/downloads/\n2. fonttools 설치: pip install fonttools".to_string()
+        )?;
+
+        let output = std::process::Command::new(&python)
+            .args(["-c", script, &base_path, &merge_path, &output_path])
+            .output()
+            .map_err(|e| format!("Python 실행 실패: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("No module named 'fontTools'") {
+                return Err("fonttools 패키지가 설치되어 있지 않습니다.\n\n설치 방법: pip install fonttools".to_string());
+            }
+            return Err(format!("폰트 병합 실패: {}", stderr));
+        }
+
+        Ok(output_path)
+    })
+    .await
+    .map_err(|e| format!("폰트 병합 태스크 실패: {}", e))?
+}
+
+/// Python 실행 파일 경로 찾기 (python3 우선, python 폴백)
+fn find_python() -> Option<String> {
+    for cmd in &["python3", "python"] {
+        if std::process::Command::new(cmd)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Some(cmd.to_string());
+        }
+    }
+    None
 }
 
 // ─── 이미지 크롭 ─────────────────────────────────────────────────────
@@ -3172,6 +3329,9 @@ pub fn run() {
         remove_white_bg_preview,
         remove_white_bg_save,
         crop_image,
+        get_font_info,
+        read_font_bytes,
+        merge_fonts,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

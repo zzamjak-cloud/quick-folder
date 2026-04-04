@@ -219,6 +219,15 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, loadDirectory, setSelectedPaths, showCopyToast, setError]);
 
+  // --- 폰트 병합 완료 처리 ---
+  const handleMergeFontsComplete = useCallback(async (outputPath: string) => {
+    if (currentPath) {
+      await loadDirectory(currentPath);
+      setSelectedPaths([outputPath]);
+    }
+    showCopyToast(`폰트 병합 완료: ${getFileName(outputPath)}`);
+  }, [currentPath, loadDirectory, setSelectedPaths, showCopyToast]);
+
   // --- 인라인 이름변경 시작 ---
   const handleRenameStart = useCallback((path: string) => {
     setRenamingPath(path);
@@ -531,6 +540,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleCreateDirectory,
     handleCreateMarkdown,
     handlePasteImageFromClipboard,
+    handleMergeFontsComplete,
     handleRenameStart,
     handleRenameCommit,
     handleBulkRename,
