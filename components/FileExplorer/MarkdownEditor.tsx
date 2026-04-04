@@ -409,6 +409,48 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
           )}
         </div>
 
+        {/* 이모티콘 툴바 */}
+        <div
+          className="flex items-center gap-0.5 px-4 py-1 shrink-0 flex-wrap"
+          style={{
+            borderBottom: `1px solid ${themeVars?.border ?? '#334155'}`,
+            backgroundColor: themeVars?.surface2 ?? '#1e1e36',
+          }}
+        >
+          {[
+            { emoji: '✅', title: '체크' },
+            { emoji: '❌', title: '취소' },
+            { emoji: '⭐', title: '별' },
+            { emoji: '📌', title: '핀' },
+            { emoji: '🔍', title: '검색' },
+            { emoji: '📅', title: '달력' },
+            { emoji: '📝', title: '노트' },
+            { emoji: '💾', title: '저장' },
+            { emoji: '📁', title: '폴더' },
+            { emoji: '✏️', title: '펜' },
+            { emoji: '💡', title: '아이디어' },
+            { emoji: '⚠️', title: '주의' },
+            { emoji: '🔗', title: '링크' },
+            { emoji: '🔒', title: '잠금' },
+            { emoji: '🎯', title: '목표' },
+            { emoji: '🚀', title: '시작' },
+            { emoji: '👍', title: '좋아요' },
+            { emoji: '❤️', title: '하트' },
+            { emoji: '🔥', title: '인기' },
+            { emoji: '⏰', title: '시간' },
+          ].map(({ emoji, title }) => (
+            <button
+              key={emoji}
+              onMouseDown={(e) => { e.preventDefault(); editor?.chain().focus().insertContent(emoji).run(); }}
+              title={title}
+              className="px-1 py-0.5 rounded hover:bg-white/10 transition-all"
+              style={{ cursor: 'pointer', fontSize: 14, lineHeight: 1, border: 'none', background: 'none' }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
         {/* TipTap 편집 영역 */}
         <div
           className="flex-1 overflow-y-auto"

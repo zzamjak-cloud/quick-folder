@@ -551,6 +551,7 @@ export default function FileExplorer({
     handleDelete: fileOps.handleDelete,
     handleCreateDirectory: fileOps.handleCreateDirectory,
     handleGroupIntoFolder: fileOps.handleGroupIntoFolder,
+    handleUngroupFolder: fileOps.handleUngroupFolder,
     handleRenameStart: fileOps.handleRenameStart,
     handleBulkRename: fileOps.handleBulkRename,
     handleCopyPath: fileOps.handleCopyPath,
@@ -1203,6 +1204,48 @@ export default function FileExplorer({
                 onClick={fileOps.executeElevatedDelete}
               >
                 관리자 권한으로 삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 폴더 해제 확인 다이얼로그 */}
+      {fileOps.ungroupConfirm && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+          onClick={() => fileOps.setUngroupConfirm(null)}
+        >
+          <div
+            className="rounded-lg shadow-2xl p-5 max-w-sm w-full mx-4"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#1e293b',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-sm mb-4" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+              폴더를 제거하고 파일을 꺼내시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs rounded-md transition-colors"
+                style={{
+                  backgroundColor: themeVars?.surface ?? '#334155',
+                  color: themeVars?.text ?? '#e5e7eb',
+                  border: `1px solid ${themeVars?.border ?? '#475569'}`,
+                }}
+                onClick={() => fileOps.setUngroupConfirm(null)}
+              >
+                취소
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs rounded-md text-white transition-colors"
+                style={{ backgroundColor: themeVars?.accent ?? '#3b82f6' }}
+                onClick={fileOps.executeUngroupFolder}
+              >
+                확인
               </button>
             </div>
           </div>

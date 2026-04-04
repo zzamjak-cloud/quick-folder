@@ -89,6 +89,7 @@ if (ctrl && e.code === 'KeyT') { /* 탭 복제 */ }
 | `Ctrl+Shift+Alt+Z` | ZIP 압축 해제 |
 | `Ctrl+Shift+T` | 태그 추가 |
 | `Ctrl+Shift+Alt+F` | 폰트 병합 (폰트 2개 선택) |
+| `Ctrl+Alt+G` | 폴더 해제 (내용물 꺼내기) |
 | `Ctrl+Z` | 실행취소 |
 | `Ctrl+A` | 전체 선택 |
 | `Ctrl+C / X / V` | 복사 / 잘라내기 / 붙여넣기 |

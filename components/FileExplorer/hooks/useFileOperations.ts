@@ -61,6 +61,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // 관리자 권한 삭제 확인 다이얼로그 (Windows)
   const [elevatedDeleteConfirm, setElevatedDeleteConfirm] = useState<{ paths: string[] } | null>(null);
 
+  // 폴더 해제 확인 다이얼로그
+  const [ungroupConfirm, setUngroupConfirm] = useState<{ path: string } | null>(null);
+
   // 토스트 표시 헬퍼
   const showCopyToast = useCallback((msg: string) => {
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
@@ -348,6 +351,34 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, selectedPaths, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath]);
 
+  // --- 폴더 해제 요청 (확인 다이얼로그 표시) ---
+  const handleUngroupFolder = useCallback((path: string) => {
+    setUngroupConfirm({ path });
+  }, []);
+
+  // --- 폴더 해제 실행 (확인 후) ---
+  const executeUngroupFolder = useCallback(async () => {
+    if (!ungroupConfirm || !currentPath) return;
+    const { path: folderPath } = ungroupConfirm;
+    setUngroupConfirm(null);
+    try {
+      // 폴더 내부 파일 목록 조회
+      const contents = await invoke<FileEntry[]>('list_directory', { path: folderPath });
+      if (contents.length > 0) {
+        // 내용물을 부모 폴더로 이동
+        const sources = contents.map(e => e.path);
+        await invoke('move_items', { sources, dest: currentPath });
+      }
+      // 빈 폴더 삭제
+      await invoke('delete_items', { paths: [folderPath], useTrash: true });
+      await loadDirectory(currentPath);
+      showCopyToast(`폴더 해제 완료: ${getFileName(folderPath)}`);
+    } catch (e) {
+      console.error('폴더 해제 실패:', e);
+      setError(`폴더 해제 실패: ${e}`);
+    }
+  }, [ungroupConfirm, currentPath, loadDirectory, showCopyToast, setError]);
+
   // --- ZIP 압축 ---
   const handleCompressZip = useCallback(async (paths: string[]) => {
     if (paths.length === 0 || !currentPath) return;
@@ -546,6 +577,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleBulkRename,
     handleBulkRenameApply,
     handleGroupIntoFolder,
+    handleUngroupFolder,
+    executeUngroupFolder,
     handleCompressZip,
     handleExtractZip,
     handlePixelateApply,
@@ -566,5 +599,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     elevatedDeleteConfirm,
     setElevatedDeleteConfirm,
     executeElevatedDelete,
+    ungroupConfirm,
+    setUngroupConfirm,
+    executeUngroupFolder,
   };
 }

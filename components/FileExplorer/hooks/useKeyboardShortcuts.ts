@@ -37,6 +37,7 @@ export interface UseKeyboardShortcutsConfig {
   handleDelete: (paths: string[], permanent?: boolean) => void;
   handleCreateDirectory: () => void;
   handleGroupIntoFolder: () => void;
+  handleUngroupFolder: (path: string) => void;
   handleRenameStart: (path: string) => void;
   handleBulkRename: (paths: string[]) => void;
   handleCopyPath: (path: string) => void;
@@ -87,7 +88,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     isMac, tabs, activeTabId, activeTab, thumbnailSize,
     gridRef, selectionAnchorRef,
     handleCopy, handleCut, handlePaste, handleDuplicate,
-    handleDelete, handleCreateDirectory, handleGroupIntoFolder,
+    handleDelete, handleCreateDirectory, handleGroupIntoFolder, handleUngroupFolder,
     handleRenameStart, handleBulkRename, handleCopyPath, handleUndo,
     selectAll, deselectAll, goBack, goForward, goUp,
     openEntry, previewFile, preview,
@@ -377,7 +378,16 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
       if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
       // Ctrl+G: 선택된 파일들을 새 폴더로 그룹화
-      if (ctrl && !e.shiftKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
+      // Ctrl+Alt+G: 폴더 해제 (선택한 폴더의 내용물을 꺼내고 폴더 삭제)
+      if (ctrl && e.altKey && e.code === 'KeyG') {
+        e.preventDefault();
+        if (selectedPaths.length === 1) {
+          const entry = entries.find(en => en.path === selectedPaths[0]);
+          if (entry?.is_dir) handleUngroupFolder(selectedPaths[0]);
+        }
+        return;
+      }
       if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
 
       // Ctrl+Shift+M: 마크다운 파일 생성
@@ -567,7 +577,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     isFocused, renamingPath, selectAll, deselectAll, handleUndo, handleCopy, handleCut, handlePaste, handleDuplicate,
-    handleCreateDirectory, handleGroupIntoFolder, handleRenameStart, handleDelete, handleCopyPath,
+    handleCreateDirectory, handleGroupIntoFolder, handleUngroupFolder, handleRenameStart, handleDelete, handleCopyPath,
     goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
