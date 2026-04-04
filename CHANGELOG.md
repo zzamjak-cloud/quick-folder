@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.11] - 2026-04-04
+
+### Fixed
+- **업데이트 팝업 변경사항**: CHANGELOG.md를 항상 우선 가져오도록 수정 (GitHub Release 기본 메시지 무시)
+
 ## [1.25.10] - 2026-04-04
 
 ### Added

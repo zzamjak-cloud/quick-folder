@@ -52,15 +52,12 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
       try {
         const update = await check();
         if (update?.available) {
-          let body = update.body || '';
           const currentVer = await getVersion();
           const newVer = update.version || 'Unknown';
 
-          // release body가 비어있거나 기본 메시지면 CHANGELOG.md에서 변경사항 추출
-          if (!body || body === '새로운 버전이 출시되었습니다.') {
-            const changelogNotes = await fetchChangelogNotes(newVer);
-            body = changelogNotes || '새로운 버전이 출시되었습니다.';
-          }
+          // CHANGELOG.md에서 변경사항 우선 추출, 실패 시 release body 폴백
+          const changelogNotes = await fetchChangelogNotes(newVer);
+          const body = changelogNotes || update.body || '새로운 버전이 출시되었습니다.';
 
           setUpdateInfo({ version: newVer, body });
           setIsUpdateModalOpen(true);
