@@ -66,6 +66,11 @@ export interface UseKeyboardShortcutsConfig {
   closeOtherTabs: () => void;
   columnView: ReturnType<typeof useColumnView>;
   setMarkdownEditorPath: (path: string | null) => void;
+  handleCreateMarkdown: () => void;
+  handleCompressVideo: (path: string, quality: string) => void;
+  handleCompressZip: (paths: string[]) => void;
+  handleExtractZip: (paths: string[]) => void;
+  handleAddTag: (path: string) => void;
 }
 
 /**
@@ -90,6 +95,11 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     columnView,
     setMarkdownEditorPath,
+    handleCreateMarkdown,
+    handleCompressVideo,
+    handleCompressZip,
+    handleExtractZip,
+    handleAddTag,
   } = config;
 
   useEffect(() => {
@@ -110,7 +120,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
 
       // --- 탭 단축키 ---
       // Ctrl+W (Cmd+W): 현재 탭 닫기 (고정 탭은 닫히지 않음)
-      if (ctrl && !e.altKey && e.code === 'KeyW') {
+      if (ctrl && !e.altKey && !e.shiftKey && e.code === 'KeyW') {
         e.preventDefault();
         if (tabs.length > 1 && activeTabId && !activeTab?.pinned) handleTabClose(activeTabId);
         return;
@@ -122,7 +132,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
       // Ctrl+T (Cmd+T): 현재 탭 복제
-      if (ctrl && e.code === 'KeyT') {
+      if (ctrl && !e.shiftKey && e.code === 'KeyT') {
         e.preventDefault();
         duplicateTab();
         return;
@@ -216,7 +226,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // Ctrl+F: 검색 토글
-      if (ctrl && e.key === 'f') {
+      if (ctrl && !e.shiftKey && e.key === 'f') {
         e.preventDefault();
         setIsSearchActive(prev => {
           if (prev) { setSearchQuery(''); return false; }
@@ -329,7 +339,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // --- 파일 조작 ---
-      if (ctrl && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
+      if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
       if (ctrl && e.key === 'a') { e.preventDefault(); selectAll(); return; }
       if (ctrl && e.key === 'c') { handleCopy(); return; }
       if (ctrl && e.key === 'x') { handleCut(); return; }
@@ -338,6 +348,46 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       // Ctrl+G: 선택된 파일들을 새 폴더로 그룹화
       if (ctrl && !e.shiftKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
       if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
+
+      // Ctrl+Shift+M: 마크다운 파일 생성
+      if (ctrl && e.shiftKey && e.code === 'KeyM') { e.preventDefault(); handleCreateMarkdown(); return; }
+
+      // Ctrl+Shift+P: 동영상 보통 화질 압축
+      if (ctrl && e.shiftKey && e.code === 'KeyP') {
+        e.preventDefault();
+        if (selectedPaths.length === 1) {
+          const ext = selectedPaths[0].split('.').pop()?.toLowerCase() ?? '';
+          if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext)) {
+            handleCompressVideo(selectedPaths[0], 'low');
+          }
+        }
+        return;
+      }
+
+      // Ctrl+Shift+Z: ZIP 압축
+      if (ctrl && e.shiftKey && !e.altKey && e.code === 'KeyZ') {
+        e.preventDefault();
+        if (selectedPaths.length > 0) handleCompressZip(selectedPaths);
+        return;
+      }
+
+      // Ctrl+Shift+Alt+Z: ZIP 압축 해제
+      if (ctrl && e.shiftKey && e.altKey && e.code === 'KeyZ') {
+        e.preventDefault();
+        const zipPaths = selectedPaths.filter(p => /\.zip$/i.test(p));
+        if (zipPaths.length > 0) handleExtractZip(zipPaths);
+        return;
+      }
+
+      // Ctrl+Shift+T: 폴더에 태그 추가
+      if (ctrl && e.shiftKey && e.code === 'KeyT') {
+        e.preventDefault();
+        if (selectedPaths.length === 1) {
+          const entry = entries.find(en => en.path === selectedPaths[0]);
+          if (entry?.is_dir) handleAddTag(selectedPaths[0]);
+        }
+        return;
+      }
 
       if (e.key === 'F2') {
         if (selectedPaths.length === 1) {
@@ -494,6 +544,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,
+    handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,

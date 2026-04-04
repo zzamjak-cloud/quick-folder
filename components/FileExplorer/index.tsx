@@ -282,7 +282,14 @@ export default function FileExplorer({
         case 'name': cmp = naturalCompare(a.name, b.name); break;
         case 'size': cmp = a.size - b.size; break;
         case 'modified': cmp = a.modified - b.modified; break;
-        case 'type': cmp = a.file_type.localeCompare(b.file_type); break;
+        case 'type': {
+          // 확장자별 1차 그룹화 (psd, png, jpg 등 별도 그룹)
+          const extA = a.name.includes('.') ? a.name.slice(a.name.lastIndexOf('.') + 1).toLowerCase() : '';
+          const extB = b.name.includes('.') ? b.name.slice(b.name.lastIndexOf('.') + 1).toLowerCase() : '';
+          cmp = extA.localeCompare(extB);
+          if (cmp === 0) cmp = naturalCompare(a.name, b.name);
+          break;
+        }
         default: cmp = naturalCompare(a.name, b.name);
       }
       return dir === 'asc' ? cmp : -cmp;
@@ -571,6 +578,11 @@ export default function FileExplorer({
     closeOtherTabs,
     columnView,
     setMarkdownEditorPath: modals.setMarkdownEditorPath,
+    handleCreateMarkdown: fileOps.handleCreateMarkdown,
+    handleCompressVideo: fileOps.handleCompressVideo,
+    handleCompressZip: fileOps.handleCompressZip,
+    handleExtractZip: fileOps.handleExtractZip,
+    handleAddTag,
   });
 
   // --- 컨텍스트 메뉴 ---
@@ -1347,6 +1359,18 @@ export default function FileExplorer({
         >
           <div className="text-5xl opacity-30">📁</div>
           <p className="text-sm">왼쪽 즐겨찾기에서 폴더를 클릭하면 여기에 파일 목록이 표시됩니다</p>
+        </div>
+      )}
+
+      {/* 파일 작업 진행 오버레이 (삭제/복제 중 표시) */}
+      {fileOps.operationProgress && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="rounded-lg px-6 py-4 flex flex-col items-center gap-2 shadow-xl" style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b', border: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+            <div className="animate-spin w-6 h-6 border-2 border-t-transparent rounded-full" style={{ borderColor: `${themeVars?.accent ?? '#4ade80'} transparent ${themeVars?.accent ?? '#4ade80'} ${themeVars?.accent ?? '#4ade80'}` }} />
+            <span className="text-sm" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+              {fileOps.operationProgress.type} 중... ({fileOps.operationProgress.total}개 항목)
+            </span>
+          </div>
         </div>
       )}
 

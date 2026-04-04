@@ -49,6 +49,60 @@ npm run preview
 
 현재 지원: `delete` (휴지통 복원), `rename` (이름 되돌리기), `move_group` (그룹화 되돌리기), `create_file` (파일 생성 취소)
 
+## 개발 규칙: 키보드 단축키 충돌 방지
+
+단축키는 `useKeyboardShortcuts.ts`에서 관리한다. 새 단축키 추가 시 반드시 다음 규칙을 따른다:
+
+### 수식키 조합별 분리 필수
+
+`Ctrl+키`, `Ctrl+Shift+키`, `Ctrl+Alt+키`, `Ctrl+Shift+Alt+키`는 모두 별개의 단축키다. 기존 단축키가 상위 조합을 가로채지 않도록 **반드시 불필요한 수식키를 제외**해야 한다:
+
+```typescript
+// ✅ 올바름: Ctrl+T와 Ctrl+Shift+T가 분리됨
+if (ctrl && !e.shiftKey && e.code === 'KeyT') { /* 탭 복제 */ }
+if (ctrl && e.shiftKey && e.code === 'KeyT') { /* 태그 추가 */ }
+
+// ❌ 잘못됨: Ctrl+Shift+T도 이 조건에 걸림
+if (ctrl && e.code === 'KeyT') { /* 탭 복제 */ }
+```
+
+### 새 단축키 추가 체크리스트
+
+1. 파일 내 `grep`으로 같은 키(`e.code === 'Key?'`)를 사용하는 기존 단축키 확인
+2. 기존 단축키에 `!e.shiftKey`, `!e.altKey` 가드가 있는지 확인, 없으면 추가
+3. 새 단축키는 수식키 조합을 명시적으로 체크 (`e.shiftKey`, `e.altKey`, `!e.altKey` 등)
+
+### 현재 등록된 단축키 (useKeyboardShortcuts.ts)
+
+| 단축키 | 기능 |
+|--------|------|
+| `Ctrl+W` | 탭 닫기 |
+| `Ctrl+Alt+W` | 다른 탭 모두 닫기 |
+| `Ctrl+T` | 탭 복제 |
+| `Ctrl+F` | 검색 |
+| `Ctrl+Shift+F` | 글로벌 검색 |
+| `Ctrl+Shift+G` | 폴더로 이동 |
+| `Ctrl+Shift+N` | 새 폴더 |
+| `Ctrl+Shift+M` | 마크다운 파일 생성 |
+| `Ctrl+Shift+P` | 동영상 압축 (보통 화질) |
+| `Ctrl+Shift+Z` | ZIP 압축 |
+| `Ctrl+Shift+Alt+Z` | ZIP 압축 해제 |
+| `Ctrl+Shift+T` | 태그 추가 |
+| `Ctrl+Z` | 실행취소 |
+| `Ctrl+A` | 전체 선택 |
+| `Ctrl+C / X / V` | 복사 / 잘라내기 / 붙여넣기 |
+| `Ctrl+D` | 복제 |
+| `Ctrl+G` | 폴더로 그룹화 |
+| `Ctrl+Alt+C` | 경로 복사 |
+| `Ctrl+Alt+O` | Photoshop에서 열기 |
+| `Ctrl+1~4` | 뷰 모드 전환 |
+| `Ctrl+0/+/-` | 줌 초기화/확대/축소 |
+| `F2` | 이름 변경 |
+| `Delete/Backspace` | 삭제 |
+| `Enter` | 열기 / 편집기 |
+| `Space` | 미리보기 |
+| `Tab/Shift+Tab` | 탭 순환 |
+
 ## Architecture
 
 ### Entry Points

@@ -21,7 +21,7 @@ function loadSettings(): SavedSettings {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* 무시 */ }
-  return { threshold: 60, feather: 30, previewBg: 'checker', trim: false };
+  return { threshold: 60, feather: 30, previewBg: 'checker', trim: true };
 }
 
 function saveSettings(s: SavedSettings) {

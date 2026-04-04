@@ -229,6 +229,42 @@ async fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> R
         }
 
         cached_thumbnail(&cache_dir, &path, size, true, || {
+            if ext == "ico" {
+                // ICO: image crate로 열기 시도, 실패 시 ICO 디코더 직접 사용
+                match image::open(&path) {
+                    Ok(img) => {
+                        let thumb = img.thumbnail(size, size);
+                        let mut buf = vec![];
+                        thumb.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                            .map_err(|e| e.to_string())?;
+                        return Ok(Some(buf));
+                    }
+                    Err(_) => {
+                        // image crate 실패 시: 파일을 바이트로 읽어 ICO 디코더 직접 사용
+                        let data = std::fs::read(&path).map_err(|e| e.to_string())?;
+                        let cursor = std::io::Cursor::new(&data);
+                        match image::codecs::ico::IcoDecoder::new(cursor) {
+                            Ok(decoder) => {
+                                use image::ImageDecoder;
+                                let (w, h): (u32, u32) = decoder.dimensions();
+                                let mut rgba = vec![0u8; (w * h * 4) as usize];
+                                if decoder.read_image(&mut rgba).is_ok() {
+                                    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
+                                        let dyn_img = image::DynamicImage::ImageRgba8(img);
+                                        let thumb = dyn_img.thumbnail(size, size);
+                                        let mut buf = vec![];
+                                        thumb.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                                            .map_err(|e| e.to_string())?;
+                                        return Ok(Some(buf));
+                                    }
+                                }
+                                return Ok(None);
+                            }
+                            Err(_) => return Ok(None),
+                        }
+                    }
+                }
+            }
             if ext == "icns" {
                 // ICNS: icns 크레이트로 가장 큰 아이콘을 PNG로 변환
                 let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
@@ -1105,28 +1141,50 @@ async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<(), String>
 async fn delete_items_elevated(paths: Vec<String>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        // PowerShell 스크립트: 각 경로를 강제 삭제
+        // 임시 PowerShell 스크립트 파일에 삭제 명령 작성
+        let temp_dir = std::env::temp_dir();
+        let script_path = temp_dir.join(format!("qf_elevated_delete_{}.ps1", std::process::id()));
+
         let ps_commands: Vec<String> = paths.iter().map(|p| {
             let escaped = p.replace("'", "''");
-            format!("Remove-Item -LiteralPath '{}' -Recurse -Force", escaped)
+            format!("Remove-Item -LiteralPath '{}' -Recurse -Force -ErrorAction Stop", escaped)
         }).collect();
-        let script = ps_commands.join("; ");
+        let script_content = ps_commands.join("\n");
+
+        std::fs::write(&script_path, &script_content)
+            .map_err(|e| format!("임시 스크립트 파일 생성 실패: {}", e))?;
+
+        let script_path_str = script_path.to_string_lossy().to_string();
 
         let output = std::process::Command::new("powershell")
             .args([
+                "-NoProfile",
                 "-Command",
                 &format!(
-                    "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -Command \"{}\"'",
-                    script.replace("\"", "\\\"")
+                    "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"{}\"'",
+                    script_path_str.replace("'", "''")
                 ),
             ])
             .output()
             .map_err(|e| format!("관리자 권한 삭제 실행 실패: {}", e))?;
 
+        // 임시 파일 정리
+        let _ = std::fs::remove_file(&script_path);
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("관리자 권한 삭제 실패: {}", stderr));
+            if !stderr.trim().is_empty() {
+                return Err(format!("관리자 권한 삭제 실패: {}", stderr));
+            }
         }
+
+        // 실제 삭제 확인: 파일이 여전히 존재하면 실패
+        for path in &paths {
+            if std::path::Path::new(path).exists() {
+                return Err(format!("관리자 권한 삭제 후에도 파일이 존재합니다: {}", path));
+            }
+        }
+
         Ok(())
     }
     #[cfg(not(target_os = "windows"))]

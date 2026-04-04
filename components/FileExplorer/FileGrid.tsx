@@ -309,8 +309,9 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
       </thead>
       <tbody>
         {entries.map((entry, idx) => {
-          const prevType = idx > 0 ? entries[idx - 1].file_type : null;
-          const showSep = sortBy === 'type' && idx > 0 && entry.file_type !== prevType;
+          const getExtKey = (e: FileEntry) => e.is_dir ? 'folder' : (e.name.includes('.') ? e.name.slice(e.name.lastIndexOf('.') + 1).toLowerCase() : '');
+          const prevExt = idx > 0 ? getExtKey(entries[idx - 1]) : null;
+          const showSep = sortBy === 'type' && idx > 0 && getExtKey(entry) !== prevExt;
           return (
           <React.Fragment key={entry.path}>
             {showSep && (
@@ -534,9 +535,10 @@ export default memo(function FileGrid({
       {viewMode === 'grid' && (
         <div className="flex flex-wrap gap-2 content-start">
           {entries.map((entry, idx) => {
-            // 타입별 정렬 시 종류가 바뀌는 지점에 구분선 삽입
-            const prevType = idx > 0 ? entries[idx - 1].file_type : null;
-            const showSep = sortBy === 'type' && idx > 0 && entry.file_type !== prevType;
+            // 타입별 정렬 시 확장자가 바뀌는 지점에 구분선 삽입
+            const getExtKey = (e: FileEntry) => e.is_dir ? 'folder' : (e.name.includes('.') ? e.name.slice(e.name.lastIndexOf('.') + 1).toLowerCase() : '');
+            const prevExt = idx > 0 ? getExtKey(entries[idx - 1]) : null;
+            const showSep = sortBy === 'type' && idx > 0 && getExtKey(entry) !== prevExt;
             return (
               <React.Fragment key={entry.path}>
                 {showSep && (
@@ -572,8 +574,9 @@ export default memo(function FileGrid({
       {viewMode === 'list' && (
         <div className="flex flex-col gap-0.5">
           {entries.map((entry, idx) => {
-            const prevType = idx > 0 ? entries[idx - 1].file_type : null;
-            const showSep = sortBy === 'type' && idx > 0 && entry.file_type !== prevType;
+            const getExtKey = (e: FileEntry) => e.is_dir ? 'folder' : (e.name.includes('.') ? e.name.slice(e.name.lastIndexOf('.') + 1).toLowerCase() : '');
+            const prevExt = idx > 0 ? getExtKey(entries[idx - 1]) : null;
+            const showSep = sortBy === 'type' && idx > 0 && getExtKey(entry) !== prevExt;
             return (
               <React.Fragment key={entry.path}>
                 {showSep && (

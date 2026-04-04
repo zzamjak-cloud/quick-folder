@@ -52,6 +52,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     speed: string;
   } | null>(null);
 
+  // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
+  const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number } | null>(null);
+
   // 영구삭제 확인 다이얼로그
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
 
@@ -74,13 +77,16 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       return;
     }
     try {
+      setOperationProgress({ type: '삭제', current: 0, total: paths.length });
       await invoke('delete_items', { paths, useTrash: true });
+      setOperationProgress(null);
       undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath ?? '', useTrash: true });
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
       // 삭제된 폴더를 열고 있는 탭 제거 (커스텀 이벤트)
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
       if (currentPath) loadDirectory(currentPath);
     } catch (e) {
+      setOperationProgress(null);
       const errMsg = String(e);
       // Windows 권한 에러 감지 → 관리자 권한 삭제 제안
       if (errMsg.includes('Access is denied') || errMsg.includes('액세스가 거부') || errMsg.includes('Permission denied')) {
@@ -98,11 +104,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const { paths } = permanentDeleteConfirm;
     setPermanentDeleteConfirm(null);
     try {
+      setOperationProgress({ type: '영구삭제', current: 0, total: paths.length });
       await invoke('delete_items', { paths, useTrash: false });
+      setOperationProgress(null);
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
       if (currentPath) loadDirectory(currentPath);
     } catch (e) {
+      setOperationProgress(null);
       const errMsg = String(e);
       if (errMsg.includes('Access is denied') || errMsg.includes('액세스가 거부') || errMsg.includes('Permission denied')) {
         setElevatedDeleteConfirm({ paths: [...paths] });
@@ -133,10 +142,13 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleDuplicate = useCallback(async () => {
     if (selectedPaths.length === 0 || !currentPath) return;
     try {
+      setOperationProgress({ type: '복제', current: 0, total: selectedPaths.length });
       const newPaths = await invoke<string[]>('duplicate_items', { paths: selectedPaths });
+      setOperationProgress(null);
       await loadDirectory(currentPath);
       setSelectedPaths(newPaths);
     } catch (e) {
+      setOperationProgress(null);
       console.error('복제 실패:', e);
     }
   }, [selectedPaths, currentPath, loadDirectory, setSelectedPaths]);
@@ -516,6 +528,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     showCopyToast,
     // 상태
     copyToast,
+    operationProgress,
     videoCompression,
     sheetPackDefaultName,
     permanentDeleteConfirm,

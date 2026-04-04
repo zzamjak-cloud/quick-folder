@@ -95,9 +95,9 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
     preview.closeImagePreview();
   }, [preview]);
 
-  // JPG/PNG만 크롭 지원
+  // JPG/PNG/PSD 크롭·편집 지원
   const isCroppable = preview.previewImagePath &&
-    /\.(jpe?g|png)$/i.test(preview.previewImagePath);
+    /\.(jpe?g|png|psd|psb)$/i.test(preview.previewImagePath);
 
   return (
     <>

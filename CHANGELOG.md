@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.9] - 2026-04-04
+
+### Added
+- **배경 제거 Trim 기본 활성화**: 배경 제거 시 투명 여백 Trim이 기본값으로 켜짐
+- **PSD 미리보기 편집 지원**: PSD/PSB 파일도 크롭·드로잉 편집 가능
+- **종류 정렬 확장자별 그룹화**: 종류 정렬 시 PSD/PNG/JPG 등 확장자별로 별도 그룹 + 구분선
+- **삭제/복제 프로그레스 표시**: 대용량 파일 삭제·복제 시 진행 오버레이 표시
+- **키보드 단축키 추가**: Ctrl+Shift+M (마크다운 생성), Ctrl+Shift+P (동영상 압축), Ctrl+Shift+Z (ZIP 압축), Ctrl+Shift+Alt+Z (압축 해제), Ctrl+Shift+T (태그 추가)
+
+### Fixed
+- **Windows 관리자 삭제**: PowerShell 이스케이핑 문제 수정 (임시 .ps1 파일 방식)
+- **.ico 썸네일 생성**: image crate ICO feature 활성화 + 전용 디코딩 핸들러
+- **단축키 충돌 방지**: Ctrl+키와 Ctrl+Shift+키 조합이 서로 간섭하지 않도록 수식키 가드 추가
+
 ## [1.25.8] - 2026-04-03
 
 ### Fixed
