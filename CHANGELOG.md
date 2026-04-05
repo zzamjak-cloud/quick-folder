@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.14] - 2026-04-05
+
+### Added
+- **동영상 편집 기능**: 미리보기에서 "편집" 버튼으로 편집 모드 진입
+  - 타임라인 썸네일 스트립 (프레임 캡처 배경)
+  - 시작점/끝점 드래그 선택 (드래그 시 해당 프레임 표시)
+  - 시작점/끝점 시간 직접 입력 필드
+  - 1프레임 단위 이동 버튼 (◄◄/►►) + Ctrl+화살표/Ctrl+Alt+화살표
+  - 선택 구간 내보내기 (trim) + 선택 구간 삭제 (cut)
+  - 처리 중 스피너 + 진행률 표시
+  - 완료 후 파일 목록 즉시 갱신
+
 ## [1.25.13] - 2026-04-05
 
 ### Added

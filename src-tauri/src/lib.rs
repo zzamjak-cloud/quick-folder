@@ -2587,6 +2587,419 @@ fn parse_ffmpeg_time(time: &str) -> f32 {
     }
 }
 
+// --- 동영상 구간 내보내기 (trim) ---
+#[tauri::command]
+async fn trim_video(
+    input: String,
+    start_sec: f64,
+    end_sec: f64,
+    on_progress: tauri::ipc::Channel<VideoProgress>,
+) -> Result<String, String> {
+    let input_path = std::path::Path::new(&input);
+    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let ext = input_path.extension().unwrap_or_default().to_string_lossy().to_string();
+    let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+
+    let output_path = find_unique_path(parent, &stem, "_trim", &format!(".{}", ext));
+    let output_str = output_path.to_string_lossy().to_string();
+
+    let ffmpeg_path = find_ffmpeg_path()
+        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+
+    // 구간 길이 (초) — 진행률 계산 기준
+    let duration = (end_sec - start_sec).max(0.001) as f32;
+
+    let mut cmd = std::process::Command::new(&ffmpeg_path);
+    cmd.args(&[
+        "-y",
+        "-i", &input,
+        "-ss", &start_sec.to_string(),
+        "-to", &end_sec.to_string(),
+        "-c", "copy",
+        "-progress", "pipe:1",
+        &output_str,
+    ]);
+
+    // Windows: 콘솔 창 숨기기
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("ffmpeg 실행 실패: {}", e))?;
+
+    let stdout = child.stdout.take();
+    let on_progress_clone = on_progress.clone();
+    let progress_thread = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                if let Some(val) = line.strip_prefix("out_time_ms=") {
+                    if let Ok(us) = val.parse::<i64>() {
+                        let secs = us as f32 / 1_000_000.0;
+                        // 퍼센트: 현재 위치 / 구간 길이
+                        let percent = (secs / duration * 100.0).min(100.0);
+                        let _ = on_progress_clone.send(VideoProgress {
+                            percent,
+                            speed: String::new(),
+                            fps: 0.0,
+                        });
+                    }
+                } else if let Some(val) = line.strip_prefix("speed=") {
+                    let _ = on_progress_clone.send(VideoProgress {
+                        percent: -2.0,
+                        speed: val.trim().to_string(),
+                        fps: 0.0,
+                    });
+                }
+            }
+        }
+    });
+
+    let stderr = child.stderr.take();
+    let stderr_thread = std::thread::spawn(move || {
+        let mut output = String::new();
+        if let Some(mut s) = stderr {
+            use std::io::Read;
+            let _ = s.read_to_string(&mut output);
+        }
+        output
+    });
+
+    let status = child.wait().map_err(|e| format!("ffmpeg 대기 실패: {}", e))?;
+    let _ = progress_thread.join();
+    let stderr_output = stderr_thread.join().unwrap_or_default();
+
+    if !status.success() {
+        let _ = std::fs::remove_file(&output_path);
+        let err_msg = stderr_output.lines()
+            .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
+            .last()
+            .unwrap_or("ffmpeg 트림 실패")
+            .to_string();
+        return Err(err_msg);
+    }
+
+    if !output_path.exists() {
+        return Err("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string());
+    }
+
+    Ok(output_str)
+}
+
+// --- 동영상 구간 삭제 후 합치기 (cut) ---
+#[tauri::command]
+async fn cut_video(
+    input: String,
+    start_sec: f64,
+    end_sec: f64,
+    on_progress: tauri::ipc::Channel<VideoProgress>,
+) -> Result<String, String> {
+    let input_path = std::path::Path::new(&input);
+    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let ext = input_path.extension().unwrap_or_default().to_string_lossy().to_string();
+    let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+
+    let output_path = find_unique_path(parent, &stem, "_cut", &format!(".{}", ext));
+    let output_str = output_path.to_string_lossy().to_string();
+
+    let ffmpeg_path = find_ffmpeg_path()
+        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+
+    // 임시 디렉토리 생성 (프로세스 ID 포함으로 충돌 방지)
+    let pid = std::process::id();
+    let tmp_dir = std::env::temp_dir().join(format!("qf_cut_video_{}", pid));
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| format!("임시 디렉토리 생성 실패: {}", e))?;
+
+    // 임시 파일 경로
+    let part1 = tmp_dir.join("part1.mp4");
+    let part2 = tmp_dir.join("part2.mp4");
+    let list_file = tmp_dir.join("list.txt");
+
+    // 진행률 전송 헬퍼: 각 단계(앞/뒤 추출, 합치기)를 33% 씩 배분
+    let send_progress = |step: u32, sub_percent: f32| {
+        let base = step as f32 * 33.0;
+        let _ = on_progress.send(VideoProgress {
+            percent: (base + sub_percent * 33.0).min(99.0),
+            speed: String::new(),
+            fps: 0.0,
+        });
+    };
+
+    // --- 앞 부분 추출 (0 ~ start_sec) ---
+    let has_part1 = start_sec > 0.001;
+    if has_part1 {
+        send_progress(0, 0.0);
+        let mut cmd = std::process::Command::new(&ffmpeg_path);
+        cmd.args(&[
+            "-y", "-i", &input,
+            "-t", &start_sec.to_string(),
+            "-c", "copy",
+            &part1.to_string_lossy(),
+        ]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let status = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("ffmpeg 실행 실패 (앞 부분): {}", e))?
+            .wait()
+            .map_err(|e| format!("ffmpeg 대기 실패 (앞 부분): {}", e))?;
+        if !status.success() {
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return Err("ffmpeg 앞 부분 추출 실패".to_string());
+        }
+        send_progress(0, 1.0);
+    }
+
+    // --- 뒷 부분 추출 (end_sec ~ 끝) ---
+    // end_sec가 충분히 크면 뒷 부분이 없을 수 있으므로 결과 파일 크기로 판단
+    send_progress(1, 0.0);
+    {
+        let mut cmd = std::process::Command::new(&ffmpeg_path);
+        cmd.args(&[
+            "-y", "-i", &input,
+            "-ss", &end_sec.to_string(),
+            "-c", "copy",
+            &part2.to_string_lossy(),
+        ]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let status = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("ffmpeg 실행 실패 (뒷 부분): {}", e))?
+            .wait()
+            .map_err(|e| format!("ffmpeg 대기 실패 (뒷 부분): {}", e))?;
+        if !status.success() {
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return Err("ffmpeg 뒷 부분 추출 실패".to_string());
+        }
+    }
+    // 뒷 부분이 비어있으면 (0바이트) 없는 것으로 간주
+    let has_part2 = part2.exists()
+        && std::fs::metadata(&part2).map(|m| m.len() > 0).unwrap_or(false);
+    send_progress(1, 1.0);
+
+    // --- 합치기 ---
+    send_progress(2, 0.0);
+
+    // 케이스별 처리
+    if !has_part1 && !has_part2 {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err("삭제 후 남은 영상이 없습니다.".to_string());
+    } else if !has_part1 {
+        // 앞 부분 없음 → 뒷 부분만 복사
+        std::fs::copy(&part2, &output_path)
+            .map_err(|e| format!("파일 복사 실패: {}", e))?;
+    } else if !has_part2 {
+        // 뒷 부분 없음 → 앞 부분만 복사
+        std::fs::copy(&part1, &output_path)
+            .map_err(|e| format!("파일 복사 실패: {}", e))?;
+    } else {
+        // concat 리스트 파일 작성
+        let list_content = format!(
+            "file '{}'\nfile '{}'",
+            part1.to_string_lossy().replace('\'', "'\\''"),
+            part2.to_string_lossy().replace('\'', "'\\''"),
+        );
+        std::fs::write(&list_file, &list_content)
+            .map_err(|e| format!("concat 리스트 파일 쓰기 실패: {}", e))?;
+
+        let mut cmd = std::process::Command::new(&ffmpeg_path);
+        cmd.args(&[
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", &list_file.to_string_lossy(),
+            "-c", "copy",
+            &output_str,
+        ]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let status = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("ffmpeg 실행 실패 (합치기): {}", e))?
+            .wait()
+            .map_err(|e| format!("ffmpeg 대기 실패 (합치기): {}", e))?;
+        if !status.success() {
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            let _ = std::fs::remove_file(&output_path);
+            return Err("ffmpeg concat 합치기 실패".to_string());
+        }
+    }
+
+    // 임시 파일 정리
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+
+    if !output_path.exists() {
+        return Err("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string());
+    }
+
+    let _ = on_progress.send(VideoProgress { percent: 100.0, speed: String::new(), fps: 0.0 });
+    Ok(output_str)
+}
+
+// --- 동영상 이어붙이기 (concat) ---
+#[tauri::command]
+async fn concat_videos(
+    paths: Vec<String>,
+    on_progress: tauri::ipc::Channel<VideoProgress>,
+) -> Result<String, String> {
+    if paths.is_empty() {
+        return Err("이어붙일 파일이 없습니다.".to_string());
+    }
+
+    // 출력 파일: 첫 번째 파일 기준
+    let first_path = std::path::Path::new(&paths[0]);
+    let stem = first_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let ext = first_path.extension().unwrap_or_default().to_string_lossy().to_string();
+    let parent = first_path.parent().unwrap_or(std::path::Path::new("."));
+
+    let output_path = find_unique_path(parent, &stem, "_merged", &format!(".{}", ext));
+    let output_str = output_path.to_string_lossy().to_string();
+
+    let ffmpeg_path = find_ffmpeg_path()
+        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+
+    // 임시 concat 리스트 파일 생성
+    let pid = std::process::id();
+    let tmp_dir = std::env::temp_dir().join(format!("qf_concat_{}", pid));
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| format!("임시 디렉토리 생성 실패: {}", e))?;
+    let list_file = tmp_dir.join("list.txt");
+
+    // concat 리스트 파일 내용 조립 (각 경로 이스케이프)
+    let list_content: String = paths.iter()
+        .map(|p| format!("file '{}'", p.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&list_file, &list_content)
+        .map_err(|e| format!("concat 리스트 파일 쓰기 실패: {}", e))?;
+
+    // 재인코딩 방식: filter_complex concat (코덱/해상도 다른 영상 호환)
+    let input_args: Vec<String> = paths.iter()
+        .flat_map(|p| vec!["-i".to_string(), p.clone()])
+        .collect();
+    let n = paths.len();
+    let filter_str = format!(
+        "{}concat=n={}:v=1:a=1[outv][outa]",
+        (0..n).map(|i| format!("[{i}:v:0][{i}:a:0]")).collect::<String>(),
+        n
+    );
+
+    let mut cmd = std::process::Command::new(&ffmpeg_path);
+    let mut args: Vec<String> = vec!["-y".to_string()];
+    args.extend(input_args);
+    args.extend([
+        "-filter_complex".to_string(), filter_str,
+        "-map".to_string(), "[outv]".to_string(),
+        "-map".to_string(), "[outa]".to_string(),
+        "-c:v".to_string(), "libx264".to_string(),
+        "-crf".to_string(), "18".to_string(),
+        "-preset".to_string(), "medium".to_string(),
+        "-c:a".to_string(), "aac".to_string(),
+        "-b:a".to_string(), "128k".to_string(),
+        "-progress".to_string(), "pipe:1".to_string(),
+        output_str.clone(),
+    ]);
+    cmd.args(&args);
+
+    // Windows: 콘솔 창 숨기기
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("ffmpeg 실행 실패: {}", e))?;
+
+    let stdout = child.stdout.take();
+    let on_progress_clone = on_progress.clone();
+    let progress_thread = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                // out_time_ms 값을 초로 변환해 percent 필드에 전달
+                if let Some(val) = line.strip_prefix("out_time_ms=") {
+                    if let Ok(us) = val.parse::<i64>() {
+                        let secs = us as f32 / 1_000_000.0;
+                        let _ = on_progress_clone.send(VideoProgress {
+                            percent: secs, // 프론트엔드에서 총 길이 대비 계산
+                            speed: String::new(),
+                            fps: 0.0,
+                        });
+                    }
+                } else if let Some(val) = line.strip_prefix("speed=") {
+                    let _ = on_progress_clone.send(VideoProgress {
+                        percent: -2.0,
+                        speed: val.trim().to_string(),
+                        fps: 0.0,
+                    });
+                }
+            }
+        }
+    });
+
+    let stderr = child.stderr.take();
+    let stderr_thread = std::thread::spawn(move || {
+        let mut output = String::new();
+        if let Some(mut s) = stderr {
+            use std::io::Read;
+            let _ = s.read_to_string(&mut output);
+        }
+        output
+    });
+
+    let status = child.wait().map_err(|e| format!("ffmpeg 대기 실패: {}", e))?;
+    let _ = progress_thread.join();
+    let stderr_output = stderr_thread.join().unwrap_or_default();
+
+    // 임시 파일 정리
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+
+    if !status.success() {
+        let _ = std::fs::remove_file(&output_path);
+        let err_msg = stderr_output.lines()
+            .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
+            .last()
+            .unwrap_or("ffmpeg concat 실패")
+            .to_string();
+        return Err(err_msg);
+    }
+
+    if !output_path.exists() {
+        return Err("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string());
+    }
+
+    Ok(output_str)
+}
+
 fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
     zip: &mut zip::ZipWriter<W>,
     dir: &std::path::Path,
@@ -3319,6 +3732,9 @@ pub fn run() {
         check_ffmpeg,
         download_ffmpeg,
         compress_video,
+        trim_video,
+        cut_video,
+        concat_videos,
         pixelate_preview,
         pixelate_image,
         sprite_sheet_preview,

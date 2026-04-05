@@ -14,9 +14,10 @@ interface PreviewModalsProps {
   themeVars: ThemeVars | null;
   onCropSave?: (outputPath: string) => void;
   onRemoveBg?: (path: string) => void;
+  onFileChanged?: () => void;
 }
 
-export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: PreviewModalsProps) {
+export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFileChanged }: PreviewModalsProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const [imageRect, setImageRect] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
@@ -106,6 +107,7 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg }: Pr
         <VideoPlayer
           path={preview.videoPlayerPath}
           onClose={() => preview.setVideoPlayerPath(null)}
+          onFileChanged={onFileChanged}
           themeVars={themeVars}
         />
       )}

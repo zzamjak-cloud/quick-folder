@@ -1457,6 +1457,9 @@ export default function FileExplorer({
         onRemoveBg={(path) => {
           modals.setRemoveWhiteBgPaths([path]);
         }}
+        onFileChanged={() => {
+          if (currentPath) loadDirectory(currentPath);
+        }}
       />
 
       {/* 컨텍스트 메뉴 */}
