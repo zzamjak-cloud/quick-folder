@@ -51,6 +51,9 @@ export default function FontMergeModal({
   // 병합 진행 여부
   const [merging, setMerging] = useState(false);
 
+  /** python -m pip install fonttools (ffmpeg/GS 자동 설치와 동일 UX) */
+  const [installingFonttools, setInstallingFonttools] = useState(false);
+
   // 에러 메시지
   const [error, setError] = useState<string | null>(null);
 
@@ -96,10 +99,25 @@ export default function FontMergeModal({
     const sep = order[0].includes('/') ? '/' : '\\';
     const outputPath = `${parentDir}${sep}${outputName.trim()}`;
 
-    setMerging(true);
     setError(null);
 
     try {
+      const hasFonttools = await invoke<boolean>('check_fonttools');
+      if (!hasFonttools) {
+        setInstallingFonttools(true);
+        try {
+          await invoke('download_fonttools');
+        } catch (installErr) {
+          setError(
+            `fonttools 설치에 실패했습니다: ${installErr}\n\n터미널에서 시도: python -m pip install --user fonttools`
+          );
+          return;
+        } finally {
+          setInstallingFonttools(false);
+        }
+      }
+
+      setMerging(true);
       await invoke('merge_fonts', {
         basePath: order[0],
         mergePath: order[1],
@@ -215,9 +233,9 @@ export default function FontMergeModal({
     <ModalShell
       title="폰트 병합"
       maxWidth="36rem"
-      saving={merging}
+      saving={merging || installingFonttools}
       saveLabel="병합"
-      savingLabel="병합 중..."
+      savingLabel={installingFonttools ? 'fonttools 설치 중...' : '병합 중...'}
       onClose={onClose}
       onSave={handleMerge}
       themeVars={themeVars}
@@ -232,7 +250,7 @@ export default function FontMergeModal({
 
         {/* A↔B 교체 버튼 */}
         <div className="flex justify-center">
-          <button style={swapBtnStyle} onClick={handleSwap} disabled={loading || merging}>
+          <button style={swapBtnStyle} onClick={handleSwap} disabled={loading || merging || installingFonttools}>
             <ArrowUpDown size={13} />
             교체
           </button>
@@ -253,7 +271,7 @@ export default function FontMergeModal({
             onChange={e => setOutputName(e.target.value)}
             style={inputStyle}
             spellCheck={false}
-            disabled={merging}
+            disabled={merging || installingFonttools}
             placeholder="병합된 폰트 파일명.ttf"
           />
         </div>

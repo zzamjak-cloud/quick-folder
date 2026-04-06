@@ -83,7 +83,7 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "app"
-version = "1.25.17"
+version = "1.25.18"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -107,6 +107,7 @@ dependencies = [
  "tauri-plugin-updater",
  "trash",
  "ttf-parser",
+ "ureq",
  "walkdir",
  "winapi",
  "zip 2.4.2",

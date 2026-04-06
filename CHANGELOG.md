@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.18] - 2026-04-06
+
+### Added
+- **Ghostscript (`download_gs`)**: Windows에서 공식 설치 파일 다운로드·무음 설치 후 `gswin64c.exe`/DLL을 앱 폴더로 복사 (ffmpeg sidecar와 동일 UX), 이후 winget·Chocolatey 폴백
+- **fonttools sidecar**: 실행 파일 옆 `python_fonttools_embed/` — Windows embeddable Python + get-pip + pip, macOS/Linux는 python-build-standalone `install_only` tarball + pip (`download_fonttools` / `install_fonttools`)
+- **Tauri 커맨드**: `download_gs`, `download_fonttools`
+
+### Changed
+- **Ghostscript 탐색 (Windows)**: App Paths 레지스트리·`ProgramFiles` 스캔·sidecar `gswin64c.exe` 우선, 무창 `gswin64c --version` 검사
+- **폰트 병합**: 시스템 Python 없이도 sidecar 런타임으로 동작 가능, `FontMergeModal`에서 `download_fonttools` 호출
+
+### Fixed
+- **Windows Ghostscript**: 레지스트리 `REG_SZ`/`REG_EXPAND_SZ` 값 파싱 오프셋, winget `--silent`·Chocolatey 순차 시도
+- **폰트 병합 / fonttools**: GUI에서 PATH가 비어도 `py` 런처·레지스트리·`LocalAppData\Programs\Python` 등으로 Python 탐색, `python -m pip`로 설치
+
 ## [1.25.17] - 2026-04-06
 
 ### Added

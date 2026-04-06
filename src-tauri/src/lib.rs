@@ -574,6 +574,154 @@ fn read_font_bytes(path: String) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(&data))
 }
 
+/// ffmpeg sidecar와 동일: 실행 파일이 있는 디렉터리 (여기에 `python_fonttools_embed` 등 배치)
+fn app_sidecar_directory() -> Result<std::path::PathBuf, String> {
+    std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| "실행 파일 디렉터리를 알 수 없습니다.".to_string())
+}
+
+/// fonttools 전용 내장 Python 루트 (`python.exe` 또는 `python/bin/python3.x`)
+fn fonttools_embed_root() -> std::path::PathBuf {
+    app_sidecar_directory()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("python_fonttools_embed")
+}
+
+fn ureq_download_to_path(url: &str, max_bytes: u64, dest: &std::path::Path) -> Result<(), String> {
+    let mut response = ureq::get(url)
+        .call()
+        .map_err(|e| format!("HTTP GET 실패: {e}"))?;
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit(max_bytes)
+        .read_to_vec()
+        .map_err(|e| format!("본문 읽기 실패: {e}"))?;
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(dest, &bytes).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn extract_zip_to_dir(zip_path: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("ZIP: {e}"))?;
+    std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("ZIP 엔트리: {e}"))?;
+        let out_path = dest.join(entry.mangled_name());
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut outfile = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Windows embeddable 배포판에서 `import site` 활성화 (pip / site-packages 사용)
+#[cfg(target_os = "windows")]
+fn windows_embed_enable_import_site(embed_dir: &std::path::Path) -> Result<(), String> {
+    let rd = std::fs::read_dir(embed_dir).map_err(|e| e.to_string())?;
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "pth") {
+            let mut s = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
+            if !s.lines().any(|l| l.trim() == "import site") {
+                if !s.ends_with('\n') {
+                    s.push('\n');
+                }
+                s.push_str("import site\n");
+                std::fs::write(&p, s).map_err(|e| e.to_string())?;
+            }
+            return Ok(());
+        }
+    }
+    Err("python*._pth 를 찾지 못했습니다.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_run_embed_python_cmd(
+    python_exe: &std::path::Path,
+    work_dir: &std::path::Path,
+    args: &[&str],
+) -> Result<std::process::Output, String> {
+    use std::os::windows::process::CommandExt;
+    let mut c = std::process::Command::new(python_exe);
+    for a in args {
+        c.arg(a);
+    }
+    c.current_dir(work_dir);
+    c.stdin(std::process::Stdio::null());
+    c.creation_flags(0x08000000);
+    c.output().map_err(|e| e.to_string())
+}
+
+fn find_python3_in_bin(bin: &std::path::Path) -> Option<std::path::PathBuf> {
+    let rd = std::fs::read_dir(bin).ok()?;
+    let mut best: Option<std::path::PathBuf> = None;
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("python3") {
+            continue;
+        }
+        if name.contains("config") {
+            continue;
+        }
+        if !e.path().is_file() {
+            continue;
+        }
+        best = Some(e.path());
+        if name == "python3" || name.starts_with("python3.") && name.len() > 7 {
+            return best;
+        }
+    }
+    best
+}
+
+/// Unix: `tar -xzf` (macOS/Linux install_only tarball)
+fn extract_tar_gz(archive: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    let s = archive.to_str().ok_or("tar 경로 인코딩 실패")?;
+    let d = dest.to_str().ok_or("출력 경로 인코딩 실패")?;
+    let st = std::process::Command::new("tar")
+        .args(["-xzf", s, "-C", d])
+        .status()
+        .map_err(|e| format!("tar 실행 실패: {e}"))?;
+    if !st.success() {
+        return Err("tar 압축 해제 실패".to_string());
+    }
+    Ok(())
+}
+
+/// sidecar에 풀린 `python.exe` / `python/bin/python3*` (존재만 확인, fonttools 여부는 별도)
+fn find_fonttools_sidecar_python() -> Option<std::path::PathBuf> {
+    let root = fonttools_embed_root();
+    #[cfg(target_os = "windows")]
+    {
+        let p = root.join("python.exe");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let bin = root.join("python").join("bin");
+        if bin.is_dir() {
+            return find_python3_in_bin(&bin);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 async fn merge_fonts(base_path: String, merge_path: String, output_path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -633,20 +781,25 @@ count = len(missing)
 print(f'OK:{count}')
 "#;
 
-        // python3 시도, 실패 시 python 시도
-        let python = find_python().ok_or(
-            "Python이 설치되어 있지 않습니다. 폰트 병합을 위해 Python과 fonttools 패키지가 필요합니다.\n\n설치 방법:\n1. Python 설치: https://www.python.org/downloads/\n2. fonttools 설치: pip install fonttools".to_string()
-        )?;
+        let python = python_for_font_merge().ok_or_else(|| {
+            "fonttools가 준비되지 않았습니다. install_fonttools(또는 download_fonttools)로 설치한 뒤 다시 시도해 주세요.".to_string()
+        })?;
 
-        let output = std::process::Command::new(&python)
-            .args(["-c", script, &base_path, &merge_path, &output_path])
+        let mut cmd = std::process::Command::new(&python);
+        cmd.args(["-c", script, &base_path, &merge_path, &output_path]);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let output = cmd
             .output()
             .map_err(|e| format!("Python 실행 실패: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("No module named 'fontTools'") {
-                return Err("fonttools 패키지가 설치되어 있지 않습니다.\n\n설치 방법: pip install fonttools".to_string());
+            if stderr.contains("No module named 'fontTools'") || stderr.contains("No module named 'fonttools'") {
+                return Err("fonttools 패키지가 설치되어 있지 않습니다.\n\n앱에서 폰트 병합 시 자동 설치를 시도하거나, 터미널: python -m pip install --user fonttools".to_string());
             }
             return Err(format!("폰트 병합 실패: {}", stderr));
         }
@@ -657,18 +810,435 @@ print(f'OK:{count}')
     .map_err(|e| format!("폰트 병합 태스크 실패: {}", e))?
 }
 
-/// Python 실행 파일 경로 찾기 (python3 우선, python 폴백)
-fn find_python() -> Option<String> {
-    for cmd in &["python3", "python"] {
-        if std::process::Command::new(cmd)
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return Some(cmd.to_string());
+#[cfg(target_os = "windows")]
+fn python_exe_responds(path: &std::path::Path) -> bool {
+    use std::os::windows::process::CommandExt;
+    let mut c = std::process::Command::new(path);
+    c.arg("--version");
+    c.stdout(std::process::Stdio::null());
+    c.stderr(std::process::Stdio::null());
+    c.creation_flags(0x08000000);
+    c.status().map(|s| s.success()).unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn python_exe_responds(path: &std::path::Path) -> bool {
+    std::process::Command::new(path)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Windows: `py -3 -c "import sys; print(sys.executable)"` 로 실제 python.exe 경로 확보 (PATH 없이도 동작)
+#[cfg(target_os = "windows")]
+fn find_python_via_py_launcher() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    for extra in [&["-3"][..], &[][..]] {
+        let mut cmd = std::process::Command::new("py");
+        for a in extra {
+            cmd.arg(a);
+        }
+        cmd.args(["-c", "import sys; print(sys.executable, end='')"]);
+        cmd.stdin(std::process::Stdio::null());
+        cmd.creation_flags(0x08000000);
+        let out = match cmd.output() {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        if !out.status.success() {
+            continue;
+        }
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if path.is_empty() {
+            continue;
+        }
+        let p = std::path::Path::new(&path);
+        if p.exists() && python_exe_responds(p) {
+            return Some(path);
         }
     }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn find_python_via_registry() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const LEN_EXP: usize = 15;
+    const LEN_SZ: usize = 6;
+    for root in ["HKLM", "HKCU"] {
+        for ver in ["3.14", "3.13", "3.12", "3.11", "3.10", "3.9", "3.8"] {
+            let key = format!(r"{}\SOFTWARE\Python\PythonCore\{}\InstallPath", root, ver);
+            let mut cmd = std::process::Command::new("reg");
+            cmd.args(["query", &key, "/ve"]);
+            cmd.creation_flags(0x08000000);
+            let output = match cmd.output() {
+                Ok(o) => o,
+                Err(_) => continue,
+            };
+            if !output.status.success() {
+                continue;
+            }
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let line = line.trim();
+                if !line.contains("REG_SZ") && !line.contains("REG_EXPAND_SZ") {
+                    continue;
+                }
+                let after_type = if let Some(i) = line.find("REG_EXPAND_SZ") {
+                    line.get(i + LEN_EXP..).unwrap_or("").trim_start()
+                } else if let Some(i) = line.find("REG_SZ") {
+                    line.get(i + LEN_SZ..).unwrap_or("").trim_start()
+                } else {
+                    continue;
+                };
+                let mut dir = after_type.trim().trim_matches('"').to_string();
+                if dir.contains("%ProgramFiles%") {
+                    if let Ok(pf) = std::env::var("ProgramFiles") {
+                        dir = dir.replace("%ProgramFiles%", &pf);
+                    }
+                }
+                if dir.contains("%LocalAppData%") {
+                    if let Ok(la) = std::env::var("LOCALAPPDATA") {
+                        dir = dir.replace("%LocalAppData%", &la);
+                    }
+                }
+                let exe = std::path::Path::new(&dir).join("python.exe");
+                if exe.exists() && python_exe_responds(&exe) {
+                    return Some(exe.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn find_python_local_appdata_programs() -> Option<String> {
+    let local = std::env::var("LOCALAPPDATA").ok()?;
+    let base = std::path::Path::new(&local).join("Programs").join("Python");
+    let rd = std::fs::read_dir(&base).ok()?;
+    for e in rd.flatten() {
+        let exe = e.path().join("python.exe");
+        if exe.exists() && python_exe_responds(&exe) {
+            return Some(exe.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn find_python_macos_common_paths() -> Option<String> {
+    for p in ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"] {
+        let path = std::path::Path::new(p);
+        if path.exists() && python_exe_responds(path) {
+            return Some(p.to_string());
+        }
+    }
+    None
+}
+
+fn python_has_fonttools(python: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new(python);
+    cmd.args(["-c", "import fontTools.ttLib"]);
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd.status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// Windows: 공식 embeddable ZIP + get-pip + pip install fonttools (앱 폴더 `python_fonttools_embed`)
+#[cfg(target_os = "windows")]
+fn ensure_windows_fonttools_embed() -> Result<(), String> {
+    const ZIP_NAME: &str = "python-3.12.8-embed-amd64.zip";
+    const URL: &str = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip";
+    const GET_PIP_URL: &str = "https://bootstrap.pypa.io/get-pip.py";
+
+    let root = fonttools_embed_root();
+    let py_exe = root.join("python.exe");
+
+    if py_exe.exists() && python_exe_responds(&py_exe) && python_has_fonttools(py_exe.to_str().unwrap_or("")) {
+        return Ok(());
+    }
+
+    if root.exists() {
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+
+    let zip_path = root.join(ZIP_NAME);
+    ureq_download_to_path(URL, 40 * 1024 * 1024, &zip_path)?;
+    extract_zip_to_dir(&zip_path, &root)?;
+    let _ = std::fs::remove_file(&zip_path);
+
+    windows_embed_enable_import_site(&root)?;
+
+    let get_pip = root.join("get-pip.py");
+    ureq_download_to_path(GET_PIP_URL, 8 * 1024 * 1024, &get_pip)?;
+
+    let out = windows_run_embed_python_cmd(&py_exe, &root, &["get-pip.py"])?;
+    if !out.status.success() {
+        return Err(format!(
+            "get-pip 실패:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+
+    let out2 = windows_run_embed_python_cmd(&py_exe, &root, &["-m", "pip", "install", "fonttools"])?;
+    if !out2.status.success() {
+        return Err(format!(
+            "pip install fonttools 실패:\n{}",
+            String::from_utf8_lossy(&out2.stderr)
+        ));
+    }
+
+    if !python_has_fonttools(py_exe.to_str().unwrap_or("")) {
+        return Err("sidecar Python에 fonttools를 불러올 수 없습니다.".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_windows_fonttools_embed() -> Result<(), String> {
+    Ok(())
+}
+
+/// macOS/Linux: indygreg python-build-standalone install_only + pip install fonttools
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn ensure_unix_fonttools_standalone() -> Result<(), String> {
+    let (url, name) = if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            (
+                "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-aarch64-apple-darwin-install_only.tar.gz",
+                "cpython-macos-aarch64-install_only.tar.gz",
+            )
+        } else {
+            (
+                "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-apple-darwin-install_only.tar.gz",
+                "cpython-macos-x86_64-install_only.tar.gz",
+            )
+        }
+    } else {
+        (
+            "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-unknown-linux-gnu-install_only.tar.gz",
+            "cpython-linux-install_only.tar.gz",
+        )
+    };
+
+    let root = fonttools_embed_root();
+    let bin_dir = root.join("python").join("bin");
+    if let Some(py) = find_python3_in_bin(&bin_dir) {
+        if let Some(s) = py.to_str() {
+            if python_has_fonttools(s) {
+                return Ok(());
+            }
+        }
+    }
+
+    if root.exists() {
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+
+    let tgz = root.join(name);
+    ureq_download_to_path(url, 120 * 1024 * 1024, &tgz)?;
+    extract_tar_gz(&tgz, &root)?;
+    let _ = std::fs::remove_file(&tgz);
+
+    let py = find_python3_in_bin(&bin_dir).ok_or_else(|| {
+        "standalone Python bin/python3* 를 찾지 못했습니다.".to_string()
+    })?;
+    let py_s = py.to_str().ok_or("python 경로 인코딩 실패")?;
+
+    let mut pip = std::process::Command::new(py_s);
+    pip.args(["-m", "pip", "install", "fonttools"]);
+    pip.env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
+    pip.stdin(std::process::Stdio::null());
+    let out = pip.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let e = String::from_utf8_lossy(&out.stderr);
+        let o = String::from_utf8_lossy(&out.stdout);
+        return Err(format!("pip install fonttools 실패:\n{e}\n{o}"));
+    }
+
+    if !python_has_fonttools(py_s) {
+        return Err("standalone Python에 fonttools import 실패".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn ensure_unix_fonttools_standalone() -> Result<(), String> {
+    Ok(())
+}
+
+/// sidecar(embed) 우선, 그다음 시스템 Python 중 fonttools import 가능한 경로
+fn python_for_font_merge() -> Option<String> {
+    if let Some(p) = find_fonttools_sidecar_python() {
+        if let Some(s) = p.to_str() {
+            if python_has_fonttools(s) {
+                return Some(s.to_string());
+            }
+        }
+    }
+    find_python().filter(|p| python_has_fonttools(p))
+}
+
+fn install_fonttools_inner() -> Result<(), String> {
+    if python_for_font_merge().is_some() {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    ensure_windows_fonttools_embed()?;
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    ensure_unix_fonttools_standalone()?;
+
+    if python_for_font_merge().is_some() {
+        return Ok(());
+    }
+
+    let py = find_python().ok_or_else(|| {
+        "Python을 찾을 수 없습니다. 시스템에 Python이 없거나, 앱 폴더에 내장 런타임을 설치하지 못했습니다.\n\
+         https://www.python.org/downloads/"
+            .to_string()
+    })?;
+
+    if python_has_fonttools(&py) {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
+
+    let mut pip_user = std::process::Command::new(&py);
+    pip_user.args(["-m", "pip", "install", "--user", "fonttools"]);
+    pip_user.env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
+    pip_user.stdin(std::process::Stdio::null());
+    #[cfg(target_os = "windows")]
+    pip_user.creation_flags(0x08000000);
+    let out = pip_user
+        .output()
+        .map_err(|e| format!("pip 실행 실패: {e}"))?;
+
+    if !out.status.success() {
+        let mut pip_global = std::process::Command::new(&py);
+        pip_global.args(["-m", "pip", "install", "fonttools"]);
+        pip_global.env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
+        pip_global.stdin(std::process::Stdio::null());
+        #[cfg(target_os = "windows")]
+        pip_global.creation_flags(0x08000000);
+        let out2 = pip_global
+            .output()
+            .map_err(|e| format!("pip 실행 실패: {e}"))?;
+        if !out2.status.success() {
+            let e1 = String::from_utf8_lossy(&out.stderr);
+            let e2 = String::from_utf8_lossy(&out2.stderr);
+            return Err(format!(
+                "fonttools 설치 실패 (내장 런타임 및 시스템 pip).\n\n[--user]\n{e1}\n\n[전역]\n{e2}"
+            ));
+        }
+    }
+
+    if !python_has_fonttools(&py) {
+        return Err(
+            "pip는 완료되었지만 fonttools import에 실패했습니다. 터미널에서 `python -m pip install --user fonttools`를 실행해 주세요.".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// fonttools 사용 가능 여부 (sidecar 내장 Python 우선, 이후 시스템 Python)
+#[tauri::command]
+async fn check_fonttools() -> Result<bool, String> {
+    let ok = tauri::async_runtime::spawn_blocking(|| python_for_font_merge().is_some())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ok)
+}
+
+/// 내장 런타임 + pip로 fonttools 확보 (`download_ffmpeg`와 동일 UX)
+#[tauri::command]
+async fn download_fonttools() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(install_fonttools_inner)
+        .await
+        .map_err(|e| format!("fonttools 다운로드 실패: {e}"))?
+}
+
+/// `install_fonttools`와 동일 (호환용)
+#[tauri::command]
+async fn install_fonttools() -> Result<(), String> {
+    download_fonttools().await
+}
+
+/// Python 실행 파일 경로 찾기 (Tauri GUI는 PATH가 비어 있는 경우가 많아 py 런처·레지스트리·일반 경로를 순회)
+fn find_python() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(p) = find_python_via_py_launcher() {
+            return Some(p);
+        }
+    }
+
+    for cmd in &["python3", "python"] {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            let mut c = std::process::Command::new(cmd);
+            c.arg("--version");
+            c.stdout(std::process::Stdio::null());
+            c.stderr(std::process::Stdio::null());
+            c.creation_flags(0x08000000);
+            if c.status().map(|s| s.success()).unwrap_or(false) {
+                return Some(cmd.to_string());
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            if std::process::Command::new(cmd)
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            {
+                return Some(cmd.to_string());
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(p) = find_python_via_registry() {
+            return Some(p);
+        }
+        if let Some(p) = find_python_local_appdata_programs() {
+            return Some(p);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(p) = find_python_macos_common_paths() {
+            return Some(p);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let p = std::path::Path::new("/usr/bin/python3");
+        if p.exists() && python_exe_responds(p) {
+            return Some("/usr/bin/python3".to_string());
+        }
+    }
+
     None
 }
 
@@ -822,14 +1392,74 @@ fn brew_install_ghostscript_via_login_shell() -> std::io::Result<std::process::O
     cmd.output()
 }
 
+/// Windows: 레지스트리 App Paths — 설치 프로그램이 등록하는 전체 경로 (가장 신뢰도 높음)
+#[cfg(target_os = "windows")]
+fn find_gs_via_app_paths_registry() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const KEYS: &[&str] = &[
+        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\gswin64c.exe",
+        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\gswin32c.exe",
+        r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\gswin64c.exe",
+    ];
+    for key in KEYS {
+        let mut cmd = std::process::Command::new("reg");
+        cmd.args(["query", key, "/ve"]);
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        let output = cmd.output().ok()?;
+        if !output.status.success() {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let line = line.trim();
+            if !line.contains("REG_SZ") && !line.contains("REG_EXPAND_SZ") {
+                continue;
+            }
+            const LEN_EXP: usize = 15; // "REG_EXPAND_SZ".len()
+            const LEN_SZ: usize = 6; // "REG_SZ".len()
+            let after_type = if let Some(i) = line.find("REG_EXPAND_SZ") {
+                line[i + LEN_EXP..].trim_start()
+            } else if let Some(i) = line.find("REG_SZ") {
+                line[i + LEN_SZ..].trim_start()
+            } else {
+                continue;
+            };
+            let mut path = after_type.trim().trim_matches('"').to_string();
+            if path.contains("%ProgramFiles%") {
+                if let Ok(pf) = std::env::var("ProgramFiles") {
+                    path = path.replace("%ProgramFiles%", &pf);
+                }
+            }
+            if path.contains("%ProgramFiles(x86)%") {
+                if let Ok(pf) = std::env::var("ProgramFiles(x86)") {
+                    path = path.replace("%ProgramFiles(x86)%", &pf);
+                }
+            }
+            if path.to_lowercase().ends_with(".exe") && std::path::Path::new(&path).exists() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 /// Windows: GPL Ghostscript 기본 설치 위치 (PATH 없이 gswin64c.exe 전체 경로)
 #[cfg(target_os = "windows")]
 fn find_gs_exe_in_windows_program_files() -> Option<String> {
     use std::time::SystemTime;
-    let roots = [r"C:\Program Files\gs", r"C:\Program Files (x86)\gs"];
+    let mut roots: Vec<String> = vec![
+        r"C:\Program Files\gs".to_string(),
+        r"C:\Program Files (x86)\gs".to_string(),
+    ];
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        roots.push(std::path::Path::new(&pf).join("gs").to_string_lossy().to_string());
+    }
+    if let Ok(pf) = std::env::var("ProgramFiles(x86)") {
+        roots.push(std::path::Path::new(&pf).join("gs").to_string_lossy().to_string());
+    }
     let mut best: Option<(SystemTime, String)> = None;
     for root in roots {
-        let base = std::path::Path::new(root);
+        let base = std::path::Path::new(&root);
         if !base.is_dir() {
             continue;
         }
@@ -861,14 +1491,305 @@ fn find_gs_exe_in_windows_program_files() -> Option<String> {
     best.map(|(_, s)| s)
 }
 
+#[cfg(target_os = "windows")]
+fn windows_winget_available() -> bool {
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new("winget")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(0x08000000)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_choco_available() -> bool {
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new("choco")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(0x08000000)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_winget_install_ghostscript() -> std::io::Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new("winget");
+    cmd.args([
+        "install",
+        "--id",
+        "ArtifexSoftware.GhostScript",
+        "-e",
+        "--accept-source-agreements",
+        "--accept-package-agreements",
+        "--silent",
+    ]);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.creation_flags(0x08000000);
+    cmd.output()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_choco_install_ghostscript() -> std::io::Result<std::process::Output> {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new("choco");
+    cmd.args(["install", "ghostscript", "-y"]);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.creation_flags(0x08000000);
+    cmd.output()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_gs_install_output_ok(output: &std::process::Output) -> bool {
+    if output.status.success() {
+        return true;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    let combined = format!("{stdout} {stderr}");
+    combined.contains("already installed")
+        || combined.contains("no applicable upgrade")
+        || combined.contains("no newer package versions")
+        || combined.contains("no upgrade found")
+        || combined.contains("설치되어")
+}
+
+#[cfg(target_os = "windows")]
+fn gs_windows_sidecar_dir() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    exe.parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| "실행 파일 디렉터리를 알 수 없습니다.".to_string())
+}
+
+/// Windows: ffmpeg `download_ffmpeg`와 같이 공식 설치 파일을 받아 무음 설치 후 `bin`의
+/// `gswin64c.exe`·필요 DLL을 실행 파일 옆에 둔다. (NSIS; AGPL 빌드는 무음이 막힐 수 있음 → 이후 winget 등)
+#[cfg(target_os = "windows")]
+fn windows_try_download_ghostscript_to_sidecar() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use walkdir::WalkDir;
+
+    const INSTALLER_URL: &str =
+        "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10070/gs10070w64.exe";
+
+    let sidecar = gs_windows_sidecar_dir()?;
+    let setup = sidecar.join("gs10070w64_setup.exe");
+    let inst_root = std::env::temp_dir().join("qf_ghostscript_install");
+    let _ = std::fs::remove_dir_all(&inst_root);
+    std::fs::create_dir_all(&inst_root).map_err(|e| e.to_string())?;
+
+    let mut response = ureq::get(INSTALLER_URL)
+        .call()
+        .map_err(|e| format!("Ghostscript 설치 파일 다운로드 실패: {e}"))?;
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit(120 * 1024 * 1024)
+        .read_to_vec()
+        .map_err(|e| format!("다운로드 읽기 실패: {e}"))?;
+    std::fs::write(&setup, &bytes).map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
+
+    let dest = inst_root.to_string_lossy().to_string();
+    let mut cmd = std::process::Command::new(&setup);
+    cmd.arg("/S");
+    cmd.arg("/NCRC");
+    cmd.arg(format!("/D={}", dest));
+    cmd.stdin(std::process::Stdio::null());
+    cmd.creation_flags(0x08000000);
+    cmd.status()
+        .map_err(|e| format!("설치 프로그램 실행 실패: {e}"))?;
+
+    let mut bin_dir: Option<std::path::PathBuf> = None;
+    for e in WalkDir::new(&inst_root).into_iter().filter_map(|e| e.ok()) {
+        if e.file_name().to_string_lossy().eq_ignore_ascii_case("gswin64c.exe") {
+            bin_dir = e.path().parent().map(|p| p.to_path_buf());
+            break;
+        }
+    }
+    let bin = bin_dir.ok_or_else(|| {
+        "무음 설치 후 gswin64c.exe를 찾지 못했습니다. (최신 AGPL 설치 프로그램은 무음 설치가 제한될 수 있습니다.)".to_string()
+    })?;
+
+    for entry in std::fs::read_dir(&bin).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let p = entry.path();
+        let name = entry.file_name();
+        let n = name.to_string_lossy();
+        if n.eq_ignore_ascii_case("gswin64c.exe") || n.to_lowercase().ends_with(".dll") {
+            let target = sidecar.join(&name);
+            std::fs::copy(&p, &target).map_err(|e| format!("{e}: {}", target.display()))?;
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&inst_root);
+    let _ = std::fs::remove_file(&setup);
+
+    Ok(())
+}
+
+fn ensure_ghostscript_installed_inner() -> Result<(), String> {
+    if find_gs_path().is_some() {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut logs: Vec<String> = Vec::new();
+
+        match windows_try_download_ghostscript_to_sidecar() {
+            Ok(()) => {}
+            Err(e) => logs.push(format!("공식 설치 파일(다운로드·무음 설치): {e}")),
+        }
+        if find_gs_path().is_some() {
+            return Ok(());
+        }
+
+        if windows_winget_available() {
+            match windows_winget_install_ghostscript() {
+                Ok(output) => {
+                    if !windows_gs_install_output_ok(&output) {
+                        logs.push(format!(
+                            "winget exit code {:?}\nstdout:\n{}\nstderr:\n{}",
+                            output.status.code(),
+                            String::from_utf8_lossy(&output.stdout).trim(),
+                            String::from_utf8_lossy(&output.stderr).trim(),
+                        ));
+                    }
+                }
+                Err(e) => logs.push(format!("winget 실행 오류: {e}")),
+            }
+            if find_gs_path().is_some() {
+                return Ok(());
+            }
+        }
+
+        if windows_choco_available() {
+            match windows_choco_install_ghostscript() {
+                Ok(output) => {
+                    if !output.status.success() {
+                        logs.push(format!(
+                            "choco exit code {:?}\nstdout:\n{}\nstderr:\n{}",
+                            output.status.code(),
+                            String::from_utf8_lossy(&output.stdout).trim(),
+                            String::from_utf8_lossy(&output.stderr).trim(),
+                        ));
+                    }
+                }
+                Err(e) => logs.push(format!("choco 실행 오류: {e}")),
+            }
+            if find_gs_path().is_some() {
+                return Ok(());
+            }
+        }
+
+        if find_gs_path().is_some() {
+            return Ok(());
+        }
+
+        let manual = "수동 설치:\n\
+              • PowerShell: winget install -e --id ArtifexSoftware.GhostScript --silent --accept-source-agreements --accept-package-agreements\n\
+              • 또는 Chocolatey: choco install ghostscript -y\n\
+              • 또는 https://www.ghostscript.com/releases/gsdnld.html";
+
+        if !windows_winget_available() && !windows_choco_available() {
+            return Err(format!(
+                "Ghostscript을 자동 설치할 수 없습니다.\n\n\
+                 winget과 Chocolatey를 찾을 수 없습니다.\n\n\
+                 {manual}"
+            ));
+        }
+
+        let detail = if logs.is_empty() {
+            "설치 시도 후에도 gswin64c.exe를 찾지 못했습니다.\n\
+                 `C:\\Program Files\\gs\\…\\bin\\gswin64c.exe` 또는 실행 파일 옆 폴더를 확인해 주세요."
+                .to_string()
+        } else {
+            logs.join("\n\n---\n\n")
+        };
+
+        return Err(format!(
+            "Ghostscript 실행 파일(gswin64c)을 찾을 수 없습니다.\n\n\
+                 {detail}\n\n\
+                 {manual}"
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut last_out: Option<std::process::Output> = None;
+
+        if let Some(brew) = find_brew_executable() {
+            let output = brew_install_ghostscript(&brew)
+                .map_err(|e| format!("brew install 실행 실패: {}", e))?;
+            if output.status.success() && find_gs_path().is_some() {
+                return Ok(());
+            }
+            last_out = Some(output);
+        }
+
+        let output2 = brew_install_ghostscript_via_path_script()
+            .map_err(|e| format!("brew install 실행 실패: {}", e))?;
+        if output2.status.success() && find_gs_path().is_some() {
+            return Ok(());
+        }
+        last_out = Some(output2);
+
+        let output3 = brew_install_ghostscript_via_login_shell()
+            .map_err(|e| format!("brew install 실행 실패: {}", e))?;
+        if output3.status.success() && find_gs_path().is_some() {
+            return Ok(());
+        }
+        last_out = Some(output3);
+
+        let out = last_out.unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        if find_gs_path().is_some() {
+            return Ok(());
+        }
+        return Err(format!(
+            "Ghostscript 설치에 실패했습니다.\n\
+                 (Homebrew로 ghostscript 설치)\n\n\
+                 stdout:\n{}\n\nstderr:\n{}\n\n\
+                 터미널에서 `brew install ghostscript` 실행 후 다시 시도하거나,\n\
+                 Homebrew가 없다면 https://brew.sh 를 참고해 설치해 주세요.",
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("이 플랫폼에서는 자동 설치가 지원되지 않습니다.".to_string())
+    }
+}
+
 /// Ghostscript(gs) 실행 파일 경로 찾기
 fn find_gs_path() -> Option<String> {
-    // 1. ffmpeg와 동일: 실행 파일 옆 sidecar (향후 자동 배치 대비)
+    // 1. 실행 파일 옆 sidecar (Windows는 gswin64c.exe)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let sidecar = dir.join("gs");
-            if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
-                return sidecar.to_str().map(|s| s.to_string());
+            #[cfg(target_os = "windows")]
+            {
+                for name in ["gswin64c.exe", "gswin32c.exe", "gs.exe"] {
+                    let sidecar = dir.join(name);
+                    if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
+                        return sidecar.to_str().map(|s| s.to_string());
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let sidecar = dir.join("gs");
+                if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
+                    return sidecar.to_str().map(|s| s.to_string());
+                }
             }
         }
     }
@@ -905,21 +1826,23 @@ fn find_gs_path() -> Option<String> {
             }
         }
     }
-    // Windows: 공식 설치 경로 (PATH 없이도 탐색 — Tauri GUI는 시스템 PATH가 비어 있는 경우가 많음)
+    // Windows: 레지스트리 App Paths → Program Files → PATH (GUI는 보통 PATH 비어 있음)
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        if let Some(p) = find_gs_via_app_paths_registry() {
+            return Some(p);
+        }
         if let Some(p) = find_gs_exe_in_windows_program_files() {
             return Some(p);
         }
         for cmd in &["gswin64c", "gswin32c"] {
-            if std::process::Command::new(cmd)
-                .arg("--version")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-            {
+            let mut c = std::process::Command::new(cmd);
+            c.arg("--version");
+            c.stdout(std::process::Stdio::null());
+            c.stderr(std::process::Stdio::null());
+            c.creation_flags(0x08000000);
+            if c.status().map(|s| s.success()).unwrap_or(false) {
                 return Some(cmd.to_string());
             }
         }
@@ -944,127 +1867,17 @@ async fn check_gs() -> Result<bool, String> {
     Ok(find_gs_path().is_some())
 }
 
-// Ghostscript 자동 설치 (macOS: brew, Windows: winget/choco)
+// Ghostscript 확보 (ffmpeg `download_ffmpeg`와 동일 UX — Windows: 공식 설치 파일 다운로드·sidecar 복사 우선)
+#[tauri::command]
+async fn download_gs() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(ensure_ghostscript_installed_inner)
+        .await
+        .map_err(|e| format!("설치 태스크 실패: {}", e))?
+}
+
 #[tauri::command]
 async fn install_gs() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        #[cfg(target_os = "macos")]
-        {
-            let mut last_out: Option<std::process::Output> = None;
-
-            if let Some(brew) = find_brew_executable() {
-                let output = brew_install_ghostscript(&brew)
-                    .map_err(|e| format!("brew install 실행 실패: {}", e))?;
-                if output.status.success() && find_gs_path().is_some() {
-                    return Ok(());
-                }
-                last_out = Some(output);
-            }
-
-            let output2 = brew_install_ghostscript_via_path_script()
-                .map_err(|e| format!("brew install 실행 실패: {}", e))?;
-            if output2.status.success() && find_gs_path().is_some() {
-                return Ok(());
-            }
-            last_out = Some(output2);
-
-            let output3 = brew_install_ghostscript_via_login_shell()
-                .map_err(|e| format!("brew install 실행 실패: {}", e))?;
-            if output3.status.success() && find_gs_path().is_some() {
-                return Ok(());
-            }
-            last_out = Some(output3);
-
-            let out = last_out.unwrap();
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            if find_gs_path().is_some() {
-                return Ok(());
-            }
-            return Err(format!(
-                "Ghostscript 설치에 실패했습니다.\n\
-                 (Homebrew로 ghostscript 설치)\n\n\
-                 stdout:\n{}\n\nstderr:\n{}\n\n\
-                 터미널에서 `brew install ghostscript` 실행 후 다시 시도하거나,\n\
-                 Homebrew가 없다면 https://brew.sh 를 참고해 설치해 주세요.",
-                stdout.trim(),
-                stderr.trim()
-            ));
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            // winget 시도 (패키지 ID: ArtifexSoftware.GhostScript — 공식 winget 저장소)
-            let winget_ok = std::process::Command::new("winget")
-                .arg("--version")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-
-            let mut winget_log = String::new();
-            if winget_ok {
-                match std::process::Command::new("winget").args([
-                    "install",
-                    "--id",
-                    "ArtifexSoftware.GhostScript",
-                    "-e",
-                    "--accept-source-agreements",
-                    "--accept-package-agreements",
-                ]).output() {
-                    Ok(output) => {
-                        if !output.status.success() {
-                            winget_log = format!(
-                                "winget exit code {:?}\nstdout:\n{}\nstderr:\n{}",
-                                output.status.code(),
-                                String::from_utf8_lossy(&output.stdout).trim(),
-                                String::from_utf8_lossy(&output.stderr).trim(),
-                            );
-                        }
-                    }
-                    Err(e) => winget_log = format!("winget 실행 오류: {}", e),
-                }
-            }
-
-            // 설치 직후 또는 이미 설치된 경우: Program Files·PATH에서 gswin64c 탐색
-            if find_gs_path().is_some() {
-                return Ok(());
-            }
-
-            if !winget_ok {
-                return Err(
-                    "Ghostscript을 자동 설치할 수 없습니다.\n\n\
-                     winget이 없거나 사용할 수 없습니다.\n\
-                     PowerShell(관리자)에서:\n  winget install -e --id ArtifexSoftware.GhostScript\n\
-                     또는 https://www.ghostscript.com/releases/gsdnld.html 에서 설치한 뒤 앱을 다시 실행해 주세요."
-                        .to_string(),
-                );
-            }
-
-            return Err(format!(
-                "Ghostscript 실행 파일(gswin64c)을 찾을 수 없습니다.\n\n\
-                 winget 설치가 완료되지 않았거나, PATH에 등록되기 전일 수 있습니다.\n\n\
-                 {}\n\n\
-                 수동: PowerShell에서 `winget install -e --id ArtifexSoftware.GhostScript`를 실행하거나,\n\
-                 위 사이트에서 설치한 뒤 앱을 다시 시작해 주세요.",
-                if winget_log.is_empty() {
-                    "winget은 성공했으나 gswin64c.exe를 찾지 못했습니다.\n\
-                     `C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe` 경로를 확인해 주세요."
-                        .to_string()
-                } else {
-                    winget_log
-                }
-            ));
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err("이 플랫폼에서는 자동 설치가 지원되지 않습니다.".to_string())
-        }
-    })
-    .await
-    .map_err(|e| format!("설치 태스크 실패: {}", e))?
+    download_gs().await
 }
 
 #[tauri::command]
@@ -4343,9 +5156,13 @@ pub fn run() {
         save_annotated_image,
         compress_pdf,
         check_gs,
+        download_gs,
         install_gs,
         get_font_info,
         read_font_bytes,
+        check_fonttools,
+        download_fonttools,
+        install_fonttools,
         merge_fonts,
     ])
     .setup(|app| {

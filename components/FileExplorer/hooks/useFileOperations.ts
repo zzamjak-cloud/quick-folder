@@ -548,7 +548,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       if (!gsInstalled) {
         setGsSetup({ fileName });
         try {
-          await invoke('install_gs');
+          await invoke('download_gs');
           showCopyToast('Ghostscript 설치 완료');
         } catch (installErr) {
           showCopyToast(`Ghostscript 설치 실패: ${installErr}`);

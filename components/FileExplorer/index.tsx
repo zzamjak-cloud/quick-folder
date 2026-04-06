@@ -1526,7 +1526,7 @@ export default function FileExplorer({
               className="flex items-center gap-2 px-3 py-1.5 text-xs"
               style={{ backgroundColor: 'var(--qf-surface-2)', color: 'var(--qf-text)', borderTop: '1px solid var(--qf-border)' }}
             >
-              <span>⏳ Ghostscript 설치 중... {fileOps.gsSetup.fileName}</span>
+              <span>⏳ Ghostscript 다운로드/설치 중... {fileOps.gsSetup.fileName}</span>
             </div>
           )}
 

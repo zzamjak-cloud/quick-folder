@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.25.17"
+version = "1.25.18"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -36,6 +36,7 @@ psd = "0.3"
 tauri-plugin-drag = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 walkdir = "2"
+ureq = { version = "3", default-features = true }
 ffmpeg-sidecar = "2"
 ico = "0.3"
 icns = "0.3"
