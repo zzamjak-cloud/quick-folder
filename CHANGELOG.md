@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.15] - 2026-04-06
+
+### Fixed
+- **이미지 편집 저장**: `save_annotated_image` Rust 커맨드 추가 (드로잉 합성 → `{stem}_edit.png` 저장)
+- **ffmpeg 경로 탐색**: macOS homebrew 경로(`/opt/homebrew/bin/ffmpeg`) 등 일반 설치 경로 직접 확인 추가
+
 ## [1.25.14] - 2026-04-05
 
 ### Added

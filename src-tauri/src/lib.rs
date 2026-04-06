@@ -713,6 +713,45 @@ async fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -> Re
     .map_err(|e| format!("크롭 이미지 저장 실패: {}", e))?
 }
 
+// ─── 이미지 드로잉 합성 저장 ─────────────────────────────────────────
+
+#[tauri::command]
+async fn save_annotated_image(original_path: String, image_data: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // data URL에서 base64 부분 추출
+        let base64_data = image_data
+            .strip_prefix("data:image/png;base64,")
+            .unwrap_or(&image_data);
+
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(base64_data)
+            .map_err(|e| format!("base64 디코딩 실패: {}", e))?;
+
+        let img = image::load_from_memory(&bytes)
+            .map_err(|e| format!("이미지 로드 실패: {}", e))?;
+
+        let input_path = std::path::Path::new(&original_path);
+        let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = input_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("image");
+
+        let output_path = find_unique_path(parent, stem, "_edit", ".png");
+
+        img.save_with_format(&output_path, image::ImageFormat::Png)
+            .map_err(|e| format!("파일 저장 실패: {}", e))?;
+
+        output_path
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| "출력 경로 변환 실패".to_string())
+    })
+    .await
+    .map_err(|e| format!("드로잉 저장 실패: {}", e))?
+}
+
 // ─── 배경 제거 ───────────────────────────────────────────────────
 // 플러드 필 기반: 지정 색상 영역을 투명 처리. 경계에 색상 디컨태미네이션 적용.
 
@@ -2406,7 +2445,20 @@ fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
             }
         }
     }
-    // 2. 시스템 PATH
+    // 2. 일반적인 설치 경로 직접 확인 (macOS homebrew, Linux 등)
+    let common_paths = [
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ];
+    for p in &common_paths {
+        let path = std::path::Path::new(p);
+        if path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
+            return Some(path.to_path_buf());
+        }
+    }
+
+    // 3. 시스템 PATH
     if let Ok(output) = std::process::Command::new("ffmpeg").arg("-version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -3745,6 +3797,7 @@ pub fn run() {
         remove_white_bg_preview,
         remove_white_bg_save,
         crop_image,
+        save_annotated_image,
         get_font_info,
         read_font_bytes,
         merge_fonts,
