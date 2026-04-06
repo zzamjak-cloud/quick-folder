@@ -1529,6 +1529,8 @@ fn windows_winget_install_ghostscript() -> std::io::Result<std::process::Output>
         "--accept-source-agreements",
         "--accept-package-agreements",
         "--silent",
+        "--scope",
+        "user",
     ]);
     cmd.stdin(std::process::Stdio::null());
     cmd.creation_flags(0x08000000);
@@ -1560,79 +1562,6 @@ fn windows_gs_install_output_ok(output: &std::process::Output) -> bool {
         || combined.contains("설치되어")
 }
 
-#[cfg(target_os = "windows")]
-fn gs_windows_sidecar_dir() -> Result<std::path::PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    exe.parent()
-        .map(|p| p.to_path_buf())
-        .ok_or_else(|| "실행 파일 디렉터리를 알 수 없습니다.".to_string())
-}
-
-/// Windows: ffmpeg `download_ffmpeg`와 같이 공식 설치 파일을 받아 무음 설치 후 `bin`의
-/// `gswin64c.exe`·필요 DLL을 실행 파일 옆에 둔다. (NSIS; AGPL 빌드는 무음이 막힐 수 있음 → 이후 winget 등)
-#[cfg(target_os = "windows")]
-fn windows_try_download_ghostscript_to_sidecar() -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    use walkdir::WalkDir;
-
-    const INSTALLER_URL: &str =
-        "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10070/gs10070w64.exe";
-
-    let sidecar = gs_windows_sidecar_dir()?;
-    let setup = sidecar.join("gs10070w64_setup.exe");
-    let inst_root = std::env::temp_dir().join("qf_ghostscript_install");
-    let _ = std::fs::remove_dir_all(&inst_root);
-    std::fs::create_dir_all(&inst_root).map_err(|e| e.to_string())?;
-
-    let mut response = ureq::get(INSTALLER_URL)
-        .call()
-        .map_err(|e| format!("Ghostscript 설치 파일 다운로드 실패: {e}"))?;
-    let bytes = response
-        .body_mut()
-        .with_config()
-        .limit(120 * 1024 * 1024)
-        .read_to_vec()
-        .map_err(|e| format!("다운로드 읽기 실패: {e}"))?;
-    std::fs::write(&setup, &bytes).map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
-
-    let dest = inst_root.to_string_lossy().to_string();
-    let mut cmd = std::process::Command::new(&setup);
-    cmd.arg("/S");
-    cmd.arg("/NCRC");
-    cmd.arg(format!("/D={}", dest));
-    cmd.stdin(std::process::Stdio::null());
-    cmd.creation_flags(0x08000000);
-    cmd.status()
-        .map_err(|e| format!("설치 프로그램 실행 실패: {e}"))?;
-
-    let mut bin_dir: Option<std::path::PathBuf> = None;
-    for e in WalkDir::new(&inst_root).into_iter().filter_map(|e| e.ok()) {
-        if e.file_name().to_string_lossy().eq_ignore_ascii_case("gswin64c.exe") {
-            bin_dir = e.path().parent().map(|p| p.to_path_buf());
-            break;
-        }
-    }
-    let bin = bin_dir.ok_or_else(|| {
-        "무음 설치 후 gswin64c.exe를 찾지 못했습니다. (최신 AGPL 설치 프로그램은 무음 설치가 제한될 수 있습니다.)".to_string()
-    })?;
-
-    for entry in std::fs::read_dir(&bin).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let p = entry.path();
-        let name = entry.file_name();
-        let n = name.to_string_lossy();
-        if n.eq_ignore_ascii_case("gswin64c.exe") || n.to_lowercase().ends_with(".dll") {
-            let target = sidecar.join(&name);
-            std::fs::copy(&p, &target).map_err(|e| format!("{e}: {}", target.display()))?;
-        }
-    }
-
-    let _ = std::fs::remove_dir_all(&inst_root);
-    let _ = std::fs::remove_file(&setup);
-
-    Ok(())
-}
-
 fn ensure_ghostscript_installed_inner() -> Result<(), String> {
     if find_gs_path().is_some() {
         return Ok(());
@@ -1641,14 +1570,6 @@ fn ensure_ghostscript_installed_inner() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let mut logs: Vec<String> = Vec::new();
-
-        match windows_try_download_ghostscript_to_sidecar() {
-            Ok(()) => {}
-            Err(e) => logs.push(format!("공식 설치 파일(다운로드·무음 설치): {e}")),
-        }
-        if find_gs_path().is_some() {
-            return Ok(());
-        }
 
         if windows_winget_available() {
             match windows_winget_install_ghostscript() {
