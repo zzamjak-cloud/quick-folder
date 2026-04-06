@@ -62,7 +62,10 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
     const url = convertFileSrc(path);
     const loadingTask = pdfjsLib.getDocument(url);
 
+    let loadedDoc: PDFDocumentProxy | null = null;
+
     loadingTask.promise.then((doc) => {
+      loadedDoc = doc;
       setPdfDoc(doc);
       setTotalPages(doc.numPages);
       setCurrentPage(1);
@@ -73,8 +76,9 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
     });
 
     return () => {
-      // 컴포넌트 언마운트 시 로딩 취소
+      // 컴포넌트 언마운트 또는 path 변경 시 로딩 취소 및 문서 해제
       loadingTask.destroy();
+      loadedDoc?.destroy();
     };
   }, [path]);
 
