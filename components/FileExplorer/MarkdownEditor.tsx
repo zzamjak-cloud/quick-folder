@@ -215,6 +215,9 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         return;
       }
 
+      // Tab 키: TipTap 리스트 들여쓰기에 필요하므로 전파 허용
+      if (e.key === 'Tab') return;
+
       // 그 외 모든 키: 글로벌 단축키 핸들러로 전파 차단
       // (TipTap은 자체적으로 이벤트를 처리하므로 에디터 동작에는 영향 없음)
       e.stopImmediatePropagation();

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.16] - 2026-04-06
+
+### Fixed
+- **마크다운 Tab 들여쓰기**: 글로벌 키 캡처에서 Tab 키 예외 처리하여 리스트 들여쓰기 정상 동작
+
 ## [1.25.15] - 2026-04-06
 
 ### Fixed
