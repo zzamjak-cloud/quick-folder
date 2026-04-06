@@ -52,8 +52,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     speed: string;
   } | null>(null);
 
+  /** PDF 압축: Ghostscript 자동 설치 중 (ffmpeg 다운로드 UI와 동일 패턴) */
+  const [gsSetup, setGsSetup] = useState<{ fileName: string } | null>(null);
+
   // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
-  const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number } | null>(null);
+  const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number; itemLabel?: string } | null>(null);
 
   // 영구삭제 확인 다이얼로그
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
@@ -80,7 +83,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       return;
     }
     try {
-      setOperationProgress({ type: '삭제', current: 0, total: paths.length });
+      setOperationProgress({
+        type: '삭제',
+        current: 0,
+        total: paths.length,
+        itemLabel: paths.length === 1 ? getFileName(paths[0]) : `${getFileName(paths[0])} 외 ${paths.length - 1}개`,
+      });
       await invoke('delete_items', { paths, useTrash: true });
       setOperationProgress(null);
       undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath ?? '', useTrash: true });
@@ -107,7 +115,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const { paths } = permanentDeleteConfirm;
     setPermanentDeleteConfirm(null);
     try {
-      setOperationProgress({ type: '영구삭제', current: 0, total: paths.length });
+      setOperationProgress({
+        type: '영구삭제',
+        current: 0,
+        total: paths.length,
+        itemLabel: paths.length === 1 ? getFileName(paths[0]) : `${getFileName(paths[0])} 외 ${paths.length - 1}개`,
+      });
       await invoke('delete_items', { paths, useTrash: false });
       setOperationProgress(null);
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
@@ -145,7 +158,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleDuplicate = useCallback(async () => {
     if (selectedPaths.length === 0 || !currentPath) return;
     try {
-      setOperationProgress({ type: '복제', current: 0, total: selectedPaths.length });
+      setOperationProgress({
+        type: '복제',
+        current: 0,
+        total: selectedPaths.length,
+        itemLabel: selectedPaths.length === 1
+          ? getFileName(selectedPaths[0])
+          : `${getFileName(selectedPaths[0])} 외 ${selectedPaths.length - 1}개`,
+      });
       const newPaths = await invoke<string[]>('duplicate_items', { paths: selectedPaths });
       setOperationProgress(null);
       await loadDirectory(currentPath);
@@ -519,6 +539,33 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, loadDirectory, showCopyToast]);
 
+  // --- PDF 압축 ---
+  const handleCompressPdf = useCallback(async (path: string) => {
+    const fileName = getFileName(path);
+    try {
+      // Ghostscript 설치 확인
+      const gsInstalled = await invoke<boolean>('check_gs');
+      if (!gsInstalled) {
+        setGsSetup({ fileName });
+        try {
+          await invoke('install_gs');
+          showCopyToast('Ghostscript 설치 완료');
+        } catch (installErr) {
+          showCopyToast(`Ghostscript 설치 실패: ${installErr}`);
+          return;
+        } finally {
+          setGsSetup(null);
+        }
+      }
+      showCopyToast(`PDF 압축 중: ${fileName}`);
+      const output = await invoke<string>('compress_pdf', { input: path });
+      if (currentPath) loadDirectory(currentPath);
+      showCopyToast(`PDF 압축 완료: ${getFileName(output)}`);
+    } catch (e) {
+      showCopyToast(`PDF 압축 실패: ${e}`);
+    }
+  }, [currentPath, loadDirectory, showCopyToast]);
+
   // --- 경로 복사 ---
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -585,6 +632,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleRemoveWhiteBgApply,
     handleSpritePack,
     handleCompressVideo,
+    handleCompressPdf,
     handleCopyPath,
     handleUndo,
     showCopyToast,
@@ -592,6 +640,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     copyToast,
     operationProgress,
     videoCompression,
+    gsSetup,
     sheetPackDefaultName,
     permanentDeleteConfirm,
     setPermanentDeleteConfirm,

@@ -3,6 +3,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { FileEntry, ThumbnailSize, ClipboardData, ViewMode } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
+import { normalizeFsPath } from '../../utils/pathUtils';
 import FileCard from './FileCard';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
@@ -34,16 +35,18 @@ interface FileGridProps {
   hideText?: boolean;
   folderTags?: Record<string, string>;
   instanceId?: string;
+  pendingCopyPaths?: Set<string>;
 }
 
 // --- ListRow 컴포넌트 ---
-const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
   isRenaming: boolean;
   isCut: boolean;
   isDropTarget: boolean;
+  isPending?: boolean;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
@@ -74,10 +77,11 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       data-file-path={entry.path}
       {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
       className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer select-none"
-      style={{ backgroundColor: bg, opacity: isCut ? 0.4 : 1, border }}
+      style={{ backgroundColor: bg, opacity: isPending ? 0.5 : isCut ? 0.4 : 1, border, pointerEvents: isPending ? 'none' : undefined }}
       title={formatTooltip(entry)}
-      onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
+      onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
+        if (isPending) return;
         if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) onOpenInNewTab(entry);
         else onOpen(entry);
       }}
@@ -85,13 +89,20 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
     >
       {/* 아이콘 (네이티브 우선, lucide 폴백) */}
-      {nativeIcon ? (
-        <img src={nativeIcon} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} draggable={false} />
-      ) : (
-        <span style={{ color: iconColor(entry.file_type, entry.name), flexShrink: 0 }}>
-          <FileTypeIcon fileType={entry.file_type} size={16} fileName={entry.name} />
-        </span>
-      )}
+      <div className="relative flex-shrink-0" style={{ width: 16, height: 16 }}>
+        {nativeIcon ? (
+          <img src={nativeIcon} alt="" style={{ width: 16, height: 16 }} draggable={false} />
+        ) : (
+          <span style={{ color: iconColor(entry.file_type, entry.name) }}>
+            <FileTypeIcon fileType={entry.file_type} size={16} fileName={entry.name} />
+          </span>
+        )}
+        {isPending && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 4 }}>
+            <Loader2 size={12} className="animate-spin text-white" />
+          </div>
+        )}
+      </div>
       {/* 이름 */}
       {isRenaming ? (
         <input
@@ -114,13 +125,14 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
 });
 
 // --- DetailsRow 컴포넌트 ---
-const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
   isRenaming: boolean;
   isCut: boolean;
   isDropTarget: boolean;
+  isPending?: boolean;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
@@ -158,11 +170,12 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
     <tr
       data-file-path={entry.path}
       {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
-      style={{ backgroundColor: bg ?? undefined, opacity: isCut ? 0.4 : 1, outline }}
+      style={{ backgroundColor: bg ?? undefined, opacity: isPending ? 0.5 : isCut ? 0.4 : 1, outline, pointerEvents: isPending ? 'none' : undefined }}
       className="cursor-pointer hover:opacity-80"
       title={formatTooltip(entry)}
-      onClick={(e) => { e.stopPropagation(); onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
+      onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
+        if (isPending) return;
         if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) onOpenInNewTab(entry);
         else onOpen(entry);
       }}
@@ -172,13 +185,20 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
       <td className="px-3 py-1">
         <div className="flex items-center gap-2">
           {/* 아이콘 (네이티브 우선, lucide 폴백) */}
-          {nativeIcon ? (
-            <img src={nativeIcon} alt="" style={{ width: 14, height: 14, flexShrink: 0 }} draggable={false} />
-          ) : (
-            <span style={{ color: iconColor(entry.file_type, entry.name), flexShrink: 0 }}>
-              <FileTypeIcon fileType={entry.file_type} size={14} fileName={entry.name} />
-            </span>
-          )}
+          <div className="relative flex-shrink-0" style={{ width: 14, height: 14 }}>
+            {nativeIcon ? (
+              <img src={nativeIcon} alt="" style={{ width: 14, height: 14 }} draggable={false} />
+            ) : (
+              <span style={{ color: iconColor(entry.file_type, entry.name) }}>
+                <FileTypeIcon fileType={entry.file_type} size={14} fileName={entry.name} />
+              </span>
+            )}
+            {isPending && (
+              <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 3 }}>
+                <Loader2 size={10} className="animate-spin text-white" />
+              </div>
+            )}
+          </div>
           {isRenaming ? (
             <input
               autoFocus
@@ -205,7 +225,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId, pendingCopyPaths }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
@@ -223,6 +243,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   onSortChange?: (by: string) => void;
   themeVars: ThemeVars | null;
   instanceId?: string;
+  pendingCopyPaths?: Set<string>;
 }) {
   const storageKey = `qf_details_cols_${instanceId ?? 'default'}`;
 
@@ -328,6 +349,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
               isRenaming={renamingPath === entry.path}
               isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
               isDropTarget={dropTargetPath === entry.path && entry.is_dir}
+              isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
               onDragMouseDown={onDragMouseDown}
               onSelect={onSelect}
               onOpen={onOpen}
@@ -372,6 +394,7 @@ export default memo(function FileGrid({
   hideText = false,
   folderTags,
   instanceId,
+  pendingCopyPaths,
 }: FileGridProps) {
 
   // --- 박스 드래그 선택 ---
@@ -563,6 +586,7 @@ export default memo(function FileGrid({
                   themeVars={themeVars}
                   hideText={hideText}
                   tag={folderTags?.[entry.path]}
+                  isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
                 />
               </React.Fragment>
             );
@@ -591,6 +615,7 @@ export default memo(function FileGrid({
                   isRenaming={renamingPath === entry.path}
                   isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
                   isDropTarget={dropTargetPath === entry.path && entry.is_dir}
+                  isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
                   onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
@@ -625,6 +650,7 @@ export default memo(function FileGrid({
           onSortChange={onSortChange}
           themeVars={themeVars}
           instanceId={instanceId}
+          pendingCopyPaths={pendingCopyPaths}
         />
       )}
 

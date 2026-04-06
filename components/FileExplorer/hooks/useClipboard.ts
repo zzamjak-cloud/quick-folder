@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ClipboardData } from '../../../types';
-import { getFileName, getPathSeparator } from '../../../utils/pathUtils';
+import { getFileName, getPathSeparator, normalizeFsPath } from '../../../utils/pathUtils';
+import { runCopyWithProgress, type CopyProgressInfo } from './runCopyWithProgress';
 
 export interface UseClipboardConfig {
   selectedPaths: string[];
@@ -10,6 +11,12 @@ export interface UseClipboardConfig {
   setSelectedPaths: React.Dispatch<React.SetStateAction<string[]>>;
   sharedClipboard?: ClipboardData | null;
   onClipboardChange?: (cb: ClipboardData | null) => void;
+  setOperationProgress?: (p: { type: string; current: number; total: number; itemLabel?: string } | null) => void;
+  setEntries?: React.Dispatch<React.SetStateAction<FileEntry[]>>;
+  entries?: FileEntry[];
+  setPendingCopyPaths?: React.Dispatch<React.SetStateAction<string[]>>;
+  /** copy_items_with_progress 진행률 (파일 수·퍼센트) */
+  onCopyProgress?: (info: CopyProgressInfo) => void;
 }
 
 /**
@@ -23,6 +30,11 @@ export function useClipboard({
   setSelectedPaths,
   sharedClipboard,
   onClipboardChange,
+  setOperationProgress,
+  setEntries,
+  entries: currentEntries,
+  setPendingCopyPaths,
+  onCopyProgress,
 }: UseClipboardConfig) {
   // 분할 뷰: 공유 클립보드 사용, 단일 뷰: 내부 상태 사용
   const [internalClipboard, setInternalClipboard] = useState<ClipboardData | null>(null);
@@ -55,24 +67,61 @@ export function useClipboard({
 
   const executePaste = useCallback(async (paths: string[], action: 'copy' | 'cut', overwrite: boolean) => {
     if (!currentPath) return;
+    const label = action === 'copy' ? '복사' : '이동';
+    const sep = getPathSeparator(currentPath);
+
+    // 대상 경로 계산 + ghost 항목 추가 (경로 정규화 → 목록 entry.path·pending Set과 일치)
+    const destPaths = paths.map(p => normalizeFsPath(`${currentPath}${sep}${getFileName(p)}`));
+    setPendingCopyPaths?.(prev => [...prev, ...destPaths]);
+
+    // entries에 ghost 항목 주입 (소스 파일 정보로 is_dir/file_type 결정)
+    if (setEntries) {
+      const existingPaths = new Set((currentEntries ?? []).map(e => normalizeFsPath(e.path)));
+      // 소스 경로에 확장자가 없으면 폴더로 간주
+      const ghostEntries: FileEntry[] = paths
+        .map((p, i) => ({ destPath: destPaths[i], srcPath: p }))
+        .filter(({ destPath }) => !existingPaths.has(destPath))
+        .map(({ destPath, srcPath }) => {
+          const name = getFileName(srcPath);
+          const hasExt = name.includes('.') && name.lastIndexOf('.') > 0;
+          const isDir = !hasExt;
+          return {
+            name,
+            path: destPath,
+            is_dir: isDir,
+            size: 0,
+            modified: Date.now(),
+            file_type: (isDir ? 'directory' : 'other') as FileEntry['file_type'],
+          };
+        });
+      if (ghostEntries.length > 0) {
+        setEntries(prev => [...prev, ...ghostEntries]);
+      }
+    }
+
+    const itemLabel =
+      paths.length === 1
+        ? getFileName(paths[0])
+        : `${getFileName(paths[0])} 외 ${paths.length - 1}개`;
+    setOperationProgress?.({ type: label, current: 0, total: 0, itemLabel });
     try {
       if (action === 'copy') {
-        await invoke('copy_items', { sources: paths, dest: currentPath, overwrite });
+        await runCopyWithProgress(paths, currentPath, overwrite, (info) => {
+          onCopyProgress?.(info);
+        });
       } else {
         await invoke('move_items', { sources: paths, dest: currentPath, overwrite });
         setClipboard(null);
       }
-      // 붙여넣기된 파일명으로 대상 경로 생성 (선택용)
-      const sep = getPathSeparator(currentPath);
-      const pastedPaths = paths.map(p => {
-        return currentPath + sep + getFileName(p);
-      });
-      pendingPasteSelectRef.current = pastedPaths;
+      pendingPasteSelectRef.current = destPaths;
       loadDirectory(currentPath);
     } catch (e) {
       console.error('붙여넣기 실패:', e);
+    } finally {
+      setOperationProgress?.(null);
+      setPendingCopyPaths?.(prev => prev.filter(p => !destPaths.includes(normalizeFsPath(p))));
     }
-  }, [currentPath, loadDirectory, setClipboard]);
+  }, [currentPath, loadDirectory, setClipboard, setOperationProgress, setEntries, currentEntries, onCopyProgress]);
 
   const handlePaste = useCallback(async () => {
     if (!currentPath) return;

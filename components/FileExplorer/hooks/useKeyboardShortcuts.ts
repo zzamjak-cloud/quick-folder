@@ -75,6 +75,7 @@ export interface UseKeyboardShortcutsConfig {
   handlePasteImageFromClipboard: () => void;
   setFontMergePaths: (paths: string[] | null) => void;
   setFontPreviewPath: (path: string | null) => void;
+  setPdfPreviewPath: (path: string | null) => void;
 }
 
 /**
@@ -107,6 +108,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handlePasteImageFromClipboard,
     setFontMergePaths,
     setFontPreviewPath,
+    setPdfPreviewPath,
   } = config;
 
   useEffect(() => {
@@ -320,6 +322,9 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         if (entry && !entry.is_dir) {
           if (/\.(ttf|otf|woff|woff2|ttc)$/i.test(entry.name)) {
             setFontPreviewPath(entry.path);
+          } else if (/\.pdf$/i.test(entry.name)) {
+            // PDF 파일: 내장 PDF 뷰어 모달로 미리보기
+            setPdfPreviewPath(entry.path);
           } else {
             previewFile(entry);
           }
@@ -586,7 +591,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,
     handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag, handlePasteImageFromClipboard,
-    setFontMergePaths, setFontPreviewPath,
+    setFontMergePaths, setFontPreviewPath, setPdfPreviewPath,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,

@@ -752,6 +752,386 @@ async fn save_annotated_image(original_path: String, image_data: String) -> Resu
     .map_err(|e| format!("드로잉 저장 실패: {}", e))?
 }
 
+// ─── PDF 압축 ─────────────────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+fn find_brew_executable() -> Option<std::path::PathBuf> {
+    use std::path::Path;
+    for p in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"] {
+        let path = Path::new(p);
+        if path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
+            return Some(path.to_path_buf());
+        }
+    }
+    // GUI 앱은 PATH에 brew가 없는 경우가 많음 → 표준 경로를 앞에 둔 PATH로 재시도
+    let augmented = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin";
+    std::process::Command::new("brew")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .env("PATH", augmented)
+        .status()
+        .ok()
+        .filter(|s| s.success())?;
+    Some(std::path::PathBuf::from("brew"))
+}
+
+#[cfg(target_os = "macos")]
+fn brew_install_ghostscript(brew: &std::path::Path) -> std::io::Result<std::process::Output> {
+    let path = std::env::var("PATH").unwrap_or_default();
+    let mut cmd = std::process::Command::new(brew);
+    cmd.args(["install", "ghostscript"]);
+    cmd.env("HOMEBREW_NO_AUTO_UPDATE", "1");
+    cmd.env("HOMEBREW_NO_INSTALL_CLEANUP", "1");
+    cmd.env("NONINTERACTIVE", "1");
+    cmd.env("CI", "1");
+    cmd.stdin(std::process::Stdio::null());
+    cmd.env(
+        "PATH",
+        format!("/opt/homebrew/bin:/usr/local/bin:/opt/homebrew/sbin:/usr/local/sbin:{path}"),
+    );
+    cmd.output()
+}
+
+#[cfg(target_os = "macos")]
+fn brew_install_ghostscript_via_path_script() -> std::io::Result<std::process::Output> {
+    let script = r#"export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 NONINTERACTIVE=1 CI=1
+if ! command -v brew >/dev/null 2>&1; then exit 127; fi
+exec brew install ghostscript"#;
+    let path = std::env::var("PATH").unwrap_or_default();
+    let mut cmd = std::process::Command::new("/bin/bash");
+    cmd.args(["-c", script]);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.env(
+        "PATH",
+        format!("/opt/homebrew/bin:/usr/local/bin:{path}"),
+    );
+    cmd.output()
+}
+
+#[cfg(target_os = "macos")]
+fn brew_install_ghostscript_via_login_shell() -> std::io::Result<std::process::Output> {
+    let mut cmd = std::process::Command::new("/bin/zsh");
+    cmd.args([
+        "-l",
+        "-c",
+        "export HOMEBREW_NO_AUTO_UPDATE=1 NONINTERACTIVE=1 CI=1; brew install ghostscript",
+    ]);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.output()
+}
+
+/// Windows: GPL Ghostscript 기본 설치 위치 (PATH 없이 gswin64c.exe 전체 경로)
+#[cfg(target_os = "windows")]
+fn find_gs_exe_in_windows_program_files() -> Option<String> {
+    use std::time::SystemTime;
+    let roots = [r"C:\Program Files\gs", r"C:\Program Files (x86)\gs"];
+    let mut best: Option<(SystemTime, String)> = None;
+    for root in roots {
+        let base = std::path::Path::new(root);
+        if !base.is_dir() {
+            continue;
+        }
+        let rd = match std::fs::read_dir(base) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for e in rd.flatten() {
+            let ver_dir = e.path();
+            if !ver_dir.is_dir() {
+                continue;
+            }
+            for name in ["gswin64c.exe", "gswin32c.exe"] {
+                let exe = ver_dir.join("bin").join(name);
+                if exe.exists() {
+                    let t = std::fs::metadata(&exe).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+                    let s = exe.to_string_lossy().to_string();
+                    let replace = match &best {
+                        None => true,
+                        Some((bt, _)) => t > *bt,
+                    };
+                    if replace {
+                        best = Some((t, s));
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, s)| s)
+}
+
+/// Ghostscript(gs) 실행 파일 경로 찾기
+fn find_gs_path() -> Option<String> {
+    // 1. ffmpeg와 동일: 실행 파일 옆 sidecar (향후 자동 배치 대비)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar = dir.join("gs");
+            if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
+                return sidecar.to_str().map(|s| s.to_string());
+            }
+        }
+    }
+    // 2. macOS homebrew / 일반 경로
+    let common_paths = [
+        "/opt/homebrew/bin/gs",
+        "/usr/local/bin/gs",
+        "/usr/bin/gs",
+    ];
+    for p in &common_paths {
+        if std::path::Path::new(p).exists() {
+            return Some(p.to_string());
+        }
+    }
+    // 3. macOS: brew --prefix ghostscript → .../bin/gs (GUI에서 PATH만으로는 못 찾는 경우)
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(brew) = find_brew_executable() {
+            if let Ok(out) = std::process::Command::new(&brew)
+                .args(["--prefix", "ghostscript"])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .output()
+            {
+                if out.status.success() {
+                    let prefix = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !prefix.is_empty() {
+                        let gs = format!("{prefix}/bin/gs");
+                        if std::path::Path::new(&gs).exists() {
+                            return Some(gs);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Windows: 공식 설치 경로 (PATH 없이도 탐색 — Tauri GUI는 시스템 PATH가 비어 있는 경우가 많음)
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(p) = find_gs_exe_in_windows_program_files() {
+            return Some(p);
+        }
+        for cmd in &["gswin64c", "gswin32c"] {
+            if std::process::Command::new(cmd)
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            {
+                return Some(cmd.to_string());
+            }
+        }
+    }
+    // 시스템 PATH
+    if std::process::Command::new("gs")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        return Some("gs".to_string());
+    }
+    None
+}
+
+// Ghostscript 설치 확인
+#[tauri::command]
+async fn check_gs() -> Result<bool, String> {
+    Ok(find_gs_path().is_some())
+}
+
+// Ghostscript 자동 설치 (macOS: brew, Windows: winget/choco)
+#[tauri::command]
+async fn install_gs() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let mut last_out: Option<std::process::Output> = None;
+
+            if let Some(brew) = find_brew_executable() {
+                let output = brew_install_ghostscript(&brew)
+                    .map_err(|e| format!("brew install 실행 실패: {}", e))?;
+                if output.status.success() && find_gs_path().is_some() {
+                    return Ok(());
+                }
+                last_out = Some(output);
+            }
+
+            let output2 = brew_install_ghostscript_via_path_script()
+                .map_err(|e| format!("brew install 실행 실패: {}", e))?;
+            if output2.status.success() && find_gs_path().is_some() {
+                return Ok(());
+            }
+            last_out = Some(output2);
+
+            let output3 = brew_install_ghostscript_via_login_shell()
+                .map_err(|e| format!("brew install 실행 실패: {}", e))?;
+            if output3.status.success() && find_gs_path().is_some() {
+                return Ok(());
+            }
+            last_out = Some(output3);
+
+            let out = last_out.unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if find_gs_path().is_some() {
+                return Ok(());
+            }
+            return Err(format!(
+                "Ghostscript 설치에 실패했습니다.\n\
+                 (Homebrew로 ghostscript 설치)\n\n\
+                 stdout:\n{}\n\nstderr:\n{}\n\n\
+                 터미널에서 `brew install ghostscript` 실행 후 다시 시도하거나,\n\
+                 Homebrew가 없다면 https://brew.sh 를 참고해 설치해 주세요.",
+                stdout.trim(),
+                stderr.trim()
+            ));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            // winget 시도 (패키지 ID: ArtifexSoftware.GhostScript — 공식 winget 저장소)
+            let winget_ok = std::process::Command::new("winget")
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+
+            let mut winget_log = String::new();
+            if winget_ok {
+                match std::process::Command::new("winget").args([
+                    "install",
+                    "--id",
+                    "ArtifexSoftware.GhostScript",
+                    "-e",
+                    "--accept-source-agreements",
+                    "--accept-package-agreements",
+                ]).output() {
+                    Ok(output) => {
+                        if !output.status.success() {
+                            winget_log = format!(
+                                "winget exit code {:?}\nstdout:\n{}\nstderr:\n{}",
+                                output.status.code(),
+                                String::from_utf8_lossy(&output.stdout).trim(),
+                                String::from_utf8_lossy(&output.stderr).trim(),
+                            );
+                        }
+                    }
+                    Err(e) => winget_log = format!("winget 실행 오류: {}", e),
+                }
+            }
+
+            // 설치 직후 또는 이미 설치된 경우: Program Files·PATH에서 gswin64c 탐색
+            if find_gs_path().is_some() {
+                return Ok(());
+            }
+
+            if !winget_ok {
+                return Err(
+                    "Ghostscript을 자동 설치할 수 없습니다.\n\n\
+                     winget이 없거나 사용할 수 없습니다.\n\
+                     PowerShell(관리자)에서:\n  winget install -e --id ArtifexSoftware.GhostScript\n\
+                     또는 https://www.ghostscript.com/releases/gsdnld.html 에서 설치한 뒤 앱을 다시 실행해 주세요."
+                        .to_string(),
+                );
+            }
+
+            return Err(format!(
+                "Ghostscript 실행 파일(gswin64c)을 찾을 수 없습니다.\n\n\
+                 winget 설치가 완료되지 않았거나, PATH에 등록되기 전일 수 있습니다.\n\n\
+                 {}\n\n\
+                 수동: PowerShell에서 `winget install -e --id ArtifexSoftware.GhostScript`를 실행하거나,\n\
+                 위 사이트에서 설치한 뒤 앱을 다시 시작해 주세요.",
+                if winget_log.is_empty() {
+                    "winget은 성공했으나 gswin64c.exe를 찾지 못했습니다.\n\
+                     `C:\\Program Files\\gs\\gs*\\bin\\gswin64c.exe` 경로를 확인해 주세요."
+                        .to_string()
+                } else {
+                    winget_log
+                }
+            ));
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            Err("이 플랫폼에서는 자동 설치가 지원되지 않습니다.".to_string())
+        }
+    })
+    .await
+    .map_err(|e| format!("설치 태스크 실패: {}", e))?
+}
+
+#[tauri::command]
+async fn compress_pdf(input: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let gs = find_gs_path().ok_or(
+            "Ghostscript(gs)이 설치되어 있지 않습니다.\n\n설치 방법:\n- macOS: brew install ghostscript\n- Windows: https://www.ghostscript.com/download.html".to_string()
+        )?;
+
+        // 고화질 압축 (Ghostscript PDFSETTINGS=printer)
+        let pdf_settings = "/printer";
+
+        let input_path = std::path::Path::new(&input);
+        let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
+        let output_path = find_unique_path(parent, stem, "_compressed", ".pdf");
+        let output_str = output_path.to_string_lossy().to_string();
+
+        let mut cmd = std::process::Command::new(&gs);
+        cmd.args([
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.4",
+            &format!("-dPDFSETTINGS={}", pdf_settings),
+            "-dNOPAUSE",
+            "-dBATCH",
+            "-dQUIET",
+            &format!("-sOutputFile={}", output_str),
+            &input,
+        ]);
+
+        // Windows: 콘솔 창 숨기기
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+
+        let output = cmd.output().map_err(|e| format!("Ghostscript 실행 실패: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let _ = std::fs::remove_file(&output_path);
+            return Err(format!("PDF 압축 실패: {}", stderr));
+        }
+
+        // 결과 파일이 원본보다 크면 의미 없음 → 경고 포함하여 반환
+        let orig_size = std::fs::metadata(&input).map(|m| m.len()).unwrap_or(0);
+        let comp_size = std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+
+        if comp_size >= orig_size {
+            let _ = std::fs::remove_file(&output_path);
+            return Err(format!("압축 결과가 원본({})보다 크거나 같아 취소되었습니다.", format_file_size(orig_size)));
+        }
+
+        Ok(output_str)
+    })
+    .await
+    .map_err(|e| format!("PDF 압축 실패: {}", e))?
+}
+
+fn format_file_size(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 { format!("{:.1} GB", bytes as f64 / 1_073_741_824.0) }
+    else if bytes >= 1_048_576 { format!("{:.1} MB", bytes as f64 / 1_048_576.0) }
+    else if bytes >= 1024 { format!("{:.1} KB", bytes as f64 / 1024.0) }
+    else { format!("{} B", bytes) }
+}
+
 // ─── 배경 제거 ───────────────────────────────────────────────────
 // 플러드 필 기반: 지정 색상 영역을 투명 처리. 경계에 색상 디컨태미네이션 적용.
 
@@ -1217,6 +1597,168 @@ fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<(
         }
     }
     Ok(())
+}
+
+/// copy_items와 동일한 대상 경로 결정 (실제로 복사할 (소스, 대상) 쌍만 수집)
+fn collect_copy_jobs(
+    sources: &[String],
+    dest: &std::path::Path,
+    overwrite: bool,
+) -> Result<Vec<(std::path::PathBuf, std::path::PathBuf)>, String> {
+    let mut jobs = Vec::new();
+    for source in sources {
+        let src_path = std::path::Path::new(source);
+        let file_name = src_path
+            .file_name()
+            .ok_or_else(|| format!("잘못된 경로: {}", source))?;
+        let mut dest_path = dest.join(file_name);
+
+        if dest_path.exists() && dest_path.canonicalize().ok() == src_path.canonicalize().ok() {
+            let stem = src_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let ext = src_path
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+            let is_dir = src_path.is_dir();
+            dest_path = get_copy_destination(dest, &stem, &ext, is_dir);
+        } else if dest_path.exists() && overwrite {
+            if dest_path.is_dir() {
+                std::fs::remove_dir_all(&dest_path)
+                    .map_err(|e| format!("기존 폴더 삭제 실패: {}", e))?;
+            } else {
+                std::fs::remove_file(&dest_path)
+                    .map_err(|e| format!("기존 파일 삭제 실패: {}", e))?;
+            }
+        } else if dest_path.exists() {
+            continue;
+        }
+        jobs.push((src_path.to_path_buf(), dest_path));
+    }
+    Ok(jobs)
+}
+
+fn count_files_to_copy(path: &std::path::Path) -> Result<u64, String> {
+    use walkdir::WalkDir;
+    if path.is_file() {
+        return Ok(1);
+    }
+    if !path.is_dir() {
+        return Ok(0);
+    }
+    let mut n = 0u64;
+    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CopyProgress {
+    percent: f32,
+    done_files: u64,
+    total_files: u64,
+    current_name: String,
+}
+
+fn copy_dir_recursive_with_progress(
+    src: &std::path::Path,
+    dest: &std::path::Path,
+    total_files: u64,
+    done: &mut u64,
+    on_progress: &tauri::ipc::Channel<CopyProgress>,
+) -> Result<(), String> {
+    std::fs::create_dir_all(dest).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())?.flatten() {
+        let dest_child = dest.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir_recursive_with_progress(&entry.path(), &dest_child, total_files, done, on_progress)?;
+        } else {
+            std::fs::copy(entry.path(), &dest_child)
+                .map_err(|e| format!("복사 실패: {}", e))?;
+            *done += 1;
+            let name = entry.file_name().to_string_lossy().to_string();
+            let pct = if total_files > 0 {
+                (*done as f32 / total_files as f32) * 100.0
+            } else {
+                100.0
+            };
+            let _ = on_progress.send(CopyProgress {
+                percent: pct.min(100.0),
+                done_files: *done,
+                total_files,
+                current_name: name,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 파일 단위 진행률(0~100%)을 Channel로 전송하는 복사 (클라우드 드라이브 등 대용량 복사용)
+#[tauri::command]
+async fn copy_items_with_progress(
+    sources: Vec<String>,
+    dest: String,
+    overwrite: Option<bool>,
+    on_progress: tauri::ipc::Channel<CopyProgress>,
+) -> Result<(), String> {
+    let overwrite = overwrite.unwrap_or(false);
+    let dest_path = std::path::PathBuf::from(dest);
+    let on_progress = on_progress.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let jobs = collect_copy_jobs(&sources, &dest_path, overwrite)?;
+        let mut total_files = 0u64;
+        for (src, _) in &jobs {
+            total_files += count_files_to_copy(src)?;
+        }
+
+        let _ = on_progress.send(CopyProgress {
+            percent: 0.0,
+            done_files: 0,
+            total_files,
+            current_name: String::new(),
+        });
+
+        let mut done = 0u64;
+        for (src, dest_one) in jobs {
+            if src.is_dir() {
+                copy_dir_recursive_with_progress(&src, &dest_one, total_files, &mut done, &on_progress)?;
+            } else {
+                std::fs::copy(&src, &dest_one)
+                    .map_err(|e| format!("복사 실패: {}", e))?;
+                done += 1;
+                let pct = if total_files > 0 {
+                    (done as f32 / total_files as f32) * 100.0
+                } else {
+                    100.0
+                };
+                let name = src
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let _ = on_progress.send(CopyProgress {
+                    percent: pct.min(100.0),
+                    done_files: done,
+                    total_files,
+                    current_name: name,
+                });
+            }
+        }
+
+        let _ = on_progress.send(CopyProgress {
+            percent: 100.0,
+            done_files: done,
+            total_files,
+            current_name: String::new(),
+        });
+
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("복사 작업 실패: {}", e))?
 }
 
 // 파일/폴더 복제 (같은 디렉토리에 " (복사)" 접미사)
@@ -3758,6 +4300,7 @@ pub fn run() {
         get_file_icon,
         check_duplicate_items,
         copy_items,
+        copy_items_with_progress,
         duplicate_items,
         move_items,
         delete_items,
@@ -3798,6 +4341,9 @@ pub fn run() {
         remove_white_bg_save,
         crop_image,
         save_annotated_image,
+        compress_pdf,
+        check_gs,
+        install_gs,
         get_font_info,
         read_font_bytes,
         merge_fonts,

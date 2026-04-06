@@ -25,6 +25,7 @@ interface FileCardProps {
   themeVars: ThemeVars | null;
   hideText?: boolean;
   tag?: string; // 폴더 태그 (프로젝트명)
+  isPending?: boolean; // 복사/이동 진행 중 (비활성 + 스피너 표시)
 }
 
 export default memo(function FileCard({
@@ -44,6 +45,7 @@ export default memo(function FileCard({
   themeVars,
   hideText = false,
   tag,
+  isPending = false,
 }: FileCardProps) {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -84,7 +86,7 @@ export default memo(function FileCard({
   // thumbnailSize 변경 시 디바운스(300ms) 후 새 해상도로 재요청 (빠른 줌 시 과부하 방지)
   // queuedInvoke로 동시성 제한 (최대 4개) → 대량 파일 표시 시 크래시 방지
   useEffect(() => {
-    if (!isVisible) return;
+    if (!isVisible || isPending) return;
 
     const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize;
     lastThumbnailSizeRef.current = thumbnailSize;
@@ -114,11 +116,11 @@ export default memo(function FileCard({
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, entry.file_type, entry.path, entry.modified, thumbnailSize, isPsd]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, thumbnailSize, isPsd]);
 
   // 화면에 보일 때 이미지 규격 조회 (이미지만, PSD 제외 - 성능)
   useEffect(() => {
-    if (!isVisible || entry.file_type !== 'image' || imageDims) return;
+    if (!isVisible || isPending || entry.file_type !== 'image' || imageDims) return;
 
     const { promise, cancel } = queuedInvoke<[number, number] | null>(
       'get_image_dimensions', { path: entry.path }
@@ -128,22 +130,24 @@ export default memo(function FileCard({
       .catch(() => {/* 취소 또는 실패 무시 */});
 
     return () => cancel();
-  }, [isVisible, entry.file_type, entry.path, isPsd]);
+  }, [isVisible, isPending, entry.file_type, entry.path, isPsd]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isPending) return; // 복사 진행 중 클릭 무시
     onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey);
-  }, [entry.path, onSelect]);
+  }, [entry.path, onSelect, isPending]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isPending) return; // 복사 진행 중 더블클릭 무시
     // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
     if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) {
       onOpenInNewTab(entry);
     } else {
       onOpen(entry);
     }
-  }, [entry, onOpen, onOpenInNewTab]);
+  }, [entry, onOpen, onOpenInNewTab, isPending]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -177,7 +181,8 @@ export default memo(function FileCard({
         backgroundColor: bg,
         border: `1px solid ${border}`,
         outline: 'none',
-        opacity: isCut ? 0.4 : 1,
+        opacity: isPending ? 0.5 : isCut ? 0.4 : 1,
+        pointerEvents: isPending ? 'none' : undefined,
       }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -235,6 +240,20 @@ export default memo(function FileCard({
           </div>
         )}
         {/* 폴더 태그 뱃지 */}
+        {/* 복사/이동 진행 중 서클 스피너 오버레이 */}
+        {isPending && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 'inherit' }}>
+            <svg
+              className="animate-spin"
+              style={{ width: Math.max(20, thumbnailSize * 0.3), height: Math.max(20, thumbnailSize * 0.3) }}
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+              <path d="M12 2a10 10 0 0 1 10 10" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          </div>
+        )}
         {tag && entry.is_dir && (
           <div
             className="absolute top-0.5 right-0.5 px-1 py-px rounded text-[8px] font-bold leading-tight truncate"

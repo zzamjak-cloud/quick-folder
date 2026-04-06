@@ -29,6 +29,8 @@ export function useModalStates() {
   const [fontMergePaths, setFontMergePaths] = useState<string[] | null>(null);
   // 폰트 미리보기 대상 경로
   const [fontPreviewPath, setFontPreviewPath] = useState<string | null>(null);
+  // PDF 미리보기 대상 경로
+  const [pdfPreviewPath, setPdfPreviewPath] = useState<string | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -43,5 +45,6 @@ export function useModalStates() {
     removeWhiteBgPaths, setRemoveWhiteBgPaths,
     fontMergePaths, setFontMergePaths,
     fontPreviewPath, setFontPreviewPath,
+    pdfPreviewPath, setPdfPreviewPath,
   };
 }

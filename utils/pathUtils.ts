@@ -29,6 +29,11 @@ export function getParentDir(path: string): string {
   return idx > 0 ? path.substring(0, idx) : path;
 }
 
+/** OS·GUI 간 경로 문자열 비교용 (슬래시 통일, 끝 슬래시 제거) */
+export function normalizeFsPath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
 // 클라우드 스토리지 경로 감지 (Google Drive, Dropbox, OneDrive, iCloud)
 export function isCloudPath(path: string): boolean {
   const lower = path.toLowerCase();

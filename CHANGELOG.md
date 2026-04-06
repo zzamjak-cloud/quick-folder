@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.17] - 2026-04-06
+
+### Added
+- **PDF 압축**: Ghostscript 기반 고화질 압축 (`-dPDFSETTINGS=/printer`), 우클릭에서 즉시 실행
+- **Ghostscript 자동 설치**: macOS Homebrew 경로·셸 폴백, Windows `winget` + `C:\Program Files\gs\...\bin\gswin64c.exe` 직접 탐색 (GUI PATH 이슈 완화)
+- **클립보드 대용량 복사 진행률**: `copy_items_with_progress` — 파일 개수 기준 0~100%, 현재 파일명 표시 (클라우드 드라이브 등)
+- **붙여넣기 진행 UI**: 복사 중 폴더·파일명, 퍼센트 바, OS 드래그앤드롭 복사에도 동일 표시
+
+### Changed
+- **PDF 압축 메뉴**: 저화질/중간/고화질 선택 제거, 고화질만 사용
+
+### Fixed
+- **macOS Ghostscript 설치**: `brew`가 PATH에 없을 때 `/opt/homebrew` 등에서 탐색
+- **복사 중 고스트 항목**: `pendingCopyPaths`가 FileGrid에 전달되지 않아 썸네일 반투명·스피너가 보이지 않던 문제
+- **경로 비교**: 붙여넣기 pending 해제 시 경로 정규화(`normalizeFsPath`)로 일치
+- **Windows Ghostscript**: `install_gs` 성공 후 실제 `gswin64c` 탐색 여부 검증, winget 실패 시 로그 안내
+
 ## [1.25.16] - 2026-04-06
 
 ### Fixed
