@@ -1,0 +1,86 @@
+name: Build Portable Tools
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-tools:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Ghostscript 포터블 패키지 ──────────────────────────────────
+      - name: Install Ghostscript via Chocolatey
+        run: choco install ghostscript -y
+
+      - name: Create Ghostscript portable ZIP
+        shell: pwsh
+        run: |
+          # 설치된 Ghostscript 루트 찾기
+          $gsRoot = Get-ChildItem "C:\Program Files\gs" |
+                    Sort-Object LastWriteTime -Descending |
+                    Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "GS Root: $gsRoot"
+
+          New-Item -ItemType Directory -Force -Path ./gs_portable/bin | Out-Null
+
+          # bin/ 내 모든 파일 복사 (gswin64c.exe, gsdll64.dll 등)
+          Copy-Item "$gsRoot\bin\*" ./gs_portable/bin/ -Force
+
+          # 리소스 디렉터리 복사 (PDF 처리에 필요)
+          foreach ($dir in @("lib", "Resource", "iccprofiles")) {
+            $src = "$gsRoot\$dir"
+            if (Test-Path $src) {
+              Copy-Item $src "./gs_portable/$dir" -Recurse -Force
+            }
+          }
+
+          Compress-Archive -Path "./gs_portable/*" -DestinationPath "ghostscript-portable-win64.zip" -Force
+          $sizeMB = [math]::Round((Get-Item ghostscript-portable-win64.zip).Length / 1MB, 1)
+          Write-Host "ghostscript-portable-win64.zip: ${sizeMB}MB"
+
+      # ── fonttools 포터블 패키지 ────────────────────────────────────
+      - name: Download python-build-standalone (Windows)
+        shell: pwsh
+        run: |
+          $url = "https://github.com/indygreg/python-build-standalone/releases/download/20250201/cpython-3.12.8+20250201-x86_64-pc-windows-msvc-install_only.tar.gz"
+          Invoke-WebRequest -Uri $url -OutFile python.tar.gz
+
+      - name: Extract Python and install fonttools
+        shell: pwsh
+        run: |
+          tar -xzf python.tar.gz
+          .\python\python.exe --version
+          .\python\python.exe -m pip install fonttools --no-warn-script-location
+          .\python\python.exe -c "import fontTools; print('fontTools OK:', fontTools.version)"
+
+      - name: Create fonttools portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "./python" -DestinationPath "python-fonttools-win64.zip" -Force
+          $sizeMB = [math]::Round((Get-Item python-fonttools-win64.zip).Length / 1MB, 1)
+          Write-Host "python-fonttools-win64.zip: ${sizeMB}MB"
+
+      # ── GitHub Releases 업로드 ────────────────────────────────────
+      - name: Delete existing release if present
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release delete portable-tools-v1 --yes 2>$null; $true
+
+      - name: Create release and upload assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release create portable-tools-v1 `
+            --title "Portable Tools v1 (Windows)" `
+            --notes "Windows 포터블 빌드: Ghostscript 10.x + Python 3.12.8 (fonttools 포함)" `
+            ghostscript-portable-win64.zip `
+            python-fonttools-win64.zip
