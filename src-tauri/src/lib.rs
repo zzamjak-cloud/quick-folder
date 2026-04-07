@@ -707,9 +707,15 @@ fn find_fonttools_sidecar_python() -> Option<std::path::PathBuf> {
     let root = fonttools_embed_root();
     #[cfg(target_os = "windows")]
     {
-        let p = root.join("python.exe");
-        if p.exists() {
-            return Some(p);
+        // 새 방식: python-build-standalone → python/python.exe
+        let p_standalone = root.join("python").join("python.exe");
+        if p_standalone.exists() && python_exe_responds(&p_standalone) {
+            return Some(p_standalone);
+        }
+        // 구 방식: embeddable → python.exe (하위 호환)
+        let p_embed = root.join("python.exe");
+        if p_embed.exists() && python_exe_responds(&p_embed) {
+            return Some(p_embed);
         }
     }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -952,53 +958,49 @@ fn python_has_fonttools(python: &str) -> bool {
     cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
-/// Windows: 공식 embeddable ZIP + get-pip + pip install fonttools (앱 폴더 `python_fonttools_embed`)
+/// Windows: GitHub Releases 포터블 패키지(python-build-standalone + fonttools)를 다운로드·추출
 #[cfg(target_os = "windows")]
 fn ensure_windows_fonttools_embed() -> Result<(), String> {
-    const ZIP_NAME: &str = "python-3.12.8-embed-amd64.zip";
-    const URL: &str = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip";
-    const GET_PIP_URL: &str = "https://bootstrap.pypa.io/get-pip.py";
+    const URL: &str = "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/python-fonttools-win64.zip";
+    const ZIP_NAME: &str = "python-fonttools-win64.zip";
 
     let root = fonttools_embed_root();
-    let py_exe = root.join("python.exe");
+    let py_exe = root.join("python").join("python.exe");
 
-    if py_exe.exists() && python_exe_responds(&py_exe) && python_has_fonttools(py_exe.to_str().unwrap_or("")) {
+    // 이미 설치된 경우 스킵
+    if py_exe.exists()
+        && python_exe_responds(&py_exe)
+        && python_has_fonttools(py_exe.to_str().unwrap_or(""))
+    {
         return Ok(());
     }
 
+    // 기존 디렉터리 정리 후 재생성
     if root.exists() {
-        let _ = std::fs::remove_dir_all(&root);
+        std::fs::remove_dir_all(&root).map_err(|e| e.to_string())?;
     }
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
 
+    // GitHub Releases에서 포터블 패키지 다운로드 (python-build-standalone + fonttools 포함)
     let zip_path = root.join(ZIP_NAME);
-    ureq_download_to_path(URL, 40 * 1024 * 1024, &zip_path)?;
-    extract_zip_to_dir(&zip_path, &root)?;
+    ureq_download_to_path(URL, 200 * 1024 * 1024, &zip_path)
+        .map_err(|e| format!("fonttools 포터블 패키지 다운로드 실패: {e}"))?;
+
+    // ZIP 추출 → root/python/python.exe 생성
+    extract_zip_to_dir(&zip_path, &root)
+        .map_err(|e| format!("fonttools 포터블 패키지 압축 해제 실패: {e}"))?;
     let _ = std::fs::remove_file(&zip_path);
 
-    windows_embed_enable_import_site(&root)?;
-
-    let get_pip = root.join("get-pip.py");
-    ureq_download_to_path(GET_PIP_URL, 8 * 1024 * 1024, &get_pip)?;
-
-    let out = windows_run_embed_python_cmd(&py_exe, &root, &["get-pip.py"])?;
-    if !out.status.success() {
-        return Err(format!(
-            "get-pip 실패:\n{}",
-            String::from_utf8_lossy(&out.stderr)
-        ));
+    // 설치 확인
+    if !py_exe.exists() || !python_exe_responds(&py_exe) {
+        return Err(
+            "fonttools 포터블 패키지 추출 후 python.exe를 찾지 못했습니다.".to_string(),
+        );
     }
-
-    let out2 = windows_run_embed_python_cmd(&py_exe, &root, &["-m", "pip", "install", "fonttools"])?;
-    if !out2.status.success() {
-        return Err(format!(
-            "pip install fonttools 실패:\n{}",
-            String::from_utf8_lossy(&out2.stderr)
-        ));
-    }
-
     if !python_has_fonttools(py_exe.to_str().unwrap_or("")) {
-        return Err("sidecar Python에 fonttools를 불러올 수 없습니다.".to_string());
+        return Err(
+            "fonttools 패키지 로드 실패 — 포터블 패키지가 손상됐을 수 있습니다.".to_string(),
+        );
     }
     Ok(())
 }
