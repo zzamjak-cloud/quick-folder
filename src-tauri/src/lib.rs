@@ -1519,6 +1519,35 @@ fn windows_choco_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Windows: GitHub Releases에서 Ghostscript 포터블 ZIP 다운로드 후 gs_sidecar/에 추출
+#[cfg(target_os = "windows")]
+fn windows_download_gs_portable() -> Result<(), String> {
+    const URL: &str = "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-win64.zip";
+    const ZIP_NAME: &str = "ghostscript-portable-win64.zip";
+
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe_dir = exe
+        .parent()
+        .ok_or_else(|| "실행 파일 디렉터리를 찾을 수 없습니다.".to_string())?;
+    let sidecar_dir = exe_dir.join("gs_sidecar");
+
+    // 기존 디렉터리 정리
+    if sidecar_dir.exists() {
+        std::fs::remove_dir_all(&sidecar_dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(&sidecar_dir).map_err(|e| e.to_string())?;
+
+    let zip_path = sidecar_dir.join(ZIP_NAME);
+    ureq_download_to_path(URL, 200 * 1024 * 1024, &zip_path)
+        .map_err(|e| format!("Ghostscript 포터블 패키지 다운로드 실패: {e}"))?;
+
+    extract_zip_to_dir(&zip_path, &sidecar_dir)
+        .map_err(|e| format!("Ghostscript 포터블 패키지 압축 해제 실패: {e}"))?;
+    let _ = std::fs::remove_file(&zip_path);
+
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn windows_winget_install_ghostscript() -> std::io::Result<std::process::Output> {
     use std::os::windows::process::CommandExt;
@@ -1572,6 +1601,15 @@ fn ensure_ghostscript_installed_inner() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         let mut logs: Vec<String> = Vec::new();
+
+        // 1. GitHub Releases 포터블 패키지 (가장 안정적, winget/choco 불필요)
+        match windows_download_gs_portable() {
+            Ok(()) => {}
+            Err(e) => logs.push(format!("포터블 패키지 다운로드: {e}")),
+        }
+        if find_gs_path().is_some() {
+            return Ok(());
+        }
 
         if windows_winget_available() {
             match windows_winget_install_ghostscript() {
@@ -1706,6 +1744,14 @@ fn find_gs_path() -> Option<String> {
                         return sidecar.to_str().map(|s| s.to_string());
                     }
                 }
+                // GitHub Releases 포터블 패키지 (gs_sidecar/bin/)
+                let portable_bin = dir.join("gs_sidecar").join("bin");
+                for name in ["gswin64c.exe", "gswin32c.exe"] {
+                    let p = portable_bin.join(name);
+                    if p.exists() && std::fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false) {
+                        return p.to_str().map(|s| s.to_string());
+                    }
+                }
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -1820,6 +1866,18 @@ async fn compress_pdf(input: String) -> Result<String, String> {
         let output_str = output_path.to_string_lossy().to_string();
 
         let mut cmd = std::process::Command::new(&gs);
+        // 포터블 GS(gs_sidecar/bin/gswin64c.exe) 사용 시 lib/ 위치를 GS_LIB으로 명시.
+        // gswin64c.exe 위치: <root>/bin/gswin64c.exe → lib: <root>/lib/
+        // 시스템 설치(C:\Program Files\gs\...\bin\gswin64c.exe)도 동일 구조라 안전하게 적용 가능.
+        #[cfg(target_os = "windows")]
+        if let Some(gs_lib) = std::path::Path::new(&gs)
+            .parent()                   // bin/
+            .and_then(|p| p.parent())   // <root>/
+            .map(|root| root.join("lib"))
+            .filter(|p| p.exists())
+        {
+            cmd.env("GS_LIB", gs_lib);
+        }
         cmd.args([
             "-sDEVICE=pdfwrite",
             "-dCompatibilityLevel=1.4",
