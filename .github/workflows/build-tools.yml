@@ -76,9 +76,8 @@ jobs:
       - name: Delete existing release if present
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: |
-          gh release delete portable-tools-v1 --yes 2>$null; $true
+        shell: bash
+        run: gh release delete portable-tools-v1 --yes --cleanup-tag 2>/dev/null || true
 
       - name: Create release and upload assets
         env:
