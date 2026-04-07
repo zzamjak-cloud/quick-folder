@@ -35,7 +35,7 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
 
   // 줌 및 맞춤 모드 상태
   const [scale, setScale] = useState(1.0);
-  const [fitMode, setFitMode] = useState<FitMode>('width');
+  const [fitMode, setFitMode] = useState<FitMode>('page');
 
   // 로딩 상태
   const [loading, setLoading] = useState(true);

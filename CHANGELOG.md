@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.19] - 2026-04-07
+
+### Added
+- **Ghostscript 포터블**: GitHub Releases에서 사전 빌드된 포터블 ZIP 다운로드·추출 (NSIS 설치 없이 즉시 사용)
+- **fonttools 포터블**: Python + fonttools 포터블 ZIP을 GitHub Releases에서 다운로드·추출 (pip/winget 불필요)
+- **CI 워크플로 (`build-tools.yml`)**: NSIS 인스톨러를 7-zip으로 추출해 Ghostscript 포터블 패키지 자동 빌드
+
+### Changed
+- **PDF 미리보기**: pdfjs-dist Canvas 렌더링으로 교체 — 플랫폼 무관 동일 UI (페이지 탐색, 너비/페이지 맞춤, 줌)
+- **PDF 미리보기 기본값**: 맞춤 모드 기본값을 너비 맞춤 → 페이지 맞춤으로 변경
+
+### Fixed
+- **Windows Ghostscript 설치**: NSIS 무음 설치 시도 제거, winget `--scope user` 추가로 UAC 없이 설치
+
 ## [1.25.18] - 2026-04-06
 
 ### Added
