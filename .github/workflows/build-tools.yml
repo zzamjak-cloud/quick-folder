@@ -83,10 +83,10 @@ jobs:
       - name: Create release and upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
+        shell: bash
         run: |
-          gh release create portable-tools-v1 `
-            --title "Portable Tools v1 (Windows)" `
-            --notes "Windows 포터블 빌드: Ghostscript 10.x + Python 3.12.8 (fonttools 포함)" `
-            ghostscript-portable-win64.zip `
+          gh release create portable-tools-v1 \
+            --title "Portable Tools v1 (Windows)" \
+            --notes "Windows 포터블 빌드: Ghostscript 10.x + Python 3.12 (fonttools 포함)" \
+            ghostscript-portable-win64.zip \
             python-fonttools-win64.zip
