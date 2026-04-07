@@ -45,23 +45,29 @@ jobs:
           Write-Host "ghostscript-portable-win64.zip: ${sizeMB}MB"
 
       # ── fonttools 포터블 패키지 ────────────────────────────────────
-      - name: Download python-build-standalone (Windows)
-        shell: pwsh
-        run: |
-          $url = "https://github.com/indygreg/python-build-standalone/releases/download/20250201/cpython-3.12.8+20250201-x86_64-pc-windows-msvc-install_only.tar.gz"
-          Invoke-WebRequest -Uri $url -OutFile python.tar.gz
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Extract Python and install fonttools
-        shell: pwsh
-        run: |
-          tar -xzf python.tar.gz
-          .\python\python.exe --version
-          .\python\python.exe -m pip install fonttools --no-warn-script-location
-          .\python\python.exe -c "import fontTools; print('fontTools OK:', fontTools.version)"
+      - name: Install fonttools
+        run: pip install fonttools
 
-      - name: Create fonttools portable ZIP
+      - name: Verify fonttools
+        run: python -c "import fontTools; print('fontTools OK:', fontTools.version)"
+
+      - name: Package Python + fonttools portable ZIP
         shell: pwsh
         run: |
+          # GitHub Actions Python 설치 경로 확인
+          $py = (python -c "import sys; print(sys.executable)")
+          $pyDir = Split-Path $py -Parent
+          Write-Host "Python dir: $pyDir"
+
+          # 앱이 <root>/python/python.exe 를 기대하므로 python/ 하위에 복사
+          New-Item -ItemType Directory -Force -Path ./python | Out-Null
+          Copy-Item "$pyDir\*" ./python/ -Recurse -Force
+
           Compress-Archive -Path "./python" -DestinationPath "python-fonttools-win64.zip" -Force
           $sizeMB = [math]::Round((Get-Item python-fonttools-win64.zip).Length / 1MB, 1)
           Write-Host "python-fonttools-win64.zip: ${sizeMB}MB"
