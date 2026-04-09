@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.20] - 2026-04-10
+
+### Added
+- **JSON 뷰어 편집 기능**: JSON 파일 미리보기에서 키(key)와 값(value) 직접 편집 가능
+  - 편집 모드: 키 이름 클릭으로 수정, 값 타입별 입력 필드 제공
+  - 문자열/숫자/불리언 값 실시간 편집
+  - 중복 키 이름 자동 검증
+  - 저장/취소 버튼으로 파일 반영 또는 되돌리기
+- **JSONC(주석 포함 JSON) 지원**: tsconfig.json 등 주석이 포함된 JSON 파일 자동 파싱
+  - 한 줄 주석(`//`) 및 블록 주석(`/* */`) 제거 후 파싱
+  - `tsconfig.app.json`, `tsconfig.node.json` 등 정상 표시
+
+### Changed
+- **JSON 파일 기본 동작**: Enter 키 또는 더블클릭 시 JSON 뷰어로 열기 (이전: OS 기본 텍스트 에디터)
+- **JSON 뷰어 파일명 표시**: 확장자 제외한 파일명만 표시 (예: `tsconfig.app` 대신 `tsconfig`)
+
+### Fixed
+- **JSON 파일 미리보기 오류**: 파일명에 점이 여러 개 포함된 경우(`.app.json`) 정상 인식
+
 ## [1.25.19] - 2026-04-07
 
 ### Added

@@ -325,6 +325,9 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           } else if (/\.pdf$/i.test(entry.name)) {
             // PDF 파일: 내장 PDF 뷰어 모달로 미리보기
             setPdfPreviewPath(entry.path);
+          } else if (/\.json$/i.test(entry.name)) {
+            // JSON 파일: JSON 뷰어로 미리보기
+            preview.handlePreviewJson(entry.path);
           } else {
             previewFile(entry);
           }
@@ -550,11 +553,52 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         const current = focusedIndex;
         let next = current;
 
-        // 경계에서 멈추기: 이동 가능한 경우에만 이동
+        // 좌우 이동: 단순히 인덱스 ±1
         if (e.key === 'ArrowRight' && current < entries.length - 1) next = current + 1;
         else if (e.key === 'ArrowLeft' && current > 0) next = current - 1;
-        else if (e.key === 'ArrowDown' && current + cols <= entries.length - 1) next = current + cols;
-        else if (e.key === 'ArrowUp' && current - cols >= 0) next = current - cols;
+        // 위아래 이동: DOM 기반 행 위치 계산 (type별 정렬 구분선 대응)
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          const container = gridRef.current;
+          if (!container) return;
+          const currentEl = container.querySelector(`[data-file-path="${CSS.escape(entries[current].path)}"]`);
+          if (!currentEl) return;
+
+          // grid 뷰: 현재 항목의 row 위치를 기준으로 다음 row의 항목 찾기
+          if (viewMode === 'grid') {
+            const currentRect = currentEl.getBoundingClientRect();
+            const allEls = Array.from(container.querySelectorAll('[data-file-path]'));
+
+            if (e.key === 'ArrowDown') {
+              // 현재 항목보다 아래에 있고, 세로 위치가 현재보다 큰 항목 중 가장 가까운 것
+              const below = allEls
+                .map((el, idx) => ({ el, idx, rect: el.getBoundingClientRect() }))
+                .filter(({ rect }) => rect.top > currentRect.top + 10) // 현재 행보다 확실히 아래
+                .sort((a, b) => {
+                  // 1차: 세로 위치 (가장 가까운 행)
+                  const rowDiff = Math.abs(a.rect.top - currentRect.top) - Math.abs(b.rect.top - currentRect.top);
+                  if (Math.abs(rowDiff) > 5) return rowDiff;
+                  // 2차: 가로 위치 (현재 항목과 가장 가까운 열)
+                  return Math.abs(a.rect.left - currentRect.left) - Math.abs(b.rect.left - currentRect.left);
+                });
+              if (below.length > 0) next = below[0].idx;
+            } else {
+              // 위로 이동
+              const above = allEls
+                .map((el, idx) => ({ el, idx, rect: el.getBoundingClientRect() }))
+                .filter(({ rect }) => rect.top < currentRect.top - 10) // 현재 행보다 확실히 위
+                .sort((a, b) => {
+                  const rowDiff = Math.abs(a.rect.top - currentRect.top) - Math.abs(b.rect.top - currentRect.top);
+                  if (Math.abs(rowDiff) > 5) return rowDiff;
+                  return Math.abs(a.rect.left - currentRect.left) - Math.abs(b.rect.left - currentRect.left);
+                });
+              if (above.length > 0) next = above[0].idx;
+            }
+          } else {
+            // list/details 뷰: 단순히 인덱스 ±1
+            if (e.key === 'ArrowDown' && current < entries.length - 1) next = current + 1;
+            else if (e.key === 'ArrowUp' && current > 0) next = current - 1;
+          }
+        }
 
         setFocusedIndex(next);
 

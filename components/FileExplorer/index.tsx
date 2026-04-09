@@ -152,7 +152,8 @@ export default function FileExplorer({
     const isImage = entry.file_type === 'image' || /\.psd$/i.test(entry.name);
     const isPsb = /\.psb$/i.test(entry.name);
     const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
-    const isText = TEXT_PREVIEW_EXTS.has(ext);
+    const isJson = ext === 'json';
+    const isText = TEXT_PREVIEW_EXTS.has(ext) && !isJson; // JSON은 전용 뷰어 사용
 
     // 같은 타입이면 closeAll 없이 직접 교체 (깜빡임 방지)
     if (isVideo) {
@@ -168,6 +169,9 @@ export default function FileExplorer({
       } else {
         preview.handlePreviewImage(entry.path);
       }
+    } else if (isJson) {
+      if (!preview.previewJsonPath) preview.closeAllPreviews();
+      preview.handlePreviewJson(entry.path);
     } else if (isText) {
       if (!preview.previewTextPath) preview.closeAllPreviews();
       preview.handlePreviewText(entry.path);
@@ -505,13 +509,20 @@ export default function FileExplorer({
       // 동영상은 내장 플레이어로 재생
       preview.setVideoPlayerPath(entry.path);
     } else {
+      // JSON 파일: JSON 뷰어로 미리보기
+      const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
+      if (ext === 'json') {
+        preview.handlePreviewJson(entry.path);
+        return;
+      }
+      // 그 외 파일: OS 기본 앱으로 열기
       try {
         await invoke('open_folder', { path: entry.path });
       } catch (e) {
         console.error('파일 열기 실패:', e);
       }
     }
-  }, [handleNavigateTo]);
+  }, [handleNavigateTo, preview]);
 
   // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
   const openEntryInNewTab = useCallback((entry: FileEntry) => {
@@ -1888,10 +1899,16 @@ function TagInputDialog({ defaultName, themeVars, onConfirm, onCancel }: {
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={e => {
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              if (e.key === 'Enter' && value.trim()) onConfirm(value.trim());
-              if (e.key === 'Escape') onCancel();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (value.trim()) onConfirm(value.trim());
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancel();
+              }
             }}
             autoFocus
           />
