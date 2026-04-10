@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.25] - 2026-04-10
+
+### Changed
+- **FFmpeg 자동 다운로드 개선**: 기능 사용 시점에 FFmpeg가 없으면 자동으로 다운로드 시도
+  - 백그라운드 설치 실패 시에도 동작 보장
+  - 상세 디버깅 로그 추가 (설치 경로, 다운로드 진행, 압축 해제 상태)
+  - Windows: `%LOCALAPPDATA%\com.quickfolder.widget\ffmpeg\` 경로 검증 강화
+
+### Fixed
+- **Windows FFmpeg 경로 감지 강화**: 다운로드 후 파일을 찾지 못하던 문제에 대한 상세 로그 추가
+
 ## [1.25.24] - 2026-04-10
 
 ### Added

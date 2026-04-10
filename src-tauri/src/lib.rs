@@ -3874,6 +3874,55 @@ async fn check_ffmpeg() -> Result<bool, String> {
     Ok(find_ffmpeg_path().is_some())
 }
 
+// FFmpeg 경로를 가져오되, 없으면 자동으로 다운로드 시도
+fn get_or_download_ffmpeg() -> Result<std::path::PathBuf, String> {
+    if let Some(path) = find_ffmpeg_path() {
+        eprintln!("✅ FFmpeg 발견: {:?}", path);
+        return Ok(path);
+    }
+
+    eprintln!("⚠️ FFmpeg를 찾을 수 없습니다. 자동 다운로드를 시도합니다...");
+
+    // Windows: 포터블 다운로드 시도
+    #[cfg(target_os = "windows")]
+    {
+        match windows_download_ffmpeg_portable() {
+            Ok(_) => eprintln!("✅ FFmpeg 다운로드 완료"),
+            Err(e) => {
+                eprintln!("❌ FFmpeg 다운로드 실패: {}", e);
+                return Err(format!("FFmpeg 다운로드 실패: {}. 수동으로 다운로드해주세요.", e));
+            }
+        }
+
+        if let Some(path) = find_ffmpeg_path() {
+            eprintln!("✅ 다운로드된 FFmpeg 발견: {:?}", path);
+            return Ok(path);
+        } else {
+            // 디버깅: 예상 경로 확인
+            if let Some(data_dir) = dirs::data_local_dir() {
+                let portable_path = data_dir.join("com.quickfolder.widget").join("ffmpeg");
+                eprintln!("❌ 예상 경로에 FFmpeg 없음: {:?}", portable_path);
+                eprintln!("📂 디렉토리 존재: {}", portable_path.exists());
+                if portable_path.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&portable_path) {
+                        eprintln!("📁 디렉토리 내용:");
+                        for entry in entries.flatten() {
+                            eprintln!("  - {:?}", entry.path());
+                        }
+                    }
+                }
+            }
+            return Err("FFmpeg 다운로드 완료했지만 파일을 찾을 수 없습니다. 앱을 재시작해주세요.".to_string());
+        }
+    }
+
+    // macOS/Linux: 시스템 설치 안내
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("ffmpeg를 찾을 수 없습니다. 시스템에 ffmpeg를 설치해주세요. (brew install ffmpeg)".to_string())
+    }
+}
+
 // --- ffmpeg 자동 다운로드 (첫 실행 시) ---
 #[cfg(target_os = "windows")]
 fn windows_download_ffmpeg_portable() -> Result<(), String> {
@@ -3882,27 +3931,76 @@ fn windows_download_ffmpeg_portable() -> Result<(), String> {
     let app_dir = dirs::data_local_dir()
         .ok_or("로컬 데이터 디렉토리 없음")?
         .join("com.quickfolder.widget");
-    std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+
+    eprintln!("📂 FFmpeg 설치 디렉토리: {:?}", app_dir);
+
+    std::fs::create_dir_all(&app_dir).map_err(|e| {
+        eprintln!("❌ 디렉토리 생성 실패: {}", e);
+        e.to_string()
+    })?;
 
     let zip_path = app_dir.join("ffmpeg-portable-win64.zip");
     let extract_dir = app_dir.join("ffmpeg");
+    let ffmpeg_exe = extract_dir.join("ffmpeg.exe");
+
+    eprintln!("📦 ZIP 경로: {:?}", zip_path);
+    eprintln!("📁 압축 해제 경로: {:?}", extract_dir);
+    eprintln!("🎯 최종 실행파일 경로: {:?}", ffmpeg_exe);
 
     // 이미 설치되어 있으면 스킵
-    if extract_dir.join("ffmpeg.exe").exists() {
+    if ffmpeg_exe.exists() {
+        eprintln!("✅ FFmpeg 이미 설치됨 (스킵)");
         return Ok(());
     }
 
     // ZIP 다운로드
+    eprintln!("⬇️ FFmpeg 다운로드 시작: {}", URL);
     ureq_download_to_path(URL, 200 * 1024 * 1024, &zip_path)
-        .map_err(|e| format!("ffmpeg 다운로드 실패: {}", e))?;
+        .map_err(|e| {
+            eprintln!("❌ 다운로드 실패: {}", e);
+            format!("ffmpeg 다운로드 실패: {}", e)
+        })?;
+
+    eprintln!("✅ 다운로드 완료: {} bytes",
+        std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0));
 
     // ZIP 압축 해제
-    let file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    archive.extract(&extract_dir).map_err(|e| e.to_string())?;
+    eprintln!("📂 압축 해제 시작...");
+    let file = std::fs::File::open(&zip_path).map_err(|e| {
+        eprintln!("❌ ZIP 파일 열기 실패: {}", e);
+        e.to_string()
+    })?;
+
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        eprintln!("❌ ZIP 아카이브 생성 실패: {}", e);
+        e.to_string()
+    })?;
+
+    eprintln!("📦 ZIP 파일 내용: {} 개 항목", archive.len());
+
+    archive.extract(&extract_dir).map_err(|e| {
+        eprintln!("❌ 압축 해제 실패: {}", e);
+        e.to_string()
+    })?;
+
+    eprintln!("✅ 압축 해제 완료");
+
+    // 압축 해제 결과 확인
+    if ffmpeg_exe.exists() {
+        let size = std::fs::metadata(&ffmpeg_exe).map(|m| m.len()).unwrap_or(0);
+        eprintln!("✅ ffmpeg.exe 생성 확인: {} bytes", size);
+    } else {
+        eprintln!("⚠️ ffmpeg.exe를 찾을 수 없습니다. 압축 해제된 파일 목록:");
+        if let Ok(entries) = std::fs::read_dir(&extract_dir) {
+            for entry in entries.flatten() {
+                eprintln!("  - {:?}", entry.path());
+            }
+        }
+    }
 
     // ZIP 파일 삭제
     let _ = std::fs::remove_file(&zip_path);
+    eprintln!("🗑️ 임시 ZIP 파일 삭제");
 
     Ok(())
 }
@@ -3950,8 +4048,7 @@ async fn compress_video(
     let output_str = output_path.to_string_lossy().to_string();
 
     // ffmpeg 경로 결정 (sidecar → 시스템 PATH 순)
-    let ffmpeg_path = find_ffmpeg_path()
-        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+    let ffmpeg_path = get_or_download_ffmpeg()?;
 
     // 품질별 CRF 설정: low(보통)=높은CRF, medium(좋은)=중간CRF, high(최고)=낮은CRF
     // macOS: H.265(HEVC), Windows: H.264(AVC) — WebView2 HEVC 미지원
@@ -4098,8 +4195,7 @@ async fn trim_video(
     let output_path = find_unique_path(parent, &stem, "_trim", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path()
-        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+    let ffmpeg_path = get_or_download_ffmpeg()?;
 
     // 구간 길이 (초) — 진행률 계산 기준
     let duration = (end_sec - start_sec).max(0.001) as f32;
@@ -4209,8 +4305,7 @@ async fn cut_video(
     let output_path = find_unique_path(parent, &stem, "_cut", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path()
-        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+    let ffmpeg_path = get_or_download_ffmpeg()?;
 
     // 임시 디렉토리 생성 (프로세스 ID 포함으로 충돌 방지)
     let pid = std::process::id();
@@ -4379,8 +4474,7 @@ async fn concat_videos(
     let output_path = find_unique_path(parent, &stem, "_merged", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path()
-        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+    let ffmpeg_path = get_or_download_ffmpeg()?;
 
     // 임시 concat 리스트 파일 생성
     let pid = std::process::id();
@@ -4519,8 +4613,7 @@ async fn video_to_gif(
     let output_path = find_unique_path(parent, &stem, "", ".gif");
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path()
-        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+    let ffmpeg_path = get_or_download_ffmpeg()?;
 
     // 구간 길이
     let duration = (end_sec - start_sec).max(0.001) as f32;
