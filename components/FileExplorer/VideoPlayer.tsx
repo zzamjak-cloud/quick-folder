@@ -4,6 +4,7 @@ import { X, Play, Pause } from 'lucide-react';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
 import VideoEditToolbar, { VideoEditToolbarHandle } from './VideoEditToolbar';
+import VideoCropOverlay from './VideoCropOverlay';
 
 interface VideoPlayerProps {
   path: string;
@@ -16,6 +17,7 @@ interface VideoPlayerProps {
 export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }: VideoPlayerProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
   const editToolbarRef = useRef<VideoEditToolbarHandle>(null);
   const [editMode, setEditMode] = useState(false);
   // 재생 상태
@@ -24,6 +26,17 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
   const [currentTime, setCurrentTime] = useState(0);
   // 전체 길이 (초)
   const [duration, setDuration] = useState(0);
+  // 크롭 영역 (원본 픽셀 좌표)
+  const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // 비디오 표시 영역 크기 (크롭 오버레이용)
+  const [videoRect, setVideoRect] = useState<{ width: number; height: number; left: number; top: number }>({
+    width: 0,
+    height: 0,
+    left: 0,
+    top: 0,
+  });
+  // 비디오 원본 크기
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 1920, height: 1080 });
 
   const videoSrc = convertFileSrc(path);
   const fileName = getFileName(path);
@@ -48,6 +61,51 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
     const s = Math.floor(sec % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  // 비디오 요소 크기 추적 (크롭 오버레이용)
+  useEffect(() => {
+    const updateVideoRect = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      const rect = video.getBoundingClientRect();
+      setVideoRect({
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+      });
+    };
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    // 비디오 로드 시 원본 크기 저장
+    const handleLoadedMetadata = () => {
+      setNaturalSize({
+        width: video.videoWidth,
+        height: video.videoHeight,
+      });
+      updateVideoRect();
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    window.addEventListener('resize', updateVideoRect);
+
+    // 편집 모드 진입 시 크기 업데이트
+    if (editMode) {
+      const timer = setTimeout(updateVideoRect, 100);
+      return () => {
+        clearTimeout(timer);
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        window.removeEventListener('resize', updateVideoRect);
+      };
+    }
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      window.removeEventListener('resize', updateVideoRect);
+    };
+  }, [editMode]);
 
   // 키보드 단축키 (캡처 단계: 다른 핸들러보다 먼저 실행)
   useEffect(() => {
@@ -170,20 +228,31 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
         ) : (
           // 편집 모드: 커스텀 컨트롤 + VideoEditToolbar
           <div className="flex flex-col items-center w-full gap-3">
-            {/* 비디오 (컨트롤 없음) */}
-            <video
-              ref={videoRef}
-              src={videoSrc}
-              autoPlay
-              className="max-w-[90vw] rounded-lg"
-              style={{ outline: 'none', maxHeight: '55vh' }}
-              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-              onLoadedMetadata={(e) => {
-                setDuration(e.currentTarget.duration);
-              }}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-            />
+            {/* 비디오 + 크롭 오버레이 */}
+            <div ref={videoContainerRef} style={{ position: 'relative', display: 'inline-block' }}>
+              <video
+                ref={videoRef}
+                src={videoSrc}
+                autoPlay
+                className="max-w-[90vw] rounded-lg"
+                style={{ outline: 'none', maxHeight: '55vh', display: 'block' }}
+                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => {
+                  setDuration(e.currentTarget.duration);
+                }}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+              />
+              {/* 크롭 오버레이 (편집 모드에서만 표시) */}
+              {videoRect.width > 0 && naturalSize.width > 0 && (
+                <VideoCropOverlay
+                  videoRect={videoRect}
+                  naturalSize={naturalSize}
+                  accentColor={themeVars?.accent ?? '#4ade80'}
+                  onCropChange={setCropRect}
+                />
+              )}
+            </div>
 
             {/* 커스텀 재생 컨트롤 */}
             <div
@@ -227,6 +296,7 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
               currentTime={currentTime}
               themeVars={themeVars}
               onFileChanged={onFileChanged}
+              cropRect={cropRect}
             />
           </div>
         )}

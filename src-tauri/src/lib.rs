@@ -583,8 +583,40 @@ fn app_sidecar_directory() -> Result<std::path::PathBuf, String> {
         .ok_or_else(|| "실행 파일 디렉터리를 알 수 없습니다.".to_string())
 }
 
-/// fonttools 전용 내장 Python 루트 (`python.exe` 또는 `python/bin/python3.x`)
+/// fonttools 전용 내장 Python 루트 (사용자 영구 디렉터리, 앱 업데이트 시에도 유지)
 fn fonttools_embed_root() -> std::path::PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: %LOCALAPPDATA%\QuickFolder\python_fonttools_embed
+        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+            return std::path::PathBuf::from(local_appdata)
+                .join("QuickFolder")
+                .join("python_fonttools_embed");
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        // macOS/Linux: ~/Library/Application Support/QuickFolder/python_fonttools_embed (macOS)
+        //              ~/.local/share/QuickFolder/python_fonttools_embed (Linux)
+        if let Ok(home) = std::env::var("HOME") {
+            #[cfg(target_os = "macos")]
+            return std::path::PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("QuickFolder")
+                .join("python_fonttools_embed");
+
+            #[cfg(target_os = "linux")]
+            return std::path::PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("QuickFolder")
+                .join("python_fonttools_embed");
+        }
+    }
+
+    // 폴백: 실행 파일 디렉터리 (이전 방식)
     app_sidecar_directory()
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
         .join("python_fonttools_embed")
@@ -607,6 +639,7 @@ fn ureq_download_to_path(url: &str, max_bytes: u64, dest: &std::path::Path) -> R
     Ok(())
 }
 
+#[allow(dead_code)]
 fn extract_zip_to_dir(zip_path: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("ZIP: {e}"))?;
@@ -960,6 +993,7 @@ fn python_has_fonttools(python: &str) -> bool {
 
 /// Windows: GitHub Releases 포터블 패키지(python-build-standalone + fonttools)를 다운로드·추출
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn ensure_windows_fonttools_embed() -> Result<(), String> {
     const URL: &str = "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/python-fonttools-win64.zip";
     const ZIP_NAME: &str = "python-fonttools-win64.zip";
@@ -1006,6 +1040,7 @@ fn ensure_windows_fonttools_embed() -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 fn ensure_windows_fonttools_embed() -> Result<(), String> {
     Ok(())
 }
@@ -1683,7 +1718,7 @@ fn ensure_ghostscript_installed_inner() -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let mut last_out: Option<std::process::Output> = None;
+        let mut _last_out: Option<std::process::Output> = None;
 
         if let Some(brew) = find_brew_executable() {
             let output = brew_install_ghostscript(&brew)
@@ -1691,7 +1726,7 @@ fn ensure_ghostscript_installed_inner() -> Result<(), String> {
             if output.status.success() && find_gs_path().is_some() {
                 return Ok(());
             }
-            last_out = Some(output);
+            _last_out = Some(output);
         }
 
         let output2 = brew_install_ghostscript_via_path_script()
@@ -1699,16 +1734,16 @@ fn ensure_ghostscript_installed_inner() -> Result<(), String> {
         if output2.status.success() && find_gs_path().is_some() {
             return Ok(());
         }
-        last_out = Some(output2);
+        _last_out = Some(output2);
 
         let output3 = brew_install_ghostscript_via_login_shell()
             .map_err(|e| format!("brew install 실행 실패: {}", e))?;
         if output3.status.success() && find_gs_path().is_some() {
             return Ok(());
         }
-        last_out = Some(output3);
+        _last_out = Some(output3);
 
-        let out = last_out.unwrap();
+        let out = _last_out.unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
         let stdout = String::from_utf8_lossy(&out.stdout);
         if find_gs_path().is_some() {
@@ -3963,6 +3998,7 @@ async fn compress_video(
 }
 
 // ffmpeg 시간 문자열 "HH:MM:SS.xx" → 초(f32) 파싱
+#[allow(dead_code)]
 fn parse_ffmpeg_time(time: &str) -> f32 {
     let parts: Vec<&str> = time.split(':').collect();
     if parts.len() == 3 {
@@ -3981,6 +4017,10 @@ async fn trim_video(
     input: String,
     start_sec: f64,
     end_sec: f64,
+    crop_x: Option<i32>,
+    crop_y: Option<i32>,
+    crop_w: Option<i32>,
+    crop_h: Option<i32>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String, String> {
     let input_path = std::path::Path::new(&input);
@@ -3998,15 +4038,20 @@ async fn trim_video(
     let duration = (end_sec - start_sec).max(0.001) as f32;
 
     let mut cmd = std::process::Command::new(&ffmpeg_path);
-    cmd.args(&[
-        "-y",
-        "-i", &input,
-        "-ss", &start_sec.to_string(),
-        "-to", &end_sec.to_string(),
-        "-c", "copy",
-        "-progress", "pipe:1",
-        &output_str,
-    ]);
+    cmd.arg("-y").arg("-i").arg(&input);
+    cmd.arg("-ss").arg(start_sec.to_string());
+    cmd.arg("-to").arg(end_sec.to_string());
+
+    // 크롭 옵션이 있으면 필터 사용, 없으면 스트림 복사
+    if let (Some(x), Some(y), Some(w), Some(h)) = (crop_x, crop_y, crop_w, crop_h) {
+        cmd.arg("-vf").arg(format!("crop={}:{}:{}:{}", w, h, x, y));
+        cmd.arg("-c:a").arg("copy");
+    } else {
+        cmd.arg("-c").arg("copy");
+    }
+
+    cmd.arg("-progress").arg("pipe:1");
+    cmd.arg(&output_str);
 
     // Windows: 콘솔 창 숨기기
     #[cfg(target_os = "windows")]
@@ -4383,6 +4428,165 @@ async fn concat_videos(
 
     if !output_path.exists() {
         return Err("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string());
+    }
+
+    Ok(output_str)
+}
+
+// --- 동영상 구간을 GIF로 변환 ---
+#[tauri::command]
+async fn video_to_gif(
+    input: String,
+    start_sec: f64,
+    end_sec: f64,
+    crop_x: Option<i32>,
+    crop_y: Option<i32>,
+    crop_w: Option<i32>,
+    crop_h: Option<i32>,
+    on_progress: tauri::ipc::Channel<VideoProgress>,
+) -> Result<String, String> {
+    let input_path = std::path::Path::new(&input);
+    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+
+    let output_path = find_unique_path(parent, &stem, "", ".gif");
+    let output_str = output_path.to_string_lossy().to_string();
+
+    let ffmpeg_path = find_ffmpeg_path()
+        .ok_or_else(|| "ffmpeg를 찾을 수 없습니다. 다운로드를 먼저 실행해주세요.".to_string())?;
+
+    // 구간 길이
+    let duration = (end_sec - start_sec).max(0.001) as f32;
+
+    // 팔레트 생성 → GIF 인코딩 2단계 프로세스로 고품질 GIF 생성
+    let pid = std::process::id();
+    let tmp_dir = std::env::temp_dir().join(format!("qf_gif_{}", pid));
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| format!("임시 디렉토리 생성 실패: {}", e))?;
+    let palette_path = tmp_dir.join("palette.png");
+
+    // 필터 체인 구성: 크롭(옵션) → 스케일 → 팔레트/gif
+    let mut filters = Vec::new();
+
+    // 크롭 필터 (지정된 경우)
+    if let (Some(x), Some(y), Some(w), Some(h)) = (crop_x, crop_y, crop_w, crop_h) {
+        filters.push(format!("crop={}:{}:{}:{}", w, h, x, y));
+    }
+
+    // FPS 제한 + 해상도 축소 (GIF 용량 감소)
+    filters.push("fps=15".to_string());
+    filters.push("scale=480:-1:flags=lanczos".to_string());
+
+    let base_filter = filters.join(",");
+
+    // 1단계: 팔레트 생성 (128색으로 제한하여 용량 감소)
+    let palette_filter = format!("{},palettegen=max_colors=128:stats_mode=diff", base_filter);
+    let mut cmd1 = std::process::Command::new(&ffmpeg_path);
+    cmd1.args(&[
+        "-y",
+        "-ss", &start_sec.to_string(),
+        "-to", &end_sec.to_string(),
+        "-i", &input,
+        "-vf", &palette_filter,
+        &palette_path.to_string_lossy(),
+    ]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd1.creation_flags(0x08000000);
+    }
+
+    let status1 = cmd1
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("ffmpeg 실행 실패 (팔레트): {}", e))?
+        .wait()
+        .map_err(|e| format!("ffmpeg 대기 실패 (팔레트): {}", e))?;
+
+    if !status1.success() || !palette_path.exists() {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err("팔레트 생성 실패".to_string());
+    }
+
+    // 2단계: GIF 인코딩 (생성된 팔레트 사용, 디더링 최적화)
+    // dither=bayer:bayer_scale=3 - 적당한 디더링으로 파일 크기와 품질 균형
+    // diff_mode=rectangle - 프레임 간 차이만 기록하여 용량 감소
+    let gif_filter = format!("{} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle", base_filter);
+    let mut cmd2 = std::process::Command::new(&ffmpeg_path);
+    cmd2.args(&[
+        "-y",
+        "-ss", &start_sec.to_string(),
+        "-to", &end_sec.to_string(),
+        "-i", &input,
+        "-i", &palette_path.to_string_lossy(),
+        "-lavfi", &gif_filter,
+        "-progress", "pipe:1",
+        &output_str,
+    ]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd2.creation_flags(0x08000000);
+    }
+
+    let mut child = cmd2
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("ffmpeg 실행 실패 (GIF): {}", e))?;
+
+    let stdout = child.stdout.take();
+    let on_progress_clone = on_progress.clone();
+    let progress_thread = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                if let Some(val) = line.strip_prefix("out_time_ms=") {
+                    if let Ok(us) = val.parse::<i64>() {
+                        let secs = us as f32 / 1_000_000.0;
+                        let percent = (secs / duration * 100.0).min(100.0);
+                        let _ = on_progress_clone.send(VideoProgress {
+                            percent,
+                            speed: String::new(),
+                            fps: 0.0,
+                        });
+                    }
+                }
+            }
+        }
+    });
+
+    let stderr = child.stderr.take();
+    let stderr_thread = std::thread::spawn(move || {
+        let mut output = String::new();
+        if let Some(mut s) = stderr {
+            use std::io::Read;
+            let _ = s.read_to_string(&mut output);
+        }
+        output
+    });
+
+    let status = child.wait().map_err(|e| format!("ffmpeg 대기 실패: {}", e))?;
+    let _ = progress_thread.join();
+    let stderr_output = stderr_thread.join().unwrap_or_default();
+
+    // 임시 파일 정리
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+
+    if !status.success() {
+        let _ = std::fs::remove_file(&output_path);
+        let err_msg = stderr_output.lines()
+            .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
+            .last()
+            .unwrap_or("GIF 변환 실패")
+            .to_string();
+        return Err(err_msg);
+    }
+
+    if !output_path.exists() {
+        return Err("ffmpeg가 GIF 파일을 생성하지 않았습니다.".to_string());
     }
 
     Ok(output_str)
@@ -5074,6 +5278,81 @@ fn paste_image_from_clipboard(dest_dir: String) -> Result<Option<String>, String
     Ok(Some(file_path.to_string_lossy().to_string()))
 }
 
+// GIF 압축 (용량 감소)
+// quality: "high" (256색), "medium" (128색), "low" (64색)
+// reduce_size: true이면 해상도 50% 축소
+#[tauri::command]
+async fn compress_gif(path: String, quality: String, reduce_size: bool) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        use image::{AnimationDecoder, codecs::gif::{GifEncoder, Repeat}, imageops::FilterType};
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let input_path = std::path::Path::new(&path);
+        let parent = input_path.parent().ok_or("부모 디렉토리 없음")?;
+        let stem = input_path.file_stem()
+            .ok_or("파일명 없음")?
+            .to_string_lossy();
+
+        // 출력 경로: {파일명}_comp.gif
+        let output_path = find_unique_path(parent, &stem, "_comp", ".gif");
+
+        // GIF 로드 (애니메이션 프레임)
+        let file = File::open(&path).map_err(|e| format!("파일 열기 실패: {}", e))?;
+        let decoder = image::codecs::gif::GifDecoder::new(BufReader::new(file))
+            .map_err(|e| format!("GIF 디코딩 실패: {}", e))?;
+
+        let frames = decoder.into_frames().collect_frames()
+            .map_err(|e| format!("프레임 추출 실패: {}", e))?;
+
+        if frames.is_empty() {
+            return Err("GIF에 프레임이 없습니다".to_string());
+        }
+
+        // 출력 파일 생성
+        let out_file = File::create(&output_path)
+            .map_err(|e| format!("출력 파일 생성 실패: {}", e))?;
+
+        // 품질에 따른 압축 속도 설정
+        // high: speed 1 (느림, 256색), medium: speed 10 (보통, 128색), low: speed 30 (빠름, 64색)
+        let speed = match quality.as_str() {
+            "high" => 1,
+            "low" => 30,
+            _ => 10, // medium (기본값)
+        };
+
+        let mut encoder = GifEncoder::new_with_speed(out_file, speed);
+        encoder.set_repeat(Repeat::Infinite)
+            .map_err(|e| format!("반복 설정 실패: {}", e))?;
+
+        // 프레임 인코딩
+        for frame in frames.iter() {
+            let delay = frame.delay().numer_denom_ms();
+            let buffer = frame.buffer().clone();
+
+            // 크기 50% 축소 옵션
+            let final_buffer = if reduce_size {
+                let (w, h) = buffer.dimensions();
+                let new_w = (w / 2).max(10);
+                let new_h = (h / 2).max(10);
+                image::imageops::resize(&buffer, new_w, new_h, FilterType::Triangle)
+            } else {
+                buffer
+            };
+
+            encoder.encode_frame(image::Frame::from_parts(
+                final_buffer,
+                0, 0,
+                image::Delay::from_numer_denom_ms(delay.0, delay.1),
+            )).map_err(|e| format!("프레임 인코딩 실패: {}", e))?;
+        }
+
+        Ok(output_path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| format!("작업 실패: {}", e))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -5124,6 +5403,7 @@ pub fn run() {
         trim_video,
         cut_video,
         concat_videos,
+        video_to_gif,
         pixelate_preview,
         pixelate_image,
         sprite_sheet_preview,
@@ -5145,6 +5425,7 @@ pub fn run() {
         download_fonttools,
         install_fonttools,
         merge_fonts,
+        compress_gif,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

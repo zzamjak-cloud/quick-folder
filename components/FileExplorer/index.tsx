@@ -17,6 +17,7 @@ import SheetPackerModal from './SheetPackerModal';
 import SheetUnpackModal from './SheetUnpackModal';
 import MarkdownEditor from './MarkdownEditor';
 import FontPreviewModal from './FontPreviewModal';
+import GifCompressModal from './GifCompressModal';
 import PdfPreviewModal from './PdfPreviewModal';
 import FontMergeModal from './FontMergeModal';
 import StatusBar from './StatusBar';
@@ -898,6 +899,16 @@ export default function FileExplorer({
           });
         }
 
+        // GIF 압축 (단일 GIF 선택 시)
+        if (isSingle && singleEntry && /\.gif$/i.test(singleEntry.name)) {
+          toolSection.items.push({
+            id: 'compress-gif',
+            icon: <Image size={13} />,
+            label: 'GIF 압축',
+            onClick: () => modals.setGifCompressPath(singlePath),
+          });
+        }
+
         // 폰트 병합 (폰트 2개 선택 시)
         {
           const fontPaths = paths.filter(p => /\.(ttf|otf|woff|woff2|ttc)$/i.test(p));
@@ -1707,6 +1718,19 @@ export default function FileExplorer({
           paths={modals.removeWhiteBgPaths}
           onClose={() => modals.setRemoveWhiteBgPaths(null)}
           onApply={fileOps.handleRemoveWhiteBgApply}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* GIF 압축 모달 */}
+      {modals.gifCompressPath && (
+        <GifCompressModal
+          filePath={modals.gifCompressPath}
+          onClose={() => modals.setGifCompressPath(null)}
+          onSuccess={() => {
+            if (currentPath) loadDirectory(currentPath);
+          }}
+          onError={(err) => console.error('GIF 압축 실패:', err)}
           themeVars={themeVars}
         />
       )}

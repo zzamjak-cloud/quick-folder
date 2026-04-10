@@ -1,0 +1,182 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1775478150784,
+  "projectRoot": "/Users/woody/Desktop/AI/QuickFolder/quick-folder",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "19.2.3",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.2.3",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "6.2.0",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "tauri": "tauri",
+      "preview": "vite preview",
+      "build:windows": "npm run tauri build -- --target x86_64-pc-windows-msvc"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "components",
+      "docs",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "components": {
+      "path": "components",
+      "purpose": "UI components",
+      "fileCount": 7,
+      "lastAccessed": 1775478150683,
+      "keyFiles": [
+        "CategoryColumn.tsx",
+        "HelpModal.tsx",
+        "SortableShortcutItem.tsx",
+        "ThemeSettingsModal.tsx",
+        "ToastContainer.tsx"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1775478150759,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 0,
+      "lastAccessed": 1775478150761,
+      "keyFiles": []
+    },
+    "hooks": {
+      "path": "hooks",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1775478150762,
+      "keyFiles": [
+        "useAutoUpdate.ts",
+        "useCategoryManagement.ts",
+        "useTauriDragDrop.ts",
+        "useThemeManagement.ts",
+        "useWindowState.ts"
+      ]
+    },
+    "release": {
+      "path": "release",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1775478150765,
+      "keyFiles": [
+        "QuickFolder Widget-0.0.0-arm64-mac.dmg",
+        "QuickFolder Widget-0.0.0-arm64-mac.dmg.blockmap",
+        "QuickFolder Widget-0.0.0-arm64-mac.dmg.zip",
+        "QuickFolder Widget-0.0.0-arm64-win.exe",
+        "QuickFolder Widget-0.0.0-arm64-win.exe.blockmap"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1775478150766,
+      "keyFiles": []
+    },
+    "src-tauri": {
+      "path": "src-tauri",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1775478150767,
+      "keyFiles": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "Info.plist",
+        "build.rs",
+        "entitlements.plist"
+      ]
+    },
+    "utils": {
+      "path": "utils",
+      "purpose": "Utility functions",
+      "fileCount": 1,
+      "lastAccessed": 1775478150773,
+      "keyFiles": [
+        "pathUtils.ts"
+      ]
+    },
+    "dist/assets": {
+      "path": "dist/assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1775478150778,
+      "keyFiles": [
+        "index-DtG9KdhD.css",
+        "index-kGe4Z8cy.js"
+      ]
+    },
+    "src-tauri/docs": {
+      "path": "src-tauri/docs",
+      "purpose": "Documentation",
+      "fileCount": 0,
+      "lastAccessed": 1775478150779,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

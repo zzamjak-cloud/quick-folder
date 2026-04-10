@@ -1,0 +1,67 @@
+<h2>크롭 UX 디테일</h2>
+<p class="subtitle">선택 영역의 동작과 시각적 피드백</p>
+
+<div class="section">
+  <h3>선택 영역 표시</h3>
+  <div style="padding:16px;background:rgba(255,255,255,0.05);border-radius:8px;">
+    <div style="border:2px solid #555;border-radius:6px;background:#1a1a2e;position:relative;height:180px;overflow:hidden;">
+      <!-- 어두운 오버레이 (선택 영역 바깥) -->
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);"></div>
+      <!-- 선택 영역 (밝은 부분) -->
+      <div style="position:absolute;top:30px;left:40px;width:120px;height:80px;background:#2a2a4e;border:2px solid #4ade80;box-shadow:0 0 0 1px rgba(74,222,128,0.3);">
+        <!-- 크기 표시 -->
+        <div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);background:#333;padding:1px 6px;border-radius:3px;font-size:9px;color:#4ade80;white-space:nowrap;">640 × 480 px</div>
+        <!-- 모서리 핸들 -->
+        <div style="position:absolute;top:-4px;left:-4px;width:8px;height:8px;background:#4ade80;border-radius:1px;"></div>
+        <div style="position:absolute;top:-4px;right:-4px;width:8px;height:8px;background:#4ade80;border-radius:1px;"></div>
+        <div style="position:absolute;bottom:-4px;left:-4px;width:8px;height:8px;background:#4ade80;border-radius:1px;"></div>
+        <div style="position:absolute;bottom:-4px;right:-4px;width:8px;height:8px;background:#4ade80;border-radius:1px;"></div>
+      </div>
+      <!-- 저장 버튼 -->
+      <div style="position:absolute;bottom:10px;right:10px;display:flex;gap:6px;">
+        <span style="background:#4ade80;color:#000;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;">PNG 저장</span>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:#888;">
+      <div>• 바깥 영역은 반투명 어둡게 처리</div>
+      <div>• 선택 영역 테두리: 녹색 점선/실선</div>
+      <div>• 모서리 핸들로 크기 조절 가능</div>
+      <div>• 선택 영역 안을 드래그하면 이동</div>
+      <div>• 실제 픽셀 크기(px) 표시</div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>추가 기능 — 필요한 것만 골라주세요</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="ratio" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>비율 고정 (Shift 드래그)</h3>
+        <p>Shift 키를 누르고 드래그하면 정사각형(1:1) 비율 유지</p>
+      </div>
+    </div>
+    <div class="option" data-choice="esc" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>ESC로 선택 취소</h3>
+        <p>선택 영역이 있을 때 ESC → 선택 해제. 선택 없을 때 ESC → 모달 닫기.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="redraw" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>재선택 (빈 영역 다시 드래그)</h3>
+        <p>이미 선택이 있어도 빈 영역에서 새로 드래그하면 이전 선택 대체</p>
+      </div>
+    </div>
+    <div class="option" data-choice="none" onclick="toggleSelect(this)">
+      <div class="letter">4</div>
+      <div class="content">
+        <h3>기본 동작만 (추가 기능 없음)</h3>
+        <p>드래그 선택 + 저장 버튼만. 심플하게.</p>
+      </div>
+    </div>
+  </div>
+</div>

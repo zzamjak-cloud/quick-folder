@@ -115,6 +115,8 @@ export function useClipboard({
       }
       pendingPasteSelectRef.current = destPaths;
       loadDirectory(currentPath);
+      // 분할 뷰에서 다른 패널도 새로고침되도록 이벤트 발생
+      window.dispatchEvent(new Event('qf-files-changed'));
     } catch (e) {
       console.error('붙여넣기 실패:', e);
     } finally {

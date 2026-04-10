@@ -4,6 +4,7 @@ import VideoPlayer from './VideoPlayer';
 import ImageCropOverlay from './ImageCropOverlay';
 import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
 import PreviewToolbar from './PreviewToolbar';
+import JsonViewerModal from './JsonViewerModal';
 import { ThemeVars } from './types';
 import { DrawingTool } from '../../types';
 import { PreviewState } from './hooks/usePreview';
@@ -338,6 +339,16 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
             </pre>
           </div>
         </div>
+      )}
+
+      {/* JSON 뷰어 모달 */}
+      {preview.previewJsonPath && preview.previewJsonData && (
+        <JsonViewerModal
+          path={preview.previewJsonPath}
+          data={preview.previewJsonData}
+          onClose={preview.closeJsonPreview}
+          themeVars={themeVars}
+        />
       )}
     </>
   );

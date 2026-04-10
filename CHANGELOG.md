@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.21] - 2026-04-10
+## [1.25.22] - 2026-04-10
 
 ### Added
 - **GIF 압축 4가지 옵션**: 압축 품질(높음/보통/낮음) + 크기 50% 축소 선택 가능
@@ -13,11 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 보통 (128색): 균형잡힌 품질, 용량 중간 감소 (기본값)
   - 낮음 (64색): 낮은 품질, 용량 많이 감소
   - 크기 50% 축소: 해상도를 절반으로 축소하여 용량 추가 감소
-- **동영상→GIF 내보내기 압축 최적화**: FFmpeg 팔레트 128색 제한 + 디더링·프레임 차이 인코딩
+- **동영상 편집 - 크롭(영역 선택)**: Box 드래그로 영역 선택 후 자르기
+  - 좌우 화살표로 1프레임씩 이동하며 정확한 크롭 영역 설정
+  - 선택 영역 실시간 미리보기 + 픽셀 좌표 표시
+  - 원본 해상도 유지 또는 크기 조정 옵션
+- **동영상 편집 - GIF 내보내기**: 선택 구간을 GIF 애니메이션으로 변환
+  - FFmpeg 팔레트 128색 제한 + 디더링·프레임 차이 인코딩으로 최적화
+  - 크기 조정 옵션 (원본/50%/25%)
+  - 프레임 레이트 선택 (15/24/30 fps)
+- **동영상 편집 툴바**: 타임라인 썸네일 스트립 + 시작/끝점 마커 드래그
+  - 시작/끝 시간 직접 입력 필드
+  - 1프레임 단위 이동 버튼 (◄◄/►►)
+  - 선택 구간 내보내기/삭제/GIF 변환 버튼
 
 ### Fixed
 - **동영상→GIF 내보내기 팔레트 생성 실패**: FFmpeg 필터 문법 수정 (filter_complex → vf/lavfi)
 - **경고 정리**: 사용하지 않는 import·함수 제거 (50개 → 43개 경고)
+
+## [1.25.21] - 2026-04-10
+
+### Added
+- **GIF 압축 모달 기본 구조**: 품질 선택 UI 구현 (실제 기능은 1.25.22에서 완성)
+
+### Fixed
+- **버전 동기화**: package.json, tauri.conf.json, Cargo.toml 버전 일치
 
 ## [1.25.20] - 2026-04-10
 

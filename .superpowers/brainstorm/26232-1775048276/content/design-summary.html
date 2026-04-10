@@ -1,0 +1,79 @@
+<h2>이미지 크롭 기능 — 최종 디자인</h2>
+<p class="subtitle">확정된 설계를 정리했습니다. 확인 후 승인해주세요.</p>
+
+<div class="section">
+  <h3>1. 위치 & 진입</h3>
+  <div style="padding:14px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:13px;color:#ccc;">
+    <div>• <strong>모달 미리보기</strong>(PreviewModals.tsx)에서만 제공</div>
+    <div>• 별도 크롭 모드 없이, 이미지 위에서 <strong>바로 드래그</strong>하여 영역 선택</div>
+    <div>• JPG, PNG 이미지에만 적용 (PSD, 동영상, 텍스트 제외)</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2. 선택 영역 인터랙션</h3>
+  <div style="padding:14px;background:rgba(255,255,255,0.05);border-radius:8px;">
+    <div style="border:2px solid #444;border-radius:6px;background:#1a1a2e;position:relative;height:160px;overflow:hidden;">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);"></div>
+      <div style="position:absolute;top:25px;left:35px;width:130px;height:85px;background:#2a2a4e;border:2px solid #4ade80;">
+        <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);background:#333;padding:1px 6px;border-radius:3px;font-size:9px;color:#4ade80;white-space:nowrap;">640 × 480 px</div>
+        <div style="position:absolute;top:-4px;left:-4px;width:8px;height:8px;background:#4ade80;"></div>
+        <div style="position:absolute;top:-4px;right:-4px;width:8px;height:8px;background:#4ade80;"></div>
+        <div style="position:absolute;bottom:-4px;left:-4px;width:8px;height:8px;background:#4ade80;"></div>
+        <div style="position:absolute;bottom:-4px;right:-4px;width:8px;height:8px;background:#4ade80;"></div>
+      </div>
+      <div style="position:absolute;bottom:8px;right:8px;background:#4ade80;color:#000;padding:4px 14px;border-radius:5px;font-size:11px;font-weight:bold;">PNG 저장</div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:#aaa;line-height:1.8;">
+      <div>🖱 <strong>드래그</strong> — 새 선택 영역 생성 (기존 선택 대체)</div>
+      <div>↔️ <strong>모서리 핸들 드래그</strong> — 크기 조절</div>
+      <div>✋ <strong>영역 안 드래그</strong> — 선택 영역 이동</div>
+      <div>⇧ <strong>Shift + 드래그</strong> — 1:1 정사각형 비율 고정</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. 저장</h3>
+  <div style="padding:14px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:13px;color:#ccc;">
+    <div>• "PNG 저장" 버튼 클릭 시 Rust 백엔드에서 크롭 실행</div>
+    <div>• 저장 위치: <strong>원본 파일과 같은 폴더</strong></div>
+    <div>• 파일명: <code style="color:#4ade80;">{stem}_crop.png</code></div>
+    <div>• 중복 시: <code style="color:#4ade80;">{stem}_crop(2).png</code> (helpers.rs 패턴)</div>
+    <div>• 저장 후 토스트 알림 + 파일 목록 새로고침</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>4. 구현 범위</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="padding:12px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:8px;">
+      <div style="font-size:12px;font-weight:bold;color:#4ade80;margin-bottom:6px;">프론트엔드</div>
+      <div style="font-size:11px;color:#aaa;line-height:1.7;">
+        PreviewModals.tsx에 크롭 UI 추가<br>
+        Canvas 기반 선택 영역 렌더링<br>
+        마우스 이벤트 (드래그, 리사이즈, 이동)<br>
+        Shift 비율 고정 로직<br>
+        좌표 → 원본 이미지 픽셀 변환
+      </div>
+    </div>
+    <div style="padding:12px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);border-radius:8px;">
+      <div style="font-size:12px;font-weight:bold;color:#a855f7;margin-bottom:6px;">Rust 백엔드</div>
+      <div style="font-size:11px;color:#aaa;line-height:1.7;">
+        <code>crop_image</code> 커맨드 추가<br>
+        입력: path, x, y, width, height<br>
+        출력: {stem}_crop.png 저장<br>
+        image crate로 크롭 처리<br>
+        helpers::find_unique_path 활용
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>5. Undo 지원</h3>
+  <div style="padding:14px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:13px;color:#ccc;">
+    <div>• UndoAction에 <code style="color:#f0abfc;">crop</code> 변형 추가 (= create_file과 동일하게 삭제로 복원)</div>
+    <div>• Ctrl+Z 시 생성된 크롭 파일을 휴지통으로 이동</div>
+  </div>
+</div>

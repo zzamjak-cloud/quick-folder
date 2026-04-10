@@ -10,6 +10,7 @@ interface VideoEditToolbarProps {
   currentTime: number;
   themeVars: ThemeVars | null;
   onFileChanged?: () => void;
+  cropRect?: { x: number; y: number; w: number; h: number } | null;
 }
 
 // 외부에서 호출 가능한 메서드
@@ -111,6 +112,7 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   currentTime,
   themeVars,
   onFileChanged,
+  cropRect,
 }, ref) {
   const [startPoint, setStartPoint] = useState(0);
   const [endPoint, setEndPoint] = useState(duration || 0);
@@ -240,6 +242,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         input: videoPath,
         startSec: startPoint,
         endSec: endPoint,
+        cropX: cropRect?.x ?? null,
+        cropY: cropRect?.y ?? null,
+        cropW: cropRect?.w ?? null,
+        cropH: cropRect?.h ?? null,
         onProgress: progress,
       });
       setStatusText(`내보내기 완료: ${getFileName(output)}`);
@@ -271,6 +277,35 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
       onFileChanged?.();
     } catch (e) {
       setStatusText(`구간 삭제 실패: ${e}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // GIF 내보내기
+  const handleExportGif = async () => {
+    if (processing) return;
+    setProcessing(true);
+    setStatusText('GIF 변환 중...');
+    try {
+      const progress = new Channel<VideoProgress>();
+      progress.onmessage = (msg) => {
+        setStatusText(`GIF 변환 중... ${msg.percent.toFixed(0)}%`);
+      };
+      const output = await invoke<string>('video_to_gif', {
+        input: videoPath,
+        startSec: startPoint,
+        endSec: endPoint,
+        cropX: cropRect?.x ?? null,
+        cropY: cropRect?.y ?? null,
+        cropW: cropRect?.w ?? null,
+        cropH: cropRect?.h ?? null,
+        onProgress: progress,
+      });
+      setStatusText(`GIF 생성 완료: ${getFileName(output)}`);
+      onFileChanged?.();
+    } catch (e) {
+      setStatusText(`GIF 변환 실패: ${e}`);
     } finally {
       setProcessing(false);
     }
@@ -459,6 +494,14 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
           title="선택한 구간만 새 파일로 내보내기"
         >
           선택 구간 내보내기
+        </button>
+        <button
+          style={accentBtnStyle}
+          onClick={handleExportGif}
+          disabled={processing}
+          title="선택한 구간을 GIF로 변환 (FPS 15, 폭 480px)"
+        >
+          GIF 내보내기
         </button>
         <button
           style={btnBase}
