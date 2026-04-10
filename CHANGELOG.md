@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.21] - 2026-04-10
+
+### Added
+- **GIF 압축 4가지 옵션**: 압축 품질(높음/보통/낮음) + 크기 50% 축소 선택 가능
+  - 높음 (256색): 최고 품질, 용량 약간 감소
+  - 보통 (128색): 균형잡힌 품질, 용량 중간 감소 (기본값)
+  - 낮음 (64색): 낮은 품질, 용량 많이 감소
+  - 크기 50% 축소: 해상도를 절반으로 축소하여 용량 추가 감소
+- **동영상→GIF 내보내기 압축 최적화**: FFmpeg 팔레트 128색 제한 + 디더링·프레임 차이 인코딩
+
+### Fixed
+- **동영상→GIF 내보내기 팔레트 생성 실패**: FFmpeg 필터 문법 수정 (filter_complex → vf/lavfi)
+- **경고 정리**: 사용하지 않는 import·함수 제거 (50개 → 43개 경고)
+
 ## [1.25.20] - 2026-04-10
 
 ### Added
