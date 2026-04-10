@@ -5,18 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.23] - 2026-04-10
+## [1.25.24] - 2026-04-10
 
 ### Added
-- **Windows 포터블 도구 자동 설치**: 앱 시작 시 FFmpeg, Ghostscript, fonttools를 자동으로 다운로드하여 설치
+- **Windows 포터블 FFmpeg 자동 설치**: 앱 시작 시 FFmpeg를 자동으로 다운로드하여 설치
   - GitHub Releases(`portable-tools-v1`)에서 사전 빌드된 포터블 ZIP 다운로드
-  - `%LOCALAPPDATA%\com.quickfolder.widget\` 경로에 설치하여 앱 업데이트와 무관하게 유지
+  - `%LOCALAPPDATA%\com.quickfolder.widget\ffmpeg\` 경로에 설치하여 앱 업데이트와 무관하게 유지
   - 이미 설치된 도구는 스킵하여 중복 다운로드 방지
   - 백그라운드 설치로 앱 시작 지연 없음
 
 ### Changed
 - **FFmpeg 경로 우선순위**: Windows에서 포터블 경로를 최우선으로 탐색
 - **build-tools.yml 워크플로우**: FFmpeg 포터블 빌드 단계 추가 (gyan.dev에서 다운로드)
+
+### Fixed
+- **Windows 빌드 오류 수정**: `dirs` 크레이트 의존성 추가, 사용하지 않는 import 제거
 
 ## [1.25.22] - 2026-04-10
 

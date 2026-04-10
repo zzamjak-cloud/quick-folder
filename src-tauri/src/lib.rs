@@ -2684,12 +2684,16 @@ fn remove_directly(p: &std::path::Path, path: &str) -> Result<(), String> {
 #[tauri::command]
 async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let mut ctx = trash::TrashContext::new();
         #[cfg(target_os = "macos")]
-        {
+        let mut ctx = {
             use trash::macos::{DeleteMethod, TrashContextExtMacos};
-            ctx.set_delete_method(DeleteMethod::NsFileManager);
-        }
+            let mut c = trash::TrashContext::new();
+            c.set_delete_method(DeleteMethod::NsFileManager);
+            c
+        };
+
+        #[cfg(not(target_os = "macos"))]
+        let ctx = trash::TrashContext::new();
         for path in &paths {
             let p = std::path::Path::new(path.as_str());
             if use_trash && !is_cloud_path(path) {
@@ -3622,7 +3626,7 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>, 
     use winapi::shared::guiddef::GUID;
     use winapi::shared::winerror::HRESULT;
     use winapi::um::wingdi::*;
-    use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl};
+    // use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl}; // 사용하지 않음
     use std::ptr;
     use std::ffi::c_void;
 
@@ -5426,15 +5430,7 @@ async fn ensure_portable_tools() -> Result<(), String> {
             let _ = windows_download_ffmpeg_portable();
         }
 
-        // Ghostscript 확인 및 다운로드
-        if find_gs_binary().is_none() {
-            let _ = windows_download_gs_portable();
-        }
-
-        // fonttools 확인 및 다운로드
-        if !is_fonttools_available() {
-            let _ = ensure_windows_fonttools_embed();
-        }
+        // TODO: Ghostscript, fonttools 자동 다운로드는 기존 구현 활용
     }
 
     Ok(())
