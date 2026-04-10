@@ -58,6 +58,38 @@ jobs:
           $sizeMB = [math]::Round((Get-Item ghostscript-portable-win64.zip).Length / 1MB, 1)
           Write-Host "ghostscript-portable-win64.zip: ${sizeMB}MB"
 
+      # ── FFmpeg 포터블 패키지 ──────────────────────────────────────
+      - name: Download FFmpeg full build (gyan.dev)
+        shell: pwsh
+        run: |
+          # gyan.dev의 최신 full build (GPL, 모든 코덱 포함)
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Write-Host "Downloaded: $((Get-Item ffmpeg.zip).Length / 1MB) MB"
+
+      - name: Extract FFmpeg binaries
+        shell: pwsh
+        run: |
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ./ffmpeg_temp -Force
+
+          # bin 폴더 찾기 (ffmpeg-x.x.x-essentials_build/bin/)
+          $binDir = Get-ChildItem -Path ./ffmpeg_temp -Filter "bin" -Recurse -Directory | Select-Object -First 1
+          if (-not $binDir) {
+            Write-Error "bin directory not found"
+            exit 1
+          }
+
+          Write-Host "Found bin: $($binDir.FullName)"
+
+          # ffmpeg.exe, ffprobe.exe만 추출 (용량 축소)
+          New-Item -ItemType Directory -Force -Path ./ffmpeg_portable | Out-Null
+          Copy-Item "$($binDir.FullName)\ffmpeg.exe" ./ffmpeg_portable/ -Force
+          Copy-Item "$($binDir.FullName)\ffprobe.exe" ./ffmpeg_portable/ -Force
+
+          Compress-Archive -Path "./ffmpeg_portable/*" -DestinationPath "ffmpeg-portable-win64.zip" -Force
+          $sizeMB = [math]::Round((Get-Item ffmpeg-portable-win64.zip).Length / 1MB, 1)
+          Write-Host "ffmpeg-portable-win64.zip: ${sizeMB}MB"
+
       # ── fonttools 포터블 패키지 ────────────────────────────────────
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
@@ -100,6 +132,7 @@ jobs:
         run: |
           gh release create portable-tools-v1 \
             --title "Portable Tools v1 (Windows)" \
-            --notes "Windows 포터블 빌드: Ghostscript 10.x + Python 3.12 (fonttools 포함)" \
+            --notes "Windows 포터블 빌드: FFmpeg + Ghostscript 10.x + Python 3.12 (fonttools 포함)" \
+            ffmpeg-portable-win64.zip \
             ghostscript-portable-win64.zip \
             python-fonttools-win64.zip

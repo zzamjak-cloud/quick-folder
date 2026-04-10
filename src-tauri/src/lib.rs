@@ -3806,26 +3806,48 @@ async fn extract_zip(zip_path: String, dest_dir: String) -> Result<String, Strin
 
 // ffmpeg 바이너리 경로 탐색 (sidecar → 시스템 PATH)
 fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
-    // 1. sidecar 경로 (실행 바이너리 옆)
+    // 1. Windows 포터블 경로
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(data_dir) = dirs::data_local_dir() {
+            let portable_exe = data_dir
+                .join("com.quickfolder.widget")
+                .join("ffmpeg")
+                .join("ffmpeg.exe");
+            if portable_exe.exists() && std::fs::metadata(&portable_exe).map(|m| m.len() > 0).unwrap_or(false) {
+                return Some(portable_exe);
+            }
+        }
+    }
+
+    // 2. sidecar 경로 (실행 바이너리 옆)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
+            #[cfg(target_os = "windows")]
+            let sidecar = dir.join("ffmpeg.exe");
+            #[cfg(not(target_os = "windows"))]
             let sidecar = dir.join("ffmpeg");
+
             // 0바이트 파일 방지: 크기 체크
             if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
                 return Some(sidecar);
             }
         }
     }
-    // 2. 일반적인 설치 경로 직접 확인 (macOS homebrew, Linux 등)
-    let common_paths = [
-        "/opt/homebrew/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/usr/bin/ffmpeg",
-    ];
-    for p in &common_paths {
-        let path = std::path::Path::new(p);
-        if path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
-            return Some(path.to_path_buf());
+
+    // 3. 일반적인 설치 경로 직접 확인 (macOS homebrew, Linux 등)
+    #[cfg(not(target_os = "windows"))]
+    {
+        let common_paths = [
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+        ];
+        for p in &common_paths {
+            let path = std::path::Path::new(p);
+            if path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
+                return Some(path.to_path_buf());
+            }
         }
     }
 
@@ -3849,14 +3871,55 @@ async fn check_ffmpeg() -> Result<bool, String> {
 }
 
 // --- ffmpeg 자동 다운로드 (첫 실행 시) ---
+#[cfg(target_os = "windows")]
+fn windows_download_ffmpeg_portable() -> Result<(), String> {
+    const URL: &str = "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ffmpeg-portable-win64.zip";
+
+    let app_dir = dirs::data_local_dir()
+        .ok_or("로컬 데이터 디렉토리 없음")?
+        .join("com.quickfolder.widget");
+    std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+
+    let zip_path = app_dir.join("ffmpeg-portable-win64.zip");
+    let extract_dir = app_dir.join("ffmpeg");
+
+    // 이미 설치되어 있으면 스킵
+    if extract_dir.join("ffmpeg.exe").exists() {
+        return Ok(());
+    }
+
+    // ZIP 다운로드
+    ureq_download_to_path(URL, 200 * 1024 * 1024, &zip_path)
+        .map_err(|e| format!("ffmpeg 다운로드 실패: {}", e))?;
+
+    // ZIP 압축 해제
+    let file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    archive.extract(&extract_dir).map_err(|e| e.to_string())?;
+
+    // ZIP 파일 삭제
+    let _ = std::fs::remove_file(&zip_path);
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn download_ffmpeg() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        ffmpeg_sidecar::download::auto_download()
-            .map_err(|e| format!("ffmpeg 다운로드 실패: {}", e))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    #[cfg(target_os = "windows")]
+    {
+        windows_download_ffmpeg_portable()?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            ffmpeg_sidecar::download::auto_download()
+                .map_err(|e| format!("ffmpeg 다운로드 실패: {}", e))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
 }
 
 // --- 동영상 압축 (H.265, Channel 진행률 스트리밍) ---
@@ -5353,6 +5416,30 @@ async fn compress_gif(path: String, quality: String, reduce_size: bool) -> Resul
     .map_err(|e| format!("작업 실패: {}", e))?
 }
 
+// 앱 시작 시 필수 도구 자동 다운로드 (백그라운드)
+#[tauri::command]
+async fn ensure_portable_tools() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // ffmpeg 확인 및 다운로드
+        if find_ffmpeg_path().is_none() {
+            let _ = windows_download_ffmpeg_portable();
+        }
+
+        // Ghostscript 확인 및 다운로드
+        if find_gs_binary().is_none() {
+            let _ = windows_download_gs_portable();
+        }
+
+        // fonttools 확인 및 다운로드
+        if !is_fonttools_available() {
+            let _ = ensure_windows_fonttools_embed();
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -5362,6 +5449,13 @@ pub fn run() {
     .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_drag::init())
+    .setup(|_app| {
+        // 앱 시작 시 백그라운드에서 도구 자동 다운로드
+        tauri::async_runtime::spawn(async {
+            let _ = ensure_portable_tools().await;
+        });
+        Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
         open_folder,
         copy_path,
