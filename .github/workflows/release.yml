@@ -58,22 +58,29 @@ jobs:
           echo "📦 FFmpeg 다운로드 중..."
           curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
           unzip -q ffmpeg.zip
-          mv ffmpeg src-tauri/binaries/ffmpeg-universal-apple-darwin
-          chmod +x src-tauri/binaries/ffmpeg-universal-apple-darwin
+          # universal binary를 양쪽 아키텍처로 복사 (Tauri는 각각을 기대함)
+          cp ffmpeg src-tauri/binaries/ffmpeg-aarch64-apple-darwin
+          cp ffmpeg src-tauri/binaries/ffmpeg-x86_64-apple-darwin
+          chmod +x src-tauri/binaries/ffmpeg-*-apple-darwin
 
           # Ghostscript (Homebrew bottle)
           echo "📦 Ghostscript 다운로드 중..."
           brew fetch --force --bottle-tag=arm64_sonoma ghostscript
           GS_BOTTLE=$(brew --cache --bottle-tag=arm64_sonoma ghostscript)
           tar xzf "$GS_BOTTLE" -C /tmp
-          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-universal-apple-darwin
-          chmod +x src-tauri/binaries/gs-universal-apple-darwin
+          # universal binary를 양쪽 아키텍처로 복사
+          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-aarch64-apple-darwin
+          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-x86_64-apple-darwin
+          chmod +x src-tauri/binaries/gs-*-apple-darwin
 
           # Python + fonttools (portable)
           echo "📦 Python + fonttools 패키징 중..."
           python3 -m venv /tmp/fonttools-venv
           /tmp/fonttools-venv/bin/pip install --upgrade pip fonttools
-          tar czf src-tauri/binaries/python-fonttools-universal-apple-darwin.tar.gz \
+          # 양쪽 아키텍처용 압축 파일 생성
+          tar czf src-tauri/binaries/python-fonttools-aarch64-apple-darwin.tar.gz \
+            -C /tmp/fonttools-venv .
+          tar czf src-tauri/binaries/python-fonttools-x86_64-apple-darwin.tar.gz \
             -C /tmp/fonttools-venv .
 
           echo "✅ macOS 도구 준비 완료"
