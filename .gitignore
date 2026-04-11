@@ -17,6 +17,10 @@ dist-ssr
 # 워크트리 디렉토리
 .worktrees/
 
+# Tauri 번들링 바이너리 (CI에서 다운로드)
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

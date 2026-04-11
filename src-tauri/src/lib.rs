@@ -1768,90 +1768,22 @@ fn ensure_ghostscript_installed_inner() -> Result<(), String> {
 
 /// Ghostscript(gs) 실행 파일 경로 찾기
 fn find_gs_path() -> Option<String> {
-    // 1. 실행 파일 옆 sidecar (Windows는 gswin64c.exe)
+    // 1. 번들링된 바이너리 (실행 파일 옆, Tauri externalBin)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             #[cfg(target_os = "windows")]
-            {
-                for name in ["gswin64c.exe", "gswin32c.exe", "gs.exe"] {
-                    let sidecar = dir.join(name);
-                    if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
-                        return sidecar.to_str().map(|s| s.to_string());
-                    }
-                }
-                // GitHub Releases 포터블 패키지 (gs_sidecar/bin/)
-                let portable_bin = dir.join("gs_sidecar").join("bin");
-                for name in ["gswin64c.exe", "gswin32c.exe"] {
-                    let p = portable_bin.join(name);
-                    if p.exists() && std::fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false) {
-                        return p.to_str().map(|s| s.to_string());
-                    }
-                }
-            }
+            let bundled = dir.join("gs.exe");
             #[cfg(not(target_os = "windows"))]
-            {
-                let sidecar = dir.join("gs");
-                if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
-                    return sidecar.to_str().map(|s| s.to_string());
-                }
+            let bundled = dir.join("gs");
+
+            if bundled.exists() && std::fs::metadata(&bundled).map(|m| m.len() > 0).unwrap_or(false) {
+                eprintln!("✅ 번들링된 Ghostscript 발견: {:?}", bundled);
+                return bundled.to_str().map(|s| s.to_string());
             }
         }
     }
-    // 2. macOS homebrew / 일반 경로
-    let common_paths = [
-        "/opt/homebrew/bin/gs",
-        "/usr/local/bin/gs",
-        "/usr/bin/gs",
-    ];
-    for p in &common_paths {
-        if std::path::Path::new(p).exists() {
-            return Some(p.to_string());
-        }
-    }
-    // 3. macOS: brew --prefix ghostscript → .../bin/gs (GUI에서 PATH만으로는 못 찾는 경우)
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(brew) = find_brew_executable() {
-            if let Ok(out) = std::process::Command::new(&brew)
-                .args(["--prefix", "ghostscript"])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
-            {
-                if out.status.success() {
-                    let prefix = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !prefix.is_empty() {
-                        let gs = format!("{prefix}/bin/gs");
-                        if std::path::Path::new(&gs).exists() {
-                            return Some(gs);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // Windows: 레지스트리 App Paths → Program Files → PATH (GUI는 보통 PATH 비어 있음)
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        if let Some(p) = find_gs_via_app_paths_registry() {
-            return Some(p);
-        }
-        if let Some(p) = find_gs_exe_in_windows_program_files() {
-            return Some(p);
-        }
-        for cmd in &["gswin64c", "gswin32c"] {
-            let mut c = std::process::Command::new(cmd);
-            c.arg("--version");
-            c.stdout(std::process::Stdio::null());
-            c.stderr(std::process::Stdio::null());
-            c.creation_flags(0x08000000);
-            if c.status().map(|s| s.success()).unwrap_or(false) {
-                return Some(cmd.to_string());
-            }
-        }
-    }
-    // 시스템 PATH
+
+    // 2. 시스템 PATH
     if std::process::Command::new("gs")
         .arg("--version")
         .stdout(std::process::Stdio::null())
@@ -1860,8 +1792,11 @@ fn find_gs_path() -> Option<String> {
         .map(|s| s.success())
         .unwrap_or(false)
     {
+        eprintln!("✅ 시스템 PATH에서 Ghostscript 발견");
         return Some("gs".to_string());
     }
+
+    eprintln!("❌ Ghostscript를 찾을 수 없습니다");
     None
 }
 
@@ -3810,61 +3745,34 @@ async fn extract_zip(zip_path: String, dest_dir: String) -> Result<String, Strin
 
 // ffmpeg 바이너리 경로 탐색 (sidecar → 시스템 PATH)
 fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
-    // 1. Windows 포터블 경로
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(data_dir) = dirs::data_local_dir() {
-            let portable_exe = data_dir
-                .join("com.quickfolder.widget")
-                .join("ffmpeg")
-                .join("ffmpeg.exe");
-            if portable_exe.exists() && std::fs::metadata(&portable_exe).map(|m| m.len() > 0).unwrap_or(false) {
-                return Some(portable_exe);
-            }
-        }
-    }
-
-    // 2. sidecar 경로 (실행 바이너리 옆)
+    // 1. 번들링된 바이너리 (실행 파일 옆, Tauri externalBin)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             #[cfg(target_os = "windows")]
-            let sidecar = dir.join("ffmpeg.exe");
+            let bundled = dir.join("ffmpeg.exe");
             #[cfg(not(target_os = "windows"))]
-            let sidecar = dir.join("ffmpeg");
+            let bundled = dir.join("ffmpeg");
 
-            // 0바이트 파일 방지: 크기 체크
-            if sidecar.exists() && std::fs::metadata(&sidecar).map(|m| m.len() > 0).unwrap_or(false) {
-                return Some(sidecar);
+            if bundled.exists() && std::fs::metadata(&bundled).map(|m| m.len() > 0).unwrap_or(false) {
+                eprintln!("✅ 번들링된 FFmpeg 발견: {:?}", bundled);
+                return Some(bundled);
             }
         }
     }
 
-    // 3. 일반적인 설치 경로 직접 확인 (macOS homebrew, Linux 등)
-    #[cfg(not(target_os = "windows"))]
-    {
-        let common_paths = [
-            "/opt/homebrew/bin/ffmpeg",
-            "/usr/local/bin/ffmpeg",
-            "/usr/bin/ffmpeg",
-        ];
-        for p in &common_paths {
-            let path = std::path::Path::new(p);
-            if path.exists() && std::fs::metadata(path).map(|m| m.len() > 0).unwrap_or(false) {
-                return Some(path.to_path_buf());
-            }
-        }
-    }
-
-    // 3. 시스템 PATH
+    // 2. 시스템 PATH
     if let Ok(output) = std::process::Command::new("ffmpeg").arg("-version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
     {
         if output.success() {
+            eprintln!("✅ 시스템 PATH에서 FFmpeg 발견");
             return Some(std::path::PathBuf::from("ffmpeg"));
         }
     }
+
+    eprintln!("❌ FFmpeg를 찾을 수 없습니다");
     None
 }
 
@@ -3872,156 +3780,6 @@ fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
 #[tauri::command]
 async fn check_ffmpeg() -> Result<bool, String> {
     Ok(find_ffmpeg_path().is_some())
-}
-
-// FFmpeg 경로를 가져오되, 없으면 자동으로 다운로드 시도
-fn get_or_download_ffmpeg() -> Result<std::path::PathBuf, String> {
-    if let Some(path) = find_ffmpeg_path() {
-        eprintln!("✅ FFmpeg 발견: {:?}", path);
-        return Ok(path);
-    }
-
-    eprintln!("⚠️ FFmpeg를 찾을 수 없습니다. 자동 다운로드를 시도합니다...");
-
-    // Windows: 포터블 다운로드 시도
-    #[cfg(target_os = "windows")]
-    {
-        match windows_download_ffmpeg_portable() {
-            Ok(_) => eprintln!("✅ FFmpeg 다운로드 완료"),
-            Err(e) => {
-                eprintln!("❌ FFmpeg 다운로드 실패: {}", e);
-                return Err(format!("FFmpeg 다운로드 실패: {}. 수동으로 다운로드해주세요.", e));
-            }
-        }
-
-        if let Some(path) = find_ffmpeg_path() {
-            eprintln!("✅ 다운로드된 FFmpeg 발견: {:?}", path);
-            return Ok(path);
-        } else {
-            // 디버깅: 예상 경로 확인
-            if let Some(data_dir) = dirs::data_local_dir() {
-                let portable_path = data_dir.join("com.quickfolder.widget").join("ffmpeg");
-                eprintln!("❌ 예상 경로에 FFmpeg 없음: {:?}", portable_path);
-                eprintln!("📂 디렉토리 존재: {}", portable_path.exists());
-                if portable_path.exists() {
-                    if let Ok(entries) = std::fs::read_dir(&portable_path) {
-                        eprintln!("📁 디렉토리 내용:");
-                        for entry in entries.flatten() {
-                            eprintln!("  - {:?}", entry.path());
-                        }
-                    }
-                }
-            }
-            return Err("FFmpeg 다운로드 완료했지만 파일을 찾을 수 없습니다. 앱을 재시작해주세요.".to_string());
-        }
-    }
-
-    // macOS/Linux: 시스템 설치 안내
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("ffmpeg를 찾을 수 없습니다. 시스템에 ffmpeg를 설치해주세요. (brew install ffmpeg)".to_string())
-    }
-}
-
-// --- ffmpeg 자동 다운로드 (첫 실행 시) ---
-#[cfg(target_os = "windows")]
-fn windows_download_ffmpeg_portable() -> Result<(), String> {
-    const URL: &str = "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ffmpeg-portable-win64.zip";
-
-    let app_dir = dirs::data_local_dir()
-        .ok_or("로컬 데이터 디렉토리 없음")?
-        .join("com.quickfolder.widget");
-
-    eprintln!("📂 FFmpeg 설치 디렉토리: {:?}", app_dir);
-
-    std::fs::create_dir_all(&app_dir).map_err(|e| {
-        eprintln!("❌ 디렉토리 생성 실패: {}", e);
-        e.to_string()
-    })?;
-
-    let zip_path = app_dir.join("ffmpeg-portable-win64.zip");
-    let extract_dir = app_dir.join("ffmpeg");
-    let ffmpeg_exe = extract_dir.join("ffmpeg.exe");
-
-    eprintln!("📦 ZIP 경로: {:?}", zip_path);
-    eprintln!("📁 압축 해제 경로: {:?}", extract_dir);
-    eprintln!("🎯 최종 실행파일 경로: {:?}", ffmpeg_exe);
-
-    // 이미 설치되어 있으면 스킵
-    if ffmpeg_exe.exists() {
-        eprintln!("✅ FFmpeg 이미 설치됨 (스킵)");
-        return Ok(());
-    }
-
-    // ZIP 다운로드
-    eprintln!("⬇️ FFmpeg 다운로드 시작: {}", URL);
-    ureq_download_to_path(URL, 200 * 1024 * 1024, &zip_path)
-        .map_err(|e| {
-            eprintln!("❌ 다운로드 실패: {}", e);
-            format!("ffmpeg 다운로드 실패: {}", e)
-        })?;
-
-    eprintln!("✅ 다운로드 완료: {} bytes",
-        std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0));
-
-    // ZIP 압축 해제
-    eprintln!("📂 압축 해제 시작...");
-    let file = std::fs::File::open(&zip_path).map_err(|e| {
-        eprintln!("❌ ZIP 파일 열기 실패: {}", e);
-        e.to_string()
-    })?;
-
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-        eprintln!("❌ ZIP 아카이브 생성 실패: {}", e);
-        e.to_string()
-    })?;
-
-    eprintln!("📦 ZIP 파일 내용: {} 개 항목", archive.len());
-
-    archive.extract(&extract_dir).map_err(|e| {
-        eprintln!("❌ 압축 해제 실패: {}", e);
-        e.to_string()
-    })?;
-
-    eprintln!("✅ 압축 해제 완료");
-
-    // 압축 해제 결과 확인
-    if ffmpeg_exe.exists() {
-        let size = std::fs::metadata(&ffmpeg_exe).map(|m| m.len()).unwrap_or(0);
-        eprintln!("✅ ffmpeg.exe 생성 확인: {} bytes", size);
-    } else {
-        eprintln!("⚠️ ffmpeg.exe를 찾을 수 없습니다. 압축 해제된 파일 목록:");
-        if let Ok(entries) = std::fs::read_dir(&extract_dir) {
-            for entry in entries.flatten() {
-                eprintln!("  - {:?}", entry.path());
-            }
-        }
-    }
-
-    // ZIP 파일 삭제
-    let _ = std::fs::remove_file(&zip_path);
-    eprintln!("🗑️ 임시 ZIP 파일 삭제");
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn download_ffmpeg() -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_download_ffmpeg_portable()?;
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        tauri::async_runtime::spawn_blocking(|| {
-            ffmpeg_sidecar::download::auto_download()
-                .map_err(|e| format!("ffmpeg 다운로드 실패: {}", e))
-        })
-        .await
-        .map_err(|e| e.to_string())?
-    }
 }
 
 // --- 동영상 압축 (H.265, Channel 진행률 스트리밍) ---
@@ -4048,7 +3806,7 @@ async fn compress_video(
     let output_str = output_path.to_string_lossy().to_string();
 
     // ffmpeg 경로 결정 (sidecar → 시스템 PATH 순)
-    let ffmpeg_path = get_or_download_ffmpeg()?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| "FFmpeg를 찾을 수 없습니다. 앱을 재설치해주세요.".to_string())?;
 
     // 품질별 CRF 설정: low(보통)=높은CRF, medium(좋은)=중간CRF, high(최고)=낮은CRF
     // macOS: H.265(HEVC), Windows: H.264(AVC) — WebView2 HEVC 미지원
@@ -4195,7 +3953,7 @@ async fn trim_video(
     let output_path = find_unique_path(parent, &stem, "_trim", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = get_or_download_ffmpeg()?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| "FFmpeg를 찾을 수 없습니다. 앱을 재설치해주세요.".to_string())?;
 
     // 구간 길이 (초) — 진행률 계산 기준
     let duration = (end_sec - start_sec).max(0.001) as f32;
@@ -4305,7 +4063,7 @@ async fn cut_video(
     let output_path = find_unique_path(parent, &stem, "_cut", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = get_or_download_ffmpeg()?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| "FFmpeg를 찾을 수 없습니다. 앱을 재설치해주세요.".to_string())?;
 
     // 임시 디렉토리 생성 (프로세스 ID 포함으로 충돌 방지)
     let pid = std::process::id();
@@ -4474,7 +4232,7 @@ async fn concat_videos(
     let output_path = find_unique_path(parent, &stem, "_merged", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = get_or_download_ffmpeg()?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| "FFmpeg를 찾을 수 없습니다. 앱을 재설치해주세요.".to_string())?;
 
     // 임시 concat 리스트 파일 생성
     let pid = std::process::id();
@@ -4613,7 +4371,7 @@ async fn video_to_gif(
     let output_path = find_unique_path(parent, &stem, "", ".gif");
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = get_or_download_ffmpeg()?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| "FFmpeg를 찾을 수 없습니다. 앱을 재설치해주세요.".to_string())?;
 
     // 구간 길이
     let duration = (end_sec - start_sec).max(0.001) as f32;
@@ -5513,22 +5271,6 @@ async fn compress_gif(path: String, quality: String, reduce_size: bool) -> Resul
     .map_err(|e| format!("작업 실패: {}", e))?
 }
 
-// 앱 시작 시 필수 도구 자동 다운로드 (백그라운드)
-#[tauri::command]
-async fn ensure_portable_tools() -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        // ffmpeg 확인 및 다운로드
-        if find_ffmpeg_path().is_none() {
-            let _ = windows_download_ffmpeg_portable();
-        }
-
-        // TODO: Ghostscript, fonttools 자동 다운로드는 기존 구현 활용
-    }
-
-    Ok(())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -5538,13 +5280,6 @@ pub fn run() {
     .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_drag::init())
-    .setup(|_app| {
-        // 앱 시작 시 백그라운드에서 도구 자동 다운로드
-        tauri::async_runtime::spawn(async {
-            let _ = ensure_portable_tools().await;
-        });
-        Ok(())
-    })
     .invoke_handler(tauri::generate_handler![
         open_folder,
         copy_path,

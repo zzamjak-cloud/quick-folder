@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-04-11
+
+### Changed
+- **외부 도구 빌드 번들링**: FFmpeg, Ghostscript, fonttools를 런타임 다운로드 방식에서 빌드 시 번들링 방식으로 전환
+  - 더 이상 네트워크 연결 없이 모든 기능 사용 가능
+  - 안정성 대폭 향상 — 도구를 찾지 못하는 오류 근본 해결
+  - CI 워크플로우에서 빌드 전 자동 다운로드 후 번들링
+  - Windows/macOS 모두 도구가 실행 파일과 함께 패키징됨
+
+### Removed
+- **런타임 다운로드 로직 제거**: FFmpeg, Ghostscript, fonttools 자동 다운로드 기능 삭제
+  - 빌드에 포함되므로 다운로드 불필요
+  - 다운로드 실패·경로 감지 실패 등 네트워크 관련 오류 완전 제거
+
 ## [1.25.25] - 2026-04-10
 
 ### Changed

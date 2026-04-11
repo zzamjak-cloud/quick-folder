@@ -48,6 +48,70 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      # 4-1. 번들링할 외부 도구 다운로드 (FFmpeg, Ghostscript, Python+fonttools)
+      - name: Download external tools for macOS
+        if: matrix.platform == 'macos-latest'
+        run: |
+          mkdir -p src-tauri/binaries
+
+          # FFmpeg (Homebrew static build)
+          echo "📦 FFmpeg 다운로드 중..."
+          curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
+          unzip -q ffmpeg.zip
+          mv ffmpeg src-tauri/binaries/ffmpeg-universal-apple-darwin
+          chmod +x src-tauri/binaries/ffmpeg-universal-apple-darwin
+
+          # Ghostscript (Homebrew bottle)
+          echo "📦 Ghostscript 다운로드 중..."
+          brew fetch --force --bottle-tag=arm64_sonoma ghostscript
+          GS_BOTTLE=$(brew --cache --bottle-tag=arm64_sonoma ghostscript)
+          tar xzf "$GS_BOTTLE" -C /tmp
+          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-universal-apple-darwin
+          chmod +x src-tauri/binaries/gs-universal-apple-darwin
+
+          # Python + fonttools (portable)
+          echo "📦 Python + fonttools 패키징 중..."
+          python3 -m venv /tmp/fonttools-venv
+          /tmp/fonttools-venv/bin/pip install --upgrade pip fonttools
+          tar czf src-tauri/binaries/python-fonttools-universal-apple-darwin.tar.gz \
+            -C /tmp/fonttools-venv .
+
+          echo "✅ macOS 도구 준비 완료"
+          ls -lh src-tauri/binaries/
+
+      - name: Download external tools for Windows
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+
+          # FFmpeg (gyan.dev essentials)
+          Write-Host "📦 FFmpeg 다운로드 중..."
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
+            -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ./ffmpeg_temp -Force
+          $ffmpegExe = Get-ChildItem -Path ./ffmpeg_temp -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+          Copy-Item $ffmpegExe.FullName src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe
+
+          # Ghostscript (공식 릴리스)
+          Write-Host "📦 Ghostscript 다운로드 중..."
+          Invoke-WebRequest `
+            -Uri "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10070/gs10070w64.exe" `
+            -OutFile gs_installer.exe
+          7z x gs_installer.exe -o"./gs_extracted" -y | Out-Null
+          $gsExe = Get-ChildItem -Path "./gs_extracted" -Filter "gswin64c.exe" -Recurse | Select-Object -First 1
+          Copy-Item $gsExe.FullName src-tauri/binaries/gs-x86_64-pc-windows-msvc.exe
+
+          # Python + fonttools (GitHub Actions Python)
+          Write-Host "📦 Python + fonttools 패키징 중..."
+          pip install fonttools
+          $pyDir = Split-Path (python -c "import sys; print(sys.executable)") -Parent
+          Compress-Archive -Path "$pyDir\*" `
+            -DestinationPath src-tauri/binaries/python-fonttools-x86_64-pc-windows-msvc.zip
+
+          Write-Host "✅ Windows 도구 준비 완료"
+          Get-ChildItem src-tauri/binaries/ | Format-Table Name, Length
+
       # 5. Tauri 빌드 및 GitHub Release 생성 (서명 포함)
       #    tauri-action이 latest.json을 자동 생성하여 Release에 업로드
       #    APPLE_SIGNING_IDENTITY="-": macOS ad-hoc 서명 + Hardened Runtime + 엔타이틀먼트 적용

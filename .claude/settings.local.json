@@ -1,17 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(components/FileExplorer/GifCompressModal.tsx )",
-      "Bash(components/FileExplorer/VideoCropOverlay.tsx )",
-      "Bash(components/FileExplorer/PreviewModals.tsx )",
-      "Bash(components/FileExplorer/VideoEditToolbar.tsx )",
-      "Bash(components/FileExplorer/VideoPlayer.tsx )",
-      "Bash(components/FileExplorer/hooks/useClipboard.ts )",
-      "Bash(components/FileExplorer/hooks/useModalStates.ts )",
-      "Bash(components/FileExplorer/index.tsx )",
-      "Bash(src-tauri/src/lib.rs )",
-      "Bash(src-tauri/Cargo.lock )",
-      "Bash(package-lock.json)"
+      "Bash(cargo add dirs)"
     ],
     "deny": [],
     "ask": []
