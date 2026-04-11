@@ -74,6 +74,8 @@ pub fn run() {
         install_fonttools,
         merge_fonts,
         compress_gif,
+        get_google_drive_file_id,
+        set_google_drive_offline,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

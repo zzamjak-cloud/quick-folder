@@ -21,6 +21,12 @@ export interface PreviewState {
   previewJsonData: any | null;
   handlePreviewJson: (path: string) => void;
   closeJsonPreview: () => void;
+  // 코드 미리보기
+  codePreviewPath: string | null;
+  setCodePreviewPath: (path: string | null) => void;
+  // FBX 3D 미리보기
+  fbxPreviewPath: string | null;
+  setFbxPreviewPath: (path: string | null) => void;
   // 전체 닫기
   closeAllPreviews: () => void;
   // 미리보기 열려있는지 확인
@@ -43,6 +49,12 @@ export function usePreview(): PreviewState {
   // JSON 미리보기
   const [previewJsonPath, setPreviewJsonPath] = useState<string | null>(null);
   const [previewJsonData, setPreviewJsonData] = useState<any | null>(null);
+
+  // 코드 미리보기
+  const [codePreviewPath, setCodePreviewPath] = useState<string | null>(null);
+
+  // FBX 3D 미리보기
+  const [fbxPreviewPath, setFbxPreviewPath] = useState<string | null>(null);
 
   const handlePreviewImage = useCallback(async (path: string) => {
     // 같은 파일이면 리로드 안 함 (깜빡임 방지)
@@ -106,10 +118,11 @@ export function usePreview(): PreviewState {
     setPreviewJsonData(null);
     try {
       const content = await invoke<string>('read_text_file', { path, maxBytes: 1000000 }); // 1MB
-      // 주석 제거 (JSONC 지원)
-      const stripped = content
-        .replace(/\/\/.*$/gm, '') // 한 줄 주석 제거
-        .replace(/\/\*[\s\S]*?\*\//g, ''); // 블록 주석 제거
+      // 주석 제거 (JSONC 지원) — 문자열 리터럴 내부의 // 는 보존
+      const stripped = content.replace(
+        /"(?:[^"\\]|\\.)*"|\/\/.*$|\/\*[\s\S]*?\*\//gm,
+        (match) => match.startsWith('"') ? match : ''
+      );
       const parsed = JSON.parse(stripped);
       setPreviewJsonData(parsed);
     } catch (e) {
@@ -131,9 +144,11 @@ export function usePreview(): PreviewState {
     setPreviewTextContent(null);
     setPreviewJsonPath(null);
     setPreviewJsonData(null);
+    setCodePreviewPath(null);
+    setFbxPreviewPath(null);
   }, []);
 
-  const isAnyPreviewOpen = !!(previewImagePath || videoPlayerPath || previewTextPath || previewJsonPath);
+  const isAnyPreviewOpen = !!(previewImagePath || videoPlayerPath || previewTextPath || previewJsonPath || codePreviewPath || fbxPreviewPath);
 
   return {
     videoPlayerPath, setVideoPlayerPath,
@@ -143,6 +158,8 @@ export function usePreview(): PreviewState {
     handlePreviewText, closeTextPreview,
     previewJsonPath, previewJsonData,
     handlePreviewJson, closeJsonPreview,
+    codePreviewPath, setCodePreviewPath,
+    fbxPreviewPath, setFbxPreviewPath,
     closeAllPreviews, isAnyPreviewOpen,
   };
 }

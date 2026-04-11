@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.1] - 2026-04-11
+
+### Added
+- **코드 미리보기 (구문 강조)**: highlight.js 기반 코드 뷰어 — 구문 강조, 라인 번호, 코드 접기/펼치기, 텍스트 검색 (Ctrl+F)
+  - 지원 확장자: .cs, .shader, .glsl, .hlsl, .lua, .rb, .php, .swift, .kt, .sh, .bat, .ps1, .r, .sql, .scala, .dart, .zig 외 다수
+- **FBX 3D 파일 미리보기**: Three.js + FBXLoader 기반 3D 뷰어 — 마우스 드래그 회전, 휠 줌, 우클릭 패닝, 와이어프레임 토글
+- **Google Drive 전용 컨텍스트 메뉴**: 구글 드라이브 경로 파일 우클릭 시 전용 메뉴 표시
+  - "구글 드라이브로 열기" (웹에서 해당 폴더 열기)
+  - "구글 드라이브 공유", "링크를 클립보드에 복사", "오프라인에서 사용하도록 설정"
+  - macOS xattr 기반 파일 ID 추출 + .gsheet/.gdoc JSON doc_id 폴백
+- **확장자 없는 파일 미리보기**: LICENSE, README, Makefile, Dockerfile 등 확장자 없는 알려진 텍스트 파일 Space키 미리보기 지원
+
+### Fixed
+- **JSON 미리보기 URL 파싱 버그**: URL 내 `//`를 주석으로 인식하여 값이 잘리는 문제 수정 (문자열 리터럴 보호 정규식)
+- **구글 서비스 파일 Enter 키 열기**: .gsheet/.gdoc/.gslides/.gmap 파일이 마크다운 에디터로 열리던 버그 수정 → OS 기본 앱으로 열기
+- **마크다운 편집기 빈 줄 문제**: 복사 시 과도한 빈 줄 삽입 + 저장/재로드 시 사용자 빈 줄 유실 문제 수정
+- **Ctrl+Alt+C 경로 복사 미작동**: macOS에서 Alt 키가 `e.key`를 특수문자로 변환하여 동작하지 않던 문제 수정 (`e.key` → `e.code`)
+- **FBX PCFSoftShadowMap 경고**: Three.js deprecated 경고 제거 (PCFShadowMap 사용)
+- **키보드 단축키 수식키 가드 강화**: 모든 단축키에 명시적 `!e.shiftKey` / `!e.altKey` 가드 추가하여 상위 조합 가로채기 방지
+
 ## [1.27.0] - 2026-04-11
 
 ### Changed

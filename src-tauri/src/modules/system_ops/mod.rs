@@ -13,9 +13,11 @@ mod file_explorer;
 mod file_icon;
 mod file_search;
 mod clipboard;
+mod google_drive;
 
 // Re-export all public functions
 pub use file_explorer::*;
 pub use file_icon::*;
 pub use file_search::*;
 pub use clipboard::*;
+pub use google_drive::*;

@@ -136,7 +136,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
       // Ctrl+Alt+W (Cmd+Alt+W): 현재 탭만 남기고 나머지 모두 닫기
-      if (ctrl && e.altKey && e.code === 'KeyW') {
+      if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyW') {
         e.preventDefault();
         closeOtherTabs();
         return;
@@ -188,7 +188,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // Ctrl+Alt+C: 선택된 항목 경로 복사 (없으면 현재 폴더 경로)
-      if (ctrl && e.altKey && e.key === 'c') {
+      if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyC') {
         e.preventDefault();
         if (selectedPaths.length > 0) {
           // 선택된 항목이 있으면 해당 경로 복사 (여러 개면 줄바꿈 구분)
@@ -201,7 +201,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // Ctrl+Alt+O (Cmd+Option+O): Photoshop에서 열기
-      if (ctrl && e.altKey && e.code === 'KeyO') {
+      if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyO') {
         e.preventDefault();
         const imageExts = new Set([
           'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'psd', 'psb',
@@ -282,7 +282,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
             const entry = col.entries[columnView.focusedRow];
             if (entry) {
               e.preventDefault();
-              if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?)$/i.test(entry.name) && entry.name.includes('.')) {
+              if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?|gsheet|gdoc|gslides|gmap)$/i.test(entry.name) && entry.name.includes('.')) {
                 setMarkdownEditorPath(entry.path);
               } else {
                 openEntry(entry);
@@ -294,7 +294,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
           if (entry) {
             e.preventDefault();
-            if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?)$/i.test(entry.name) && entry.name.includes('.')) {
+            if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?|gsheet|gdoc|gslides|gmap)$/i.test(entry.name) && entry.name.includes('.')) {
               setMarkdownEditorPath(entry.path);
             } else {
               openEntry(entry);
@@ -337,7 +337,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // --- Ctrl+1~4 / Cmd+1~4: 뷰 모드 전환 ---
-      if (ctrl && ['1', '2', '3', '4'].includes(e.key)) {
+      if (ctrl && !e.shiftKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         const modes: ViewMode[] = ['grid', 'columns', 'list', 'details'];
         setViewMode(modes[parseInt(e.key) - 1]);
@@ -363,7 +363,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         });
         return;
       }
-      if (ctrl && e.key === '0') {
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === '0') {
         e.preventDefault();
         cancelAllQueued();
         setThumbnailSize(120);
@@ -371,11 +371,11 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // --- 파일 조작 ---
-      if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
-      if (ctrl && e.key === 'a') { e.preventDefault(); selectAll(); return; }
-      if (ctrl && e.key === 'c') { e.preventDefault(); handleCopy(); return; }
-      if (ctrl && e.key === 'x') { e.preventDefault(); handleCut(); return; }
-      if (ctrl && !e.shiftKey && e.key === 'v') { handlePaste(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === 'z') { e.preventDefault(); handleUndo(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === 'a') { e.preventDefault(); selectAll(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === 'c') { e.preventDefault(); handleCopy(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === 'x') { e.preventDefault(); handleCut(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === 'v') { handlePaste(); return; }
 
       // Ctrl+Shift+V: 클립보드 이미지를 PNG로 즉시 저장
       if (ctrl && e.shiftKey && e.code === 'KeyV') {
@@ -385,11 +385,11 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         }
         return;
       }
-      if (ctrl && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
+      if (ctrl && !e.shiftKey && !e.altKey && e.key === 'd') { e.preventDefault(); handleDuplicate(); return; }
       // Ctrl+G: 선택된 파일들을 새 폴더로 그룹화
       if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) { e.preventDefault(); handleGroupIntoFolder(); return; }
       // Ctrl+Alt+G: 폴더 해제 (선택한 폴더의 내용물을 꺼내고 폴더 삭제)
-      if (ctrl && e.altKey && e.code === 'KeyG') {
+      if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyG') {
         e.preventDefault();
         if (selectedPaths.length === 1) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
@@ -397,13 +397,13 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         }
         return;
       }
-      if (ctrl && e.shiftKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
+      if (ctrl && e.shiftKey && !e.altKey && (e.key === 'N' || e.key === 'n' || e.code === 'KeyN')) { e.preventDefault(); handleCreateDirectory(); return; }
 
       // Ctrl+Shift+M: 마크다운 파일 생성
-      if (ctrl && e.shiftKey && e.code === 'KeyM') { e.preventDefault(); handleCreateMarkdown(); return; }
+      if (ctrl && e.shiftKey && !e.altKey && e.code === 'KeyM') { e.preventDefault(); handleCreateMarkdown(); return; }
 
       // Ctrl+Shift+P: 동영상 보통 화질 압축
-      if (ctrl && e.shiftKey && e.code === 'KeyP') {
+      if (ctrl && e.shiftKey && !e.altKey && e.code === 'KeyP') {
         e.preventDefault();
         if (selectedPaths.length === 1) {
           const ext = selectedPaths[0].split('.').pop()?.toLowerCase() ?? '';
@@ -430,7 +430,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // Ctrl+Shift+T: 폴더에 태그 추가
-      if (ctrl && e.shiftKey && e.code === 'KeyT') {
+      if (ctrl && e.shiftKey && !e.altKey && e.code === 'KeyT') {
         e.preventDefault();
         if (selectedPaths.length === 1) {
           const entry = entries.find(en => en.path === selectedPaths[0]);

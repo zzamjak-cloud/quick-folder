@@ -34,6 +34,18 @@ export function normalizeFsPath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
+// Google Drive 경로 전용 감지
+export function isGoogleDrivePath(path: string): boolean {
+  const lower = path.toLowerCase();
+  // macOS Google Drive Desktop 마운트 경로 (새버전: /Library/CloudStorage/GoogleDrive-...)
+  if (lower.includes('/cloudstorage/googledrive')) return true;
+  // 구버전 Google Drive 경로
+  if (lower.includes('/google drive/')) return true;
+  // Windows Google Drive 마운트 (드라이브 레터 기반이므로 경로명으로는 감지 어려움)
+  // 사용자가 Google Drive를 G:\My Drive 등으로 마운트할 수 있으나 경로명 감지 불가
+  return false;
+}
+
 // 클라우드 스토리지 경로 감지 (Google Drive, Dropbox, OneDrive, iCloud)
 export function isCloudPath(path: string): boolean {
   const lower = path.toLowerCase();

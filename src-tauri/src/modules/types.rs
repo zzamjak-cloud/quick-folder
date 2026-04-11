@@ -34,12 +34,33 @@ pub fn classify_file(name: &str) -> FileType {
         }
         "mp4" | "mov" | "avi" | "mkv" | "webm" => FileType::Video,
         "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md" | "gslides"
-        | "gdoc" | "gsheet" => FileType::Document,
+        | "gdoc" | "gsheet" | "gmap" => FileType::Document,
         "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h" | "css"
-        | "html" | "json" | "toml" | "yaml" | "yml" => FileType::Code,
+        | "html" | "json" | "toml" | "yaml" | "yml" | "cs" | "shader" | "glsl" | "hlsl"
+        | "lua" | "rb" | "php" | "swift" | "kt" | "sh" | "bat" | "ps1" | "r" | "sql"
+        | "scala" | "dart" | "zig" | "xml" | "csv" | "log" => FileType::Code,
         "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" | "unitypackage" => FileType::Archive,
         "ttf" | "otf" | "woff" | "woff2" | "ttc" => FileType::Font,
-        _ => FileType::Other,
+        _ => {
+            // 확장자 없는 알려진 텍스트 파일 감지
+            let lower_name = name
+                .rsplit('/')
+                .next()
+                .unwrap_or(name)
+                .rsplit('\\')
+                .next()
+                .unwrap_or(name)
+                .to_lowercase();
+            match lower_name.as_str() {
+                "license" | "licence" | "readme" | "makefile" | "dockerfile"
+                | "gemfile" | "rakefile" | "procfile" | "vagrantfile"
+                | ".gitignore" | ".gitattributes" | ".editorconfig" | ".env"
+                | ".npmrc" | ".prettierrc" | ".eslintrc" | ".dockerignore" => {
+                    FileType::Document
+                }
+                _ => FileType::Other,
+            }
+        }
     }
 }
 

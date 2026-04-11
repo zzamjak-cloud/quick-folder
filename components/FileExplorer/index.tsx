@@ -19,6 +19,8 @@ import MarkdownEditor from './MarkdownEditor';
 import FontPreviewModal from './FontPreviewModal';
 import GifCompressModal from './GifCompressModal';
 import PdfPreviewModal from './PdfPreviewModal';
+import CodePreviewModal from './CodePreviewModal';
+import FbxPreviewModal from './FbxPreviewModal';
 import FontMergeModal from './FontMergeModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
@@ -143,6 +145,15 @@ export default function FileExplorer({
   const TEXT_PREVIEW_EXTS = useMemo(() => new Set([
     'txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go',
     'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log',
+    'cs', 'shader', 'glsl', 'hlsl', 'lua', 'rb', 'php', 'swift', 'kt', 'sh', 'bat',
+    'ps1', 'r', 'sql', 'scala', 'dart', 'zig',
+  ]), []);
+
+  // 코드 구문 강조 대상 확장자 (CodePreviewModal 사용)
+  const CODE_PREVIEW_EXTS = useMemo(() => new Set([
+    'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h',
+    'yaml', 'yml', 'toml', 'xml', 'cs', 'shader', 'glsl', 'hlsl', 'lua', 'rb', 'php',
+    'swift', 'kt', 'sh', 'bat', 'ps1', 'r', 'sql', 'scala', 'dart', 'zig',
   ]), []);
 
   // 파일 미리보기 실행 (Space키 + 화살표 이동 시 공용)
@@ -155,7 +166,16 @@ export default function FileExplorer({
     const isPsb = /\.psb$/i.test(entry.name);
     const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
     const isJson = ext === 'json';
-    const isText = TEXT_PREVIEW_EXTS.has(ext) && !isJson; // JSON은 전용 뷰어 사용
+    // 확장자 없는 알려진 텍스트 파일 감지
+    const KNOWN_TEXT_FILES = new Set([
+      'license', 'licence', 'readme', 'makefile', 'dockerfile',
+      'gemfile', 'rakefile', 'procfile', 'vagrantfile',
+      '.gitignore', '.gitattributes', '.editorconfig', '.env',
+      '.npmrc', '.prettierrc', '.eslintrc', '.dockerignore',
+    ]);
+    const hasNoExt = !entry.name.includes('.') || entry.name.startsWith('.');
+    const isKnownText = hasNoExt && KNOWN_TEXT_FILES.has(entry.name.toLowerCase());
+    const isText = (TEXT_PREVIEW_EXTS.has(ext) && !isJson) || isKnownText; // JSON은 전용 뷰어 사용
 
     // 같은 타입이면 closeAll 없이 직접 교체 (깜빡임 방지)
     if (isVideo) {
@@ -174,6 +194,14 @@ export default function FileExplorer({
     } else if (isJson) {
       if (!preview.previewJsonPath) preview.closeAllPreviews();
       preview.handlePreviewJson(entry.path);
+    } else if (/\.fbx$/i.test(entry.name)) {
+      // FBX 3D 파일 미리보기
+      preview.closeAllPreviews();
+      preview.setFbxPreviewPath(entry.path);
+    } else if (CODE_PREVIEW_EXTS.has(ext)) {
+      // 코드 파일 → 구문 강조 뷰어
+      preview.closeAllPreviews();
+      preview.setCodePreviewPath(entry.path);
     } else if (isText) {
       if (!preview.previewTextPath) preview.closeAllPreviews();
       preview.handlePreviewText(entry.path);
@@ -1481,6 +1509,24 @@ export default function FileExplorer({
         <PdfPreviewModal
           path={modals.pdfPreviewPath}
           onClose={() => modals.setPdfPreviewPath(null)}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 코드 미리보기 */}
+      {preview.codePreviewPath && (
+        <CodePreviewModal
+          path={preview.codePreviewPath}
+          onClose={() => preview.setCodePreviewPath(null)}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* FBX 3D 미리보기 */}
+      {preview.fbxPreviewPath && (
+        <FbxPreviewModal
+          path={preview.fbxPreviewPath}
+          onClose={() => preview.setFbxPreviewPath(null)}
           themeVars={themeVars}
         />
       )}

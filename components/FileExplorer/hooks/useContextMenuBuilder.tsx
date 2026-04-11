@@ -5,9 +5,9 @@ import { ContextMenuSection } from '../types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText, Image, List, Eraser, Type,
+  FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link,
 } from 'lucide-react';
-import { getFileName } from '../../../utils/pathUtils';
+import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
 
 export interface UseContextMenuBuilderConfig {
   contextMenu: { x: number; y: number; paths: string[] } | null;
@@ -392,7 +392,84 @@ export function useContextMenuBuilder({
     }
     sections.push(infoSection);
 
-    // 섹션 6: 빈 공간 전용 (새로 만들기)
+    // 섹션 6: Google Drive 전용 (단일 파일 선택 + Google Drive 경로일 때)
+    if (isSingle && isGoogleDrivePath(singlePath)) {
+      const gdSection: ContextMenuSection = { id: 'google-drive', items: [] };
+
+      // 파일 ID를 비동기로 조회한 후 메뉴 항목 활성/비활성 결정하기 위해
+      // 메뉴는 항상 표시하되, 파일 ID 없는 경우 disabled 처리
+      // (useMemo 내에서 async 불가 → 파일 ID를 onClick 시점에 조회)
+
+      gdSection.items.push({
+        id: 'gd-open',
+        icon: <Cloud size={13} />,
+        label: '구글 드라이브로 열기',
+        onClick: async () => {
+          try {
+            // 부모 폴더의 ID를 가져와서 Google Drive 웹에서 해당 폴더로 이동
+            const sep = singlePath.includes('\\') ? '\\' : '/';
+            const parentDir = singlePath.substring(0, singlePath.lastIndexOf(sep));
+            const folderId: string = await invoke('get_google_drive_file_id', { path: parentDir });
+            if (!folderId) { fileOps.showCopyToast('폴더 ID를 가져올 수 없습니다'); return; }
+            await invoke('open_folder', { path: `https://drive.google.com/drive/folders/${folderId}` });
+          } catch (e) { console.error('Google Drive 열기 실패:', e); }
+        },
+      });
+
+      gdSection.items.push({
+        id: 'gd-share',
+        icon: <ExternalLink size={13} />,
+        label: '구글 드라이브 공유',
+        onClick: async () => {
+          try {
+            const fileId: string = await invoke('get_google_drive_file_id', { path: singlePath });
+            if (!fileId) { fileOps.showCopyToast('파일 ID를 가져올 수 없습니다'); return; }
+            await invoke('open_folder', { path: `https://drive.google.com/file/d/${fileId}/edit?usp=sharing` });
+          } catch (e) { console.error('Google Drive 공유 열기 실패:', e); }
+        },
+      });
+
+      gdSection.items.push({
+        id: 'gd-copy-link',
+        icon: <Link size={13} />,
+        label: '링크를 클립보드에 복사',
+        onClick: async () => {
+          try {
+            // 파일 링크와 폴더 링크 모두 제공: 파일 ID가 있으면 파일 링크, 없으면 폴더 링크
+            const fileId: string = await invoke('get_google_drive_file_id', { path: singlePath });
+            if (fileId) {
+              const url = `https://drive.google.com/file/d/${fileId}/view`;
+              await invoke('copy_path', { path: url });
+              fileOps.showCopyToast('Drive 파일 링크 복사됨');
+            } else {
+              const sep = singlePath.includes('\\') ? '\\' : '/';
+              const parentDir = singlePath.substring(0, singlePath.lastIndexOf(sep));
+              const folderId: string = await invoke('get_google_drive_file_id', { path: parentDir });
+              if (!folderId) { fileOps.showCopyToast('링크를 가져올 수 없습니다'); return; }
+              const url = `https://drive.google.com/drive/folders/${folderId}`;
+              await invoke('copy_path', { path: url });
+              fileOps.showCopyToast('Drive 폴더 링크 복사됨');
+            }
+          } catch (e) { console.error('Drive 링크 복사 실패:', e); }
+        },
+      });
+
+      gdSection.items.push({
+        id: 'gd-offline',
+        icon: <Cloud size={13} />,
+        label: '오프라인에서 사용하도록 설정',
+        onClick: async () => {
+          try {
+            await invoke('set_google_drive_offline', { path: singlePath, offline: true });
+            fileOps.showCopyToast('오프라인 사용 설정됨');
+          } catch (e) { console.error('오프라인 설정 실패:', e); }
+        },
+      });
+
+      sections.push(gdSection);
+    }
+
+    // 섹션 7: 빈 공간 전용 (새로 만들기)
     if (paths.length === 0) {
       const createSection: ContextMenuSection = { id: 'create', items: [] };
       createSection.items.push({

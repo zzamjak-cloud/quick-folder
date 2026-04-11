@@ -23,7 +23,13 @@ type SaveStatus = 'saved' | 'saving' | 'unsaved';
 const turndown = new TurndownService({
   headingStyle: 'atx',
   codeBlockStyle: 'fenced',
+  blankReplacement: (_content: string, _node: Node) => '\n\n',
 });
+
+// 빈 줄 정규화: 연속 3줄 이상 빈 줄을 2줄로 축소
+function normalizeBlankLines(md: string): string {
+  return md.replace(/\n{3,}/g, '\n\n');
+}
 
 // --- 화살표 자동 변환 확장 ---
 const ArrowReplace = Extension.create({
@@ -127,6 +133,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       content = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       // zero-width 유니코드 제거
       content = content.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+      // 과도한 빈 줄 정규화
+      content = normalizeBlankLines(content);
     } else {
       // plain text: 에디터 텍스트를 그대로 저장
       content = editor.getText();
@@ -159,7 +167,15 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       try {
         const raw = await invoke<string>('read_text_file', { path, maxBytes: 1048576 });
         if (isMarkdown) {
-          const html = await marked(raw);
+          // 사용자가 넣은 연속 빈 줄을 보존하기 위해 마커로 변환
+          const preserved = raw.replace(/\n{3,}/g, (match) => {
+            // 빈 줄 개수만큼 마커 삽입 (2줄은 정상 단락 구분이므로 3줄 이상만)
+            const extraBlanks = match.length - 2; // 표준 단락 구분 2줄 제외
+            return '\n\n' + '&blank;\n\n'.repeat(extraBlanks);
+          });
+          let html = await marked(preserved);
+          // 마커를 빈 단락으로 변환
+          html = html.replace(/<p>&amp;blank;<\/p>/g, '<p><br></p>');
           editor.commands.setContent(html || '<p></p>');
         } else {
           // plain text: 줄바꿈을 <p> 태그로 변환하여 표시
@@ -347,6 +363,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
                   text = turndown.turndown(html);
                   text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
                   text = text.replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+                  // 과도한 빈 줄 정규화
+                  text = normalizeBlankLines(text);
                 } else {
                   text = editor.getText();
                 }
