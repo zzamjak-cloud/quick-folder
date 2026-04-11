@@ -1,0 +1,9 @@
+# Cargo 빌드 설정
+# cargo-clippy 경고 억제 (objc 크레이트 내부 사용으로 인한 false positive)
+# cargo_clippy (언더스코어)와 cargo-clippy (하이픈) 모두 허용
+
+[build]
+rustflags = [
+    "--check-cfg=cfg(cargo_clippy)",
+    "--check-cfg=cfg(clippy)",
+]

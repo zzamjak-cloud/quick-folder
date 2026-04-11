@@ -1,7 +1,31 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo add dirs)"
+      "Bash(TAURI_SKIP_DEVSERVER_CHECK=true cargo check --message-format short)",
+      "mcp__plugin_oh-my-claudecode_t__lsp_diagnostics",
+      "Bash(cargo check --no-default-features)",
+      "Bash(rustc --edition 2021 --crate-type lib src/modules/media_ops.rs)",
+      "Bash(git stash)",
+      "Bash(rustfmt --check /Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/src/modules/media_ops.rs)",
+      "Bash(cargo check)",
+      "Bash(cargo clippy --message-format=short)",
+      "Bash(rustc --version)",
+      "Bash(cargo clean)",
+      "Bash(find src/modules -name \"*.rs\" -exec wc -l {} +)",
+      "Read(//dev/**)",
+      "Bash(tree /Users/woody/Desktop/AI/QuickFolder/quick-folder/src-tauri/src/modules/tool_ops/)",
+      "Bash(cargo check --quiet)",
+      "Bash(cargo test --lib)",
+      "Bash(cargo build --quiet)",
+      "Bash(cargo build)",
+      "Bash(find src/modules -name \"*.rs\" -type f -exec wc -l {} +)",
+      "Bash(cargo check --message-format=short)",
+      "Bash(echo \"media_ops.rs에 Result<T, String> 패턴이 없습니다.\")",
+      "Bash(cargo test --lib --quiet)",
+      "Bash(cargo test --lib file_ops::tests --quiet)",
+      "Bash(cargo test --lib file_ops::tests -- --test-threads=1 --nocapture)",
+      "Bash(cargo test --lib file_ops::tests -- --test-threads=1)",
+      "Bash(git add -A)"
     ],
     "deny": [],
     "ask": []

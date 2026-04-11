@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "QuickFolder Widget",
-  "version": "1.26.0",
+  "version": "1.27.0",
   "identifier": "com.quickfolder.widget",
   "build": {
     "frontendDist": "../dist",
@@ -27,14 +27,20 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
   "bundle": {
     "publisher": "zzamjak-cloud",
     "active": true,
-    "targets": ["app", "dmg", "nsis"],
+    "targets": [
+      "app",
+      "dmg",
+      "nsis"
+    ],
     "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",

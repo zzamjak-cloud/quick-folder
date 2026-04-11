@@ -69,6 +69,7 @@ export interface UseKeyboardShortcutsConfig {
   setMarkdownEditorPath: (path: string | null) => void;
   handleCreateMarkdown: () => void;
   handleCompressVideo: (path: string, quality: string) => void;
+  handleCompressPdf: (path: string) => void;
   handleCompressZip: (paths: string[]) => void;
   handleExtractZip: (paths: string[]) => void;
   handleAddTag: (path: string) => void;

@@ -66,3 +66,18 @@ export type UndoAction =
   | { type: 'rename'; oldPath: string; newPath: string }
   | { type: 'move_group'; sources: string[]; createdDir: string; parentDir: string }
   | { type: 'create_file'; path: string };
+
+// Drawing tool types (for DrawingCanvas)
+export type DrawingTool = 'pen' | 'rect' | 'ellipse' | 'eraser';
+export type StrokeType = 'pen' | 'rect' | 'ellipse';
+
+export interface Stroke {
+  type: StrokeType;
+  points: { x: number; y: number }[];
+  color: string;
+  width: number;
+}
+
+export type DrawingUndoAction =
+  | { type: 'add'; stroke: Stroke }
+  | { type: 'erase'; stroke: Stroke; index: number };

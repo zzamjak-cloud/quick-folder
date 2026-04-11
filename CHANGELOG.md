@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.27.0] - 2026-04-11
+
+### Changed
+- **코드 리팩토링 Phase 4-6 완료**: Rust 백엔드 에러 타입 통합, 문서화 및 테스트 강화
+  - **Phase 4**: 중앙 집중식 에러 타입 시스템 구축
+    - `modules/error.rs` 신규 생성 (296줄) — AppError enum + From trait 자동 변환
+    - `Result<T, String>` → `Result<T>` 패턴 전환 (61개 Tauri 커맨드)
+    - `modules/constants.rs` 신규 생성 (119줄) — 매직 넘버 중앙화
+    - `tool_ops` 모듈 분리: ghostscript.rs (579줄), fonttools.rs (714줄), ffmpeg.rs (41줄)
+    - cargo-clippy 경고 수정 (`.cargo/config.toml` rustflags 설정)
+  - **Phase 5**: 시스템 모듈 재구성
+    - `system_ops` 모듈 분리: file_explorer.rs (269줄), file_icon.rs (292줄), file_search.rs (339줄), clipboard.rs (299줄)
+    - AppError 패턴 전면 적용 (ToolNotFound, ToolExecution 등 구체적 에러 타입)
+  - **Phase 6**: 테스트 및 문서화
+    - `file_ops.rs` 단위 테스트 15개 추가 (create_directory, rename_item, copy_items 등)
+    - `types.rs` 단위 테스트 8개 추가 (classify_file 확장자별 검증)
+    - `helpers.rs` 단위 테스트 5개 추가 (find_unique_path, get_copy_destination 등)
+    - `error.rs`, `helpers.rs` 전체 rustdoc 문서화 (/// 주석 + 사용 예제)
+    - 전체 모듈 AppError 마이그레이션 완료 (file_ops, image_ops, media_ops, system_ops)
+  - **효과**: 타입 안전성 강화, 에러 처리 일관성 확보, 자동 테스트 커버리지 확대
+
 ## [1.26.0] - 2026-04-11
 
 ### Changed

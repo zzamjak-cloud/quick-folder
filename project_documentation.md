@@ -1,6 +1,6 @@
 # QuickFolder Widget - 기술 문서
 
-> **현재 버전**: v1.15.0 | **최종 업데이트**: 2026-03-18
+> **현재 버전**: v1.27.0 | **최종 업데이트**: 2026-04-11
 
 ## 1. 프로젝트 개요
 
@@ -59,10 +59,32 @@ quick-folder/
 ├── src-tauri/                      # Rust 백엔드
 │   ├── src/
 │   │   ├── main.rs                 # 진입점 (lib.rs 호출)
-│   │   └── lib.rs                  # Tauri 커맨드, 플러그인 등록 (1,034줄)
+│   │   ├── lib.rs                  # Tauri 커맨드, 플러그인 등록 (~90줄)
+│   │   ├── helpers.rs              # 공통 헬퍼 함수 (296줄)
+│   │   └── modules/
+│   │       ├── mod.rs              # 모듈 re-export
+│   │       ├── types.rs            # 공통 타입 (FileType, FileEntry) + 테스트
+│   │       ├── error.rs            # AppError enum + Result 타입 (296줄)
+│   │       ├── constants.rs        # 상수 정의 (119줄)
+│   │       ├── file_ops.rs         # 파일 조작 커맨드 (1,024줄) + 테스트
+│   │       ├── image_ops.rs        # 이미지 처리 커맨드 (985줄)
+│   │       ├── media_ops.rs        # 동영상 처리 커맨드 (1,109줄)
+│   │       ├── tool_ops/
+│   │       │   ├── mod.rs          # Re-exports
+│   │       │   ├── ffmpeg.rs       # FFmpeg 감지 (41줄)
+│   │       │   ├── ghostscript.rs  # PDF 압축 (579줄)
+│   │       │   └── fonttools.rs    # 폰트 병합 (714줄)
+│   │       └── system_ops/
+│   │           ├── mod.rs          # FolderSelection + re-exports
+│   │           ├── file_explorer.rs # 탐색기 통합 (269줄)
+│   │           ├── file_icon.rs    # 네이티브 아이콘 (292줄)
+│   │           ├── file_search.rs  # 글로벌 검색 (339줄)
+│   │           └── clipboard.rs    # 클립보드 (299줄)
 │   ├── capabilities/
 │   │   └── default.json            # 권한 설정 (ACL)
 │   ├── icons/                      # 앱 아이콘 (icns, ico, png)
+│   ├── .cargo/
+│   │   └── config.toml             # Cargo 빌드 설정 (rustflags)
 │   ├── Cargo.toml                  # Rust 의존성
 │   └── tauri.conf.json             # Tauri 앱 설정
 │
@@ -110,9 +132,106 @@ quick-folder/
 
 ## 4. 아키텍처 상세
 
-### 4.1 Rust 백엔드 (`src-tauri/src/lib.rs`)
+### 4.1 에러 처리 시스템 (`modules/error.rs`)
 
-프론트엔드에서 `invoke()` 함수로 호출하는 Tauri 커맨드 목록:
+v1.27.0부터 중앙 집중식 에러 타입 시스템을 도입하여 모든 Tauri 커맨드에서 일관된 에러 처리를 제공합니다.
+
+**AppError enum** (14가지 에러 타입):
+```rust
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "type", content = "message")]
+pub enum AppError {
+    // 파일 시스템
+    Io(String),                                    // 일반 I/O 오류
+    Permission(String),                            // 권한 거부
+    NotFound(String),                             // 파일/폴더 없음
+    AlreadyExists(String),                        // 이미 존재
+
+    // 외부 도구
+    ToolNotFound { tool: String },                // 도구 미설치
+    ToolExecution { tool, reason },               // 도구 실행 실패
+    ToolDownload { tool, reason },                // 도구 다운로드 실패
+    ToolInstallation { tool, reason },            // 도구 설치 실패
+
+    // 미디어 처리
+    ImageProcessing(String),                      // 이미지 처리 실패
+    VideoProcessing(String),                      // 동영상 처리 실패
+    PdfProcessing(String),                        // PDF 처리 실패
+    FontProcessing(String),                       // 폰트 처리 실패
+
+    // 기타
+    UnsupportedPlatform(String),                  // 플랫폼 미지원
+    InvalidInput(String),                         // 잘못된 입력
+}
+
+pub type Result<T> = std::result::Result<T, AppError>;
+```
+
+**자동 에러 변환** (From trait):
+- `std::io::Error` → 자동으로 `AppError::Io` / `Permission` / `NotFound` / `AlreadyExists` 변환
+- `image::ImageError` → `AppError::ImageProcessing`
+- `zip::ZipError` → `AppError::Io`
+
+**사용 예시**:
+```rust
+#[tauri::command]
+pub async fn copy_items(sources: Vec<String>, dest: String) -> Result<()> {
+    // io::Error는 자동으로 AppError로 변환됨
+    std::fs::copy(&source, &dest)?;
+    Ok(())
+}
+```
+
+**프론트엔드 수신**:
+```typescript
+try {
+    await invoke('copy_items', { sources, dest });
+} catch (error) {
+    // error = { type: "permission_denied", message: "..." }
+    if (error.type === 'permission_denied') {
+        // 권한 오류 처리
+    }
+}
+```
+
+### 4.2 테스트 시스템
+
+**단위 테스트 현황** (28개 테스트):
+- `file_ops.rs`: 15개 테스트 (create_directory, rename_item, copy_items, delete_items 등)
+- `types.rs`: 8개 테스트 (classify_file 확장자별 검증)
+- `helpers.rs`: 5개 테스트 (find_unique_path, get_copy_destination 중복 회피)
+
+**테스트 패턴**:
+```rust
+#[test]
+fn test_create_directory() {
+    let test_dir = setup_test_dir("create_directory");
+    let new_dir = test_dir.join("new_folder");
+
+    tauri::async_runtime::block_on(async {
+        let result = create_directory(new_dir.to_string_lossy().to_string()).await;
+        assert!(result.is_ok());
+        assert!(new_dir.exists());
+    });
+
+    cleanup_test_dir(&test_dir);
+}
+```
+
+**테스트 목적**:
+1. **리팩토링 검증**: 에러 타입 마이그레이션 중 동작 변경 방지
+2. **회귀 방지**: 새 기능 추가 시 기존 동작 보호
+3. **문서화**: 각 함수의 예상 동작을 코드로 명시
+
+**테스트 실행**:
+```bash
+cargo test --lib                    # 모든 테스트
+cargo test --lib file_ops::tests    # file_ops만
+```
+
+### 4.3 Rust 백엔드 커맨드 목록
+
+프론트엔드에서 `invoke()` 함수로 호출하는 Tauri 커맨드:
 
 | 커맨드 | 설명 |
 |--------|------|
@@ -137,16 +256,17 @@ quick-folder/
 | `copy_path` | 경로를 클립보드에 복사 |
 | `select_folder` | 네이티브 폴더 선택 대화상자 |
 
-**파일 타입 분류** (`FileType` enum):
-- `Image`: jpg, jpeg, png, gif, webp, bmp, svg, ico
+**파일 타입 분류** (`modules/types.rs` - FileType enum):
+- `Image`: jpg, jpeg, png, gif, webp, bmp, svg, ico, psd
 - `Video`: mp4, mov, avi, mkv, webm
 - `Document`: pdf, doc(x), xls(x), ppt(x), txt, md, gslides, gdoc, gsheet
 - `Code`: rs, js, ts, tsx, jsx, py, go, java, c, cpp, h, css, html, json, toml, yaml, yml
 - `Archive`: zip, tar, gz, 7z, rar, dmg, pkg, unitypackage
+- `Font`: ttf, otf, woff, woff2, ttc
 - `Directory`: 폴더
 - `Other`: 기타
 
-**OS 네이티브 아이콘 시스템**:
+**OS 네이티브 아이콘 시스템** (`system_ops/file_icon.rs`):
 - macOS: `NSWorkspace::sharedWorkspace().iconForFile()` → 128px PNG → Base64
 - Windows: `SHGetImageList` + `SHIL_JUMBO` (256x256) → BGRA→RGBA 변환 → Base64
   - 폴백 체인: 256x256 → 48x48 → 32x32
@@ -154,11 +274,11 @@ quick-folder/
 
 **성능 보호**:
 - 프론트엔드: invoke 큐 (동시 3개, 대기 최대 200개, 초과 시 오래된 요청 취소)
-- Rust 백엔드: `HeavyOpPermit` 세마포어 (동시 3개) + `catch_unwind` 패닉 방지
+- Rust 백엔드: `HeavyOpPermit` 세마포어 (동시 3개, `modules/constants.rs`) + `catch_unwind` 패닉 방지
 - 모든 I/O 커맨드 `async fn` + `spawn_blocking`: 네트워크 파일시스템에서 tokio 워커 차단 방지
 - 탭별 entries 캐시: 디렉토리 내용을 `Map<string, FileEntry[]>`로 캐시하여 탭 전환 즉시 표시
 
-### 4.2 프론트엔드 아키텍처
+### 4.4 프론트엔드 아키텍처
 
 #### App.tsx (메인 컨테이너)
 - **레이아웃**: 좌측(즐겨찾기 패널, 리사이즈 가능) + 우측(FileExplorer)
@@ -203,7 +323,7 @@ quick-folder/
 - **분할 뷰**: 2분할(수평/수직), 각 패널 독립 탐색·탭·설정
 - **창 포커스 최적화**: 파일 변경 감지 후 조건부 갱신 (변경 없으면 리렌더링 없음)
 
-### 4.3 데이터 저장 (Data Persistence)
+### 4.5 데이터 저장 (Data Persistence)
 - **즐겨찾기 데이터**: `localStorage` → `quickfolder_widget_data` 키
   - `Category[]` 배열 (각 카테고리에 `FolderShortcut[]` 포함)
   - 색상: `#RRGGBB` HEX 형식 (구형 Tailwind 클래스 자동 마이그레이션)
@@ -212,7 +332,7 @@ quick-folder/
 - **탐색기 설정**: `localStorage` → 뷰 모드, 정렬 기준, 썸네일 크기 (instanceId별 분리)
 - **썸네일 캐시**: 디스크 → `app_cache_dir/` (파일경로+수정시각+크기 해시)
 
-### 4.4 핵심 타입 정의 (`types.ts`)
+### 4.6 핵심 타입 정의 (`types.ts`)
 
 ```typescript
 // 즐겨찾기 관련
@@ -232,7 +352,7 @@ interface ThemeVars { bg, surface, surface2, surfaceHover, border, text, muted, 
 interface ToastMessage { id, message, type: 'success' | 'error' | 'info' }
 ```
 
-### 4.5 드래그앤드롭 시스템
+### 4.7 드래그앤드롭 시스템
 
 **내부 DnD** (`@dnd-kit`):
 - **카테고리 드래그**: 헤더 드래그로 카테고리 순서 변경
@@ -254,7 +374,7 @@ interface ToastMessage { id, message, type: 'success' | 'error' | 'info' }
 - Tauri `onDragDropEvent` 기반 외부 파일 드롭 수신
 - 클라우드 스토리지 경로 감지하여 자동 이동/복사 결정
 
-### 4.6 아이콘 시스템
+### 4.8 아이콘 시스템
 
 파일 아이콘은 **3단계 폴백** 시스템으로 표시됩니다:
 
@@ -382,6 +502,13 @@ npm install @tauri-apps/plugin-xxxxx
 - electron-builder → Tauri 번들러
 - 결과: 100MB → 3.7MB (96% 감소)
 
+### Rust 백엔드 리팩토링 Phase 4-6 (2026년 4월)
+- **Phase 4**: AppError enum 중앙 집중식 에러 시스템 구축
+  - `Result<T, String>` → `Result<T>` 패턴 전환 (61개 커맨드)
+  - `tool_ops`, `constants.rs` 모듈 분리
+- **Phase 5**: `system_ops` 모듈 재구성 (4개 서브모듈)
+- **Phase 6**: 단위 테스트 28개 추가, rustdoc 전체 문서화
+
 ### 파일 탐색기 통합 (2026년 2월)
 - 통합 파일 탐색기 (그리드/리스트/세부정보 뷰, 탭, 분할 뷰)
 - 이미지·PSD·동영상 썸네일, OS 네이티브 아이콘
@@ -397,6 +524,8 @@ npm install @tauri-apps/plugin-xxxxx
 
 | 버전 | 날짜 | 주요 변경 |
 |------|------|----------|
+| **1.27.0** | 2026-04-11 | Phase 4-6 리팩토링: AppError 시스템, 모듈 재구성, 단위 테스트 28개, rustdoc |
+| **1.26.0** | 2026-04-11 | 외부 도구 빌드 번들링 (FFmpeg, Ghostscript, fonttools) |
 | **1.15.0** | 2026-03-18 | 탭 고정 기능 (우클릭 고정/해제, 닫기 보호, 자동 왼쪽 정렬) |
 | **1.14.0** | 2026-03-16 | 실행취소, 파일명 중복 검사, Finder 클립보드, 접힌 카테고리 약화 |
 | **1.13.0** | 2026-03-06 | Windows UI 수정, 미리보기 실시간 갱신, 다운로드 바로가기 |

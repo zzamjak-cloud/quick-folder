@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ClipboardData } from '../../../types';
+import { ClipboardData, FileEntry } from '../../../types';
 import { getFileName, getPathSeparator, normalizeFsPath } from '../../../utils/pathUtils';
 import { runCopyWithProgress, type CopyProgressInfo } from './runCopyWithProgress';
 

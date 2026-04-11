@@ -625,7 +625,6 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleBulkRenameApply,
     handleGroupIntoFolder,
     handleUngroupFolder,
-    executeUngroupFolder,
     handleCompressZip,
     handleExtractZip,
     handlePixelateApply,
