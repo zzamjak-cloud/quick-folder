@@ -155,24 +155,22 @@ jobs:
           # Ghostscript 리소스 복사 (PDF 처리에 필요)
           cp -R "$GS_PREFIX/share/ghostscript" gs_portable/share/
 
-          # 의존 dylib 수집 및 rpath 수정
-          collect_dylibs() {
-            local binary=$1
-            otool -L "$binary" 2>/dev/null | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
-              local lib_name=$(basename "$lib")
-              if [ ! -f "gs_portable/lib/$lib_name" ]; then
-                cp "$lib" "gs_portable/lib/"
-                chmod 644 "gs_portable/lib/$lib_name"
-                # 재귀적으로 이 라이브러리의 의존성도 수집
-                collect_dylibs "gs_portable/lib/$lib_name"
-              fi
-            done
-          }
+          # brew deps로 모든 의존성의 dylib를 확실하게 수집
+          echo "Collecting all dependency dylibs via brew deps..."
+          ALL_DEPS=$(brew deps --installed ghostscript)
+          echo "Dependencies: $ALL_DEPS"
 
-          collect_dylibs gs_portable/bin/gs
+          for dep in $ALL_DEPS ghostscript; do
+            dep_prefix=$(brew --prefix "$dep" 2>/dev/null || true)
+            if [ -d "$dep_prefix/lib" ]; then
+              cp "$dep_prefix/lib/"*.dylib gs_portable/lib/ 2>/dev/null || true
+            fi
+          done
+
+          echo "Collected $(ls gs_portable/lib/*.dylib 2>/dev/null | wc -l | tr -d ' ') dylibs"
 
           # gs 바이너리의 dylib 참조를 @rpath로 변경
-          otool -L gs_portable/bin/gs | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+          otool -L gs_portable/bin/gs | grep -v '/usr/lib' | grep '\.dylib' | awk '{print $1}' | while read lib; do
             lib_name=$(basename "$lib")
             install_name_tool -change "$lib" "@rpath/$lib_name" gs_portable/bin/gs 2>/dev/null || true
           done
@@ -180,10 +178,8 @@ jobs:
           # 모든 복사된 dylib의 참조도 @rpath로 변경
           for dylib in gs_portable/lib/*.dylib; do
             [ -f "$dylib" ] || continue
-            # id 변경
             install_name_tool -id "@rpath/$(basename "$dylib")" "$dylib" 2>/dev/null || true
-            # 의존 경로 변경
-            otool -L "$dylib" | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+            otool -L "$dylib" | grep -v '/usr/lib' | grep '\.dylib' | awk '{print $1}' | while read lib; do
               lib_name=$(basename "$lib")
               install_name_tool -change "$lib" "@rpath/$lib_name" "$dylib" 2>/dev/null || true
             done
@@ -193,9 +189,18 @@ jobs:
           install_name_tool -add_rpath @executable_path/../lib gs_portable/bin/gs 2>/dev/null || true
           chmod +x gs_portable/bin/gs
 
+          # install_name_tool로 서명이 깨졌으므로 ad-hoc 재서명
+          echo "Re-signing all binaries..."
+          for dylib in gs_portable/lib/*.dylib; do
+            [ -f "$dylib" ] && codesign --force --sign - "$dylib" 2>/dev/null || true
+          done
+          codesign --force --sign - gs_portable/bin/gs
+
           # 테스트
           echo "Testing portable gs..."
-          DYLD_LIBRARY_PATH=gs_portable/lib gs_portable/bin/gs --version || echo "⚠️ gs test failed (expected on CI)"
+          GS_LIB=gs_portable/share/ghostscript/Resource/Init:gs_portable/share/ghostscript/lib \
+            DYLD_LIBRARY_PATH=gs_portable/lib \
+            gs_portable/bin/gs --version && echo "✅ gs works!" || echo "⚠️ gs test failed"
 
           tar czf ghostscript-portable-macos-arm64.tar.gz -C gs_portable .
           echo "ghostscript-portable-macos-arm64.tar.gz: $(du -h ghostscript-portable-macos-arm64.tar.gz | cut -f1)"

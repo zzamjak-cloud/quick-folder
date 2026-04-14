@@ -558,11 +558,11 @@ pub fn find_gs_path() -> Option<String> {
         }
     }
 
-    // 2. macOS 포터블 패키지 (gs_portable/bin/gs)
+    // 2. macOS 포터블 패키지 (gs_portable/bin/gs) — --version 실행하지 않음 (GS_LIB 없이 hang)
     #[cfg(target_os = "macos")]
     {
         let portable_gs = gs_portable_root().join("bin").join("gs");
-        if portable_gs.exists() && std::fs::metadata(&portable_gs).map(|m| m.len() > 0).unwrap_or(false) {
+        if portable_gs.exists() && std::fs::metadata(&portable_gs).map(|m| m.len() > 10000).unwrap_or(false) {
             eprintln!("✅ 포터블 Ghostscript 발견: {:?}", portable_gs);
             return portable_gs.to_str().map(|s| s.to_string());
         }
@@ -651,22 +651,46 @@ pub async fn compress_pdf(input: String) -> Result<String> {
             .parent()                   // bin/
             .and_then(|p| p.parent())   // <root>/
         {
-            // GS_LIB: Ghostscript 리소스 (lib/ 또는 share/ghostscript/*/Resource)
-            let lib_dir = gs_root.join("lib");
-            if lib_dir.exists() {
-                cmd.env("GS_LIB", &lib_dir);
-            } else {
-                // macOS Homebrew 구조: share/ghostscript/VERSION/Resource
-                let share = gs_root.join("share").join("ghostscript");
-                if let Ok(entries) = std::fs::read_dir(&share) {
+            // GS_LIB: Ghostscript 리소스 경로 (초기화 파일 + lib)
+            let mut gs_lib_paths: Vec<String> = Vec::new();
+
+            // Windows 포터블: <root>/lib
+            let root_lib = gs_root.join("lib");
+            if root_lib.exists() {
+                gs_lib_paths.push(root_lib.to_string_lossy().to_string());
+            }
+
+            // macOS 포터블: share/ghostscript/Resource/Init + share/ghostscript/lib
+            let gs_share = gs_root.join("share").join("ghostscript");
+            let resource_init = gs_share.join("Resource").join("Init");
+            let share_lib = gs_share.join("lib");
+            if resource_init.exists() {
+                gs_lib_paths.push(resource_init.to_string_lossy().to_string());
+            }
+            if share_lib.exists() {
+                gs_lib_paths.push(share_lib.to_string_lossy().to_string());
+            }
+
+            // Homebrew 시스템 설치: share/ghostscript/VERSION/Resource
+            if gs_lib_paths.is_empty() {
+                if let Ok(entries) = std::fs::read_dir(&gs_share) {
                     for entry in entries.flatten() {
                         let resource = entry.path().join("Resource");
-                        if resource.exists() {
-                            cmd.env("GS_LIB", resource);
+                        if resource.is_dir() && entry.path().join("Resource").join("Init").exists() {
+                            gs_lib_paths.push(resource.join("Init").to_string_lossy().to_string());
+                            let ver_lib = entry.path().join("lib");
+                            if ver_lib.exists() {
+                                gs_lib_paths.push(ver_lib.to_string_lossy().to_string());
+                            }
                             break;
                         }
                     }
                 }
+            }
+
+            if !gs_lib_paths.is_empty() {
+                let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+                cmd.env("GS_LIB", gs_lib_paths.join(sep));
             }
 
             // macOS: 포터블 패키지의 dylib 경로 설정
