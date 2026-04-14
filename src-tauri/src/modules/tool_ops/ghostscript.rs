@@ -76,6 +76,77 @@ fn brew_install_ghostscript_via_login_shell() -> std::io::Result<std::process::O
     cmd.output()
 }
 
+// ─── macOS 포터블 패키지 다운로드 ──────────────────────────────────────────
+
+/// macOS: Ghostscript 포터블 패키지의 영구 저장 경로
+#[cfg(target_os = "macos")]
+fn gs_portable_root() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("QuickFolder")
+            .join("gs_portable")
+    } else {
+        std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("gs_portable")
+    }
+}
+
+/// macOS: GitHub Releases에서 Ghostscript 포터블 tar.gz 다운로드 후 gs_portable/에 추출
+#[cfg(target_os = "macos")]
+fn macos_download_gs_portable() -> Result<()> {
+    let url = if cfg!(target_arch = "aarch64") {
+        GHOSTSCRIPT_MACOS_ARM64
+    } else {
+        GHOSTSCRIPT_MACOS_X86_64
+    };
+
+    let root = gs_portable_root();
+
+    // 기존 디렉터리 정리
+    if root.exists() {
+        std::fs::remove_dir_all(&root)?;
+    }
+    std::fs::create_dir_all(&root)?;
+
+    let tgz = root.join("ghostscript-portable.tar.gz");
+    eprintln!("📦 Ghostscript 포터블 다운로드 중: {}", url);
+    ureq_download_to_path(url, 200 * 1024 * 1024, &tgz)?;
+
+    // tar.gz 추출
+    let root_str = root.to_str().ok_or_else(|| AppError::Internal("경로 인코딩 실패".to_string()))?;
+    let tgz_str = tgz.to_str().ok_or_else(|| AppError::Internal("경로 인코딩 실패".to_string()))?;
+    let st = std::process::Command::new("tar")
+        .args(["-xzf", tgz_str, "-C", root_str])
+        .status()
+        .map_err(|e| AppError::ToolExecution {
+            tool: "tar".to_string(),
+            reason: format!("tar 실행 실패: {e}"),
+        })?;
+    if !st.success() {
+        return Err(AppError::ToolExecution {
+            tool: "tar".to_string(),
+            reason: "Ghostscript 포터블 압축 해제 실패".to_string(),
+        });
+    }
+    let _ = std::fs::remove_file(&tgz);
+
+    // gs 실행 권한 부여
+    let gs_bin = root.join("bin").join("gs");
+    if gs_bin.exists() {
+        let _ = std::process::Command::new("chmod")
+            .args(["+x", gs_bin.to_str().unwrap_or("")])
+            .status();
+    }
+
+    eprintln!("✅ Ghostscript 포터블 설치 완료: {:?}", root);
+    Ok(())
+}
+
 // ─── Windows 헬퍼 함수 ─────────────────────────────────────────────────────
 
 /// Windows: 레지스트리 App Paths — 설치 프로그램이 등록하는 전체 경로 (가장 신뢰도 높음)
@@ -410,8 +481,16 @@ fn ensure_ghostscript_installed_inner() -> Result<()> {
 
     #[cfg(target_os = "macos")]
     {
-        let mut _last_out: Option<std::process::Output> = None;
+        // 1. GitHub Releases 포터블 패키지 (가장 안정적, Homebrew 불필요)
+        match macos_download_gs_portable() {
+            Ok(()) => {}
+            Err(e) => eprintln!("⚠️ Ghostscript 포터블 다운로드 실패: {e}"),
+        }
+        if find_gs_path().is_some() {
+            return Ok(());
+        }
 
+        // 2. Homebrew 폴백
         if let Some(brew) = find_brew_executable() {
             let output = brew_install_ghostscript(&brew)
                 .map_err(|e| AppError::ToolExecution {
@@ -421,46 +500,27 @@ fn ensure_ghostscript_installed_inner() -> Result<()> {
             if output.status.success() && find_gs_path().is_some() {
                 return Ok(());
             }
-            _last_out = Some(output);
         }
 
-        let output2 = brew_install_ghostscript_via_path_script()
-            .map_err(|e| AppError::ToolExecution {
-                tool: "brew".to_string(),
-                reason: format!("brew install 실행 실패: {}", e)
-            })?;
-        if output2.status.success() && find_gs_path().is_some() {
+        let output2 = brew_install_ghostscript_via_path_script().ok();
+        if output2.as_ref().map(|o| o.status.success()).unwrap_or(false) && find_gs_path().is_some() {
             return Ok(());
         }
-        _last_out = Some(output2);
 
-        let output3 = brew_install_ghostscript_via_login_shell()
-            .map_err(|e| AppError::ToolExecution {
-                tool: "brew".to_string(),
-                reason: format!("brew install 실행 실패: {}", e)
-            })?;
-        if output3.status.success() && find_gs_path().is_some() {
+        let output3 = brew_install_ghostscript_via_login_shell().ok();
+        if output3.as_ref().map(|o| o.status.success()).unwrap_or(false) && find_gs_path().is_some() {
             return Ok(());
         }
-        _last_out = Some(output3);
 
-        let out = _last_out.unwrap();
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        let stdout = String::from_utf8_lossy(&out.stdout);
         if find_gs_path().is_some() {
             return Ok(());
         }
+
         return Err(AppError::ToolInstallation {
             tool: "Ghostscript".to_string(),
-            reason: format!(
-                "설치에 실패했습니다.\n\
-                     (Homebrew로 ghostscript 설치)\n\n\
-                     stdout:\n{}\n\nstderr:\n{}\n\n\
+            reason: "Ghostscript 포터블 패키지 다운로드 및 Homebrew 설치 모두 실패했습니다.\n\n\
                      터미널에서 `brew install ghostscript` 실행 후 다시 시도하거나,\n\
-                     Homebrew가 없다면 https://brew.sh 를 참고해 설치해 주세요.",
-                stdout.trim(),
-                stderr.trim()
-            )
+                     Homebrew가 없다면 https://brew.sh 를 참고해 설치해 주세요.".to_string()
         });
     }
 
@@ -480,15 +540,53 @@ pub fn find_gs_path() -> Option<String> {
             #[cfg(not(target_os = "windows"))]
             let bundled = dir.join("gs");
 
-            if bundled.exists() && std::fs::metadata(&bundled).map(|m| m.len() > 0).unwrap_or(false) {
-                eprintln!("✅ 번들링된 Ghostscript 발견: {:?}", bundled);
-                return bundled.to_str().map(|s| s.to_string());
+            if bundled.exists() && std::fs::metadata(&bundled).map(|m| m.len() > 1024).unwrap_or(false) {
+                // 실제 실행 가능한지 검증 (macOS 스텁 바이너리 필터링)
+                let works = std::process::Command::new(&bundled)
+                    .arg("--version")
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+                if works {
+                    eprintln!("✅ 번들링된 Ghostscript 발견: {:?}", bundled);
+                    return bundled.to_str().map(|s| s.to_string());
+                }
+                eprintln!("⚠️ 번들링된 gs 존재하나 실행 불가 (스텁 또는 dylib 누락): {:?}", bundled);
             }
         }
     }
 
-    // 2. 시스템 PATH
-    if std::process::Command::new("gs")
+    // 2. macOS 포터블 패키지 (gs_portable/bin/gs)
+    #[cfg(target_os = "macos")]
+    {
+        let portable_gs = gs_portable_root().join("bin").join("gs");
+        if portable_gs.exists() && std::fs::metadata(&portable_gs).map(|m| m.len() > 0).unwrap_or(false) {
+            eprintln!("✅ 포터블 Ghostscript 발견: {:?}", portable_gs);
+            return portable_gs.to_str().map(|s| s.to_string());
+        }
+    }
+
+    // 3. Windows 포터블 패키지 (gs_sidecar/bin/gswin64c.exe)
+    #[cfg(target_os = "windows")]
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar_gs = dir.join("gs_sidecar").join("bin").join("gswin64c.exe");
+            if sidecar_gs.exists() && std::fs::metadata(&sidecar_gs).map(|m| m.len() > 0).unwrap_or(false) {
+                eprintln!("✅ 포터블 Ghostscript (sidecar) 발견: {:?}", sidecar_gs);
+                return sidecar_gs.to_str().map(|s| s.to_string());
+            }
+        }
+    }
+
+    // 4. 시스템 PATH
+    #[cfg(target_os = "windows")]
+    let gs_cmd = "gswin64c";
+    #[cfg(not(target_os = "windows"))]
+    let gs_cmd = "gs";
+
+    if std::process::Command::new(gs_cmd)
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -497,7 +595,7 @@ pub fn find_gs_path() -> Option<String> {
         .unwrap_or(false)
     {
         eprintln!("✅ 시스템 PATH에서 Ghostscript 발견");
-        return Some("gs".to_string());
+        return Some(gs_cmd.to_string());
     }
 
     eprintln!("❌ Ghostscript를 찾을 수 없습니다");
@@ -547,17 +645,38 @@ pub async fn compress_pdf(input: String) -> Result<String> {
         let output_str = output_path.to_string_lossy().to_string();
 
         let mut cmd = std::process::Command::new(&gs);
-        // 포터블 GS(gs_sidecar/bin/gswin64c.exe) 사용 시 lib/ 위치를 GS_LIB으로 명시.
-        // gswin64c.exe 위치: <root>/bin/gswin64c.exe → lib: <root>/lib/
-        // 시스템 설치(C:\Program Files\gs\...\bin\gswin64c.exe)도 동일 구조라 안전하게 적용 가능.
-        #[cfg(target_os = "windows")]
-        if let Some(gs_lib) = std::path::Path::new(&gs)
+
+        // 포터블 GS 사용 시 라이브러리 경로 설정
+        if let Some(gs_root) = std::path::Path::new(&gs)
             .parent()                   // bin/
             .and_then(|p| p.parent())   // <root>/
-            .map(|root| root.join("lib"))
-            .filter(|p| p.exists())
         {
-            cmd.env("GS_LIB", gs_lib);
+            // GS_LIB: Ghostscript 리소스 (lib/ 또는 share/ghostscript/*/Resource)
+            let lib_dir = gs_root.join("lib");
+            if lib_dir.exists() {
+                cmd.env("GS_LIB", &lib_dir);
+            } else {
+                // macOS Homebrew 구조: share/ghostscript/VERSION/Resource
+                let share = gs_root.join("share").join("ghostscript");
+                if let Ok(entries) = std::fs::read_dir(&share) {
+                    for entry in entries.flatten() {
+                        let resource = entry.path().join("Resource");
+                        if resource.exists() {
+                            cmd.env("GS_LIB", resource);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // macOS: 포터블 패키지의 dylib 경로 설정
+            #[cfg(target_os = "macos")]
+            {
+                let dylib_dir = gs_root.join("lib");
+                if dylib_dir.exists() {
+                    cmd.env("DYLD_LIBRARY_PATH", &dylib_dir);
+                }
+            }
         }
         cmd.args([
             "-sDEVICE=pdfwrite",

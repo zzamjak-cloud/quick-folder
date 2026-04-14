@@ -484,27 +484,10 @@ fn ensure_windows_fonttools_embed() -> Result<()> {
 /// macOS/Linux: indygreg python-build-standalone install_only + pip install fonttools
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn ensure_unix_fonttools_standalone() -> Result<()> {
-    let (url, name) = if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "aarch64") {
-            (
-                "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-aarch64-apple-darwin-install_only.tar.gz",
-                "cpython-macos-aarch64-install_only.tar.gz",
-            )
-        } else {
-            (
-                "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-apple-darwin-install_only.tar.gz",
-                "cpython-macos-x86_64-install_only.tar.gz",
-            )
-        }
-    } else {
-        (
-            "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-unknown-linux-gnu-install_only.tar.gz",
-            "cpython-linux-install_only.tar.gz",
-        )
-    };
-
     let root = fonttools_embed_root();
     let bin_dir = root.join("python").join("bin");
+
+    // 이미 설치되어 있으면 건너뛰기
     if let Some(py) = find_python3_in_bin(&bin_dir) {
         if let Some(s) = py.to_str() {
             if python_has_fonttools(s) {
@@ -513,13 +496,28 @@ fn ensure_unix_fonttools_standalone() -> Result<()> {
         }
     }
 
+    // 1. GitHub Releases 포터블 패키지 (fonttools 사전 설치됨, pip 불필요)
+    #[cfg(target_os = "macos")]
+    let (url, name) = if cfg!(target_arch = "aarch64") {
+        (PYTHON_FONTTOOLS_MACOS_ARM64, "python-fonttools-macos-arm64.tar.gz")
+    } else {
+        (PYTHON_FONTTOOLS_MACOS_X86_64, "python-fonttools-macos-x86_64.tar.gz")
+    };
+
+    #[cfg(target_os = "linux")]
+    let (url, name) = (
+        "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        "cpython-linux-install_only.tar.gz",
+    );
+
     if root.exists() {
         let _ = std::fs::remove_dir_all(&root);
     }
     std::fs::create_dir_all(&root)?;
 
     let tgz = root.join(name);
-    ureq_download_to_path(url, 120 * 1024 * 1024, &tgz)?;
+    eprintln!("📦 Python+fonttools 포터블 다운로드 중: {}", url);
+    ureq_download_to_path(url, 200 * 1024 * 1024, &tgz)?;
     extract_tar_gz(&tgz, &root)?;
     let _ = std::fs::remove_file(&tgz);
 
@@ -528,6 +526,14 @@ fn ensure_unix_fonttools_standalone() -> Result<()> {
     })?;
     let py_s = py.to_str().ok_or_else(|| AppError::Internal("python 경로 인코딩 실패".to_string()))?;
 
+    // macOS 포터블 패키지에는 fonttools가 사전 설치됨 → pip 건너뛰기
+    if python_has_fonttools(py_s) {
+        eprintln!("✅ Python+fonttools 포터블 설치 완료");
+        return Ok(());
+    }
+
+    // 폴백: fonttools가 없으면 pip install (Linux 또는 패키지 문제 시)
+    eprintln!("⚠️ fonttools 미포함, pip install 시도 중...");
     let mut pip = std::process::Command::new(py_s);
     pip.args(["-m", "pip", "install", "fonttools"]);
     pip.env("PIP_DISABLE_PIP_VERSION_CHECK", "1");

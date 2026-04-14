@@ -48,44 +48,33 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
-      # 4-1. 번들링할 외부 도구 다운로드 (FFmpeg, Ghostscript, Python+fonttools)
+      # 4-1. 번들링할 외부 도구 다운로드
+      # macOS: FFmpeg만 번들 (static binary). GS/fonttools는 런타임에 포터블 패키지 자동 다운로드.
+      # GS: Homebrew 바이너리는 dylib 의존성 때문에 단독 번들 불가 → portable-tools-v1 릴리스에서 다운로드
+      # fonttools: Python 환경이 필요 → portable-tools-v1 릴리스에서 다운로드
       - name: Download external tools for macOS
         if: matrix.platform == 'macos-latest'
         run: |
           mkdir -p src-tauri/binaries
 
-          # FFmpeg (Homebrew static build)
+          # FFmpeg (evermeet.cx static universal binary)
           echo "📦 FFmpeg 다운로드 중..."
           curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
           unzip -q ffmpeg.zip
-          # universal binary를 3가지 이름으로 복사 (Tauri universal 빌드 지원)
           cp ffmpeg src-tauri/binaries/ffmpeg-aarch64-apple-darwin
           cp ffmpeg src-tauri/binaries/ffmpeg-x86_64-apple-darwin
           cp ffmpeg src-tauri/binaries/ffmpeg-universal-apple-darwin
           chmod +x src-tauri/binaries/ffmpeg-*-apple-darwin
 
-          # Ghostscript (Homebrew bottle)
-          echo "📦 Ghostscript 다운로드 중..."
-          brew fetch --force --bottle-tag=arm64_sonoma ghostscript
-          GS_BOTTLE=$(brew --cache --bottle-tag=arm64_sonoma ghostscript)
-          tar xzf "$GS_BOTTLE" -C /tmp
-          # universal binary를 3가지 이름으로 복사
-          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-aarch64-apple-darwin
-          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-x86_64-apple-darwin
-          cp /tmp/ghostscript/*/bin/gs src-tauri/binaries/gs-universal-apple-darwin
+          # GS placeholder (Tauri externalBin은 파일이 없으면 빌드 실패 → 빈 스텁 생성)
+          echo '#!/bin/sh' > src-tauri/binaries/gs-aarch64-apple-darwin
+          echo 'echo "stub: use portable-tools-v1 package"' >> src-tauri/binaries/gs-aarch64-apple-darwin
+          cp src-tauri/binaries/gs-aarch64-apple-darwin src-tauri/binaries/gs-x86_64-apple-darwin
+          cp src-tauri/binaries/gs-aarch64-apple-darwin src-tauri/binaries/gs-universal-apple-darwin
           chmod +x src-tauri/binaries/gs-*-apple-darwin
 
-          # Python + fonttools (portable)
-          echo "📦 Python + fonttools 패키징 중..."
-          python3 -m venv /tmp/fonttools-venv
-          /tmp/fonttools-venv/bin/pip install --upgrade pip fonttools
-          # 3가지 아키텍처용 압축 파일 생성
-          tar czf src-tauri/binaries/python-fonttools-aarch64-apple-darwin.tar.gz \
-            -C /tmp/fonttools-venv .
-          tar czf src-tauri/binaries/python-fonttools-x86_64-apple-darwin.tar.gz \
-            -C /tmp/fonttools-venv .
-          tar czf src-tauri/binaries/python-fonttools-universal-apple-darwin.tar.gz \
-            -C /tmp/fonttools-venv .
+          # fonttools placeholder (Tauri resources 패턴 매칭용)
+          touch src-tauri/binaries/python-fonttools-placeholder
 
           echo "✅ macOS 도구 준비 완료"
           ls -lh src-tauri/binaries/

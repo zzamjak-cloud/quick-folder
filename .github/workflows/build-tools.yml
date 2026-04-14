@@ -118,21 +118,236 @@ jobs:
           $sizeMB = [math]::Round((Get-Item python-fonttools-win64.zip).Length / 1MB, 1)
           Write-Host "python-fonttools-win64.zip: ${sizeMB}MB"
 
-      # ── GitHub Releases 업로드 ────────────────────────────────────
+      # ── Windows 에셋 업로드 (임시 아티팩트) ────────────────────────
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-tools
+          path: |
+            ghostscript-portable-win64.zip
+            ffmpeg-portable-win64.zip
+            python-fonttools-win64.zip
+
+  # ═══════════════════════════════════════════════════════════════════
+  # macOS 포터블 도구 빌드 (ARM64)
+  # ═══════════════════════════════════════════════════════════════════
+  build-macos-arm64-tools:
+    runs-on: macos-latest  # macos-14+ = ARM64 (Apple Silicon)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Ghostscript 포터블 패키지 (ARM64) ──────────────────────────
+      - name: Build Ghostscript portable (arm64)
+        run: |
+          set -e
+          brew install ghostscript
+
+          GS_PREFIX=$(brew --prefix ghostscript)
+          echo "Ghostscript prefix: $GS_PREFIX"
+
+          mkdir -p gs_portable/bin gs_portable/lib gs_portable/share
+
+          # gs 바이너리 복사
+          cp "$GS_PREFIX/bin/gs" gs_portable/bin/
+
+          # Ghostscript 리소스 복사 (PDF 처리에 필요)
+          cp -R "$GS_PREFIX/share/ghostscript" gs_portable/share/
+
+          # 의존 dylib 수집 및 rpath 수정
+          collect_dylibs() {
+            local binary=$1
+            otool -L "$binary" 2>/dev/null | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+              local lib_name=$(basename "$lib")
+              if [ ! -f "gs_portable/lib/$lib_name" ]; then
+                cp "$lib" "gs_portable/lib/"
+                chmod 644 "gs_portable/lib/$lib_name"
+                # 재귀적으로 이 라이브러리의 의존성도 수집
+                collect_dylibs "gs_portable/lib/$lib_name"
+              fi
+            done
+          }
+
+          collect_dylibs gs_portable/bin/gs
+
+          # gs 바이너리의 dylib 참조를 @rpath로 변경
+          otool -L gs_portable/bin/gs | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+            lib_name=$(basename "$lib")
+            install_name_tool -change "$lib" "@rpath/$lib_name" gs_portable/bin/gs 2>/dev/null || true
+          done
+
+          # 모든 복사된 dylib의 참조도 @rpath로 변경
+          for dylib in gs_portable/lib/*.dylib; do
+            [ -f "$dylib" ] || continue
+            # id 변경
+            install_name_tool -id "@rpath/$(basename "$dylib")" "$dylib" 2>/dev/null || true
+            # 의존 경로 변경
+            otool -L "$dylib" | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+              lib_name=$(basename "$lib")
+              install_name_tool -change "$lib" "@rpath/$lib_name" "$dylib" 2>/dev/null || true
+            done
+          done
+
+          # rpath 추가
+          install_name_tool -add_rpath @executable_path/../lib gs_portable/bin/gs 2>/dev/null || true
+          chmod +x gs_portable/bin/gs
+
+          # 테스트
+          echo "Testing portable gs..."
+          DYLD_LIBRARY_PATH=gs_portable/lib gs_portable/bin/gs --version || echo "⚠️ gs test failed (expected on CI)"
+
+          tar czf ghostscript-portable-macos-arm64.tar.gz -C gs_portable .
+          echo "ghostscript-portable-macos-arm64.tar.gz: $(du -h ghostscript-portable-macos-arm64.tar.gz | cut -f1)"
+
+      # ── Python + fonttools 포터블 패키지 (ARM64) ────────────────────
+      - name: Build Python+fonttools portable (arm64)
+        run: |
+          set -e
+          TARBALL="cpython-aarch64-apple-darwin.tar.gz"
+          curl -L "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-aarch64-apple-darwin-install_only.tar.gz" \
+            -o "$TARBALL"
+
+          mkdir -p fonttools_build
+          tar xzf "$TARBALL" -C fonttools_build
+
+          # fonttools 사전 설치
+          fonttools_build/python/bin/python3 -m pip install --upgrade pip fonttools 2>&1 | tail -5
+
+          # 검증
+          fonttools_build/python/bin/python3 -c "import fontTools; print('fontTools OK:', fontTools.version)"
+
+          tar czf python-fonttools-macos-arm64.tar.gz -C fonttools_build .
+          echo "python-fonttools-macos-arm64.tar.gz: $(du -h python-fonttools-macos-arm64.tar.gz | cut -f1)"
+
+      - name: Upload macOS ARM64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-tools
+          path: |
+            ghostscript-portable-macos-arm64.tar.gz
+            python-fonttools-macos-arm64.tar.gz
+
+  # ═══════════════════════════════════════════════════════════════════
+  # macOS 포터블 도구 빌드 (x86_64)
+  # ═══════════════════════════════════════════════════════════════════
+  build-macos-x86_64-tools:
+    runs-on: macos-13  # macos-13 = x86_64 (Intel)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Ghostscript 포터블 패키지 (x86_64) ─────────────────────────
+      - name: Build Ghostscript portable (x86_64)
+        run: |
+          set -e
+          brew install ghostscript
+
+          GS_PREFIX=$(brew --prefix ghostscript)
+          echo "Ghostscript prefix: $GS_PREFIX"
+
+          mkdir -p gs_portable/bin gs_portable/lib gs_portable/share
+
+          cp "$GS_PREFIX/bin/gs" gs_portable/bin/
+          cp -R "$GS_PREFIX/share/ghostscript" gs_portable/share/
+
+          # 의존 dylib 수집 및 rpath 수정
+          collect_dylibs() {
+            local binary=$1
+            otool -L "$binary" 2>/dev/null | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+              local lib_name=$(basename "$lib")
+              if [ ! -f "gs_portable/lib/$lib_name" ]; then
+                cp "$lib" "gs_portable/lib/"
+                chmod 644 "gs_portable/lib/$lib_name"
+                collect_dylibs "gs_portable/lib/$lib_name"
+              fi
+            done
+          }
+
+          collect_dylibs gs_portable/bin/gs
+
+          otool -L gs_portable/bin/gs | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+            lib_name=$(basename "$lib")
+            install_name_tool -change "$lib" "@rpath/$lib_name" gs_portable/bin/gs 2>/dev/null || true
+          done
+
+          for dylib in gs_portable/lib/*.dylib; do
+            [ -f "$dylib" ] || continue
+            install_name_tool -id "@rpath/$(basename "$dylib")" "$dylib" 2>/dev/null || true
+            otool -L "$dylib" | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+              lib_name=$(basename "$lib")
+              install_name_tool -change "$lib" "@rpath/$lib_name" "$dylib" 2>/dev/null || true
+            done
+          done
+
+          install_name_tool -add_rpath @executable_path/../lib gs_portable/bin/gs 2>/dev/null || true
+          chmod +x gs_portable/bin/gs
+
+          echo "Testing portable gs..."
+          DYLD_LIBRARY_PATH=gs_portable/lib gs_portable/bin/gs --version || echo "⚠️ gs test failed (expected on CI)"
+
+          tar czf ghostscript-portable-macos-x86_64.tar.gz -C gs_portable .
+          echo "ghostscript-portable-macos-x86_64.tar.gz: $(du -h ghostscript-portable-macos-x86_64.tar.gz | cut -f1)"
+
+      # ── Python + fonttools 포터블 패키지 (x86_64) ───────────────────
+      - name: Build Python+fonttools portable (x86_64)
+        run: |
+          set -e
+          TARBALL="cpython-x86_64-apple-darwin.tar.gz"
+          curl -L "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-apple-darwin-install_only.tar.gz" \
+            -o "$TARBALL"
+
+          mkdir -p fonttools_build
+          tar xzf "$TARBALL" -C fonttools_build
+
+          fonttools_build/python/bin/python3 -m pip install --upgrade pip fonttools 2>&1 | tail -5
+          fonttools_build/python/bin/python3 -c "import fontTools; print('fontTools OK:', fontTools.version)"
+
+          tar czf python-fonttools-macos-x86_64.tar.gz -C fonttools_build .
+          echo "python-fonttools-macos-x86_64.tar.gz: $(du -h python-fonttools-macos-x86_64.tar.gz | cut -f1)"
+
+      - name: Upload macOS x86_64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64-tools
+          path: |
+            ghostscript-portable-macos-x86_64.tar.gz
+            python-fonttools-macos-x86_64.tar.gz
+
+  # ═══════════════════════════════════════════════════════════════════
+  # 모든 아키텍처 에셋을 GitHub Releases에 업로드
+  # ═══════════════════════════════════════════════════════════════════
+  upload-release:
+    needs: [build-windows-tools, build-macos-arm64-tools, build-macos-x86_64-tools]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: List all assets
+        run: ls -lh *.zip *.tar.gz
+
       - name: Delete existing release if present
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: gh release delete portable-tools-v1 --yes --cleanup-tag 2>/dev/null || true
+        run: gh release delete portable-tools-v1 --yes --cleanup-tag -R ${{ github.repository }} 2>/dev/null || true
 
       - name: Create release and upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
         run: |
           gh release create portable-tools-v1 \
-            --title "Portable Tools v1 (Windows)" \
-            --notes "Windows 포터블 빌드: FFmpeg + Ghostscript 10.x + Python 3.12 (fonttools 포함)" \
-            ffmpeg-portable-win64.zip \
+            --title "Portable Tools v1 (Windows + macOS)" \
+            --notes "포터블 빌드: FFmpeg + Ghostscript + Python+fonttools (Windows x64, macOS ARM64/x86_64)" \
+            --repo ${{ github.repository }} \
             ghostscript-portable-win64.zip \
-            python-fonttools-win64.zip
+            ffmpeg-portable-win64.zip \
+            python-fonttools-win64.zip \
+            ghostscript-portable-macos-arm64.tar.gz \
+            ghostscript-portable-macos-x86_64.tar.gz \
+            python-fonttools-macos-arm64.tar.gz \
+            python-fonttools-macos-x86_64.tar.gz

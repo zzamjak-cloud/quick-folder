@@ -59,6 +59,24 @@ pub mod download_urls {
 
     /// Python fonttools ZIP 파일명
     pub const PYTHON_FONTTOOLS_ZIP_NAME: &str = "python-fonttools-win64.zip";
+
+    // ── macOS 포터블 패키지 ──────────────────────────────────────────
+
+    /// Ghostscript Portable (macOS ARM64)
+    pub const GHOSTSCRIPT_MACOS_ARM64: &str =
+        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-arm64.tar.gz";
+
+    /// Ghostscript Portable (macOS x86_64)
+    pub const GHOSTSCRIPT_MACOS_X86_64: &str =
+        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-x86_64.tar.gz";
+
+    /// Python fonttools (macOS ARM64)
+    pub const PYTHON_FONTTOOLS_MACOS_ARM64: &str =
+        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/python-fonttools-macos-arm64.tar.gz";
+
+    /// Python fonttools (macOS x86_64)
+    pub const PYTHON_FONTTOOLS_MACOS_X86_64: &str =
+        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/python-fonttools-macos-x86_64.tar.gz";
 }
 
 // ===== 레지스트리 키 (Windows) =====
