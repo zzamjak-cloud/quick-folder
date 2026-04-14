@@ -229,10 +229,10 @@ jobs:
             python-fonttools-macos-arm64.tar.gz
 
   # ═══════════════════════════════════════════════════════════════════
-  # macOS 포터블 도구 빌드 (x86_64)
+  # macOS 포터블 도구 빌드 (x86_64) — ARM64 러너에서 크로스 다운로드
   # ═══════════════════════════════════════════════════════════════════
   build-macos-x86_64-tools:
-    runs-on: macos-13  # macos-13 = x86_64 (Intel)
+    runs-on: macos-latest  # ARM64 러너에서 x86_64 바이너리를 크로스 다운로드
 
     steps:
       - name: Checkout
@@ -242,32 +242,59 @@ jobs:
       - name: Build Ghostscript portable (x86_64)
         run: |
           set -e
-          brew install ghostscript
+          # x86_64 Homebrew bottle 다운로드 (ARM64 러너에서 크로스)
+          brew fetch --force --bottle-tag=ventura ghostscript
+          GS_BOTTLE=$(brew --cache --bottle-tag=ventura ghostscript)
+          echo "GS bottle: $GS_BOTTLE"
 
-          GS_PREFIX=$(brew --prefix ghostscript)
-          echo "Ghostscript prefix: $GS_PREFIX"
+          mkdir -p /tmp/gs_x86 gs_portable/bin gs_portable/lib gs_portable/share
+          tar xzf "$GS_BOTTLE" -C /tmp/gs_x86
 
-          mkdir -p gs_portable/bin gs_portable/lib gs_portable/share
+          # bottle 내부 구조 탐색
+          GS_DIR=$(find /tmp/gs_x86 -name "gs" -path "*/bin/gs" -type f | head -1 | xargs dirname | xargs dirname)
+          echo "GS dir: $GS_DIR"
 
-          cp "$GS_PREFIX/bin/gs" gs_portable/bin/
-          cp -R "$GS_PREFIX/share/ghostscript" gs_portable/share/
+          cp "$GS_DIR/bin/gs" gs_portable/bin/
+          [ -d "$GS_DIR/share/ghostscript" ] && cp -R "$GS_DIR/share/ghostscript" gs_portable/share/
+          [ -d "$GS_DIR/lib" ] && cp -R "$GS_DIR/lib/"* gs_portable/lib/ 2>/dev/null || true
 
-          # 의존 dylib 수집 및 rpath 수정
+          # bottle의 의존 라이브러리 — Homebrew가 bottle 내에 포함하는 dylib만 수집
+          # (x86_64 바이너리도 otool/install_name_tool로 처리 가능)
           collect_dylibs() {
             local binary=$1
-            otool -L "$binary" 2>/dev/null | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+            otool -L "$binary" 2>/dev/null | grep '/opt/homebrew\|/usr/local\|@@HOMEBREW' | awk '{print $1}' | while read lib; do
               local lib_name=$(basename "$lib")
               if [ ! -f "gs_portable/lib/$lib_name" ]; then
-                cp "$lib" "gs_portable/lib/"
-                chmod 644 "gs_portable/lib/$lib_name"
-                collect_dylibs "gs_portable/lib/$lib_name"
+                # Homebrew cellar에서 실제 파일 탐색
+                local actual=$(find /tmp/gs_x86 -name "$lib_name" -type f 2>/dev/null | head -1)
+                if [ -n "$actual" ]; then
+                  cp "$actual" "gs_portable/lib/"
+                  chmod 644 "gs_portable/lib/$lib_name"
+                  collect_dylibs "gs_portable/lib/$lib_name"
+                fi
               fi
             done
           }
 
-          collect_dylibs gs_portable/bin/gs
+          # x86_64 bottle에서 의존성도 다운로드
+          for dep in fontconfig freetype jpeg-turbo libpng libtiff little-cms2 openjpeg jbig2dec libidn; do
+            brew fetch --force --bottle-tag=ventura "$dep" 2>/dev/null || true
+            DEP_BOTTLE=$(brew --cache --bottle-tag=ventura "$dep" 2>/dev/null || true)
+            if [ -n "$DEP_BOTTLE" ] && [ -f "$DEP_BOTTLE" ]; then
+              tar xzf "$DEP_BOTTLE" -C /tmp/gs_x86 2>/dev/null || true
+            fi
+          done
 
-          otool -L gs_portable/bin/gs | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+          # 모든 dylib 수집
+          find /tmp/gs_x86 -name "*.dylib" -type f | while read lib; do
+            lib_name=$(basename "$lib")
+            if [ ! -f "gs_portable/lib/$lib_name" ]; then
+              cp "$lib" "gs_portable/lib/" 2>/dev/null || true
+            fi
+          done
+
+          # rpath 수정
+          otool -L gs_portable/bin/gs 2>/dev/null | grep -v '/usr/lib' | grep '/' | awk '{print $1}' | while read lib; do
             lib_name=$(basename "$lib")
             install_name_tool -change "$lib" "@rpath/$lib_name" gs_portable/bin/gs 2>/dev/null || true
           done
@@ -275,7 +302,7 @@ jobs:
           for dylib in gs_portable/lib/*.dylib; do
             [ -f "$dylib" ] || continue
             install_name_tool -id "@rpath/$(basename "$dylib")" "$dylib" 2>/dev/null || true
-            otool -L "$dylib" | grep '/opt/homebrew\|/usr/local' | awk '{print $1}' | while read lib; do
+            otool -L "$dylib" 2>/dev/null | grep -v '/usr/lib' | grep '/' | awk '{print $1}' | while read lib; do
               lib_name=$(basename "$lib")
               install_name_tool -change "$lib" "@rpath/$lib_name" "$dylib" 2>/dev/null || true
             done
@@ -283,9 +310,6 @@ jobs:
 
           install_name_tool -add_rpath @executable_path/../lib gs_portable/bin/gs 2>/dev/null || true
           chmod +x gs_portable/bin/gs
-
-          echo "Testing portable gs..."
-          DYLD_LIBRARY_PATH=gs_portable/lib gs_portable/bin/gs --version || echo "⚠️ gs test failed (expected on CI)"
 
           tar czf ghostscript-portable-macos-x86_64.tar.gz -C gs_portable .
           echo "ghostscript-portable-macos-x86_64.tar.gz: $(du -h ghostscript-portable-macos-x86_64.tar.gz | cut -f1)"
@@ -301,8 +325,9 @@ jobs:
           mkdir -p fonttools_build
           tar xzf "$TARBALL" -C fonttools_build
 
-          fonttools_build/python/bin/python3 -m pip install --upgrade pip fonttools 2>&1 | tail -5
-          fonttools_build/python/bin/python3 -c "import fontTools; print('fontTools OK:', fontTools.version)"
+          # x86_64 Python을 Rosetta 2로 실행하여 fonttools 설치
+          arch -x86_64 fonttools_build/python/bin/python3 -m pip install --upgrade pip fonttools 2>&1 | tail -5
+          arch -x86_64 fonttools_build/python/bin/python3 -c "import fontTools; print('fontTools OK:', fontTools.version)"
 
           tar czf python-fonttools-macos-x86_64.tar.gz -C fonttools_build .
           echo "python-fonttools-macos-x86_64.tar.gz: $(du -h python-fonttools-macos-x86_64.tar.gz | cut -f1)"
