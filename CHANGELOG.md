@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.2] - 2026-04-14
+
+### Fixed
+- **macOS PDF 압축/폰트 병합 실패 수정**: Ghostscript, fonttools를 Windows와 동일한 포터블 패키지 자동 다운로드 방식으로 통일
+  - macOS: GitHub Releases에서 포터블 tar.gz 자동 다운로드 (Homebrew 불필요)
+  - Ghostscript: dylib 의존성 포함 포터블 패키지 + DYLD_LIBRARY_PATH 설정
+  - fonttools: Python+fonttools 사전 설치 패키지 (pip install 불필요)
+  - 번들된 gs 바이너리 실행 검증 추가 (스텁/dylib 누락 시 포터블 다운로드로 폴백)
+- **build-tools.yml**: macOS ARM64/x86_64 포터블 도구 빌드 job 추가
+
 ## [1.27.1] - 2026-04-11
 
 ### Added
