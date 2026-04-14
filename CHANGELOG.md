@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.3] - 2026-04-14
+
+### Fixed
+- **macOS Ghostscript 포터블 패키지 수정**:
+  - `install_name_tool` 후 ad-hoc codesign 재서명 추가 (서명 무효화 → macOS 실행 차단 해결)
+  - `brew deps --installed`로 전체 transitive dylib 수집 (`libsharpyuv` 등 누락 해결)
+  - `compress_pdf` GS_LIB 경로 구성 수정 (`Resource/Init` + `lib` 직접 참조)
+  - `find_gs_path` 포터블 바이너리: `--version` 실행 대신 파일 크기 검증 (GS_LIB 없이 hang 방지)
+
 ## [1.27.2] - 2026-04-14
 
 ### Fixed
