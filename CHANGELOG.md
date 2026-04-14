@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.4] - 2026-04-15
+
+### Fixed
+- **Windows fonttools 포터블 패키지 수정**: `actions/setup-python`(비포터블 CPython) → `python-build-standalone`(재배치 가능)으로 교체
+  - 자동 업데이트 후 fonttools "설치 실패" 오류 해결
+  - macOS와 동일한 indygreg python-build-standalone 사용
+  - `build-tools.yml`, `release.yml` 모두 수정
+
 ## [1.27.3] - 2026-04-14
 
 ### Fixed

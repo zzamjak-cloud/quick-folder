@@ -102,11 +102,16 @@ jobs:
           $gsExe = Get-ChildItem -Path "./gs_extracted" -Filter "gswin64c.exe" -Recurse | Select-Object -First 1
           Copy-Item $gsExe.FullName src-tauri/binaries/gs-x86_64-pc-windows-msvc.exe
 
-          # Python + fonttools (GitHub Actions Python)
+          # Python + fonttools (python-build-standalone — 포터블, 재배치 가능)
           Write-Host "📦 Python + fonttools 패키징 중..."
-          pip install fonttools
-          $pyDir = Split-Path (python -c "import sys; print(sys.executable)") -Parent
-          Compress-Archive -Path "$pyDir\*" `
+          Invoke-WebRequest `
+            -Uri "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-pc-windows-msvc-install_only.tar.gz" `
+            -OutFile cpython-win64.tar.gz
+          New-Item -ItemType Directory -Force -Path ./fonttools_build | Out-Null
+          tar -xzf cpython-win64.tar.gz -C ./fonttools_build
+          & ./fonttools_build/python/python.exe -m pip install --upgrade pip fonttools 2>&1 | Select-Object -Last 3
+          & ./fonttools_build/python/python.exe -c "import fontTools; print('fontTools OK:', fontTools.version)"
+          Compress-Archive -Path "./fonttools_build/python" `
             -DestinationPath src-tauri/binaries/python-fonttools-x86_64-pc-windows-msvc.zip
 
           Write-Host "✅ Windows 도구 준비 완료"
