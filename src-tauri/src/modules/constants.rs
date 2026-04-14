@@ -67,8 +67,9 @@ pub mod download_urls {
         "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-arm64.tar.gz";
 
     /// Ghostscript Portable (macOS x86_64)
+    /// x86_64 Homebrew bottle 미제공 → ARM64 패키지 사용 시도 (실패 시 brew 폴백)
     pub const GHOSTSCRIPT_MACOS_X86_64: &str =
-        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-x86_64.tar.gz";
+        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-arm64.tar.gz";
 
     /// Python fonttools (macOS ARM64)
     pub const PYTHON_FONTTOOLS_MACOS_ARM64: &str =
