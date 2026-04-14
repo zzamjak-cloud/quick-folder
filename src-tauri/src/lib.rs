@@ -71,6 +71,7 @@ pub fn run() {
         get_font_info,
         read_font_bytes,
         check_fonttools,
+        download_fonttools,
         install_fonttools,
         merge_fonts,
         compress_gif,

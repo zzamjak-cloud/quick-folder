@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.5] - 2026-04-15
+
+### Fixed
+- **Windows fonttools 설치 실패 수정**: `download_fonttools` 커맨드가 Tauri 핸들러에 미등록되어 프론트엔드 호출 시 항상 실패하던 문제 해결
+
 ## [1.27.4] - 2026-04-15
 
 ### Fixed
