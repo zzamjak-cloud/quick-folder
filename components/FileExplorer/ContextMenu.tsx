@@ -46,7 +46,7 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
               <button
                 key={sub.id}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors text-left hover:bg-[var(--qf-surface-hover)] cursor-pointer"
-                style={{ color: 'var(--qf-text)' }}
+                style={{ color: sub.labelColor ?? 'var(--qf-text)', fontWeight: sub.labelColor ? 600 : undefined }}
                 onClick={() => { sub.onClick(); onClose(); }}
               >
                 {sub.label}

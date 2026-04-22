@@ -187,7 +187,12 @@ export default memo(function FileCard({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        // 이름 변경 중에는 드래그 시작 금지 (의도치 않은 폴더 이동 방지)
+        if (isRenaming) return;
+        onDragMouseDown(e, entry.path);
+      }}
       title={formatTooltip(entry, imageDims)}
     >
       {/* 썸네일/아이콘 영역 */}

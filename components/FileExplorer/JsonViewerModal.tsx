@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { X, ChevronDown, ChevronRight, Search, Maximize2, Minimize2, Edit3, Save } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, Search, Maximize2, Minimize2, Edit3, Save, Plus, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getBaseName } from '../../utils/pathUtils';
@@ -9,6 +9,11 @@ interface JsonViewerModalProps {
   data: any;
   onClose: () => void;
   themeVars: ThemeVars | null;
+  /**
+   * 편집 모드 요청 토큰 — 값이 0보다 크면 편집 모드로 진입하고,
+   * 값이 변경될 때마다 (Enter 재진입 등) 편집 모드로 다시 전환됨
+   */
+  editRequestToken?: number;
 }
 
 type NodeType = 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
@@ -19,14 +24,19 @@ type NodeType = 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
  * - 타입 표시 On/Off
  * - 검색 기능 (키·값 검색)
  */
-export default function JsonViewerModal({ path, data, onClose, themeVars }: JsonViewerModalProps) {
+export default function JsonViewerModal({ path, data, onClose, themeVars, editRequestToken = 0 }: JsonViewerModalProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['root']));
   const [showTypes, setShowTypes] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(editRequestToken > 0);
   const [editedData, setEditedData] = useState<any>(data);
   const [saving, setSaving] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // 편집 요청 토큰이 증가할 때마다 편집 모드 재진입 (Enter 재입력 등)
+  useEffect(() => {
+    if (editRequestToken > 0) setEditMode(true);
+  }, [editRequestToken]);
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -96,6 +106,102 @@ export default function JsonViewerModal({ path, data, onClose, themeVars }: Json
     const lastKey = pathParts[pathParts.length - 1];
     current[lastKey] = newValue;
 
+    setEditedData(newData);
+  };
+
+  // 특정 위치 바로 뒤에 빈 키/값 삽입
+  // jsonPath: 삽입 기준 항목의 경로 (이 항목 바로 뒤에 새 항목이 추가됨)
+  const handleInsertAfter = (jsonPath: string) => {
+    const pathParts = jsonPath.split('.').slice(1); // 'root' 제거
+    if (pathParts.length === 0) return;
+    const newData = JSON.parse(JSON.stringify(editedData));
+
+    // 부모 객체 찾기
+    let parent = newData;
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      parent = parent[pathParts[i]];
+    }
+    const lastKey = pathParts[pathParts.length - 1];
+
+    if (Array.isArray(parent)) {
+      const idx = parseInt(lastKey, 10);
+      if (Number.isNaN(idx)) return;
+      parent.splice(idx + 1, 0, '');
+    } else if (parent && typeof parent === 'object') {
+      // 객체: 기준 키 바로 뒤에 빈 키 삽입. key 순서 보존을 위해 재구성
+      const entries = Object.entries(parent);
+      const insertIdx = entries.findIndex(([k]) => k === lastKey);
+      if (insertIdx < 0) return;
+      const newKey = generateUniqueKey(parent, 'newKey');
+      entries.splice(insertIdx + 1, 0, [newKey, '']);
+      // 기존 키 삭제 후 순서대로 재삽입
+      for (const k of Object.keys(parent)) delete parent[k];
+      for (const [k, v] of entries) parent[k] = v;
+    }
+    setEditedData(newData);
+  };
+
+  // 컨테이너 맨 앞에 빈 항목 삽입 (객체/배열의 첫 추가용)
+  const handleInsertFirst = (containerPath: string) => {
+    const pathParts = containerPath.split('.').slice(1); // 'root' 제거
+    const newData = JSON.parse(JSON.stringify(editedData));
+
+    // containerPath가 'root'이면 newData 자체
+    let container: any = newData;
+    for (let i = 0; i < pathParts.length; i++) {
+      container = container[pathParts[i]];
+    }
+
+    if (Array.isArray(container)) {
+      container.unshift('');
+    } else if (container && typeof container === 'object') {
+      // 객체: 'newKey' 부터 순서 유지하여 맨 앞에 삽입
+      const entries = Object.entries(container);
+      const newKey = generateUniqueKey(container, 'newKey');
+      const rebuilt: [string, any][] = [[newKey, ''], ...entries];
+      for (const k of Object.keys(container)) delete container[k];
+      for (const [k, v] of rebuilt) container[k] = v;
+    } else {
+      return;
+    }
+
+    // 부모를 갱신해야 하는 경우 (root가 아닌 경우)
+    if (pathParts.length === 0) {
+      setEditedData(container);
+    } else {
+      setEditedData(newData);
+    }
+    // 삽입된 컨테이너는 자동 펼침
+    setExpandedPaths(prev => new Set(prev).add(containerPath));
+  };
+
+  // 중복 없는 기본 키 생성 (newKey, newKey2, newKey3, ...)
+  const generateUniqueKey = (obj: any, base: string): string => {
+    if (!(base in obj)) return base;
+    let i = 2;
+    while (`${base}${i}` in obj) i++;
+    return `${base}${i}`;
+  };
+
+  // 키/요소 삭제
+  const handleDeleteKey = (jsonPath: string) => {
+    const pathParts = jsonPath.split('.').slice(1);
+    if (pathParts.length === 0) return;
+    const newData = JSON.parse(JSON.stringify(editedData));
+
+    let parent = newData;
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      parent = parent[pathParts[i]];
+    }
+    const lastKey = pathParts[pathParts.length - 1];
+
+    if (Array.isArray(parent)) {
+      const idx = parseInt(lastKey, 10);
+      if (Number.isNaN(idx)) return;
+      parent.splice(idx, 1);
+    } else if (parent && typeof parent === 'object') {
+      delete parent[lastKey];
+    }
     setEditedData(newData);
   };
 
@@ -347,10 +453,65 @@ export default function JsonViewerModal({ path, data, onClose, themeVars }: Json
                 {type === 'array' ? `[${Array.isArray(value) ? value.length : 0}]` : `{${Object.keys(value || {}).length}}`}
               </span>
             )}
+
+            {/* 편집 모드: 항목별 삽입/삭제 버튼 */}
+            {editMode && (
+              <span className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  title="이 항목 다음에 추가"
+                  className="p-0.5 rounded hover:opacity-80"
+                  style={{
+                    backgroundColor: `${themeVars?.accent ?? '#3b82f6'}25`,
+                    color: themeVars?.accent ?? '#3b82f6',
+                    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                    cursor: 'pointer',
+                  }}
+                  onClick={(e) => { e.stopPropagation(); handleInsertAfter(childPath); }}
+                >
+                  <Plus size={11} />
+                </button>
+                <button
+                  title="이 항목 삭제"
+                  className="p-0.5 rounded hover:opacity-80"
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: '#f87171',
+                    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                    cursor: 'pointer',
+                  }}
+                  onClick={(e) => { e.stopPropagation(); handleDeleteKey(childPath); }}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </span>
+            )}
           </div>
 
           {/* 자식 노드 (펼쳐져 있을 때만) */}
-          {isContainer && childExpanded && renderNode(value, childPath, depth + 1)}
+          {isContainer && childExpanded && (
+            <>
+              {renderNode(value, childPath, depth + 1)}
+              {/* 편집 모드이고 컨테이너가 비어있으면 첫 항목 추가 버튼 */}
+              {editMode && value && typeof value === 'object' && Object.keys(value).length === 0 && (
+                <div style={{ marginLeft: (depth + 1) * 16 }}>
+                  <button
+                    title={type === 'array' ? '첫 요소 추가' : '첫 키 추가'}
+                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded hover:opacity-80 mt-0.5"
+                    style={{
+                      backgroundColor: `${themeVars?.accent ?? '#3b82f6'}20`,
+                      color: themeVars?.accent ?? '#3b82f6',
+                      border: `1px dashed ${themeVars?.accent ?? '#3b82f6'}`,
+                      cursor: 'pointer',
+                    }}
+                    onClick={(e) => { e.stopPropagation(); handleInsertFirst(childPath); }}
+                  >
+                    <Plus size={10} />
+                    {type === 'array' ? '요소 추가' : '키 추가'}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       );
     });
@@ -363,6 +524,7 @@ export default function JsonViewerModal({ path, data, onClose, themeVars }: Json
   return (
     <div
       className="fixed inset-0 z-[10000] flex items-center justify-center"
+      data-json-preview="true"
       style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
       onClick={onClose}
     >
@@ -530,7 +692,28 @@ export default function JsonViewerModal({ path, data, onClose, themeVars }: Json
           }}
         >
           {editedData && !editedData._error ? (
-            renderNode(editedData, 'root', 0)
+            <>
+              {renderNode(editedData, 'root', 0)}
+              {/* 편집 모드: 루트가 객체/배열이면 맨 앞 추가 버튼 */}
+              {editMode && editedData && typeof editedData === 'object' && (
+                <div className="mt-1">
+                  <button
+                    title={Array.isArray(editedData) ? '맨 앞에 요소 추가' : '맨 앞에 키 추가'}
+                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded hover:opacity-80"
+                    style={{
+                      backgroundColor: `${themeVars?.accent ?? '#3b82f6'}20`,
+                      color: themeVars?.accent ?? '#3b82f6',
+                      border: `1px dashed ${themeVars?.accent ?? '#3b82f6'}`,
+                      cursor: 'pointer',
+                    }}
+                    onClick={(e) => { e.stopPropagation(); handleInsertFirst('root'); }}
+                  >
+                    <Plus size={10} />
+                    {Array.isArray(editedData) ? '맨 앞에 요소 추가' : '맨 앞에 키 추가'}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-8" style={{ color: '#f87171' }}>
               {editedData?._error || 'JSON 데이터를 로드할 수 없습니다.'}

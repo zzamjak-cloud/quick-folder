@@ -166,6 +166,7 @@ export default function FileExplorer({
     const isPsb = /\.psb$/i.test(entry.name);
     const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
     const isJson = ext === 'json';
+    const isMd = ext === 'md';
     // 확장자 없는 알려진 텍스트 파일 감지
     const KNOWN_TEXT_FILES = new Set([
       'license', 'licence', 'readme', 'makefile', 'dockerfile',
@@ -175,7 +176,7 @@ export default function FileExplorer({
     ]);
     const hasNoExt = !entry.name.includes('.') || entry.name.startsWith('.');
     const isKnownText = hasNoExt && KNOWN_TEXT_FILES.has(entry.name.toLowerCase());
-    const isText = (TEXT_PREVIEW_EXTS.has(ext) && !isJson) || isKnownText; // JSON은 전용 뷰어 사용
+    const isText = (TEXT_PREVIEW_EXTS.has(ext) && !isJson && !isMd) || isKnownText; // JSON/MD는 전용 뷰어 사용
 
     // 같은 타입이면 closeAll 없이 직접 교체 (깜빡임 방지)
     if (isVideo) {
@@ -194,6 +195,9 @@ export default function FileExplorer({
     } else if (isJson) {
       if (!preview.previewJsonPath) preview.closeAllPreviews();
       preview.handlePreviewJson(entry.path);
+    } else if (isMd) {
+      if (!preview.previewMdPath) preview.closeAllPreviews();
+      preview.handlePreviewMd(entry.path);
     } else if (/\.fbx$/i.test(entry.name)) {
       // FBX 3D 파일 미리보기
       preview.closeAllPreviews();
@@ -1375,6 +1379,7 @@ export default function FileExplorer({
         onFileChanged={() => {
           if (currentPath) loadDirectory(currentPath);
         }}
+        onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
       />
 
       {/* 컨텍스트 메뉴 */}

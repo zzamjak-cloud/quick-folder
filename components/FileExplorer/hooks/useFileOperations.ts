@@ -3,6 +3,7 @@ import { invoke, Channel } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
 import { useUndoStack } from './useUndoStack';
 import { getFileName, getBaseName, getExtension, getPathSeparator, getParentDir } from '../../../utils/pathUtils';
+import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 
 export interface UseFileOperationsConfig {
   currentPath: string | null;
@@ -275,6 +276,108 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     setSelectedPaths([]);
     window.dispatchEvent(new Event('qf-files-changed'));
   }, [currentPath, sortBy, sortDir, sortEntries, setEntries, setSelectedPaths]);
+
+  // --- 파일명 명명 규칙 변환 (PascalCase / camelCase / snake_case) ---
+  // 선택된 파일/폴더의 베이스명만 변환하고 확장자는 유지.
+  // 같은 디렉토리에서 충돌이 발생하면 해당 항목은 건너뛴다 (임시 리네임 없이 안전하게 처리).
+  const handleConvertCase = useCallback(async (paths: string[], target: NamingCase) => {
+    if (!paths.length) return;
+
+    type Plan = { oldPath: string; newPath: string; displayName: string };
+    const plans: Plan[] = [];
+    const skipped: { name: string; reason: string }[] = [];
+
+    // 1단계: 각 항목의 목표 경로를 계산. 변경 없는 항목은 제외.
+    for (const p of paths) {
+      const sep = getPathSeparator(p);
+      const dir = getParentDir(p);
+      const fullName = getFileName(p);
+      const base = getBaseName(p);
+      const ext = getExtension(p);
+
+      const newBase = convertBaseName(base, target);
+      if (!newBase) { skipped.push({ name: fullName, reason: '빈 이름' }); continue; }
+      const newName = newBase + ext;
+      if (newName === fullName) continue; // 이미 목표 케이스
+
+      const newPath = dir + sep + newName;
+      plans.push({ oldPath: p, newPath, displayName: fullName });
+    }
+
+    if (plans.length === 0) {
+      if (skipped.length > 0) {
+        showCopyToast(`변환 불가: ${skipped.length}개`);
+      } else {
+        showCopyToast('이미 적용된 규칙입니다');
+      }
+      return;
+    }
+
+    // 2단계: 동일 배치 내 중복 타깃 검사 (대소문자 구분 없이 같은 스네이크/파스칼/카멜이 나올 수 있음)
+    const seen = new Map<string, string>(); // newPath(lc) -> oldPath
+    const finalPlans: Plan[] = [];
+    for (const pl of plans) {
+      const key = pl.newPath.toLowerCase();
+      if (seen.has(key)) {
+        skipped.push({ name: pl.displayName, reason: '같은 이름 충돌' });
+        continue;
+      }
+      seen.set(key, pl.oldPath);
+      finalPlans.push(pl);
+    }
+
+    // 3단계: 실제 리네임 (충돌 회피 위해 임시 파일명 경유)
+    // 케이스만 다른 경우(예: "File.txt" → "file.txt") 윈도우에서는 동일 파일로 취급되어 바로 rename 시 실패할 수 있음.
+    // 모든 리네임을 2단계로 수행: 원본 → 임시(고유) → 최종
+    const renamed: { oldPath: string; newPath: string }[] = [];
+    try {
+      const tempPaths: { tempPath: string; finalPath: string }[] = [];
+
+      for (const pl of finalPlans) {
+        const tempName = `.qf_case_tmp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__${getFileName(pl.oldPath)}`;
+        const dir = getParentDir(pl.oldPath);
+        const sep = getPathSeparator(pl.oldPath);
+        const tempPath = dir + sep + tempName;
+        await invoke('rename_item', { oldPath: pl.oldPath, newPath: tempPath });
+        tempPaths.push({ tempPath, finalPath: pl.newPath });
+      }
+      for (const t of tempPaths) {
+        await invoke('rename_item', { oldPath: t.tempPath, newPath: t.finalPath });
+      }
+      for (const pl of finalPlans) {
+        renamed.push({ oldPath: pl.oldPath, newPath: pl.newPath });
+      }
+    } catch (e) {
+      console.error('케이스 변환 실패:', e);
+      showCopyToast('일부 파일 변환에 실패했습니다');
+    }
+
+    if (renamed.length > 0) {
+      // 실행취소 스택 등록 (역순으로)
+      for (const r of [...renamed].reverse()) {
+        undoStack.push({ type: 'rename', oldPath: r.newPath, newPath: r.oldPath });
+      }
+      // 탭 경로 동기화 및 다른 패널 새로고침
+      for (const r of renamed) {
+        window.dispatchEvent(new CustomEvent('qf-tab-rename', { detail: { oldPath: r.oldPath, newPath: r.newPath } }));
+      }
+      window.dispatchEvent(new Event('qf-files-changed'));
+
+      if (currentPath) {
+        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+        const sorted = sortEntries(result, sortBy, sortDir);
+        setEntries(sorted);
+        const newPaths = renamed.map(r => r.newPath);
+        setSelectedPaths(newPaths);
+      }
+
+      const msg = skipped.length > 0
+        ? `${renamed.length}개 변환, ${skipped.length}개 건너뜀`
+        : `${renamed.length}개 변환 완료`;
+      showCopyToast(msg);
+    }
+    setContextMenu(null);
+  }, [currentPath, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu]);
 
   // --- 이름변경 커밋 ---
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
@@ -623,6 +726,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleRenameCommit,
     handleBulkRename,
     handleBulkRenameApply,
+    handleConvertCase,
     handleGroupIntoFolder,
     handleUngroupFolder,
     handleCompressZip,

@@ -7,6 +7,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { Extension } from '@tiptap/core';
 import { InputRule } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { ThemeVars } from '../../types';
@@ -30,6 +31,63 @@ const turndown = new TurndownService({
 function normalizeBlankLines(md: string): string {
   return md.replace(/\n{3,}/g, '\n\n');
 }
+
+// --- 현재 블록(라인)을 위/아래로 이동 (Ctrl/Cmd+Alt+Up/Down) ---
+// 리스트 아이템 안에서는 단일 아이템만 이동, 그 외는 최상위 블록(단락/제목 등)을 이동.
+const MoveBlock = Extension.create({
+  name: 'moveBlock',
+  addKeyboardShortcuts() {
+    const move = (dir: -1 | 1) => () => {
+      const { state, view } = this.editor;
+      const { selection, tr } = state;
+      const { $from } = selection;
+      if ($from.depth < 1) return false;
+
+      // 이동 기준 깊이 계산:
+      // - 리스트/태스크 아이템 내부면 해당 아이템의 깊이 사용 (단일 라인 단위 이동)
+      // - 아니면 최상위 블록 (depth=1)
+      let depth = 1;
+      for (let d = $from.depth; d >= 1; d--) {
+        const n = $from.node(d);
+        if (n.type.name === 'listItem' || n.type.name === 'taskItem') {
+          depth = d;
+          break;
+        }
+      }
+
+      const blockStart = $from.before(depth);
+      const blockEnd = $from.after(depth);
+      const parent = $from.node(depth - 1);
+      const indexInParent = $from.index(depth - 1);
+
+      if (dir === -1 && indexInParent === 0) return false;
+      if (dir === 1 && indexInParent === parent.childCount - 1) return false;
+
+      const blockNode = parent.child(indexInParent);
+      const neighborNode = parent.child(indexInParent + dir);
+      const neighborSize = neighborNode.nodeSize;
+
+      if (dir === -1) {
+        const neighborStart = blockStart - neighborSize;
+        tr.replaceWith(neighborStart, blockEnd, [blockNode, neighborNode]);
+        const newPos = selection.from - neighborSize;
+        tr.setSelection(TextSelection.create(tr.doc, Math.max(0, newPos)));
+      } else {
+        const neighborEnd = blockEnd + neighborSize;
+        tr.replaceWith(blockStart, neighborEnd, [neighborNode, blockNode]);
+        const newPos = selection.from + neighborSize;
+        tr.setSelection(TextSelection.create(tr.doc, Math.min(tr.doc.content.size, newPos)));
+      }
+      tr.scrollIntoView();
+      view.dispatch(tr);
+      return true;
+    };
+    return {
+      'Mod-Alt-ArrowUp': move(-1),
+      'Mod-Alt-ArrowDown': move(1),
+    };
+  },
+});
 
 // --- 화살표 자동 변환 확장 ---
 const ArrowReplace = Extension.create({
@@ -82,6 +140,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         placeholder: '마크다운을 작성하세요…',
       }),
       ArrowReplace,
+      MoveBlock,
       // Tab 들여쓰기 확장
       Extension.create({
         name: 'listIndent',
@@ -204,10 +263,13 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
 
-  // --- 편집기 열려있을 때 글로벌 단축키 차단 + ESC 닫기 + Ctrl+S 저장 ---
+  // --- 편집기 열려있을 때 ESC 닫기 + Ctrl+S 저장 ---
+  // NOTE: 전역 단축키(App.tsx, useKeyboardShortcuts)는 이미 data-markdown-editor /
+  // isContentEditable 가드가 있으므로 여기서 모든 키를 stopImmediatePropagation 하지 않는다.
+  // (블랭킷 차단은 Delete, Ctrl+A, 화살표 등 TipTap/ProseMirror가 처리해야 할 키까지 막아
+  // "전체선택 후 Delete가 동작하지 않는" 등의 문제를 유발함)
   useEffect(() => {
     const handleCapture = (e: KeyboardEvent) => {
-      // 편집기 모달 내부의 이벤트만 처리
       const modal = document.querySelector('[data-markdown-editor]');
       if (!modal) return;
 
@@ -220,7 +282,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       }
 
       // Ctrl+S: 즉시 저장
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         e.stopImmediatePropagation();
         if (saveTimerRef.current) {
@@ -230,15 +292,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         saveRef.current?.();
         return;
       }
-
-      // Tab 키: TipTap 리스트 들여쓰기에 필요하므로 전파 허용
-      if (e.key === 'Tab') return;
-
-      // 그 외 모든 키: 글로벌 단축키 핸들러로 전파 차단
-      // (TipTap은 자체적으로 이벤트를 처리하므로 에디터 동작에는 영향 없음)
-      e.stopImmediatePropagation();
     };
-    // 캡처 단계에서 등록하여 App.tsx의 window 리스너보다 먼저 실행
     window.addEventListener('keydown', handleCapture, true);
     return () => window.removeEventListener('keydown', handleCapture, true);
   }, []);

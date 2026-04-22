@@ -5,6 +5,7 @@ import ImageCropOverlay from './ImageCropOverlay';
 import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
 import PreviewToolbar from './PreviewToolbar';
 import JsonViewerModal from './JsonViewerModal';
+import MarkdownPreviewModal from './MarkdownPreviewModal';
 import { ThemeVars } from './types';
 import { DrawingTool } from '../../types';
 import { PreviewState } from './hooks/usePreview';
@@ -16,9 +17,10 @@ interface PreviewModalsProps {
   onCropSave?: (outputPath: string) => void;
   onRemoveBg?: (path: string) => void;
   onFileChanged?: () => void;
+  onOpenMdEditor?: (path: string) => void;
 }
 
-export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFileChanged }: PreviewModalsProps) {
+export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFileChanged, onOpenMdEditor }: PreviewModalsProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const [imageRect, setImageRect] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
@@ -348,6 +350,25 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
           data={preview.previewJsonData}
           onClose={preview.closeJsonPreview}
           themeVars={themeVars}
+          editRequestToken={preview.previewJsonEditRequest}
+        />
+      )}
+
+      {/* 마크다운 미리보기 모달 */}
+      {preview.previewMdPath && (
+        <MarkdownPreviewModal
+          path={preview.previewMdPath}
+          content={preview.previewMdContent}
+          error={preview.previewMdError}
+          loading={preview.previewMdLoading}
+          themeVars={themeVars}
+          onClose={preview.closeMdPreview}
+          onEdit={() => {
+            const p = preview.previewMdPath;
+            if (!p) return;
+            preview.closeMdPreview();
+            onOpenMdEditor?.(p);
+          }}
         />
       )}
     </>

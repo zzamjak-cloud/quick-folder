@@ -5,9 +5,10 @@ import { ContextMenuSection } from '../types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link,
+  FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
+import { NamingCase } from '../../../utils/caseConvert';
 
 export interface UseContextMenuBuilderConfig {
   contextMenu: { x: number; y: number; paths: string[] } | null;
@@ -23,6 +24,7 @@ export interface UseContextMenuBuilderConfig {
     handleDuplicate: () => void;
     handleRenameStart: (path: string) => void;
     handleBulkRename: (paths: string[]) => void;
+    handleConvertCase: (paths: string[], target: NamingCase) => void;
     handleDelete: (paths: string[], permanent: boolean) => void;
     handleCompressZip: (paths: string[]) => void;
     handleExtractZip: (paths: string[]) => void;
@@ -144,6 +146,38 @@ export function useContextMenuBuilder({
         icon: <Edit2 size={13} />,
         label: '이름 모두 바꾸기',
         onClick: () => fileOps.handleBulkRename(paths),
+      });
+    }
+    // 파일명 규칙 변경 (선택 항목이 1개 이상일 때)
+    if (paths.length > 0) {
+      editSection.items.push({
+        id: 'case-convert',
+        icon: <CaseSensitive size={13} />,
+        label: '파일명 규칙 변경',
+        onClick: () => {/* 서브메뉴 */},
+        submenu: [
+          {
+            id: 'case-pascal',
+            icon: undefined,
+            label: 'PascalCase',
+            labelColor: '#f87171', // 빨강
+            onClick: () => fileOps.handleConvertCase(paths, 'pascal'),
+          },
+          {
+            id: 'case-camel',
+            icon: undefined,
+            label: 'camelCase',
+            labelColor: '#60a5fa', // 파랑
+            onClick: () => fileOps.handleConvertCase(paths, 'camel'),
+          },
+          {
+            id: 'case-snake',
+            icon: undefined,
+            label: 'snake_case',
+            labelColor: '#4ade80', // 녹색
+            onClick: () => fileOps.handleConvertCase(paths, 'snake'),
+          },
+        ],
       });
     }
     editSection.items.push({
@@ -492,7 +526,7 @@ export function useContextMenuBuilder({
     contextMenu, entries, clipboardHook.clipboard, folderTags,
     openEntry, openInOsExplorer, preview.handlePreviewImage,
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
-    fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleDelete,
+    fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleConvertCase, fileOps.handleDelete,
     fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleCompressPdf, fileOps.handleCopyPath,
     fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
     handleAddTag, handleRemoveTag,

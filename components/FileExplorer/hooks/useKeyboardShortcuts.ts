@@ -122,6 +122,9 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       if (active && (active as HTMLElement).isContentEditable) return;
       const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
       if (isInput && e.key !== 'Escape') return;
+      // 마크다운/JSON 미리보기가 열려있으면 파일 단축키는 무시하고 브라우저 네이티브 동작(Ctrl+C 등)을 허용
+      // (자체 모달이 ESC 등은 capture 단계에서 처리)
+      if (document.querySelector('[data-md-preview]') || document.querySelector('[data-json-preview]')) return;
 
       const ctrl = e.ctrlKey || e.metaKey;
 
@@ -275,6 +278,24 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       if (e.key === 'Enter') {
+        const openFileEntry = (entry: FileEntry) => {
+          if (entry.is_dir) {
+            openEntry(entry);
+            return;
+          }
+          // JSON은 뷰어+편집 모드로 즉시 진입 (텍스트 에디터로 열지 않음)
+          if (/\.json$/i.test(entry.name)) {
+            if (!preview.previewJsonPath) preview.closeAllPreviews();
+            preview.handlePreviewJson(entry.path, true);
+            return;
+          }
+          if (!/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?|gsheet|gdoc|gslides|gmap)$/i.test(entry.name) && entry.name.includes('.')) {
+            setMarkdownEditorPath(entry.path);
+          } else {
+            openEntry(entry);
+          }
+        };
+
         if (viewMode === 'columns') {
           // 컬럼 뷰: 포커스된 항목으로 진입
           const col = columnView.columns[columnView.focusedCol];
@@ -282,11 +303,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
             const entry = col.entries[columnView.focusedRow];
             if (entry) {
               e.preventDefault();
-              if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?|gsheet|gdoc|gslides|gmap)$/i.test(entry.name) && entry.name.includes('.')) {
-                setMarkdownEditorPath(entry.path);
-              } else {
-                openEntry(entry);
-              }
+              openFileEntry(entry);
               return;
             }
           }
@@ -294,11 +311,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           const entry = entries.find(en => en.path === selectedPaths[0]);
           if (entry) {
             e.preventDefault();
-            if (!entry.is_dir && !/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?|gsheet|gdoc|gslides|gmap)$/i.test(entry.name) && entry.name.includes('.')) {
-              setMarkdownEditorPath(entry.path);
-            } else {
-              openEntry(entry);
-            }
+            openFileEntry(entry);
             return;
           }
         }
