@@ -19,12 +19,13 @@ import MarkdownEditor from './MarkdownEditor';
 import FontPreviewModal from './FontPreviewModal';
 import GifCompressModal from './GifCompressModal';
 import PdfPreviewModal from './PdfPreviewModal';
+import AudioPreviewModal from './AudioPreviewModal';
 import CodePreviewModal from './CodePreviewModal';
 import FbxPreviewModal from './FbxPreviewModal';
 import FontMergeModal from './FontMergeModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
-import { useInternalDragDrop } from './hooks/useInternalDragDrop';
+import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDrop';
 import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
 import { PreviewModals } from './PreviewModals';
@@ -33,7 +34,7 @@ import { runCopyWithProgress } from './hooks/runCopyWithProgress';
 import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { isCloudPath, getFileName, getPathSeparator, getParentDir, normalizeFsPath } from '../../utils/pathUtils';
+import { getFileName, getPathSeparator, getParentDir, normalizeFsPath, sameVolume } from '../../utils/pathUtils';
 import GoToFolderModal from './GoToFolderModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import { useUndoStack } from './hooks/useUndoStack';
@@ -694,6 +695,7 @@ export default function FileExplorer({
     setFontMergePaths: modals.setFontMergePaths,
     setFontPreviewPath: modals.setFontPreviewPath,
     setPdfPreviewPath: modals.setPdfPreviewPath,
+    setAudioPreviewPath: modals.setAudioPreviewPath,
   });
 
   // --- 컨텍스트 메뉴 ---
@@ -833,12 +835,16 @@ export default function FileExplorer({
     return () => window.removeEventListener('wheel', handler);
   }, []);
 
+  // --- 드롭 중복 확인 다이얼로그 상태 (내부 드래그 + OS 드래그 공용) ---
+  const [dropConfirm, setDropConfirm] = useState<PendingDrop | null>(null);
+
   // --- 내부 드래그 → 폴더 이동 / 사이드바 즐겨찾기 등록 ---
-  const { isDragging: isInternalDragging, dropTargetPath, handleDragMouseDown } = useInternalDragDrop({
+  const { isDragging: isInternalDragging, dropTargetPath, handleDragMouseDown, executeDrop } = useInternalDragDrop({
     selectedPaths,
     currentPath,
     onMoveComplete: () => loadDirectory(currentPath),
     onAddToCategory,
+    onDuplicateDetected: setDropConfirm,
   });
 
   // --- OS에서 파일 드래그 수신 (Tauri onDragDropEvent) ---
@@ -870,12 +876,18 @@ export default function FileExplorer({
       });
       if (filtered.length === 0) return;
 
-      // 클라우드 경로 ↔ 로컬 = 복사, 로컬 ↔ 로컬 = 이동
-      const srcIsCloud = filtered.some(p => isCloudPath(p));
-      const destIsCloud = isCloudPath(currentPath);
-      const shouldCopy = srcIsCloud || destIsCloud;
+      // 같은 볼륨(로컬-로컬, 동일 클라우드 계정-계정) → 이동, 다른 볼륨 → 복사
+      const shouldCopy = filtered.some(p => !sameVolume(p, currentPath));
 
       try {
+        // 중복 확인
+        const duplicates = await invoke<string[]>('check_duplicate_items', { sources: filtered, dest: currentPath });
+        if (duplicates.length > 0) {
+          // 확인 다이얼로그에 위임 — 덮어쓰기/취소 분기
+          setDropConfirm({ sources: filtered, dest: currentPath, action: shouldCopy ? 'copy' : 'move', duplicates });
+          return;
+        }
+
         if (shouldCopy) {
           const dropId = ++pasteIdRef.current;
           const dropLabel = filtered.length === 1 ? getFileName(filtered[0]) : `${getFileName(filtered[0])} 외 ${filtered.length - 1}개`;
@@ -910,6 +922,17 @@ export default function FileExplorer({
       if (unlisten) unlisten();
     };
   }, [currentPath]);
+
+  // 오디오 미리보기 열림 상태에서 선택이 다른 오디오로 변경되면 자동으로 재생 전환
+  useEffect(() => {
+    if (!modals.audioPreviewPath) return;
+    if (selectedPaths.length !== 1) return;
+    const sel = selectedPaths[0];
+    if (sel === modals.audioPreviewPath) return;
+    if (/\.(mp3|wav|aac|flac|ogg|m4a|opus|wma|aiff?|alac|mid|midi)$/i.test(sel)) {
+      modals.setAudioPreviewPath(sel);
+    }
+  }, [selectedPaths, modals.audioPreviewPath, modals.setAudioPreviewPath]);
 
   // 외부 클릭 시 선택 해제
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
@@ -1518,6 +1541,16 @@ export default function FileExplorer({
         />
       )}
 
+      {/* 오디오 미리듣기 */}
+      {modals.audioPreviewPath && (
+        <AudioPreviewModal
+          path={modals.audioPreviewPath}
+          entries={entries}
+          onClose={() => modals.setAudioPreviewPath(null)}
+          themeVars={themeVars}
+        />
+      )}
+
       {/* 코드 미리보기 */}
       {preview.codePreviewPath && (
         <CodePreviewModal
@@ -1603,6 +1636,72 @@ export default function FileExplorer({
                 }}
               >
                 덮어쓰기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 드래그/OS드롭 중복 확인 다이얼로그 */}
+      {dropConfirm && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div
+            className="rounded-lg shadow-2xl max-w-sm w-full mx-4 overflow-hidden"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#1f2937',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+          >
+            <div className="px-5 pt-5 pb-3">
+              <p className="text-sm font-medium mb-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                같은 이름의 파일이 {dropConfirm.duplicates.length}개 존재합니다.
+              </p>
+              <p className="text-xs mb-3" style={{ color: themeVars?.muted ?? '#94a3b8' }}>
+                덮어씌우시겠습니까? (아니오 = 중복 파일만 스킵)
+              </p>
+              <div
+                className="text-xs rounded-md px-3 py-2 max-h-[120px] overflow-y-auto"
+                style={{ backgroundColor: themeVars?.surface ?? '#111827' }}
+              >
+                {dropConfirm.duplicates.map((name, i) => (
+                  <div key={i} className="py-0.5 truncate" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                    {name}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t" style={{ borderColor: themeVars?.border ?? '#334155' }}>
+              <button
+                className="px-4 py-1.5 text-xs rounded-md transition-colors hover:opacity-80"
+                style={{
+                  backgroundColor: themeVars?.surface ?? '#111827',
+                  color: themeVars?.text ?? '#e5e7eb',
+                  border: `1px solid ${themeVars?.border ?? '#334155'}`,
+                }}
+                onClick={async () => {
+                  const info = dropConfirm;
+                  setDropConfirm(null);
+                  // 아니오: 중복 파일 스킵(덮어쓰기 false) — 백엔드가 스킵 처리
+                  await executeDrop(info, false);
+                  loadDirectory(currentPath);
+                }}
+              >
+                아니오
+              </button>
+              <button
+                className="px-4 py-1.5 text-xs rounded-md transition-colors hover:opacity-80"
+                style={{
+                  backgroundColor: themeVars?.accent ?? '#3b82f6',
+                  color: '#fff',
+                }}
+                onClick={async () => {
+                  const info = dropConfirm;
+                  setDropConfirm(null);
+                  await executeDrop(info, true);
+                  loadDirectory(currentPath);
+                }}
+              >
+                네
               </button>
             </div>
           </div>

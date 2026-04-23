@@ -61,3 +61,46 @@ export function isCloudPath(path: string): boolean {
   if (/[\\/]dropbox[\\/]/i.test(path)) return true;
   return false;
 }
+
+/**
+ * 클라우드 마운트 루트 식별자를 반환.
+ * 같은 값이면 "같은 클라우드 계정/볼륨" — 그 안에서의 이동은 동일 볼륨 이동이므로 복사가 아닌 MOVE로 처리해야 한다.
+ * 로컬 경로면 'local'을 반환.
+ *
+ * 예) /Users/a/Library/CloudStorage/GoogleDrive-foo@gmail.com/내 드라이브/x.png
+ *     → 'cloud:/users/a/library/cloudstorage/googledrive-foo@gmail.com'
+ */
+export function getCloudRoot(path: string): string {
+  const lower = path.toLowerCase().replace(/\\/g, '/');
+
+  // macOS: /Users/<user>/Library/CloudStorage/<Provider-identifier>/...
+  const cs = lower.match(/^(.*\/library\/cloudstorage\/[^/]+)/);
+  if (cs) return `cloud:${cs[1]}`;
+
+  // macOS iCloud: /Users/<user>/Library/Mobile Documents/...
+  const icloud = lower.match(/^(.*\/library\/mobile documents)/);
+  if (icloud) return `cloud:${icloud[1]}`;
+
+  // 구버전 Google Drive: .../Google Drive/...
+  const gd = lower.match(/^(.*\/google drive)(?:\/|$)/);
+  if (gd) return `cloud:${gd[1]}`;
+
+  // Windows OneDrive: ...\OneDrive[ - xxx]\...
+  const od = path.match(/^(.*?[\\/]OneDrive(?:[^\\/]*))(?:[\\/]|$)/i);
+  if (od) return `cloud:${od[1].toLowerCase().replace(/\\/g, '/')}`;
+
+  // Windows Dropbox
+  const db = path.match(/^(.*?[\\/]Dropbox(?:[^\\/]*))(?:[\\/]|$)/i);
+  if (db) return `cloud:${db[1].toLowerCase().replace(/\\/g, '/')}`;
+
+  return 'local';
+}
+
+/**
+ * 파일 이동/복사 시 소스와 대상이 "같은 볼륨"에 속하는지 판정.
+ * 같은 볼륨이면 MOVE(잘라내기), 아니면 COPY(복제)가 기본 동작.
+ * 로컬↔로컬은 같은 볼륨으로 간주한다(일반적인 파일시스템 이동 케이스).
+ */
+export function sameVolume(a: string, b: string): boolean {
+  return getCloudRoot(a) === getCloudRoot(b);
+}

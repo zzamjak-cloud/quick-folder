@@ -1,13 +1,23 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { DRAG_IMAGE } from '../fileUtils';
-import { isCloudPath, getFileName } from '../../../utils/pathUtils';
+import { getFileName, sameVolume } from '../../../utils/pathUtils';
+
+/** 드롭 중복 발생 시 상위(FileExplorer)로 전달되는 정보 — 덮어쓰기 확인 후 재시도 */
+export interface PendingDrop {
+  sources: string[];
+  dest: string;
+  action: 'copy' | 'move';
+  duplicates: string[];
+}
 
 interface UseInternalDragDropOptions {
   selectedPaths: string[];
   currentPath: string;
   onMoveComplete: () => void;
   onAddToCategory?: (categoryId: string, path: string, name: string) => void;
+  /** 중복 파일 감지 시 호출 — 사용자 확인 후 executeDrop로 재시도 */
+  onDuplicateDetected?: (info: PendingDrop) => void;
 }
 
 // 드롭 대상 패널의 시각적 피드백 해제
@@ -36,7 +46,7 @@ function clearCategoryHighlight() {
  * 리스너를 handleMouseDown에서 동기적으로 등록하여
  * useEffect 재실행 의존 문제를 회피.
  */
-export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory }: UseInternalDragDropOptions) {
+export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory, onDuplicateDetected }: UseInternalDragDropOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -231,10 +241,17 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       // 폴더/패널 드롭: 파일 이동/복사
       if (target) {
         try {
-          // 클라우드 경로 ↔ 로컬 = 복사, 로컬 ↔ 로컬 = 이동
-          const srcCloud = paths.some(p => isCloudPath(p));
-          const destCloud = isCloudPath(target);
-          if (srcCloud || destCloud) {
+          // 같은 볼륨(로컬-로컬, 동일 클라우드 계정-계정) → 이동, 다른 볼륨(볼륨 경계 넘음) → 복사
+          const shouldCopy = paths.some(p => !sameVolume(p, target));
+
+          // 중복 파일 감지 → 있으면 상위 핸들러에 위임
+          const duplicates = await invoke<string[]>('check_duplicate_items', { sources: paths, dest: target });
+          if (duplicates.length > 0 && onDuplicateDetected) {
+            onDuplicateDetected({ sources: paths, dest: target, action: shouldCopy ? 'copy' : 'move', duplicates });
+            return;
+          }
+
+          if (shouldCopy) {
             await invoke('copy_items', { sources: paths, dest: target });
           } else {
             await invoke('move_items', { sources: paths, dest: target });
@@ -251,11 +268,32 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     // 동기적으로 리스너 등록 (useEffect 의존 문제 회피)
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory]);
+  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onDuplicateDetected]);
+
+  /**
+   * 중복 확인 다이얼로그 이후 덮어쓰기 또는 스킵으로 재실행.
+   * - overwrite=true: 모든 중복 파일을 덮어쓰기
+   * - overwrite=false: 중복 파일은 스킵하고 나머지만 이동/복사
+   */
+  const executeDrop = useCallback(async (info: PendingDrop, overwrite: boolean) => {
+    const { sources, dest, action } = info;
+    try {
+      if (action === 'copy') {
+        await invoke('copy_items', { sources, dest, overwrite });
+      } else {
+        await invoke('move_items', { sources, dest, overwrite });
+      }
+      onMoveComplete();
+      window.dispatchEvent(new CustomEvent('qf-files-changed'));
+    } catch (err) {
+      console.error('파일 이동/복사 실패:', err);
+    }
+  }, [onMoveComplete]);
 
   return {
     isDragging,
     dropTargetPath,
     handleDragMouseDown: handleMouseDown,
+    executeDrop,
   };
 }

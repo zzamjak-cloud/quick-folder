@@ -1,7 +1,20 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
+import hljs from 'highlight.js/lib/core';
+import 'highlight.js/styles/vs2015.css';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
+
+// 마크다운 언어 로딩 가드 (중복 등록 방지)
+let mdLangRegistered = false;
+async function ensureMarkdownLangRegistered(): Promise<void> {
+  if (mdLangRegistered) return;
+  try {
+    const mod = await import('highlight.js/lib/languages/markdown');
+    hljs.registerLanguage('markdown', mod.default);
+    mdLangRegistered = true;
+  } catch { /* ignore — 언어 로딩 실패 시 평문 폴백 */ }
+}
 
 interface MarkdownPreviewModalProps {
   path: string;
@@ -36,10 +49,10 @@ export default function MarkdownPreviewModal({
     try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch {/* ignore */}
   }, [mode]);
 
-  // ESC 키로 닫기
+  // ESC / Space 키로 닫기 (본문에 input 없음 — 공백 입력 충돌 없음)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || e.key === ' ') {
         e.preventDefault();
         e.stopPropagation();
         onClose();
@@ -57,6 +70,37 @@ export default function MarkdownPreviewModal({
     } catch {
       return '';
     }
+  }, [content]);
+
+  // 마크다운 원본에 highlight.js 구문 강조 적용 (Source 모드)
+  const [highlightedSource, setHighlightedSource] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    if (!content) { setHighlightedSource(''); return; }
+    (async () => {
+      await ensureMarkdownLangRegistered();
+      if (cancelled) return;
+      try {
+        if (mdLangRegistered) {
+          const highlighted = hljs.highlight(content, { language: 'markdown', ignoreIllegals: true }).value;
+          setHighlightedSource(highlighted);
+        } else {
+          // 언어 로딩 실패: HTML 이스케이프만 적용
+          const escaped = content
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          setHighlightedSource(escaped);
+        }
+      } catch {
+        const escaped = content
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        setHighlightedSource(escaped);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [content]);
 
   const handleCopy = async () => {
@@ -206,15 +250,14 @@ export default function MarkdownPreviewModal({
             />
           ) : (
             <pre
-              className="px-6 py-5 text-xs leading-relaxed whitespace-pre-wrap break-words"
+              className="md-source-content px-6 py-5 text-xs leading-relaxed whitespace-pre-wrap break-words"
               style={{
                 color: text,
                 userSelect: 'text',
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               }}
-            >
-              {content ?? ''}
-            </pre>
+              dangerouslySetInnerHTML={{ __html: highlightedSource }}
+            />
           )}
         </div>
       </div>

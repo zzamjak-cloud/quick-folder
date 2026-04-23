@@ -33,6 +33,8 @@ export function useModalStates() {
   const [pdfPreviewPath, setPdfPreviewPath] = useState<string | null>(null);
   // GIF 압축 대상 경로
   const [gifCompressPath, setGifCompressPath] = useState<string | null>(null);
+  // 오디오 미리듣기 대상 경로
+  const [audioPreviewPath, setAudioPreviewPath] = useState<string | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -49,5 +51,6 @@ export function useModalStates() {
     fontPreviewPath, setFontPreviewPath,
     pdfPreviewPath, setPdfPreviewPath,
     gifCompressPath, setGifCompressPath,
+    audioPreviewPath, setAudioPreviewPath,
   };
 }

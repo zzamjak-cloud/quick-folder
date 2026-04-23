@@ -77,6 +77,7 @@ export interface UseKeyboardShortcutsConfig {
   setFontMergePaths: (paths: string[] | null) => void;
   setFontPreviewPath: (path: string | null) => void;
   setPdfPreviewPath: (path: string | null) => void;
+  setAudioPreviewPath: (path: string | null) => void;
 }
 
 /**
@@ -110,6 +111,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     setFontMergePaths,
     setFontPreviewPath,
     setPdfPreviewPath,
+    setAudioPreviewPath,
   } = config;
 
   useEffect(() => {
@@ -122,9 +124,17 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       if (active && (active as HTMLElement).isContentEditable) return;
       const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
       if (isInput && e.key !== 'Escape') return;
-      // 마크다운/JSON 미리보기가 열려있으면 파일 단축키는 무시하고 브라우저 네이티브 동작(Ctrl+C 등)을 허용
-      // (자체 모달이 ESC 등은 capture 단계에서 처리)
-      if (document.querySelector('[data-md-preview]') || document.querySelector('[data-json-preview]')) return;
+      // 마크다운/JSON/오디오 미리보기가 열려있으면 파일 단축키는 무시하고 브라우저 네이티브 동작(Ctrl+C 등)을 허용
+      // (자체 모달이 ESC/Space 등은 capture 단계에서 처리)
+      if (
+        document.querySelector('[data-md-preview]') ||
+        document.querySelector('[data-json-preview]') ||
+        document.querySelector('[data-markdown-editor]')
+      ) return;
+      // 오디오 미리보기가 열려있을 때는 화살표(↑↓←→)만 그리드 전역 네비게이션에 허용 (모달이 선택 변경을 감지해 다음 오디오 자동 재생)
+      if (document.querySelector('[data-audio-preview]')) {
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      }
 
       const ctrl = e.ctrlKey || e.metaKey;
 
@@ -339,6 +349,9 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           } else if (/\.pdf$/i.test(entry.name)) {
             // PDF 파일: 내장 PDF 뷰어 모달로 미리보기
             setPdfPreviewPath(entry.path);
+          } else if (/\.(mp3|wav|aac|flac|ogg|m4a|opus|wma|aiff?|alac|mid|midi)$/i.test(entry.name)) {
+            // 오디오: 미리듣기 모달
+            setAudioPreviewPath(entry.path);
           } else if (/\.json$/i.test(entry.name)) {
             // JSON 파일: JSON 뷰어로 미리보기
             preview.handlePreviewJson(entry.path);
@@ -649,7 +662,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,
     handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag, handlePasteImageFromClipboard,
-    setFontMergePaths, setFontPreviewPath, setPdfPreviewPath,
+    setFontMergePaths, setFontPreviewPath, setPdfPreviewPath, setAudioPreviewPath,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,
