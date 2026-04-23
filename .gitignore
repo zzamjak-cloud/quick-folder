@@ -31,3 +31,6 @@ src-tauri/binaries/*
 *.njsproj
 *.sln
 *.sw?
+src-tauri/.omc
+.omc
+.claude

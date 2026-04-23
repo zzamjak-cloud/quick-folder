@@ -302,6 +302,26 @@ Core interfaces:
 - **버전 동기화 필수**: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 세 파일의 버전을 항상 동일하게 유지한다.
 - **CHANGELOG.md 필수 업데이트**: 버전 태그를 푸시하기 전에 반드시 `CHANGELOG.md`에 해당 버전의 변경사항을 기록한다. 커밋 메시지만으로는 부족하며, CHANGELOG에 Added/Changed/Fixed 섹션으로 사용자가 읽을 수 있는 변경 이력을 남겨야 한다.
 
+### 릴리스 자동화 — "버전 올리고 태그 푸시해줘" 트리거
+
+사용자가 **"버전 올리고, 태그 푸시해줘"** / "릴리스해줘" / "태그 푸시해줘" 같은 문구를 말하면, 아래 절차를 **중간에 확인을 묻지 않고 한 번에** 실행한다. GitHub Actions(`tauri-action`)에서 자동 빌드가 이어지도록 태그 푸시까지 완료한다.
+
+**자동 실행 절차** (중간 질문 없음):
+
+1. **현재 버전 확인** — `package.json`에서 현재 버전을 읽고 patch 번호 +1로 다음 버전 결정 (예: 1.27.7 → 1.27.8). 사용자가 명시적으로 minor/major를 요청한 경우만 해당 자리수를 올린다.
+2. **세 파일 버전 동기화** — `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` 모두 새 버전으로 Edit (Read 선행 필수). 세 파일은 병렬로 처리.
+3. **CHANGELOG.md 업데이트** — `## [Unreleased]` 다음에 `## [<new-version>] - <오늘 날짜>` 섹션을 추가하고, 직전 커밋들(`git log <prev-tag>..HEAD --pretty`)과 이번 세션의 실제 변경점을 기반으로 Added/Changed/Fixed 항목을 한국어로 작성. 섹션이 비어 있으면 기본 한줄이라도 기록.
+4. **변경 소스만 스테이징** — `git add` 에 다음만 명시적으로 포함: 세 버전 파일, `CHANGELOG.md`, 실제 기능 변경된 소스 파일 목록. `.omc/**`, `.claude/settings.local.json`, `src-tauri/.omc/**`, 세션 로그/플랜 md, 빌드 산출물은 **절대 포함하지 않는다**. `git add -A`/`.` 금지.
+5. **커밋** — 제목은 기존 스타일(`v<version>: <요약> — <세부>`) 유지. 본문에 bullet list로 변경점. HEREDOC으로 전달하고 `Co-Authored-By` trailer 포함.
+6. **main push + 태그 생성/푸시** — `git push origin main` 후 `git tag -a v<version> -m "..."`, `git push origin v<version>`. 태그 푸시는 기존 태그를 수정하지 않고 새 태그로만 진행.
+7. **보고** — 커밋 해시와 태그명만 한두 줄로 보고.
+
+**금지 사항**:
+- 위 절차 중간에 "진행할까요?" 같은 확인을 묻지 않는다. 사용자의 트리거 문구가 이미 승인이다.
+- Read 누락으로 Edit이 실패해 재시도가 필요해지는 상황을 막기 위해, 세 버전 파일과 CHANGELOG는 **Edit 직전에 반드시 Read를 병렬 실행**한다. 한 메시지에 Read 4개 병렬 → 다음 메시지에 Edit 4개 병렬.
+- 태그가 이미 존재하면 force-push 하지 말고 다음 patch 버전으로 올려 새 태그로 릴리스한다.
+- CHANGELOG 항목을 생략한 채 태그만 푸시하지 않는다.
+
 ## Platform Notes
 
 - DevTools open automatically in development mode

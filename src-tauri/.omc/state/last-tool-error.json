@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -n \\\"ClipboardData\\\\|interface.*Clipboard\\\" /Users/woody/Desktop/AI/QuickFolder/quick-folder/types/index.ts -A 5\"}",
-  "error": "Exit code 2\ngrep: /Users/woody/Desktop/AI/QuickFolder/quick-folder/types/index.ts: No such file or directory",
-  "timestamp": "2026-04-04T08:50:10.437Z",
-  "retry_count": 1
-}
