@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.8] - 2026-04-24
+
+### Added
+- **Windows 스마트 앱 제어(SAC) 안내 시스템**: 서명 없는 설치 파일을 SAC가 조용히 차단해 자동 업데이트가 실패하던 문제 대응
+  - 업데이트 모달에 Windows 전용 SAC 경고 배너 + "SAC 설정 열기" 버튼으로 설정 페이지 직행
+  - 업데이트 시도 직전 localStorage 마커를 남겨 다음 실행 시 버전이 그대로면 `UpdateFailedModal`로 원인·해결 단계 안내 (24시간 TTL)
+  - 새 Rust 커맨드 `open_sac_settings` — `ms-settings:windowsdefender-smart-app-control` URI 실행, 실패 시 `ms-settings:windowsdefender`로 폴백
+  - Microsoft 공식 SAC 가이드 문서 링크 버튼 추가
+
+### Changed
+- 업데이트 플로우에서 플랫폼을 `navigator.userAgent`로 감지해 Windows에서만 SAC 안내 노출 (macOS는 기존 흐름 유지)
+
 ## [1.27.7] - 2026-04-23
 
 ### Added

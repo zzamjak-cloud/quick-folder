@@ -17,6 +17,34 @@ pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), Stri
     Ok(())
 }
 
+// Windows 스마트 앱 제어(SAC) 설정 페이지 열기
+// 서명이 없는 설치 파일을 SAC가 조용히 차단하는 문제를 해결하기 위한 안내용
+#[tauri::command]
+pub async fn open_sac_settings() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // 핀포인트 URI 우선, 실패 시 windowsdefender 루트로 폴백
+        let spawn_result = std::process::Command::new("cmd")
+            .args(["/c", "start", "", "ms-settings:windowsdefender-smart-app-control"])
+            .creation_flags(0x08000000)
+            .spawn();
+
+        if spawn_result.is_err() {
+            std::process::Command::new("cmd")
+                .args(["/c", "start", "", "ms-settings:windowsdefender"])
+                .creation_flags(0x08000000)
+                .spawn()
+                .map_err(|e| format!("Windows 보안 설정 열기 실패: {}", e))?;
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Windows에서만 지원됩니다".to_string())
+    }
+}
+
 // 특정 앱으로 파일 열기
 #[tauri::command]
 pub async fn open_with_app(path: String, app: String) -> Result<(), String> {

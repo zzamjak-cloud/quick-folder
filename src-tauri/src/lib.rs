@@ -14,6 +14,7 @@ pub fn run() {
     .plugin(tauri_plugin_drag::init())
     .invoke_handler(tauri::generate_handler![
         open_folder,
+        open_sac_settings,
         copy_path,
         select_folder,
         list_directory,

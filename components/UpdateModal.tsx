@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { Download, X } from 'lucide-react';
+import { Download, X, AlertTriangle, Shield, ExternalLink } from 'lucide-react';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -12,6 +12,9 @@ interface UpdateModalProps {
   releaseNotes: string;
   isDownloading: boolean;
   downloadProgress?: number;
+  isWindows?: boolean;
+  onOpenSacSettings?: () => void;
+  onOpenSacGuide?: () => void;
 }
 
 export function UpdateModal({
@@ -23,6 +26,9 @@ export function UpdateModal({
   releaseNotes,
   isDownloading,
   downloadProgress,
+  isWindows = false,
+  onOpenSacSettings,
+  onOpenSacGuide,
 }: UpdateModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={isDownloading ? () => {} : onClose}>
@@ -46,6 +52,48 @@ export function UpdateModal({
             </button>
           )}
         </div>
+
+        {/* Windows 스마트 앱 제어(SAC) 경고 배너 */}
+        {isWindows && !isDownloading && (
+          <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+            <div className="flex gap-3">
+              <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-amber-400" />
+              <div className="flex-1 text-xs leading-relaxed text-amber-100">
+                <p className="mb-1 font-semibold">Windows 스마트 앱 제어(SAC) 필수 확인</p>
+                <p className="mb-2 text-amber-100/90">
+                  SAC가 켜져 있으면 설치 파일이 <b>아무 알림 없이 차단</b>됩니다.
+                  업데이트 전에 <b>반드시 SAC를 꺼주세요</b>.
+                  <br />
+                  <span className="text-amber-200/80">
+                    (한 번 끄면 Windows 재설치 없이 다시 켤 수 없으니 주의)
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {onOpenSacSettings && (
+                    <button
+                      type="button"
+                      onClick={onOpenSacSettings}
+                      className="inline-flex items-center gap-1 rounded-md bg-amber-500/30 px-2.5 py-1 text-[11px] font-semibold text-amber-50 hover:bg-amber-500/50 transition-colors"
+                    >
+                      <Shield size={12} />
+                      SAC 설정 열기
+                    </button>
+                  )}
+                  {onOpenSacGuide && (
+                    <button
+                      type="button"
+                      onClick={onOpenSacGuide}
+                      className="inline-flex items-center gap-1 rounded-md bg-transparent border border-amber-500/40 px-2.5 py-1 text-[11px] text-amber-200 hover:bg-amber-500/10 transition-colors"
+                    >
+                      <ExternalLink size={12} />
+                      상세 가이드
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 변경사항 */}
         <div className="mb-6">

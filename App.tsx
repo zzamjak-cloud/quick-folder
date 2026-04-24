@@ -42,6 +42,7 @@ import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
 import { UpdateModal } from './components/UpdateModal';
+import { UpdateFailedModal } from './components/UpdateFailedModal';
 import { HelpModal } from './components/HelpModal';
 import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
@@ -1001,6 +1002,22 @@ export default function App() {
           releaseNotes={autoUpdate.updateInfo.body}
           isDownloading={autoUpdate.isDownloading}
           downloadProgress={autoUpdate.downloadProgress}
+          isWindows={autoUpdate.isWindows}
+          onOpenSacSettings={autoUpdate.openSacSettings}
+          onOpenSacGuide={autoUpdate.openSacGuide}
+        />
+      )}
+
+      {/* 이전 업데이트 시도 실패 안내 (SAC 등으로 조용히 차단된 경우) */}
+      {autoUpdate.previousUpdateFailed && (
+        <UpdateFailedModal
+          isOpen={true}
+          onClose={autoUpdate.dismissPreviousUpdateFailed}
+          fromVersion={autoUpdate.previousUpdateFailed.fromVersion}
+          toVersion={autoUpdate.previousUpdateFailed.toVersion}
+          isWindows={autoUpdate.isWindows}
+          onOpenSacSettings={autoUpdate.openSacSettings}
+          onOpenSacGuide={autoUpdate.openSacGuide}
         />
       )}
 
