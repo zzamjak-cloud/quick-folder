@@ -12,6 +12,7 @@ import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import BulkRenameModal from './BulkRenameModal';
 import PixelateModal from './PixelateModal';
+import MapMakerModal from './MapMakerModal';
 import RemoveWhiteBgModal from './RemoveWhiteBgModal';
 import SheetPackerModal from './SheetPackerModal';
 import SheetUnpackModal from './SheetUnpackModal';
@@ -1434,6 +1435,15 @@ export default function FileExplorer({
           path={modals.pixelatePath}
           onClose={() => modals.setPixelatePath(null)}
           onApply={fileOps.handlePixelateApply}
+          themeVars={themeVars}
+        />
+      )}
+
+      {modals.mapMakerPath && (
+        <MapMakerModal
+          path={modals.mapMakerPath}
+          onClose={() => modals.setMapMakerPath(null)}
+          onExport={fileOps.handleLaigterMapsExport}
           themeVars={themeVars}
         />
       )}

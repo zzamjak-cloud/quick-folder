@@ -546,6 +546,27 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, entries, loadDirectory, showCopyToast, setError]);
 
+  // --- Map Maker (Laigter 스타일 맵)보내기 ---
+  const handleLaigterMapsExport = useCallback(async (
+    inputPath: string,
+    params: Record<string, unknown>,
+    options: { saveNormal: boolean; saveParallax: boolean; saveSpecular: boolean; saveOcclusion: boolean },
+  ) => {
+    const outputs = await invoke<string[]>('laigter_maps_export', {
+      input: inputPath,
+      params,
+      options,
+    });
+    if (outputs.length > 0) {
+      undoStack.push({ type: 'export_maps', paths: outputs });
+    }
+    if (currentPath) {
+      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      setEntries(sortEntries(result, sortBy, sortDir));
+    }
+    showCopyToast(`맵 저장 완료: ${outputs.length}개 파일`);
+  }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries, undoStack]);
+
   // --- 픽셀화 적용 ---
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
     const output = await invoke<string>('pixelate_image', { input: path, pixelSize, scale, maxColors });
@@ -704,6 +725,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       } else if (action.type === 'create_file') {
         await invoke('delete_items', { paths: [action.path], useTrash: true });
         showCopyToast('파일 생성 취소됨');
+      } else if (action.type === 'export_maps' && action.paths.length > 0) {
+        await invoke('delete_items', { paths: action.paths, useTrash: true });
+        showCopyToast('맵보내기 취소됨');
       }
       if (currentPath) {
         loadDirectory(currentPath);
@@ -732,6 +756,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleCompressZip,
     handleExtractZip,
     handlePixelateApply,
+    handleLaigterMapsExport,
     handleRemoveWhiteBgApply,
     handleSpritePack,
     handleCompressVideo,

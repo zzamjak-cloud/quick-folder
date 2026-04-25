@@ -7,6 +7,8 @@ interface ModalShellProps {
   title: string;
   maxWidth?: string;          // 기본 '40rem'
   width?: number | string;    // 고정 너비 (BulkRename용)
+  minHeight?: string;          // 모달 박스 최소 높이
+  height?: string;             // 모달 박스 고정 높이 (min/max와 함께 탭 전환 시 크기 고정용)
   maxHeight?: string;         // 최대 높이 (BulkRename용)
   saving?: boolean;
   saveLabel?: string;         // 기본 '저장'
@@ -29,6 +31,8 @@ export default function ModalShell({
   title,
   maxWidth = '40rem',
   width,
+  minHeight,
+  height,
   maxHeight,
   saving = false,
   saveLabel = '저장',
@@ -66,13 +70,15 @@ export default function ModalShell({
           border: `1px solid ${themeVars?.border ?? '#334155'}`,
           width: width ?? '100%',
           maxWidth: width ? undefined : maxWidth,
+          minHeight,
+          height,
           maxHeight,
         }}
         onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div
-          className="flex items-center justify-between px-4 py-3"
+          className="flex shrink-0 items-center justify-between px-4 py-3"
           style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}
         >
           <span
@@ -95,7 +101,7 @@ export default function ModalShell({
 
         {/* 하단 버튼 */}
         <div
-          className="flex justify-end gap-2 px-4 py-3"
+          className="flex shrink-0 justify-end gap-2 px-4 py-3"
           style={{ borderTop: `1px solid ${themeVars?.border ?? '#334155'}` }}
         >
           <button style={btnBase} onClick={onClose} disabled={saving}>

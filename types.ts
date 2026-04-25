@@ -65,7 +65,8 @@ export type UndoAction =
   | { type: 'delete'; paths: string[]; directory: string; useTrash: boolean }
   | { type: 'rename'; oldPath: string; newPath: string }
   | { type: 'move_group'; sources: string[]; createdDir: string; parentDir: string }
-  | { type: 'create_file'; path: string };
+  | { type: 'create_file'; path: string }
+  | { type: 'export_maps'; paths: string[] };
 
 // Drawing tool types (for DrawingCanvas)
 export type DrawingTool = 'pen' | 'rect' | 'ellipse' | 'eraser';

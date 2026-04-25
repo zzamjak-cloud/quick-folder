@@ -56,6 +56,8 @@ pub fn run() {
         video_to_gif,
         pixelate_preview,
         pixelate_image,
+        laigter_maps_preview,
+        laigter_maps_export,
         sprite_sheet_preview,
         save_sprite_sheet,
         split_sprite_sheet,

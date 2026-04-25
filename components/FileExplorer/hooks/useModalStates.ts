@@ -7,6 +7,8 @@ import { useState } from 'react';
 export function useModalStates() {
   // 픽셀화 대상 경로
   const [pixelatePath, setPixelatePath] = useState<string | null>(null);
+  // Map Maker (Laigter 스타일 맵 생성) 대상 경로
+  const [mapMakerPath, setMapMakerPath] = useState<string | null>(null);
   // 스프라이트 시트 패킹 대상 이미지 경로 목록
   const [sheetPackPaths, setSheetPackPaths] = useState<string[] | null>(null);
   // 스프라이트 시트 언패킹 대상 경로
@@ -38,6 +40,7 @@ export function useModalStates() {
 
   return {
     pixelatePath, setPixelatePath,
+    mapMakerPath, setMapMakerPath,
     sheetPackPaths, setSheetPackPaths,
     sheetUnpackPath, setSheetUnpackPath,
     bulkRenamePaths, setBulkRenamePaths,

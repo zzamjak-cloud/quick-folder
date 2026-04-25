@@ -7,6 +7,7 @@ pub mod file_ops;
 pub mod system_ops;
 pub mod media_ops;
 pub mod image_ops;
+pub mod laigter_maps;
 
 // Re-export: lib.rs에서 use modules::*; 로 사용 가능하도록
 pub use types::*;
@@ -18,3 +19,4 @@ pub use file_ops::*;
 pub use system_ops::*;
 pub use media_ops::*;
 pub use image_ops::*;
+pub use laigter_maps::*;

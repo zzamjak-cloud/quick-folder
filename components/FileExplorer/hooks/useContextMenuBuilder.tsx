@@ -5,7 +5,7 @@ import { ContextMenuSection } from '../types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive,
+  FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { NamingCase } from '../../../utils/caseConvert';
@@ -38,6 +38,7 @@ export interface UseContextMenuBuilderConfig {
   };
   modals: {
     setPixelatePath: (path: string | null) => void;
+    setMapMakerPath: (path: string | null) => void;
     setRemoveWhiteBgPaths: (paths: string[]) => void;
     setSheetUnpackPath: (path: string | null) => void;
     setFontPreviewPath: (path: string | null) => void;
@@ -230,6 +231,15 @@ export function useContextMenuBuilder({
         icon: <Grid3x3 size={13} />,
         label: '픽셀화',
         onClick: () => modals.setPixelatePath(singlePath),
+      });
+    }
+    // Map Maker — Laigter 스타일 맵 (노멀·파랄락스·스펙큘러·오클루전 + 조명 미리보기)
+    if (isSingle && singleEntry && /\.(png|jpe?g|gif|webp|bmp)$/i.test(singleEntry.name) && !singleEntry.is_dir) {
+      toolSection.items.push({
+        id: 'map-maker',
+        icon: <Layers size={13} />,
+        label: '맵 생성',
+        onClick: () => modals.setMapMakerPath(singlePath),
       });
     }
     // 배경 제거 (PNG/JPG — 단일 또는 다중 선택)
@@ -530,7 +540,7 @@ export function useContextMenuBuilder({
     fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleCompressPdf, fileOps.handleCopyPath,
     fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
     handleAddTag, handleRemoveTag,
-    onAddToFavorites, modals.setPixelatePath, modals.setSheetUnpackPath,
+    onAddToFavorites, modals.setPixelatePath, modals.setMapMakerPath, modals.setSheetUnpackPath,
     modals.setFontPreviewPath, modals.setFontMergePaths,
     modals.setPdfPreviewPath,
   ]);

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.9] - 2026-04-25
+
+### Added
+- **Map Maker (맵 생성) — Laigter 스타일 맵**: 이미지 우클릭 →「맵 생성」로 노멀·파랄락스(높이)·스펙큘러·오클루전 맵 생성 및 저장
+  - Rust: `laigter_maps_preview`, `laigter_maps_export` (`_normal.png`, `_parallax.png`, `_specular.png`, `_occlusion.png`)
+  - **Map Maker** 모달: 맵 파라미터 슬라이더·숫자 직접 입력, 저장할 맵 체크, 상단 탭(조명·확산·노멀 등)
+  - **조명** 탭: WebGL2 실시간 조명 미리보기(멀티 라이트, 파랄락스, 툰, 픽셀화), Light 1 / Light 2 서브탭
+  - 미리보기 **화면 맞춤 / 원본 크기**(미리보기 텍스처 1:1·스크롤), 조명 탭에서도 텍스처 종횡비 유지
+- **실행취소**: `export_maps` 타입 — 맵 일괄 저장 후 Ctrl+Z로 휴지통 복원
+- **ModalShell**: 선택적 `height`, `minHeight` — Map Maker 등 고정 레이아웃 모달용
+
+### Changed
+- Map Maker UI: 왼쪽 미리보기·오른쪽 옵션, 고정 모달 크기, 슬라이더 라벨/컨트롤 세로 배치로 겹침 방지
+
 ## [1.27.8] - 2026-04-24
 
 ### Added
