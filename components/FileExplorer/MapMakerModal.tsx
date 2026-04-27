@@ -36,6 +36,86 @@ const DEFAULT_PARAMS: LaigterParamsUI = {
 type ViewTab = 'diffuse' | 'normal' | 'parallax' | 'specular' | 'occlusion' | 'lit';
 type LitLightTab = 'light1' | 'light2';
 
+interface LightState {
+  x: number;
+  y: number;
+  z: number;
+  diff: number;
+  spec: number;
+  scatter: number;
+  color: [number, number, number];
+  specColor: [number, number, number];
+}
+
+interface MapMakerSettings {
+  params: LaigterParamsUI;
+  viewTab: ViewTab;
+  litLightTab: LitLightTab;
+  previewDisplayMode: PreviewDisplayMode;
+  saveNormal: boolean;
+  saveParallax: boolean;
+  saveSpecular: boolean;
+  saveOcclusion: boolean;
+  parallaxPreview: boolean;
+  heightScale: number;
+  ambientIntensity: number;
+  normalRotationDeg: number;
+  toonShading: boolean;
+  pixelatedPreview: boolean;
+  pixelCells: number;
+  light2Enabled: boolean;
+  l0: LightState;
+  l1: LightState;
+}
+
+const DEFAULT_SETTINGS: MapMakerSettings = {
+  params: DEFAULT_PARAMS,
+  viewTab: 'lit',
+  litLightTab: 'light1',
+  previewDisplayMode: 'fit',
+  saveNormal: true,
+  saveParallax: true,
+  saveSpecular: true,
+  saveOcclusion: true,
+  parallaxPreview: true,
+  heightScale: 0.08,
+  ambientIntensity: 0.35,
+  normalRotationDeg: 0,
+  toonShading: false,
+  pixelatedPreview: false,
+  pixelCells: 48,
+  light2Enabled: true,
+  l0: { x: 0.28, y: 0.22, z: 0.55, diff: 1.1, spec: 0.65, scatter: 24, color: [1, 0.95, 0.88], specColor: [1, 1, 1] },
+  l1: { x: 0.72, y: 0.78, z: 0.5, diff: 0.45, spec: 0.25, scatter: 48, color: [0.65, 0.75, 1], specColor: [1, 1, 1] },
+};
+
+const MAPMAKER_SETTINGS_KEY = 'quickfolder_mapmaker_settings';
+
+function loadMapMakerSettings(): MapMakerSettings {
+  try {
+    const raw = localStorage.getItem(MAPMAKER_SETTINGS_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<MapMakerSettings>;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      params: { ...DEFAULT_SETTINGS.params, ...(parsed.params ?? {}) },
+      l0: { ...DEFAULT_SETTINGS.l0, ...(parsed.l0 ?? {}) },
+      l1: { ...DEFAULT_SETTINGS.l1, ...(parsed.l1 ?? {}) },
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function saveMapMakerSettings(s: MapMakerSettings): void {
+  try {
+    localStorage.setItem(MAPMAKER_SETTINGS_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 interface MapMakerModalProps {
   path: string;
   onClose: () => void;
@@ -123,17 +203,6 @@ function SliderRow({ label, value, onChange, min, max, step, themeVars }: Slider
   );
 }
 
-type LightState = {
-  x: number;
-  y: number;
-  z: number;
-  diff: number;
-  spec: number;
-  scatter: number;
-  color: [number, number, number];
-  specColor: [number, number, number];
-};
-
 interface NonLitPreviewProps {
   base64: string;
   srcWidth: number;
@@ -198,39 +267,66 @@ function NonLitPreview({ base64, srcWidth, srcHeight, displayMode, pixelated, pi
 }
 
 export default function MapMakerModal({ path, onClose, onExport, themeVars }: MapMakerModalProps) {
-  const [params, setParams] = useState<LaigterParamsUI>(DEFAULT_PARAMS);
-  const [viewTab, setViewTab] = useState<ViewTab>('lit');
-  const [litLightTab, setLitLightTab] = useState<LitLightTab>('light1');
+  /** 마지막 사용 옵션 복원 — 모달 인스턴스 1회만 읽음 */
+  const initial = useMemo(() => loadMapMakerSettings(), []);
+
+  const [params, setParams] = useState<LaigterParamsUI>(initial.params);
+  const [viewTab, setViewTab] = useState<ViewTab>(initial.viewTab);
+  const [litLightTab, setLitLightTab] = useState<LitLightTab>(initial.litLightTab);
   const [preview, setPreview] = useState<PreviewPayload | null>(null);
   /** fit: 패널에 맞춤(기본), actual: 미리보기 텍스처 1픽셀=1CSS px·스크롤 */
-  const [previewDisplayMode, setPreviewDisplayMode] = useState<PreviewDisplayMode>('fit');
+  const [previewDisplayMode, setPreviewDisplayMode] = useState<PreviewDisplayMode>(initial.previewDisplayMode);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [saveNormal, setSaveNormal] = useState(true);
-  const [saveParallax, setSaveParallax] = useState(true);
-  const [saveSpecular, setSaveSpecular] = useState(true);
-  const [saveOcclusion, setSaveOcclusion] = useState(true);
+  const [saveNormal, setSaveNormal] = useState(initial.saveNormal);
+  const [saveParallax, setSaveParallax] = useState(initial.saveParallax);
+  const [saveSpecular, setSaveSpecular] = useState(initial.saveSpecular);
+  const [saveOcclusion, setSaveOcclusion] = useState(initial.saveOcclusion);
 
-  const [parallaxPreview, setParallaxPreview] = useState(true);
-  const [heightScale, setHeightScale] = useState(0.08);
-  const [ambientIntensity, setAmbientIntensity] = useState(0.35);
-  const [normalRotationDeg, setNormalRotationDeg] = useState(0);
-  const [toonShading, setToonShading] = useState(false);
-  const [pixelatedPreview, setPixelatedPreview] = useState(false);
-  const [pixelCells, setPixelCells] = useState(48);
+  const [parallaxPreview, setParallaxPreview] = useState(initial.parallaxPreview);
+  const [heightScale, setHeightScale] = useState(initial.heightScale);
+  const [ambientIntensity, setAmbientIntensity] = useState(initial.ambientIntensity);
+  const [normalRotationDeg, setNormalRotationDeg] = useState(initial.normalRotationDeg);
+  const [toonShading, setToonShading] = useState(initial.toonShading);
+  const [pixelatedPreview, setPixelatedPreview] = useState(initial.pixelatedPreview);
+  const [pixelCells, setPixelCells] = useState(initial.pixelCells);
 
-  const [light2Enabled, setLight2Enabled] = useState(true);
-  const [l0, setL0] = useState<LightState>({
-    x: 0.28, y: 0.22, z: 0.55, diff: 1.1, spec: 0.65, scatter: 24,
-    color: [1, 0.95, 0.88], specColor: [1, 1, 1],
-  });
-  const [l1, setL1] = useState<LightState>({
-    x: 0.72, y: 0.78, z: 0.5, diff: 0.45, spec: 0.25, scatter: 48,
-    color: [0.65, 0.75, 1], specColor: [1, 1, 1],
-  });
+  const [light2Enabled, setLight2Enabled] = useState(initial.light2Enabled);
+  const [l0, setL0] = useState<LightState>(initial.l0);
+  const [l1, setL1] = useState<LightState>(initial.l1);
+
+  /** 옵션 변경 시 localStorage에 영구 저장 */
+  useEffect(() => {
+    saveMapMakerSettings({
+      params,
+      viewTab,
+      litLightTab,
+      previewDisplayMode,
+      saveNormal,
+      saveParallax,
+      saveSpecular,
+      saveOcclusion,
+      parallaxPreview,
+      heightScale,
+      ambientIntensity,
+      normalRotationDeg,
+      toonShading,
+      pixelatedPreview,
+      pixelCells,
+      light2Enabled,
+      l0,
+      l1,
+    });
+  }, [
+    params, viewTab, litLightTab, previewDisplayMode,
+    saveNormal, saveParallax, saveSpecular, saveOcclusion,
+    parallaxPreview, heightScale, ambientIntensity, normalRotationDeg,
+    toonShading, pixelatedPreview, pixelCells,
+    light2Enabled, l0, l1,
+  ]);
 
   const fileName = useMemo(() => getFileName(path), [path]);
   const border = themeVars?.border ?? '#334155';

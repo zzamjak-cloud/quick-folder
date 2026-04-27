@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.11] - 2026-04-27
+
+### Added
+- **Map Maker 옵션 영구 저장**: 모달에서 설정한 모든 옵션을 localStorage(`quickfolder_mapmaker_settings`)에 자동 저장 → 다음번 모달 오픈 시 마지막 값으로 복원
+  - 저장 대상: 맵 파라미터(범프 강도·블러·스펙큘러 등), 저장 대상 체크(노멀·파랄락스·스펙큘러·오클루전), 미리보기 설정(화면 맞춤/원본·픽셀화·픽셀 그리드·툰·앰비언트·노멀 회전·파랄락스·높이 스케일), 조명 설정(Light 1/2 위치·세기·산란·사용 여부), 활성 탭(조명/확산/노멀/스펙큘러/파랄락스/오클루전, Light 1/2 서브탭)
+  - `loadMapMakerSettings()`/`saveMapMakerSettings()` 헬퍼로 안전한 머지(파싱 실패·구버전 데이터 시 기본값 폴백)
+
 ## [1.27.10] - 2026-04-27
 
 ### Fixed
