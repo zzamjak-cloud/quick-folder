@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.10] - 2026-04-27
+
+### Fixed
+- **Map Maker 미리보기 화면 맞춤**: 비-조명 탭에서 fit 모드가 동작하지 않고 원본 크기로만 보이던 문제 수정 (`max-w/h-full` → `h-full w-full object-contain`로 작은 텍스처도 패널 크기로 확대)
+- **원본 크기 중앙 정렬**: actual 모드에서 좌상단 정렬되던 문제를 `min-h-full min-w-full` flex 센터링으로 변경 — 이미지가 작으면 중앙, 크면 자연 스크롤 (조명/비-조명 모두 적용)
+
+### Added
+- **픽셀화 적용하기**: 비-조명 탭(확산·노멀·스펙큘러·파랄락스·오클루전)에도 픽셀화 미리보기 옵션 추가
+  - 우측 패널 상단 「미리보기」 섹션의 "픽셀화 적용하기" 체크박스 + 픽셀 그리드 슬라이더로 토글
+  - canvas2D 다운샘플(`imageSmoothingEnabled=false`) + `image-rendering: pixelated`로 nearest-neighbor 렌더링
+  - 조명 탭과 상태 공유 (`pixelatedPreview`, `pixelCells`)
+
+### Changed
+- 조명 탭 "픽셀화 미리보기" 라벨을 "픽셀화 적용하기"로 통일
+
 ## [1.27.9] - 2026-04-25
 
 ### Added

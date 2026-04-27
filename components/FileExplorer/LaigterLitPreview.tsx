@@ -419,7 +419,7 @@ export default function LaigterLitPreview({
       className={
         alignFit
           ? 'flex h-full min-h-[120px] w-full items-center justify-center'
-          : 'flex h-full min-h-[120px] w-full items-start justify-start'
+          : 'shrink-0'
       }
     >
       <div

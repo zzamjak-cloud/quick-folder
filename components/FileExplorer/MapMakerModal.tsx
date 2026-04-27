@@ -134,6 +134,69 @@ type LightState = {
   specColor: [number, number, number];
 };
 
+interface NonLitPreviewProps {
+  base64: string;
+  srcWidth: number;
+  srcHeight: number;
+  displayMode: PreviewDisplayMode;
+  pixelated: boolean;
+  pixelCells: number;
+}
+
+/** 비-조명 탭의 단일 맵 미리보기. 픽셀화 ON 시 canvas2D로 다운샘플 후 nearest-neighbor 스케일링. */
+function NonLitPreview({ base64, srcWidth, srcHeight, displayMode, pixelated, pixelCells }: NonLitPreviewProps) {
+  const original = useMemo(() => `data:image/png;base64,${base64}`, [base64]);
+  const [src, setSrc] = useState<string>(original);
+
+  useEffect(() => {
+    if (!pixelated) {
+      setSrc(original);
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const ar = srcWidth / Math.max(srcHeight, 1);
+      const cellsY = Math.max(2, Math.round(pixelCells));
+      const cellsX = Math.max(2, Math.round(pixelCells * ar));
+      const cv = document.createElement('canvas');
+      cv.width = cellsX;
+      cv.height = cellsY;
+      const ctx = cv.getContext('2d');
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, cellsX, cellsY);
+      if (!cancelled) setSrc(cv.toDataURL('image/png'));
+    };
+    img.onerror = () => { if (!cancelled) setSrc(original); };
+    img.src = original;
+    return () => { cancelled = true; };
+  }, [original, pixelated, pixelCells, srcWidth, srcHeight]);
+
+  const rendering: React.CSSProperties['imageRendering'] = pixelated ? 'pixelated' : 'auto';
+
+  if (displayMode === 'fit') {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="h-full w-full object-contain"
+        style={{ imageRendering: rendering }}
+      />
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      width={srcWidth}
+      height={srcHeight}
+      style={{ imageRendering: rendering, maxWidth: 'none', maxHeight: 'none' }}
+    />
+  );
+}
+
 export default function MapMakerModal({ path, onClose, onExport, themeVars }: MapMakerModalProps) {
   const [params, setParams] = useState<LaigterParamsUI>(DEFAULT_PARAMS);
   const [viewTab, setViewTab] = useState<ViewTab>('lit');
@@ -274,8 +337,6 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
     </button>
   );
 
-  const previewSrc = (b64: string | undefined) => (b64 ? `data:image/png;base64,${b64}` : undefined);
-
   const litTextures: LaigterLitPreviewTextures | null = preview
     ? {
         diffuse: preview.diffuse,
@@ -336,10 +397,8 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
             )}
 
             <div
-              className={`relative flex min-h-0 flex-1 rounded-lg ${
-                previewDisplayMode === 'fit'
-                  ? 'items-center justify-center overflow-hidden'
-                  : 'items-start justify-start overflow-auto'
+              className={`relative min-h-0 flex-1 rounded-lg ${
+                previewDisplayMode === 'fit' ? 'overflow-hidden' : 'overflow-auto'
               }`}
               style={{ ...checkerboardStyle, border: `1px solid ${border}`, minHeight: 200 }}
             >
@@ -351,64 +410,82 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
               {error && (
                 <div className="absolute bottom-2 left-2 right-2 z-20 px-2 text-center text-xs text-red-300">{error}</div>
               )}
-              {viewTab === 'lit' && litTextures && preview && (
-                <div
-                  className={`absolute inset-2 flex min-h-0 ${
-                    previewDisplayMode === 'fit'
-                      ? 'items-center justify-center overflow-hidden'
-                      : 'items-start justify-start overflow-visible'
-                  }`}
-                >
-                  <LaigterLitPreview
-                    textures={litTextures}
-                    textureWidth={preview.width}
-                    textureHeight={preview.height}
-                    displayMode={previewDisplayMode}
-                    themeVars={themeVars}
-                    parallaxEnabled={parallaxPreview}
-                    heightScale={heightScale}
-                    ambientIntensity={ambientIntensity}
-                    ambientColor={[0.35, 0.38, 0.45]}
-                    normalRotationDeg={normalRotationDeg}
-                    toonShading={toonShading}
-                    pixelated={pixelatedPreview}
-                    pixelCells={pixelCells}
-                    light0={l0}
-                    light1Enabled={light2Enabled}
-                    light1={l1}
-                  />
-                </div>
-              )}
-              {viewTab !== 'lit' && preview && (
+              {preview && (
                 previewDisplayMode === 'fit' ? (
-                  <img
-                    src={previewSrc(
-                      viewTab === 'diffuse' ? preview.diffuse
-                        : viewTab === 'normal' ? preview.normal
-                          : viewTab === 'parallax' ? preview.parallax
-                            : viewTab === 'specular' ? preview.specular
-                              : preview.occlusion,
-                    )}
-                    alt=""
-                    className="max-h-full max-w-full object-contain p-2"
-                    style={{ imageRendering: viewTab === 'diffuse' && pixelatedPreview ? 'pixelated' : 'auto' }}
-                  />
+                  <div className="absolute inset-2 flex items-center justify-center">
+                    {viewTab === 'lit' && litTextures ? (
+                      <LaigterLitPreview
+                        textures={litTextures}
+                        textureWidth={preview.width}
+                        textureHeight={preview.height}
+                        displayMode="fit"
+                        themeVars={themeVars}
+                        parallaxEnabled={parallaxPreview}
+                        heightScale={heightScale}
+                        ambientIntensity={ambientIntensity}
+                        ambientColor={[0.35, 0.38, 0.45]}
+                        normalRotationDeg={normalRotationDeg}
+                        toonShading={toonShading}
+                        pixelated={pixelatedPreview}
+                        pixelCells={pixelCells}
+                        light0={l0}
+                        light1Enabled={light2Enabled}
+                        light1={l1}
+                      />
+                    ) : viewTab !== 'lit' ? (
+                      <NonLitPreview
+                        base64={
+                          viewTab === 'diffuse' ? preview.diffuse
+                            : viewTab === 'normal' ? preview.normal
+                              : viewTab === 'parallax' ? preview.parallax
+                                : viewTab === 'specular' ? preview.specular
+                                  : preview.occlusion
+                        }
+                        srcWidth={preview.width}
+                        srcHeight={preview.height}
+                        displayMode="fit"
+                        pixelated={pixelatedPreview}
+                        pixelCells={pixelCells}
+                      />
+                    ) : null}
+                  </div>
                 ) : (
-                  <div className="p-2">
-                    <img
-                      src={previewSrc(
-                        viewTab === 'diffuse' ? preview.diffuse
-                          : viewTab === 'normal' ? preview.normal
-                            : viewTab === 'parallax' ? preview.parallax
-                              : viewTab === 'specular' ? preview.specular
-                                : preview.occlusion,
-                      )}
-                      alt=""
-                      width={preview.width}
-                      height={preview.height}
-                      className="max-w-none max-h-none"
-                      style={{ imageRendering: viewTab === 'diffuse' && pixelatedPreview ? 'pixelated' : 'auto' }}
-                    />
+                  <div className="flex min-h-full min-w-full items-center justify-center p-2">
+                    {viewTab === 'lit' && litTextures ? (
+                      <LaigterLitPreview
+                        textures={litTextures}
+                        textureWidth={preview.width}
+                        textureHeight={preview.height}
+                        displayMode="actual"
+                        themeVars={themeVars}
+                        parallaxEnabled={parallaxPreview}
+                        heightScale={heightScale}
+                        ambientIntensity={ambientIntensity}
+                        ambientColor={[0.35, 0.38, 0.45]}
+                        normalRotationDeg={normalRotationDeg}
+                        toonShading={toonShading}
+                        pixelated={pixelatedPreview}
+                        pixelCells={pixelCells}
+                        light0={l0}
+                        light1Enabled={light2Enabled}
+                        light1={l1}
+                      />
+                    ) : viewTab !== 'lit' ? (
+                      <NonLitPreview
+                        base64={
+                          viewTab === 'diffuse' ? preview.diffuse
+                            : viewTab === 'normal' ? preview.normal
+                              : viewTab === 'parallax' ? preview.parallax
+                                : viewTab === 'specular' ? preview.specular
+                                  : preview.occlusion
+                        }
+                        srcWidth={preview.width}
+                        srcHeight={preview.height}
+                        displayMode="actual"
+                        pixelated={pixelatedPreview}
+                        pixelCells={pixelCells}
+                      />
+                    ) : null}
                   </div>
                 )
               )}
@@ -442,7 +519,7 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={pixelatedPreview} onChange={e => setPixelatedPreview(e.target.checked)} />
-                  픽셀화 미리보기
+                  픽셀화 적용하기
                 </label>
                 {pixelatedPreview && (
                   <SliderRow label="픽셀 그리드" value={pixelCells} onChange={v => setPixelCells(Math.round(v))} min={8} max={128} step={1} themeVars={themeVars} />
@@ -502,6 +579,15 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
               </>
             ) : (
               <>
+                {sectionTitle('미리보기', '미리보기 설정은 저장 파일에 영향을 주지 않습니다.')}
+                <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
+                  <input type="checkbox" checked={pixelatedPreview} onChange={e => setPixelatedPreview(e.target.checked)} />
+                  픽셀화 적용하기
+                </label>
+                {pixelatedPreview && (
+                  <SliderRow label="픽셀 그리드" value={pixelCells} onChange={v => setPixelCells(Math.round(v))} min={8} max={128} step={1} themeVars={themeVars} />
+                )}
+
                 {sectionTitle('맵 생성', '슬라이더 옆 숫자는 직접 입력할 수 있습니다.')}
                 <SliderRow label="범프 강도" value={params.bumpStrength} onChange={v => setParams(p => ({ ...p, bumpStrength: v }))} min={0.2} max={6} step={0.05} themeVars={themeVars} />
                 <SliderRow label="높이 블러 σ" value={params.blurSigma} onChange={v => setParams(p => ({ ...p, blurSigma: v }))} min={0} max={4} step={0.05} themeVars={themeVars} />
