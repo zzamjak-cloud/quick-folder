@@ -10,13 +10,24 @@ interface BulkRenameModalProps {
   themeVars: ThemeVars | null;
 }
 
-export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: BulkRenameModalProps) {
-  const [inputName, setInputName] = useState('');
-  const [replaceName, setReplaceName] = useState('');
-  const [numberDigits, setNumberDigits] = useState(1);
-  const [warning, setWarning] = useState('');
-  const [applying, setApplying] = useState(false);
+// 다수 파일명에서 공통으로 시작하는 연속 prefix를 추출한다.
+// 예) ["ScreenShot_260427_115201_172", "ScreenShot_260427_115358_953"]
+//   → "ScreenShot_260427_115"
+// 단일 파일이거나 공통 부분이 없으면 빈 문자열을 반환.
+function findCommonPrefix(names: string[]): string {
+  if (names.length < 2) return '';
+  let prefix = names[0];
+  for (let i = 1; i < names.length; i++) {
+    const current = names[i];
+    let j = 0;
+    while (j < prefix.length && j < current.length && prefix[j] === current[j]) j++;
+    prefix = prefix.slice(0, j);
+    if (!prefix) return '';
+  }
+  return prefix;
+}
 
+export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: BulkRenameModalProps) {
   // 원본 파일 정보 파싱
   const originalFiles = paths.map(p => {
     const sep = getPathSeparator(p);
@@ -25,6 +36,13 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
     const dir = parts.join(sep);
     return { path: p, dir, fullName, baseName: getBaseName(p), ext: getExtension(p), sep };
   });
+
+  // 다수 선택 시 공통 prefix를 "변경할 이름" 디폴트로 채워준다.
+  const [inputName, setInputName] = useState(() => findCommonPrefix(originalFiles.map(f => f.baseName)));
+  const [replaceName, setReplaceName] = useState('');
+  const [numberDigits, setNumberDigits] = useState(1);
+  const [warning, setWarning] = useState('');
+  const [applying, setApplying] = useState(false);
 
   // 미리보기 이름 (확장자 제외한 베이스네임만 변환)
   const [previewNames, setPreviewNames] = useState<string[]>(

@@ -46,6 +46,10 @@ export interface PreviewState {
   // 코드 미리보기
   codePreviewPath: string | null;
   setCodePreviewPath: (path: string | null) => void;
+  /** 편집 모드 진입 요청 토큰 — 같은 경로로 Enter 재진입 시에도 변경되어 모달이 편집 모드로 전환 */
+  codePreviewEditRequest: number;
+  /** 코드 미리보기 열기 (옵션: 편집 모드 진입) */
+  handleCodePreview: (path: string, initialEdit?: boolean) => void;
   // FBX 3D 미리보기
   fbxPreviewPath: string | null;
   setFbxPreviewPath: (path: string | null) => void;
@@ -84,6 +88,12 @@ export function usePreview(): PreviewState {
 
   // 코드 미리보기
   const [codePreviewPath, setCodePreviewPath] = useState<string | null>(null);
+  const [codePreviewEditRequest, setCodePreviewEditRequest] = useState(0);
+
+  const handleCodePreview = useCallback((path: string, initialEdit = false) => {
+    if (initialEdit) setCodePreviewEditRequest(n => n + 1);
+    setCodePreviewPath(path);
+  }, []);
 
   // FBX 3D 미리보기
   const [fbxPreviewPath, setFbxPreviewPath] = useState<string | null>(null);
@@ -248,6 +258,7 @@ export function usePreview(): PreviewState {
     previewMdPath, previewMdContent, previewMdError, previewMdLoading,
     handlePreviewMd, closeMdPreview,
     codePreviewPath, setCodePreviewPath,
+    codePreviewEditRequest, handleCodePreview,
     fbxPreviewPath, setFbxPreviewPath,
     closeAllPreviews, isAnyPreviewOpen,
   };

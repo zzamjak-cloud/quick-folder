@@ -103,6 +103,25 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
   const isCroppable = preview.previewImagePath &&
     /\.(jpe?g|png|psd|psb)$/i.test(preview.previewImagePath);
 
+  // E 키로 편집 모드 진입 (이미지 미리보기 활성 + 편집 가능 + 아직 편집 모드 아닐 때)
+  // 물리 키 e.code 기준 + IME 입력 중 제외
+  React.useEffect(() => {
+    if (!preview.previewImagePath || !isCroppable || editMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && (e as any).keyCode !== 229) {
+        const target = e.target as HTMLElement | null;
+        const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (isTyping) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setEditMode(true);
+        setActiveTool('pen');
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [preview.previewImagePath, isCroppable, editMode]);
+
   return (
     <>
       {/* 비디오 플레이어 모달 */}
@@ -151,7 +170,7 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
                 {getFileName(preview.previewImagePath)}
               </span>
               <div className="flex items-center gap-2">
-                {/* 편집 버튼 — 편집 모드가 아닐 때 */}
+                {/* 편집 버튼 — 편집 모드가 아닐 때 (E 키 단축키) */}
                 {isCroppable && !editMode && (
                   <button
                     className="text-xs px-3 py-1 rounded hover:opacity-80"
@@ -167,8 +186,9 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
                       setEditMode(true);
                       setActiveTool('pen');
                     }}
+                    title="편집 모드 진입 (E)"
                   >
-                    편집
+                    편집(E)
                   </button>
                 )}
                 {/* 편집 모드 종료 버튼 */}

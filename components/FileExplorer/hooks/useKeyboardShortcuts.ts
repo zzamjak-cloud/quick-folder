@@ -12,6 +12,9 @@ const RECENT_PATH = '__recent__';
 
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
 
+// 코드 편집기(CodePreviewModal)로 라우팅할 확장자 — index.tsx의 CODE_PREVIEW_EXTS와 일치 유지
+const CODE_EDIT_EXTS_REGEX = /\.(js|ts|tsx|jsx|css|html|py|rs|go|java|c|cpp|h|yaml|yml|toml|xml|cs|shader|glsl|hlsl|lua|rb|php|swift|kt|sh|bat|ps1|r|sql|scala|dart|zig)$/i;
+
 export interface UseKeyboardShortcutsConfig {
   isFocused: boolean;
   renamingPath: string | null;
@@ -297,6 +300,12 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           if (/\.json$/i.test(entry.name)) {
             if (!preview.previewJsonPath) preview.closeAllPreviews();
             preview.handlePreviewJson(entry.path, true);
+            return;
+          }
+          // 코드 파일은 CodePreviewModal을 편집 모드로 열기 (구문 강조 + 검색·치환)
+          if (CODE_EDIT_EXTS_REGEX.test(entry.name)) {
+            if (!preview.codePreviewPath) preview.closeAllPreviews();
+            preview.handleCodePreview(entry.path, true);
             return;
           }
           if (!/\.(png|jpe?g|gif|bmp|webp|ico|icns|svg|psd|tiff?|mp4|mov|avi|mkv|webm|mp3|wav|aac|flac|ogg|zip|rar|7z|tar|gz|dmg|exe|dll|so|dylib|pdf|doc|docx|xls|xlsx|ppt|pptx|ttf|otf|woff2?|gsheet|gdoc|gslides|gmap)$/i.test(entry.name) && entry.name.includes('.')) {

@@ -38,18 +38,30 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
     if (editRequestToken > 0) setEditMode(true);
   }, [editRequestToken]);
 
-  // ESC 키로 닫기
+  // ESC 키로 닫기 + E 키로 편집 모드 진입
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         onClose();
+        return;
+      }
+      // E 키: 편집 모드 진입 (입력 필드 포커스 아닐 때 + IME 입력 중 제외)
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && (e as any).keyCode !== 229) {
+        const target = e.target as HTMLElement | null;
+        const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (isTyping) return;
+        if (!editMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          setEditMode(true);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onClose]);
+  }, [onClose, editMode]);
 
   const togglePath = (jsonPath: string) => {
     setExpandedPaths(prev => {
@@ -308,6 +320,9 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
       return (
         <input
           type="text"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className="px-1 py-0.5 text-xs rounded outline-none"
           style={{
             backgroundColor: themeVars?.surface ?? '#111827',
@@ -399,6 +414,9 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
             {editMode ? (
               <input
                 type="text"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
                 className="px-1 py-0.5 text-xs rounded outline-none font-medium"
                 style={{
                   backgroundColor: themeVars?.surface ?? '#111827',
@@ -630,10 +648,10 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
                   fontWeight: 600,
                 }}
                 onClick={() => setEditMode(true)}
-                title="편집 모드"
+                title="편집 모드 (E)"
               >
                 <Edit3 size={12} />
-                편집
+                편집(E)
               </button>
             ) : (
               <>

@@ -15,7 +15,7 @@ function getCacheKey(isDir: boolean, name: string): string {
 }
 
 // 네이티브 아이콘이 부정확하게 표시되는 확장자 → lucide 폴백
-const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh', 'exe']);
+const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh', 'exe', 'unitypackage']);
 // 썸네일이 생성되므로 네이티브 아이콘 불필요한 이미지 확장자
 const THUMBNAIL_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'icns']);
 

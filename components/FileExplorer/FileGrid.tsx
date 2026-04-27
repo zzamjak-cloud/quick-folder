@@ -112,6 +112,9 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           onClick={e => e.stopPropagation()}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className="flex-1 min-w-0 text-xs px-1 rounded outline-none"
           style={{ backgroundColor: themeVars?.surface2, color: themeVars?.text, border: `1px solid ${themeVars?.accent}` }}
         />
@@ -207,6 +210,9 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
               onKeyDown={handleKeyDown}
               onBlur={handleBlur}
               onClick={e => e.stopPropagation()}
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
               className="flex-1 min-w-0 px-1 rounded outline-none"
               style={{ backgroundColor: themeVars?.surface2, color: themeVars?.text, border: `1px solid ${themeVars?.accent}` }}
             />
@@ -414,10 +420,26 @@ export default memo(function FileGrid({
   onSelectPathsRef.current = onSelectPaths;
 
   // 박스 드래그 window 이벤트 리스너
+  // NOTE: 간헐적으로 mouse release 후 박스가 유지되는 버그 대응:
+  //   - mouseup이 어떤 이유로 누락될 때를 대비해 mouseleave/blur/visibilitychange/contextmenu/Escape에서도 강제 종료
+  //   - mousemove에서도 e.buttons===0이면 (어떤 이유든 마우스가 이미 떼어진 상태) 즉시 종료
   useEffect(() => {
+    const endDrag = () => {
+      if (!dragState.current) return;
+      dragState.current = null;
+      setSelectionBox(null);
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       const state = dragState.current;
       if (!state) return;
+
+      // 안전장치: 브라우저가 mouseup을 누락한 경우 buttons 비트마스크로 감지하여 종료
+      // (e.buttons === 0 → 모든 버튼이 떼어진 상태)
+      if (e.buttons === 0) {
+        endDrag();
+        return;
+      }
 
       const dx = e.clientX - state.origin.x;
       const dy = e.clientY - state.origin.y;
@@ -454,17 +476,29 @@ export default memo(function FileGrid({
       onSelectPathsRef.current(newSelection);
     };
 
-    const handleMouseUp = () => {
-      if (!dragState.current) return;
-      dragState.current = null;
-      setSelectionBox(null);
+    const handleMouseUp = () => endDrag();
+    const handleBlur = () => endDrag();
+    const handleVisibility = () => { if (document.hidden) endDrag(); };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') endDrag(); };
+    // 마우스가 윈도우 밖으로 나갔다가 돌아오지 못한 채 release된 경우 대응
+    const handleDocLeave = (e: MouseEvent) => {
+      // relatedTarget 이 null이면 윈도우 밖으로 나간 상태
+      if (!e.relatedTarget && !(e as any).toElement) endDrag();
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', handleMouseUp, true);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('keydown', handleKey, true);
+    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('mouseleave', handleDocLeave);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleMouseUp, true);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('keydown', handleKey, true);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('mouseleave', handleDocLeave);
     };
   }, [gridRef]);
 
@@ -472,6 +506,11 @@ export default memo(function FileGrid({
   const handleContainerMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-file-path]')) return;
     if (e.button !== 0) return; // 왼쪽 버튼만
+    // 이전 드래그가 잔존해있다면 먼저 정리 (이중 시작 방지)
+    if (dragState.current) {
+      dragState.current = null;
+      setSelectionBox(null);
+    }
     dragState.current = {
       origin: { x: e.clientX, y: e.clientY },
       isActive: false,

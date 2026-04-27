@@ -169,9 +169,14 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       }),
     ],
     content: '<p></p>',
+    autofocus: 'start',
     editorProps: {
       attributes: {
         class: 'tiptap-editor',
+        // 맞춤법 빨간줄 제거
+        spellcheck: 'false',
+        autocorrect: 'off',
+        autocapitalize: 'off',
       },
     },
     onUpdate: () => {
@@ -245,6 +250,10 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         editor.commands.setContent('<p></p>');
       }
       setLoaded(true);
+      // 진입 직후 첫 라인에 커서 위치 + 포커스 (사용자가 즉시 입력 가능하도록)
+      requestAnimationFrame(() => {
+        editor.commands.focus('start');
+      });
     })();
   }, [editor, path]);
 
@@ -550,18 +559,20 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
           outline: none;
           min-height: 100%;
         }
-        .tiptap-editor h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
-        .tiptap-editor h2 { font-size: 1.5em; font-weight: bold; margin: 0.5em 0; }
-        .tiptap-editor h3 { font-size: 1.17em; font-weight: bold; margin: 0.5em 0; }
+        .tiptap-editor h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; color: #dcdcaa; }
+        .tiptap-editor h2 { font-size: 1.5em; font-weight: bold; margin: 0.5em 0; color: #dcdcaa; }
+        .tiptap-editor h3 { font-size: 1.17em; font-weight: bold; margin: 0.5em 0; color: #dcdcaa; }
+        .tiptap-editor h4, .tiptap-editor h5, .tiptap-editor h6 { font-weight: bold; margin: 0.5em 0; color: #dcdcaa; }
         .tiptap-editor p { margin: 0.5em 0; }
         .tiptap-editor ul { padding-left: 1.5em; margin: 0.5em 0; list-style-type: disc; }
         .tiptap-editor ol { padding-left: 1.5em; margin: 0.5em 0; list-style-type: decimal; }
         .tiptap-editor li { margin: 0.25em 0; }
+        .tiptap-editor ul li::marker, .tiptap-editor ol li::marker { color: #d7ba7d; }
         .tiptap-editor blockquote {
-          border-left: 3px solid ${themeVars?.text ?? '#e2e8f0'};
+          border-left: 3px solid #6a9955;
           padding-left: 1em;
           margin: 0.5em 0;
-          color: ${themeVars?.text ?? '#e2e8f0'};
+          color: #6a9955;
         }
         .tiptap-editor pre {
           background: ${themeVars?.surface2 ?? '#252540'};
@@ -573,13 +584,15 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         .tiptap-editor code {
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 0.9em;
+          color: #ce9178;
         }
+        .tiptap-editor pre code { color: inherit; }
         .tiptap-editor hr {
           border: none;
           border-top: 2px solid ${themeVars?.text ?? '#e2e8f0'};
           margin: 1em 0;
         }
-        .tiptap-editor strong { font-weight: 800; }
+        .tiptap-editor strong { font-weight: 800; color: #569cd6; }
         .tiptap-editor ul[data-type="taskList"] {
           list-style: none;
           padding-left: 0;
@@ -601,7 +614,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         .tiptap-editor ul[data-type="taskList"] li > div {
           flex: 1;
         }
-        .tiptap-editor em { font-style: italic; }
+        .tiptap-editor em { font-style: italic; color: #c586c0; }
         .tiptap-editor .is-editor-empty:first-child::before {
           content: attr(data-placeholder);
           float: left;

@@ -49,18 +49,26 @@ export default function MarkdownPreviewModal({
     try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch {/* ignore */}
   }, [mode]);
 
-  // ESC / Space 키로 닫기 (본문에 input 없음 — 공백 입력 충돌 없음)
+  // ESC / Space 키로 닫기 + E 키로 편집기 진입
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === ' ') {
         e.preventDefault();
         e.stopPropagation();
         onClose();
+        return;
+      }
+      // E 키: 편집기 진입 (Ctrl/Alt/Meta 미수반 단독 입력일 때만 + IME 입력 중 제외)
+      // e.code(물리 키)를 사용하여 한글 IME에서도 안정 동작
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && (e as any).keyCode !== 229) {
+        e.preventDefault();
+        e.stopPropagation();
+        onEdit();
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, [onClose, onEdit]);
 
   // 마크다운 → HTML 변환 (미리보기 모드)
   const html = useMemo(() => {
@@ -185,7 +193,7 @@ export default function MarkdownPreviewModal({
               </button>
             </div>
 
-            {/* 편집 버튼 */}
+            {/* 편집 버튼 (E 키 단축키) */}
             <button
               onClick={onEdit}
               className="px-2.5 py-1 text-xs rounded-md transition-colors hover:opacity-80"
@@ -195,9 +203,9 @@ export default function MarkdownPreviewModal({
                 border: `1px solid ${border}`,
                 cursor: 'pointer',
               }}
-              title="편집기로 열기"
+              title="편집기로 열기 (E)"
             >
-              편집
+              편집(E)
             </button>
 
             {/* 복사 버튼 */}
@@ -263,27 +271,31 @@ export default function MarkdownPreviewModal({
       </div>
 
       {/* 렌더링된 MD 스타일 + 선택 허용 */}
+      {/* 컬러 가이드 (vs2015 hljs 컨벤션 일치) — 편집기와 통일:
+         h1/h2/h3/h4: 노란색(#dcdcaa)  ·  strong: 파랑  ·  em: 보라  ·  code: 주황  ·  blockquote: 녹색  ·  link: 하늘 */}
       <style>{`
         .md-preview-content, .md-preview-content * {
           user-select: text !important;
           -webkit-user-select: text !important;
         }
-        .md-preview-content h1 { font-size: 1.8em; font-weight: 700; margin: 0.6em 0 0.4em; border-bottom: 1px solid ${border}; padding-bottom: 0.2em; }
-        .md-preview-content h2 { font-size: 1.45em; font-weight: 700; margin: 0.6em 0 0.35em; border-bottom: 1px solid ${border}; padding-bottom: 0.15em; }
-        .md-preview-content h3 { font-size: 1.2em; font-weight: 700; margin: 0.5em 0 0.3em; }
-        .md-preview-content h4 { font-size: 1.05em; font-weight: 700; margin: 0.5em 0 0.3em; }
+        .md-preview-content h1 { font-size: 1.8em; font-weight: 700; margin: 0.6em 0 0.4em; border-bottom: 1px solid ${border}; padding-bottom: 0.2em; color: #dcdcaa; }
+        .md-preview-content h2 { font-size: 1.45em; font-weight: 700; margin: 0.6em 0 0.35em; border-bottom: 1px solid ${border}; padding-bottom: 0.15em; color: #dcdcaa; }
+        .md-preview-content h3 { font-size: 1.2em; font-weight: 700; margin: 0.5em 0 0.3em; color: #dcdcaa; }
+        .md-preview-content h4 { font-size: 1.05em; font-weight: 700; margin: 0.5em 0 0.3em; color: #dcdcaa; }
+        .md-preview-content h5, .md-preview-content h6 { font-weight: 700; margin: 0.5em 0 0.3em; color: #dcdcaa; }
         .md-preview-content p { margin: 0.5em 0; line-height: 1.7; }
         .md-preview-content ul { list-style-type: disc; padding-left: 1.5em; margin: 0.4em 0; }
         .md-preview-content ol { list-style-type: decimal; padding-left: 1.5em; margin: 0.4em 0; }
         .md-preview-content li { margin: 0.2em 0; line-height: 1.6; }
-        .md-preview-content a { color: ${accent}; text-decoration: underline; }
-        .md-preview-content strong { font-weight: 700; }
-        .md-preview-content em { font-style: italic; }
+        .md-preview-content ul li::marker, .md-preview-content ol li::marker { color: #d7ba7d; }
+        .md-preview-content a { color: #9cdcfe; text-decoration: underline; }
+        .md-preview-content strong { font-weight: 700; color: #569cd6; }
+        .md-preview-content em { font-style: italic; color: #c586c0; }
         .md-preview-content blockquote {
-          border-left: 3px solid ${accent};
+          border-left: 3px solid #6a9955;
           padding: 0.2em 0.8em;
           margin: 0.6em 0;
-          color: ${muted};
+          color: #6a9955;
           background: ${surface};
           border-radius: 0 4px 4px 0;
         }
@@ -293,6 +305,7 @@ export default function MarkdownPreviewModal({
           padding: 0.1em 0.35em;
           border-radius: 3px;
           font-size: 0.9em;
+          color: #ce9178;
         }
         .md-preview-content pre {
           background: ${surface};

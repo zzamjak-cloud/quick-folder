@@ -282,6 +282,9 @@ export default memo(function FileCard({
           onKeyDown={handleRenameKeyDown}
           onBlur={handleRenameBlur}
           onClick={e => e.stopPropagation()}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className="w-full text-center text-xs px-1 rounded outline-none"
           style={{
             backgroundColor: themeVars?.surface2 ?? '#1f2937',

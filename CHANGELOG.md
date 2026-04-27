@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.12] - 2026-04-28
+
+### Added
+- **코드 편집기**: 코드 미리보기에서 「편집(E)」 버튼 / `E` 키로 편집 모드 진입 — 기존 구문 강조(highlight.js, vs2015 톤)를 유지한 채 textarea 위에 `<pre>` 오버레이를 합성한 라이브 에디터, `Ctrl+S` 저장
+  - **검색·치환 UI**: 편집 모드에 「대체할 텍스트」 입력 필드 + "다음 변경"(순차 치환), "모두 변경"(일괄 치환) 추가
+  - **즉시 시각적 피드백**: 검색어 입력 즉시 모든 매칭을 `<mark>`로 감싸 노란 배경 강조 (편집 모드 pre 오버레이)
+  - **코드 파일 Enter 키**: 코드 확장자(.js/.ts/.py/.rs/.cs/.cpp 등) 파일에서 `Enter` 입력 시 기존 마크다운 텍스트 편집기 대신 신규 코드 편집기로 진입
+- **마크다운 편집기 첫 라인 자동 포커스**: 편집기 진입 시 커서가 첫 라인 입력 가능 위치에 즉시 배치 (`autofocus: 'start'` + load 후 `focus('start')`)
+- **F2 일괄 이름 변경 — 공통 prefix 자동 추출**: 다수 파일 선택 시 파일명 공통 prefix(예: `ScreenShot_260427_115`)를 「변경할 이름」 입력 필드 디폴트로 미리 채워줌
+- **`E` 키 단축키 통합**: 이미지·코드·마크다운·JSON·동영상 미리보기 모달에서 `E` 키로 편집 모드 진입 (한글 IME 환경 안정 동작 — `e.code === 'KeyE'` + composition 가드)
+- **.unitypackage 아이콘**: Unity3D 패키지 확장자에 큐브 형태 SVG 아이콘 + 흰색 라인 컬러 적용 (네이티브 아이콘 대체)
+
+### Changed
+- **마크다운 미리보기/편집기 컬러 통일**: vs2015 hljs 컨벤션 기준으로 H1~H6 노란색(`#dcdcaa`), strong 파랑(`#569cd6`), em 보라(`#c586c0`), code 주황(`#ce9178`), blockquote 녹색(`#6a9955`), 리스트 마커 노랑(`#d7ba7d`) 적용 — Preview 모드와 편집기 양쪽 동일
+- 편집 가능 모달 버튼명을 「편집」 → 「편집(E)」로 통일 (이미지/코드/마크다운/JSON/동영상)
+- **맞춤법 검사 비활성화**: 모든 텍스트/코드 편집기 입력 요소에 `spellCheck=false` + `autoCorrect=off` + `autoCapitalize=off` 적용 — 마크다운 편집기, 코드 편집기 textarea/검색 입력, JSON 편집 입력, 파일명 변경 입력(FileCard/FileGrid), 폰트 미리보기 입력
+
+### Fixed
+- **박스 드래그 stuck 버그**: 마우스 release 후에도 박스 선택이 유지되던 간헐적 이슈 해결 — `mousemove`에서 `e.buttons===0` 감지, `blur`/`visibilitychange`/`Escape`/`document mouseleave`에서도 강제 종료, 이중 시작 방지 가드 추가
+
 ## [1.27.11] - 2026-04-27
 
 ### Added

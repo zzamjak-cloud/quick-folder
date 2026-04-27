@@ -1567,6 +1567,7 @@ export default function FileExplorer({
           path={preview.codePreviewPath}
           onClose={() => preview.setCodePreviewPath(null)}
           themeVars={themeVars}
+          editRequestToken={preview.codePreviewEditRequest}
         />
       )}
 

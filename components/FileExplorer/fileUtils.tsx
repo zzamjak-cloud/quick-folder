@@ -8,6 +8,28 @@ function getExt(fileName?: string): string {
   return dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
 }
 
+// Unity3D .unitypackage 전용 큐브 아이콘
+const UnityCubeIcon: React.FC<{ size: number; className?: string }> = ({ size, className }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.6}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    {/* 큐브 외곽 (Unity 로고 풍 3D 큐브) */}
+    <path d="M12 2.5 L21 7 L21 17 L12 21.5 L3 17 L3 7 Z" />
+    <path d="M12 2.5 L12 12" />
+    <path d="M12 12 L21 7" />
+    <path d="M12 12 L3 7" />
+    <path d="M12 12 L12 21.5" />
+  </svg>
+);
+
 // 네이티브 아이콘이 안 나오는 확장자만 lucide 아이콘 폴백 매핑
 // (이 확장자들은 useNativeIcon의 SKIP_NATIVE_EXTS에도 등록됨)
 const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> = {
@@ -15,6 +37,7 @@ const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> =
   json: FileText,        // JSON → 문서(종이) 아이콘
   sh: FileText,          // 셸 스크립트 → 문서(종이) 아이콘
   exe: Cog,              // 실행파일 → 톱니바퀴 아이콘
+  unitypackage: UnityCubeIcon, // Unity3D 패키지 → 큐브 아이콘
 };
 
 // 확장자별 전용 색상 (네이티브 아이콘 skip 대상만)
@@ -23,6 +46,7 @@ const EXT_COLOR: Record<string, string> = {
   json: '#fbbf24',       // JSON → 문서 옐로
   sh: '#fbbf24',         // 셸 스크립트 → 문서 옐로
   exe: '#60a5fa',        // 실행파일 블루
+  unitypackage: '#e5e7eb', // Unity3D 패키지 → 흰색 (다크 배경에서 큐브 라인이 잘 보이도록)
 };
 
 // 파일 타입별 아이콘 컴포넌트

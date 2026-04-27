@@ -226,6 +226,9 @@ export default function FontPreviewModal({ path, onClose, themeVars }: FontPrevi
           rows={3}
           value={previewText}
           onChange={e => setPreviewText(e.target.value)}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           placeholder="미리볼 텍스트를 입력하세요..."
           style={{
             width: '100%',

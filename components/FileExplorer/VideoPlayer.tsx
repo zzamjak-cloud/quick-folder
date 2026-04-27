@@ -167,6 +167,17 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
         video.paused ? video.play() : video.pause();
         return;
       }
+
+      // E 키: 편집 모드 토글 (입력 필드/Ctrl 등 미수반 단독 입력 + IME 입력 중 제외)
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && (e as any).keyCode !== 229) {
+        const target = e.target as HTMLElement | null;
+        const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (isTyping) return;
+        e.stopPropagation();
+        e.preventDefault();
+        setEditMode((prev) => !prev);
+        return;
+      }
     };
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
@@ -195,8 +206,9 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
               fontWeight: editMode ? 600 : 500,
               border: editMode ? 'none' : `1px solid ${themeVars?.border ?? '#444'}`,
             }}
+            title={editMode ? '편집 종료 (E)' : '편집 모드 진입 (E)'}
           >
-            {editMode ? '편집 종료' : '편집'}
+            {editMode ? '편집 종료(E)' : '편집(E)'}
           </button>
           {/* 닫기 버튼 */}
           <button
