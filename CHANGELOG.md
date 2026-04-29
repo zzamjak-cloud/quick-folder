@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.14] - 2026-04-30
+
+### Fixed
+- **자동 업데이트(Windows)**: GitHub Actions 매트릭스(macOS·Windows)가 각각 전체 `latest.json`을 덮어써 한쪽 OS 항목만 남던 문제 수정 — 빌드 후 플랫폼별 조각을 아티팩트로 보관하고, 후속 job에서 `jq`로 `platforms`를 병합한 뒤 릴리스의 `latest.json`을 다시 업로드하도록 변경
+
 ## [1.27.13] - 2026-04-30
 
 ### Added

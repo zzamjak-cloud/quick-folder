@@ -118,7 +118,8 @@ jobs:
           Get-ChildItem src-tauri/binaries/ | Format-Table Name, Length
 
       # 5. Tauri 빌드 및 GitHub Release 생성 (서명 포함)
-      #    tauri-action이 latest.json을 자동 생성하여 Release에 업로드
+      #    tauri-action이 latest.json을 자동 업로드하지만, mac/Win 매트릭스가 서로 덮어써
+      #    한쪽 OS만 남는 문제가 있음 → 아래 Job에서 플랫폼별 조각을 합쳐 다시 올림
       #    APPLE_SIGNING_IDENTITY="-": macOS ad-hoc 서명 + Hardened Runtime + 엔타이틀먼트 적용
       #    (없으면 linker-signed만 되어 TCC 권한이 영구 저장되지 않음)
       - name: build and release
@@ -135,3 +136,67 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      # 병렬 빌드마다 전체 latest.json이 교체되므로, 플랫폼별 조각을 아티팩트로 남겨 merge job에서 합침
+      - name: Upload updater fragment for merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          F=$(find src-tauri/target -name latest.json -type f | head -1)
+          if [ -z "${F}" ]; then
+            echo "::error::latest.json not found under src-tauri/target"
+            find src-tauri/target -type f -name "*.json" 2>/dev/null | head -40 || true
+            exit 1
+          fi
+          echo "Using updater metadata: $F"
+          cp "$F" "updater-fragment-${{ matrix.platform }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: updater-fragment-${{ matrix.platform }}
+          path: updater-fragment-${{ matrix.platform }}.json
+          if-no-files-found: error
+
+  # 매트릭스가 각각 올린 latest.json 중 마지막 것만 남는 문제 보정: 플랫폼 맵을 jq 로 병합 후 재업로드
+  merge-updater-json:
+    name: Merge latest.json (Windows + macOS)
+    needs: publish
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: updater-fragment-*
+          merge-multiple: true
+          path: fragments
+
+      - name: Merge platform entries and upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mapfile -t files < <(find fragments -type f -name 'updater-fragment-*.json' | sort)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No updater fragment json files in fragments/"
+            find fragments -type f -ls || true
+            exit 1
+          fi
+          echo "Merging ${#files[@]} fragment(s): ${files[*]}"
+          if [ ${#files[@]} -eq 1 ]; then
+            cp "${files[0]}" latest.json
+          else
+            jq -s '
+              if length == 1 then .[0]
+              else
+                .[0] as $base |
+                reduce .[1:][] as $x ($base;
+                  .platforms = (.platforms * $x.platforms)
+                )
+              end
+            ' "${files[@]}" > latest.json
+          fi
+          echo "--- merged latest.json (platform keys) ---"
+          jq '.platforms | keys' latest.json
+          gh release upload "${{ github.ref_name }}" latest.json --clobber --repo "${{ github.repository }}"
