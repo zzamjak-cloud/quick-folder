@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.13] - 2026-04-30
+
+### Added
+- **한글 HWP/HWPX 미리보기**: 스페이스 미리보기로 `.hwp`/`.hwpx` 본문 텍스트 표시 — Rust `extract_hwp_text` + [`hwarang`](https://crates.io/crates/hwarang) 추출, `HwpPreviewModal` 모달(기본 앱으로 열기·ESC/스페이스 닫기)
+
+### Fixed
+- **Windows 네이티브 파일/폴더 아이콘**: `SHGetImageList` 실패 시 `SHGetFileInfoW`(SHGFI_ICON·대형 아이콘) 폴백, Shell용 COM을 `CoInitializeEx`(STA)로 초기화 — 탐색기에서 시스템 아이콘이 안 나오던 환경 완화
+- **폴더 아이콘이 전부 Lucide로 보이던 문제**: `useNativeIcon`/`useFolderIcon`에서 폴더를 단일 키 `__folder__`로 캐시하며 첫 실패 시 전역이 막히던 동작 수정 — **경로별 캐시**(`folder:${path}`), 실패 시 null을 캐시하지 않음
+
+### Changed
+- `highlight.js` 등 프론트 의존성 정리(`package-lock.json` 동기화)
+
 ## [1.27.12] - 2026-04-28
 
 ### Added

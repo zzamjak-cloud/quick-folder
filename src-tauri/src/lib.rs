@@ -15,6 +15,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
         open_folder,
         open_sac_settings,
+        open_external_url,
         copy_path,
         select_folder,
         list_directory,
@@ -80,6 +81,7 @@ pub fn run() {
         compress_gif,
         get_google_drive_file_id,
         set_google_drive_offline,
+        extract_hwp_text,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

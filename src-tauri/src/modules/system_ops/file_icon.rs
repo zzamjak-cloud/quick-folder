@@ -106,13 +106,13 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
 #[cfg(target_os = "windows")]
 fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
     use std::mem;
-    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_SYSICONINDEX};
+    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_SYSICONINDEX};
+    use winapi::um::combaseapi::CoInitializeEx;
     use winapi::um::winuser::{GetIconInfo, DestroyIcon, ICONINFO, GetDC, ReleaseDC};
     use winapi::um::wingdi::{
         CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject,
         BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
     };
-    use winapi::um::objbase::CoInitialize;
     use winapi::shared::windef::HICON;
     use winapi::shared::winerror::S_OK;
 
@@ -132,8 +132,9 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
     };
 
     unsafe {
-        // COM 초기화 (이미 초기화된 경우 무시)
-        CoInitialize(std::ptr::null_mut());
+        // Shell / IImageList 는 STA 권장. 이미 초기화된 스레드에서는 S_FALSE 만 반환될 수 있음.
+        // COINIT_APARTMENTTHREADED = 0x2 — Shell/IImageList STA
+        let _ = CoInitializeEx(std::ptr::null_mut(), 0x2);
 
         // 1. 파일의 시스템 아이콘 인덱스 가져오기
         let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
@@ -189,6 +190,21 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
             if hr2 == S_OK && !icon.is_null() {
                 h_icon = icon;
                 break;
+            }
+        }
+
+        // SHGetImageList 경로 실패 시 SHGetFileInfo(SHGFI_ICON) 직접 획득 (vtable/OS 차이 대비)
+        if h_icon.is_null() {
+            let mut shfi_direct: SHFILEINFOW = mem::zeroed();
+            let ok = SHGetFileInfoW(
+                wide_path.as_ptr(),
+                0,
+                &mut shfi_direct,
+                mem::size_of::<SHFILEINFOW>() as u32,
+                SHGFI_ICON | SHGFI_LARGEICON,
+            );
+            if ok != 0 && !shfi_direct.hIcon.is_null() {
+                h_icon = shfi_direct.hIcon;
             }
         }
 

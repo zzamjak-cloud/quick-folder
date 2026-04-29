@@ -6,6 +6,7 @@ import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
 import PreviewToolbar from './PreviewToolbar';
 import JsonViewerModal from './JsonViewerModal';
 import MarkdownPreviewModal from './MarkdownPreviewModal';
+import HwpPreviewModal from './HwpPreviewModal';
 import { ThemeVars } from './types';
 import { DrawingTool } from '../../types';
 import { PreviewState } from './hooks/usePreview';
@@ -389,6 +390,15 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
             preview.closeMdPreview();
             onOpenMdEditor?.(p);
           }}
+        />
+      )}
+
+      {/* 한글 파일(.hwp/.hwpx) 미리보기 모달 */}
+      {preview.hwpPreviewPath && (
+        <HwpPreviewModal
+          path={preview.hwpPreviewPath}
+          themeVars={themeVars}
+          onClose={() => preview.setHwpPreviewPath(null)}
         />
       )}
     </>

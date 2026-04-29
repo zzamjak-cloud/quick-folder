@@ -38,13 +38,37 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
     if (editRequestToken > 0) setEditMode(true);
   }, [editRequestToken]);
 
+  // 편집 중 변경사항이 있는지 비교 (handleClose 내부에서 사용)
+  const editedDataRef = useRef<any>(editedData);
+  editedDataRef.current = editedData;
+  const editModeRef = useRef<boolean>(editMode);
+  editModeRef.current = editMode;
+
+  // ESC/외부클릭으로 닫을 때 편집 변경분 자동 저장 후 onClose 호출
+  const handleClose = async () => {
+    try {
+      if (editModeRef.current) {
+        const before = JSON.stringify(data);
+        const after = JSON.stringify(editedDataRef.current);
+        if (before !== after) {
+          const jsonString = JSON.stringify(editedDataRef.current, null, 2);
+          await invoke('write_text_file', { path, content: jsonString });
+        }
+      }
+    } catch (e) {
+      console.error('JSON 자동 저장 실패:', e);
+    } finally {
+      onClose();
+    }
+  };
+
   // ESC 키로 닫기 + E 키로 편집 모드 진입
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        handleClose();
         return;
       }
       // E 키: 편집 모드 진입 (입력 필드 포커스 아닐 때 + IME 입력 중 제외)
@@ -544,7 +568,7 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
       className="fixed inset-0 z-[10000] flex items-center justify-center"
       data-json-preview="true"
       style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="rounded-lg shadow-2xl flex flex-col overflow-hidden"
@@ -689,11 +713,11 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
               </>
             )}
 
-            {/* 닫기 */}
+            {/* 닫기 — 편집 모드면 변경분 자동 저장 후 닫음 */}
             <button
               className="p-1.5 rounded-md transition-colors hover:bg-red-500/20"
               style={{ color: themeVars?.text }}
-              onClick={onClose}
+              onClick={handleClose}
               title="닫기 (ESC)"
             >
               <X size={16} />

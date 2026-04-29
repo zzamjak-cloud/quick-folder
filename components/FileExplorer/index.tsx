@@ -204,6 +204,10 @@ export default function FileExplorer({
       // FBX 3D 파일 미리보기
       preview.closeAllPreviews();
       preview.setFbxPreviewPath(entry.path);
+    } else if (/\.(hwp|hwpx)$/i.test(entry.name)) {
+      // 한글 파일(.hwp/.hwpx) 미리보기
+      if (!preview.hwpPreviewPath) preview.closeAllPreviews();
+      preview.setHwpPreviewPath(entry.path);
     } else if (CODE_PREVIEW_EXTS.has(ext)) {
       // 코드 파일 → 구문 강조 뷰어
       preview.closeAllPreviews();

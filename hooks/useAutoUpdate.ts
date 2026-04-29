@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 
 const PENDING_UPDATE_KEY = 'qf_pending_update';
@@ -192,6 +191,7 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
   }, [updateInfo, addToast, currentAppVersion]);
 
   // Windows 스마트 앱 제어(SAC) 설정 페이지 바로 열기
+  // — Rust ShellExecuteW로 직접 호출 (cmd /c start 가 SAC 환경에서 차단되던 이슈 대응)
   const openSacSettings = useCallback(async () => {
     try {
       await invoke('open_sac_settings');
@@ -199,14 +199,15 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
     } catch (error) {
       console.error('SAC 설정 열기 실패:', error);
       addToast('SAC 설정을 열 수 없습니다. 가이드를 여는 중...', 'error');
-      try { await openUrl(SAC_GUIDE_URL); } catch {}
+      try { await invoke('open_external_url', { url: SAC_GUIDE_URL }); } catch {}
     }
   }, [addToast]);
 
   // SAC 상세 가이드 (Microsoft 공식 문서)
+  // — opener 플러그인의 openUrl 스코프/권한 이슈를 피하기 위해 Rust ShellExecuteW 경유
   const openSacGuide = useCallback(async () => {
     try {
-      await openUrl(SAC_GUIDE_URL);
+      await invoke('open_external_url', { url: SAC_GUIDE_URL });
     } catch (error) {
       console.error('SAC 가이드 열기 실패:', error);
       addToast('브라우저를 열 수 없습니다.', 'error');

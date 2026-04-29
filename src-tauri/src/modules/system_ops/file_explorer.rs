@@ -17,24 +17,46 @@ pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), Stri
     Ok(())
 }
 
+// Windows에서 ShellExecuteW로 임의의 URI를 연다 (Windows 전용 헬퍼)
+// `cmd /c start`는 일부 환경(Windows 11 SAC, 비대화형 GUI 자식 프로세스 등)에서
+// 프로토콜 핸들러로 정상 디스패치되지 않는 경우가 있어, ShellExecute로 직접 호출한다.
+#[cfg(target_os = "windows")]
+fn shell_execute_url(url: &str) -> Result<(), String> {
+    use std::ptr;
+    use winapi::um::shellapi::ShellExecuteW;
+    use winapi::um::winuser::SW_SHOWNORMAL;
+
+    let url_w: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    let verb_w: Vec<u16> = "open\0".encode_utf16().collect();
+
+    let result = unsafe {
+        ShellExecuteW(
+            ptr::null_mut(),
+            verb_w.as_ptr(),
+            url_w.as_ptr(),
+            ptr::null(),
+            ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    // ShellExecuteW 반환값이 32 이하이면 실패 (HINSTANCE 형식의 에러코드)
+    if (result as isize) <= 32 {
+        Err(format!("ShellExecute 실패 (코드 {})", result as isize))
+    } else {
+        Ok(())
+    }
+}
+
 // Windows 스마트 앱 제어(SAC) 설정 페이지 열기
 // 서명이 없는 설치 파일을 SAC가 조용히 차단하는 문제를 해결하기 위한 안내용
 #[tauri::command]
 pub async fn open_sac_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
         // 핀포인트 URI 우선, 실패 시 windowsdefender 루트로 폴백
-        let spawn_result = std::process::Command::new("cmd")
-            .args(["/c", "start", "", "ms-settings:windowsdefender-smart-app-control"])
-            .creation_flags(0x08000000)
-            .spawn();
-
-        if spawn_result.is_err() {
-            std::process::Command::new("cmd")
-                .args(["/c", "start", "", "ms-settings:windowsdefender"])
-                .creation_flags(0x08000000)
-                .spawn()
+        if shell_execute_url("ms-settings:windowsdefender-smart-app-control").is_err() {
+            shell_execute_url("ms-settings:windowsdefender")
                 .map_err(|e| format!("Windows 보안 설정 열기 실패: {}", e))?;
         }
         Ok(())
@@ -42,6 +64,29 @@ pub async fn open_sac_settings() -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     {
         Err("Windows에서만 지원됩니다".to_string())
+    }
+}
+
+// 외부 URL/URI을 OS 기본 핸들러로 열기 (SAC 가이드 등)
+// JS 측 openUrl이 SAC/스코프 이슈로 실패할 수 있어 Rust ShellExecute 폴백을 제공한다.
+#[tauri::command]
+pub async fn open_external_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        shell_execute_url(&url)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("URL 열기 실패: {}", e))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = url;
+        Err("이 플랫폼에서는 지원되지 않습니다".to_string())
     }
 }
 

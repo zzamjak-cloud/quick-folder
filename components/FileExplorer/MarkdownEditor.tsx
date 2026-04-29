@@ -123,12 +123,18 @@ const ArrowReplace = Extension.create({
 });
 
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClose }) => {
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 자동 저장은 사용하지 않음. 사용자가 ESC/외부 클릭/✕ 버튼으로 창을 닫을 때 한 번만 저장한다.
+  // (작성 중 디바운스 저장이 렉을 유발하던 이슈 대응)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [loaded, setLoaded] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const fileName = getFileName(path);
   const isMarkdown = /\.md$/i.test(fileName);
+
+  // --- onUpdate 콜백에서 최신 loaded 상태 참조용 ref (선언 위치 주의: useEditor 위) ---
+  const loadedRef = useRef(false);
+  // --- 미저장 상태 ref (handleClose에서 최신 값 참조용) ---
+  const saveStatusRef = useRef<SaveStatus>('saved');
 
   // --- TipTap 에디터 초기화 ---
   const editor = useEditor({
@@ -180,7 +186,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       },
     },
     onUpdate: () => {
-      scheduleSaveRef.current();
+      // 작성 중에는 저장하지 않고 상태만 '미저장'으로 표시
+      if (loadedRef.current) setSaveStatus('unsaved');
     },
   });
 
@@ -212,17 +219,9 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     }
   };
 
-  // --- 디바운스 자동 저장 ---
-  const scheduleSaveRef = useRef<() => void>(() => {});
-  scheduleSaveRef.current = () => {
-    if (!loaded) return;
-    setSaveStatus('unsaved');
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveRef.current?.();
-      saveTimerRef.current = null;
-    }, 1500);
-  };
+  // ref 동기화 — onUpdate / handleClose에서 최신 값 참조용
+  loadedRef.current = loaded;
+  saveStatusRef.current = saveStatus;
 
   // --- 파일 로드 ---
   useEffect(() => {
@@ -257,11 +256,9 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     })();
   }, [editor, path]);
 
-  // --- 닫기 시 미저장 내용 flush ---
+  // --- 닫기 시 미저장 내용이 있으면 1번만 저장 후 닫음 ---
   const handleClose = useCallback(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+    if (saveStatusRef.current === 'unsaved') {
       saveRef.current?.().then(onClose);
     } else {
       onClose();
@@ -294,10 +291,6 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        if (saveTimerRef.current) {
-          clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
         saveRef.current?.();
         return;
       }

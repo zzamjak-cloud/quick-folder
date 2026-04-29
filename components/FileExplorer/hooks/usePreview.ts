@@ -53,6 +53,9 @@ export interface PreviewState {
   // FBX 3D 미리보기
   fbxPreviewPath: string | null;
   setFbxPreviewPath: (path: string | null) => void;
+  // HWP/HWPX 미리보기
+  hwpPreviewPath: string | null;
+  setHwpPreviewPath: (path: string | null) => void;
   // 전체 닫기
   closeAllPreviews: () => void;
   // 미리보기 열려있는지 확인
@@ -97,6 +100,9 @@ export function usePreview(): PreviewState {
 
   // FBX 3D 미리보기
   const [fbxPreviewPath, setFbxPreviewPath] = useState<string | null>(null);
+
+  // HWP/HWPX 미리보기
+  const [hwpPreviewPath, setHwpPreviewPath] = useState<string | null>(null);
 
   const handlePreviewImage = useCallback(async (path: string) => {
     // 같은 파일이면 리로드 안 함 (깜빡임 방지)
@@ -239,13 +245,14 @@ export function usePreview(): PreviewState {
     setPreviewMdLoading(false);
     setCodePreviewPath(null);
     setFbxPreviewPath(null);
+    setHwpPreviewPath(null);
     // 진행 중 로드 무효화
     textLoadRequestRef.current++;
     jsonLoadRequestRef.current++;
     mdLoadRequestRef.current++;
   }, []);
 
-  const isAnyPreviewOpen = !!(previewImagePath || videoPlayerPath || previewTextPath || previewJsonPath || previewMdPath || codePreviewPath || fbxPreviewPath);
+  const isAnyPreviewOpen = !!(previewImagePath || videoPlayerPath || previewTextPath || previewJsonPath || previewMdPath || codePreviewPath || fbxPreviewPath || hwpPreviewPath);
 
   return {
     videoPlayerPath, setVideoPlayerPath,
@@ -260,6 +267,7 @@ export function usePreview(): PreviewState {
     codePreviewPath, setCodePreviewPath,
     codePreviewEditRequest, handleCodePreview,
     fbxPreviewPath, setFbxPreviewPath,
+    hwpPreviewPath, setHwpPreviewPath,
     closeAllPreviews, isAnyPreviewOpen,
   };
 }

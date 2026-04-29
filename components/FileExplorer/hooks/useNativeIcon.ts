@@ -5,12 +5,13 @@ import { FileEntry } from '../../../types';
 // 확장자별 네이티브 아이콘 캐시 (모듈 레벨, 모든 인스턴스 공유)
 // 항상 고정 해상도(ICON_FETCH_SIZE)로 요청하여 확대해도 선명하게 표시
 const ICON_FETCH_SIZE = 128;
-const nativeIconCache = new Map<string, string | null>();
+const nativeIconCache = new Map<string, string>();
 
-function getCacheKey(isDir: boolean, name: string): string {
-  const ext = isDir
-    ? '__folder__'
-    : (name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '__none__');
+function getCacheKey(isDir: boolean, path: string, name: string): string {
+  // 폴더는 경로별 캐시 — 한 경로만 실패해도 전역 __folder__ 로 poison 되지 않게 함
+  if (isDir) return `folder:${path}`;
+  const ext =
+    name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '__none__';
   return ext;
 }
 
@@ -37,12 +38,12 @@ export function useNativeIcon(
 
   const [nativeIcon, setNativeIcon] = useState<string | null>(() => {
     if (skip) return null;
-    return nativeIconCache.get(getCacheKey(entry.is_dir, entry.name)) ?? null;
+    return nativeIconCache.get(getCacheKey(entry.is_dir, entry.path, entry.name)) ?? null;
   });
 
   useEffect(() => {
     if (!isVisible || skip) return;
-    const cacheKey = getCacheKey(entry.is_dir, entry.name);
+    const cacheKey = getCacheKey(entry.is_dir, entry.path, entry.name);
 
     if (nativeIconCache.has(cacheKey)) {
       const cached = nativeIconCache.get(cacheKey)!;
@@ -60,11 +61,10 @@ export function useNativeIcon(
           const dataUrl = `data:image/png;base64,${b64}`;
           nativeIconCache.set(cacheKey, dataUrl);
           setNativeIcon(dataUrl);
-        } else {
-          nativeIconCache.set(cacheKey, null);
         }
+        // 실패 시 캐시하지 않음 — 다른 폴더/재시도 시 Shell 재호출 가능
       })
-      .catch(() => { nativeIconCache.set(cacheKey, null); });
+      .catch(() => { /* 실패도 캐시 안 함 */ });
 
     return () => { cancelled = true; };
   }, [isVisible, entry.file_type, entry.path, entry.name, entry.is_dir, skip]);
@@ -76,32 +76,27 @@ export function useNativeIcon(
  * OS 네이티브 폴더 아이콘 훅 (즐겨찾기 사이드바용)
  */
 export function useFolderIcon(path: string, _size?: number): string | null {
-  const [icon, setIcon] = useState<string | null>(() => {
-    return nativeIconCache.get('__folder__') ?? null;
-  });
+  const [icon, setIcon] = useState<string | null>(null);
 
   useEffect(() => {
-    const cacheKey = '__folder__';
-    if (nativeIconCache.has(cacheKey)) {
-      const cached = nativeIconCache.get(cacheKey)!;
-      if (cached) setIcon(cached);
+    const key = `folder:${path}`;
+    const cached = nativeIconCache.get(key);
+    if (cached) {
+      setIcon(cached);
       return;
     }
-
-    // 폴더 아이콘도 캐시 미스 시 한 번만 호출 → 큐 불필요
+    setIcon(null);
     let cancelled = false;
     invoke<string | null>('get_file_icon', { path, size: ICON_FETCH_SIZE })
       .then(b64 => {
         if (cancelled) return;
         if (b64) {
           const dataUrl = `data:image/png;base64,${b64}`;
-          nativeIconCache.set(cacheKey, dataUrl);
+          nativeIconCache.set(key, dataUrl);
           setIcon(dataUrl);
-        } else {
-          nativeIconCache.set(cacheKey, null);
         }
       })
-      .catch(() => { nativeIconCache.set(cacheKey, null); });
+      .catch(() => {});
 
     return () => { cancelled = true; };
   }, [path]);
