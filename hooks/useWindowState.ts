@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
+import { isTauri } from '../utils/isTauri';
 
 const WINDOW_STATE_KEY = 'quickfolder_window_state';
 
 export function useWindowState() {
   useEffect(() => {
+    if (!isTauri()) return;
+
     let unlistenResize: (() => void) | undefined;
     let unlistenMove: (() => void) | undefined;
     let saveTimeout: ReturnType<typeof setTimeout> | undefined;

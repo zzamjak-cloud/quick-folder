@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { invoke } from '@tauri-apps/api/core';
 import { getFileName } from '../utils/pathUtils';
+import { isTauri } from '../utils/isTauri';
 
 // 좌표에서 카테고리 요소 찾기 (Tauri v2 논리 좌표 기반)
 function findCategoryAtPosition(position: { x: number; y: number }): { id: string; el: HTMLElement } | null {
@@ -58,6 +59,8 @@ export function useTauriDragDrop(
 
   // Tauri 드래그앤드롭 리스너
   useEffect(() => {
+    if (!isTauri()) return;
+
     let unlisten: (() => void) | undefined;
     let isMounted = true;
 

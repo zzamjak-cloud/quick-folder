@@ -12,6 +12,7 @@ import TurndownService from 'turndown';
 import { marked } from 'marked';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
+import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../utils/readTextFileWithTimeout';
 
 interface MarkdownEditorProps {
   path: string;
@@ -122,11 +123,13 @@ const ArrowReplace = Extension.create({
   },
 });
 
+/** 미저장일 때만 주기적으로 디스크에 씀. 짧은 디바운스 저장과 달리 UI 렉이 거의 없음 (구글 드라이브 등 동기화 이슈 대비). */
+const AUTOSAVE_INTERVAL_MS = 60_000;
+
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClose }) => {
-  // 자동 저장은 사용하지 않음. 사용자가 ESC/외부 클릭/✕ 버튼으로 창을 닫을 때 한 번만 저장한다.
-  // (작성 중 디바운스 저장이 렉을 유발하던 이슈 대응)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const fileName = getFileName(path);
   const isMarkdown = /\.md$/i.test(fileName);
@@ -223,38 +226,55 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
   loadedRef.current = loaded;
   saveStatusRef.current = saveStatus;
 
-  // --- 파일 로드 ---
+  // --- 파일 로드 (클라우드 동기화 지연 시 무한 대기 방지 + marked는 다음 프레임에서 처리해 UI 멈춤 완화) ---
   useEffect(() => {
     if (!editor) return;
+    let cancelled = false;
+    setLoadError(null);
+    setLoaded(false);
     (async () => {
       try {
-        const raw = await invoke<string>('read_text_file', { path, maxBytes: 1048576 });
+        const raw = await readTextFileWithTimeout(path, 1048576, DEFAULT_READ_TEXT_TIMEOUT_MS);
+        if (cancelled || !editor) return;
+        await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        if (cancelled || !editor) return;
         if (isMarkdown) {
-          // 사용자가 넣은 연속 빈 줄을 보존하기 위해 마커로 변환
           const preserved = raw.replace(/\n{3,}/g, (match) => {
-            // 빈 줄 개수만큼 마커 삽입 (2줄은 정상 단락 구분이므로 3줄 이상만)
-            const extraBlanks = match.length - 2; // 표준 단락 구분 2줄 제외
+            const extraBlanks = match.length - 2;
             return '\n\n' + '&blank;\n\n'.repeat(extraBlanks);
           });
           let html = await marked(preserved);
-          // 마커를 빈 단락으로 변환
           html = html.replace(/<p>&amp;blank;<\/p>/g, '<p><br></p>');
           editor.commands.setContent(html || '<p></p>');
         } else {
-          // plain text: 줄바꿈을 <p> 태그로 변환하여 표시
           const paragraphs = raw.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
           editor.commands.setContent(paragraphs || '<p></p>');
         }
-      } catch {
+      } catch (e: unknown) {
+        if (cancelled || !editor) return;
+        const msg = String((e as Error)?.message || e || '');
+        const human = msg.startsWith('TIMEOUT') ? msg.replace(/^TIMEOUT:\s*/, '') : '파일을 불러오지 못했습니다.';
+        setLoadError(human);
         editor.commands.setContent('<p></p>');
       }
-      setLoaded(true);
-      // 진입 직후 첫 라인에 커서 위치 + 포커스 (사용자가 즉시 입력 가능하도록)
-      requestAnimationFrame(() => {
-        editor.commands.focus('start');
-      });
+      if (!cancelled) {
+        setLoaded(true);
+        requestAnimationFrame(() => {
+          editor.commands.focus('start');
+        });
+      }
     })();
-  }, [editor, path]);
+    return () => { cancelled = true; };
+  }, [editor, path, isMarkdown]);
+
+  // --- 주기 자동 저장: 미저장일 때만 (렉 최소화, 드라이브 동기화로 닫기 전 내용 유실 방지) ---
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (!loadedRef.current || saveStatusRef.current !== 'unsaved') return;
+      void saveRef.current();
+    }, AUTOSAVE_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   // --- 닫기 시 미저장 내용이 있으면 1번만 저장 후 닫음 ---
   const handleClose = useCallback(() => {
@@ -403,8 +423,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
             backgroundColor: themeVars?.surface2 ?? '#252540',
           }}
         >
-          <span style={{ color: themeVars?.muted ?? '#aaa', fontSize: 13 }}>
-            📄 {fileName}
+          <span style={{ color: themeVars?.muted ?? '#aaa', fontSize: 13 }} className="flex flex-col gap-0.5">
+            <span>📄 {fileName}</span>
+            {loadError && (
+              <span style={{ color: '#f87171', fontSize: 11 }}>{loadError}</span>
+            )}
           </span>
           <div className="flex items-center gap-3">
             <span style={{ color: statusColor, fontSize: 12 }}>

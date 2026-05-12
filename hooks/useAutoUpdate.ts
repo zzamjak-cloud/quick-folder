@@ -3,12 +3,10 @@ import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '../utils/isTauri';
 
 const PENDING_UPDATE_KEY = 'qf_pending_update';
 const PENDING_UPDATE_TTL_MS = 24 * 60 * 60 * 1000;
-
-const SAC_GUIDE_URL =
-  'https://support.microsoft.com/ko-kr/topic/windows-11%EC%9D%98-%EC%8A%A4%EB%A7%88%ED%8A%B8-%EC%95%B1-%EC%A0%9C%EC%96%B4-285ea03d-0260-4d1f-a083-0a52ebfb29fe';
 
 type PendingUpdateMarker = {
   fromVersion: string;
@@ -86,6 +84,10 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
   // 앱 버전 로드 + 이전 업데이트 시도 결과 판정
   useEffect(() => {
     let cancelled = false;
+    if (!isTauri()) {
+      setCurrentAppVersion('dev');
+      return;
+    }
     getVersion()
       .then(v => {
         if (cancelled) return;
@@ -120,6 +122,8 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
 
   // 자동 업데이트 체크
   useEffect(() => {
+    if (!isTauri()) return;
+
     const checkForUpdates = async () => {
       try {
         const update = await check();
@@ -144,7 +148,7 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
 
   // 업데이트 실행
   const handleUpdate = useCallback(async () => {
-    if (!updateInfo) return;
+    if (!updateInfo || !isTauri()) return;
 
     try {
       setIsDownloading(true);
@@ -193,24 +197,16 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
   // Windows 스마트 앱 제어(SAC) 설정 페이지 바로 열기
   // — Rust ShellExecuteW로 직접 호출 (cmd /c start 가 SAC 환경에서 차단되던 이슈 대응)
   const openSacSettings = useCallback(async () => {
+    if (!isTauri()) {
+      addToast('Tauri 앱에서만 설정을 열 수 있습니다.', 'info');
+      return;
+    }
     try {
       await invoke('open_sac_settings');
-      addToast('Windows 설정에서 스마트 앱 제어를 꺼주세요.', 'info');
+      addToast('설정에서 검색창에 [스마트 앱 제어]를 입력한 뒤 끄기로 변경해 주세요.', 'info');
     } catch (error) {
       console.error('SAC 설정 열기 실패:', error);
-      addToast('SAC 설정을 열 수 없습니다. 가이드를 여는 중...', 'error');
-      try { await invoke('open_external_url', { url: SAC_GUIDE_URL }); } catch {}
-    }
-  }, [addToast]);
-
-  // SAC 상세 가이드 (Microsoft 공식 문서)
-  // — opener 플러그인의 openUrl 스코프/권한 이슈를 피하기 위해 Rust ShellExecuteW 경유
-  const openSacGuide = useCallback(async () => {
-    try {
-      await invoke('open_external_url', { url: SAC_GUIDE_URL });
-    } catch (error) {
-      console.error('SAC 가이드 열기 실패:', error);
-      addToast('브라우저를 열 수 없습니다.', 'error');
+      addToast('설정을 열 수 없습니다. Windows 설정에서 [스마트 앱 제어]를 검색해 비활성화해 주세요.', 'error');
     }
   }, [addToast]);
 
@@ -230,6 +226,5 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
     previousUpdateFailed,
     dismissPreviousUpdateFailed,
     openSacSettings,
-    openSacGuide,
   };
 }

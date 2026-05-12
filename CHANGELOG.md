@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.15] - 2026-05-12
+
+### Added
+- **마크다운 편집기**: 미저장일 때 **60초마다 자동 저장** — 구글 드라이브 등 동기화 환경에서 창을 오래 연 채 닫을 때만 저장하던 유실 위험 완화 (입력 중 잦은 저장 없이 렉 최소화)
+- **`readTextFileWithTimeout`**: 텍스트 읽기 공통 타임아웃 유틸 — 마크다운 편집기·미리보기에서 동일 사용
+- **`isTauri()`**: Vite 단독 브라우저(`npm run dev`)에서 `__TAURI_INTERNALS__` 미주입 시 Tauri API 호출 스킵
+
+### Changed
+- **마크다운 편집기**: 파일 로드 시 **4초 타임아웃** + `marked` 변환 전 **이중 `requestAnimationFrame`** 으로 UI 멈춤·클라우드 미동기 파일 대기 완화, 로드 실패 시 헤더에 오류 안내
+- **자동 업데이트 SAC 안내**: Microsoft 상세 가이드 링크·버튼 제거, 설정 검색에 `[스마트 앱 제어]` 입력 후 끄기 안내로 단순화
+- **복제·붙여넣기·OS 드롭 후 포커스**: `loadDirectory`와 경로 정규화 이슈를 고려해 복제 결과·붙여넣기 대상을 ref로 이어 선택·스크롤, OS 드롭 복사/이동 후에도 동일
+
+### Fixed
+- **Plain Vite 개발 서버**: `downloadDir`/`desktopDir`·창 상태·OS DnD·업데이트 체크 등에서 `invoke`/`metadata` undefined 오류 방지 (`isTauri` 가드)
+
 ## [1.27.14] - 2026-04-30
 
 ### Fixed

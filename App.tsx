@@ -48,6 +48,7 @@ import FileExplorer from './components/FileExplorer';
 import { invoke } from '@tauri-apps/api/core';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
+import { isTauri } from './utils/isTauri';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ZoomModal } from './components/ZoomModal';
@@ -185,6 +186,8 @@ export default function App() {
       e.preventDefault();
       e.stopImmediatePropagation();
 
+      if (!isTauri()) return;
+
       try {
         const appWindow = getCurrentWindow();
         const monitors = await availableMonitors();
@@ -266,6 +269,7 @@ export default function App() {
   // 다운로드 폴더 경로
   const [downloadPath, setDownloadPath] = useState<string | null>(null);
   useEffect(() => {
+    if (!isTauri()) return;
     downloadDir().then(setDownloadPath).catch(console.error);
   }, []);
 
@@ -281,6 +285,7 @@ export default function App() {
   // 데스크탑 폴더 경로
   const [desktopPath, setDesktopPath] = useState<string | null>(null);
   useEffect(() => {
+    if (!isTauri()) return;
     desktopDir().then(setDesktopPath).catch(console.error);
   }, []);
 
@@ -1004,7 +1009,6 @@ export default function App() {
           downloadProgress={autoUpdate.downloadProgress}
           isWindows={autoUpdate.isWindows}
           onOpenSacSettings={autoUpdate.openSacSettings}
-          onOpenSacGuide={autoUpdate.openSacGuide}
         />
       )}
 
@@ -1017,7 +1021,6 @@ export default function App() {
           toVersion={autoUpdate.previousUpdateFailed.toVersion}
           isWindows={autoUpdate.isWindows}
           onOpenSacSettings={autoUpdate.openSacSettings}
-          onOpenSacGuide={autoUpdate.openSacGuide}
         />
       )}
 

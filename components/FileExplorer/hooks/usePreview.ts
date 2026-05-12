@@ -1,18 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-
-// 텍스트/MD/JSON 파일 로드 타임아웃(ms) — 구글 드라이브 동기화 미완료 파일 무한 대기 방지
-const TEXT_LOAD_TIMEOUT_MS = 4000;
-
-// 경쟁 상태: read_text_file vs timeout
-async function readTextWithTimeout(path: string, maxBytes: number, timeoutMs: number = TEXT_LOAD_TIMEOUT_MS): Promise<string> {
-  return await Promise.race([
-    invoke<string>('read_text_file', { path, maxBytes }),
-    new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('TIMEOUT: 파일을 불러오지 못했습니다. 클라우드 동기화가 완료되지 않은 파일일 수 있습니다.')), timeoutMs)
-    ),
-  ]);
-}
+import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../../utils/readTextFileWithTimeout';
 
 export interface PreviewState {
   // 비디오
@@ -148,7 +136,7 @@ export function usePreview(): PreviewState {
     setPreviewTextContent(null);
     const reqId = ++textLoadRequestRef.current;
     try {
-      const content = await readTextWithTimeout(path, 100000);
+      const content = await readTextFileWithTimeout(path, 100000, DEFAULT_READ_TEXT_TIMEOUT_MS);
       if (reqId !== textLoadRequestRef.current) return; // 오래된 응답 무시
       setPreviewTextContent(content);
     } catch (e: any) {
@@ -173,7 +161,7 @@ export function usePreview(): PreviewState {
     setPreviewJsonData(null);
     const reqId = ++jsonLoadRequestRef.current;
     try {
-      const content = await readTextWithTimeout(path, 1000000);
+      const content = await readTextFileWithTimeout(path, 1000000, DEFAULT_READ_TEXT_TIMEOUT_MS);
       if (reqId !== jsonLoadRequestRef.current) return;
       // 주석 제거 (JSONC 지원) — 문자열 리터럴 내부의 // 는 보존
       const stripped = content.replace(
@@ -209,7 +197,7 @@ export function usePreview(): PreviewState {
     setPreviewMdLoading(true);
     const reqId = ++mdLoadRequestRef.current;
     try {
-      const content = await readTextWithTimeout(path, 1048576);
+      const content = await readTextFileWithTimeout(path, 1048576, DEFAULT_READ_TEXT_TIMEOUT_MS);
       if (reqId !== mdLoadRequestRef.current) return;
       setPreviewMdContent(content);
       setPreviewMdError(null);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { Download, X, AlertTriangle, Shield, ExternalLink } from 'lucide-react';
+import { Download, X, AlertTriangle, Shield } from 'lucide-react';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -14,7 +14,6 @@ interface UpdateModalProps {
   downloadProgress?: number;
   isWindows?: boolean;
   onOpenSacSettings?: () => void;
-  onOpenSacGuide?: () => void;
 }
 
 export function UpdateModal({
@@ -28,7 +27,6 @@ export function UpdateModal({
   downloadProgress,
   isWindows = false,
   onOpenSacSettings,
-  onOpenSacGuide,
 }: UpdateModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={isDownloading ? () => {} : onClose}>
@@ -53,43 +51,33 @@ export function UpdateModal({
           )}
         </div>
 
-        {/* Windows 스마트 앱 제어(SAC) 경고 배너 */}
+        {/* Windows 스마트 앱 제어(SAC) 안내 */}
         {isWindows && !isDownloading && (
           <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
             <div className="flex gap-3">
               <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-amber-400" />
               <div className="flex-1 text-xs leading-relaxed text-amber-100">
-                <p className="mb-1 font-semibold">Windows 스마트 앱 제어(SAC) 필수 확인</p>
+                <p className="mb-1 font-semibold">Windows 스마트 앱 제어(SAC) 확인</p>
                 <p className="mb-2 text-amber-100/90">
-                  SAC가 켜져 있으면 설치 파일이 <b>아무 알림 없이 차단</b>됩니다.
-                  업데이트 전에 <b>반드시 SAC를 꺼주세요</b>.
-                  <br />
-                  <span className="text-amber-200/80">
-                    (한 번 끄면 Windows 재설치 없이 다시 켤 수 없으니 주의)
-                  </span>
+                  SAC가 켜져 있으면 설치 파일이 <b>알림 없이 차단</b>될 수 있습니다. 업데이트 전에 끄는 것을 권장합니다.
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {onOpenSacSettings && (
-                    <button
-                      type="button"
-                      onClick={onOpenSacSettings}
-                      className="inline-flex items-center gap-1 rounded-md bg-amber-500/30 px-2.5 py-1 text-[11px] font-semibold text-amber-50 hover:bg-amber-500/50 transition-colors"
-                    >
-                      <Shield size={12} />
-                      SAC 설정 열기
-                    </button>
-                  )}
-                  {onOpenSacGuide && (
-                    <button
-                      type="button"
-                      onClick={onOpenSacGuide}
-                      className="inline-flex items-center gap-1 rounded-md bg-transparent border border-amber-500/40 px-2.5 py-1 text-[11px] text-amber-200 hover:bg-amber-500/10 transition-colors"
-                    >
-                      <ExternalLink size={12} />
-                      상세 가이드
-                    </button>
-                  )}
-                </div>
+                <p className="mb-2 text-amber-100/85">
+                  아래 <b>SAC 설정 열기</b>를 누른 뒤, 설정 검색창에 <b className="text-amber-50">[스마트 앱 제어]</b>를 입력해 해당 항목을 <b>끔</b>으로 바꿔 주세요.
+                  (버튼이 정확한 화면으로 연결되지 않을 수 있습니다.)
+                </p>
+                <p className="mb-2 text-[11px] text-amber-200/75">
+                  한 번 끄면 Windows 재설치 없이 다시 켤 수 없을 수 있습니다.
+                </p>
+                {onOpenSacSettings && (
+                  <button
+                    type="button"
+                    onClick={onOpenSacSettings}
+                    className="inline-flex items-center gap-1 rounded-md bg-amber-500/30 px-2.5 py-1 text-[11px] font-semibold text-amber-50 hover:bg-amber-500/50 transition-colors"
+                  >
+                    <Shield size={12} />
+                    SAC 설정 열기
+                  </button>
+                )}
               </div>
             </div>
           </div>

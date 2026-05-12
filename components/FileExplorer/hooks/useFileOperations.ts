@@ -59,6 +59,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
   const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number; itemLabel?: string } | null>(null);
 
+  /** 복제 후 목록 갱신 시 선택·스크롤 (loadDirectory가 선택을 비울 수 있어 ref로 이어줌) */
+  const pendingDuplicateSelectRef = useRef<string[]>([]);
+
   // 영구삭제 확인 다이얼로그
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
 
@@ -169,13 +172,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       });
       const newPaths = await invoke<string[]>('duplicate_items', { paths: selectedPaths });
       setOperationProgress(null);
+      pendingDuplicateSelectRef.current = newPaths;
       await loadDirectory(currentPath);
-      setSelectedPaths(newPaths);
     } catch (e) {
       setOperationProgress(null);
+      pendingDuplicateSelectRef.current = [];
       console.error('복제 실패:', e);
     }
-  }, [selectedPaths, currentPath, loadDirectory, setSelectedPaths]);
+  }, [selectedPaths, currentPath, loadDirectory]);
 
   // --- 폴더 생성 ---
   const handleCreateDirectory = useCallback(async () => {
@@ -764,6 +768,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleCopyPath,
     handleUndo,
     showCopyToast,
+    pendingDuplicateSelectRef,
     // 상태
     copyToast,
     operationProgress,

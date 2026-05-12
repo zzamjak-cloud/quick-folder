@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { AlertTriangle, Shield, ExternalLink, X } from 'lucide-react';
+import { AlertTriangle, Shield, X } from 'lucide-react';
 
 interface UpdateFailedModalProps {
   isOpen: boolean;
@@ -10,7 +10,6 @@ interface UpdateFailedModalProps {
   toVersion: string;
   isWindows: boolean;
   onOpenSacSettings: () => void;
-  onOpenSacGuide: () => void;
 }
 
 export function UpdateFailedModal({
@@ -20,7 +19,6 @@ export function UpdateFailedModal({
   toVersion,
   isWindows,
   onOpenSacSettings,
-  onOpenSacGuide,
 }: UpdateFailedModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
@@ -53,22 +51,16 @@ export function UpdateFailedModal({
         <div className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
           {isWindows ? (
             <>
-              <p className="mb-2 font-semibold">원인: Windows 스마트 앱 제어(SAC)</p>
+              <p className="mb-2 font-semibold">원인: Windows 스마트 앱 제어(SAC) 가능성</p>
               <p className="mb-2 text-amber-100/90">
-                Windows 11의 SAC는 서명이 없는 설치 파일을 <b>사용자에게 알리지 않고</b> 차단합니다.
-                다운로드는 성공했지만 설치 실행 단계에서 조용히 중단된 상태입니다.
+                SAC가 켜져 있으면 설치 파일이 사용자에게 알리지 않고 차단될 수 있습니다.
               </p>
-              <p className="mb-1 text-amber-100/90">
-                <b>해결 방법:</b> SAC를 끈 뒤 다시 업데이트
+              <p className="mb-2 text-amber-100/90">
+                아래 <b>SAC 설정 열기</b>를 누른 뒤, 설정 검색창에 <b className="text-amber-50">[스마트 앱 제어]</b>를 입력해 비활성화해 주세요.
+                (버튼이 정확한 화면으로 연결되지 않을 수 있습니다.)
               </p>
-              <ol className="ml-4 list-decimal text-amber-100/80 space-y-0.5">
-                <li>아래 <b>SAC 설정 열기</b> 버튼 클릭</li>
-                <li>"스마트 앱 제어" 옵션을 <b>끄기</b>로 변경</li>
-                <li>앱을 재시작 후 다시 업데이트 시도</li>
-              </ol>
-              <p className="mt-2 text-[11px] text-amber-200/70">
-                ⚠ SAC는 한 번 끄면 <b>Windows 재설치 없이 다시 켤 수 없습니다</b>.
-                대신 Microsoft Defender 등 다른 보안 기능은 그대로 유지됩니다.
+              <p className="text-[11px] text-amber-200/70">
+                SAC를 끈 뒤 앱을 재시작하고 다시 업데이트를 시도해 보세요.
               </p>
             </>
           ) : (
@@ -82,22 +74,13 @@ export function UpdateFailedModal({
         {/* 액션 버튼 */}
         <div className="flex flex-col gap-2">
           {isWindows && (
-            <>
-              <Button
-                onClick={onOpenSacSettings}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <Shield size={16} className="mr-2" />
-                SAC 설정 열기
-              </Button>
-              <Button
-                onClick={onOpenSacGuide}
-                className="w-full bg-slate-700 hover:bg-slate-600 text-white"
-              >
-                <ExternalLink size={14} className="mr-2" />
-                상세 가이드 (Microsoft 공식 문서)
-              </Button>
-            </>
+            <Button
+              onClick={onOpenSacSettings}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Shield size={16} className="mr-2" />
+              SAC 설정 열기
+            </Button>
           )}
           <button
             type="button"

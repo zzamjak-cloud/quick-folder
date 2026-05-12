@@ -36,6 +36,7 @@ import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getFileName, getPathSeparator, getParentDir, normalizeFsPath, sameVolume } from '../../utils/pathUtils';
+import { isTauri } from '../../utils/isTauri';
 import GoToFolderModal from './GoToFolderModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import { useUndoStack } from './hooks/useUndoStack';
@@ -769,23 +770,40 @@ export default function FileExplorer({
     }
   }, [entries]);
 
-  // --- 붙여넣기 후 파일 자동 선택 ---
+  // --- 붙여넣기·복제 후 파일 자동 선택 (경로 슬래시 차이 흡수) ---
   useEffect(() => {
-    if (clipboardHook.pendingPasteSelectRef.current.length === 0) return;
-    const targets = clipboardHook.pendingPasteSelectRef.current;
-    const matched = entries.filter(e => targets.includes(e.path));
-    if (matched.length > 0) {
-      const matchedPaths = matched.map(e => e.path);
-      setSelectedPaths(matchedPaths);
-      // 첫 번째 항목에 포커스
-      const firstIdx = entries.findIndex(e => e.path === matchedPaths[0]);
-      if (firstIdx >= 0) setFocusedIndex(firstIdx);
-      clipboardHook.pendingPasteSelectRef.current = [];
-      // 첫 번째 항목으로 스크롤
-      requestAnimationFrame(() => {
-        const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
-        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
+    const pathMatches = (a: string, b: string) => normalizeFsPath(a) === normalizeFsPath(b);
+
+    if (clipboardHook.pendingPasteSelectRef.current.length > 0) {
+      const targets = clipboardHook.pendingPasteSelectRef.current;
+      const matched = entries.filter(e => targets.some(t => pathMatches(t, e.path)));
+      if (matched.length > 0) {
+        const matchedPaths = matched.map(e => e.path);
+        setSelectedPaths(matchedPaths);
+        const firstIdx = entries.findIndex(e => pathMatches(matchedPaths[0], e.path));
+        if (firstIdx >= 0) setFocusedIndex(firstIdx);
+        clipboardHook.pendingPasteSelectRef.current = [];
+        requestAnimationFrame(() => {
+          const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
+          el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+      }
+    }
+
+    if (fileOps.pendingDuplicateSelectRef.current.length > 0) {
+      const targets = fileOps.pendingDuplicateSelectRef.current;
+      const matched = entries.filter(e => targets.some(t => pathMatches(t, e.path)));
+      if (matched.length > 0) {
+        const matchedPaths = matched.map(e => e.path);
+        setSelectedPaths(matchedPaths);
+        const firstIdx = entries.findIndex(e => pathMatches(matchedPaths[0], e.path));
+        if (firstIdx >= 0) setFocusedIndex(firstIdx);
+        fileOps.pendingDuplicateSelectRef.current = [];
+        requestAnimationFrame(() => {
+          const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
+          el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+      }
     }
   }, [entries]);
 
@@ -854,7 +872,7 @@ export default function FileExplorer({
 
   // --- OS에서 파일 드래그 수신 (Tauri onDragDropEvent) ---
   useEffect(() => {
-    if (!currentPath) return;
+    if (!currentPath || !isTauri()) return;
     let isMounted = true;
     let unlisten: (() => void) | null = null;
 
@@ -898,6 +916,9 @@ export default function FileExplorer({
           const dropLabel = filtered.length === 1 ? getFileName(filtered[0]) : `${getFileName(filtered[0])} 외 ${filtered.length - 1}개`;
           setPasteProgressList(prev => [...prev, { id: dropId, type: '복사', current: 0, total: 0, itemLabel: dropLabel }]);
           (window as unknown as { __qfLastPasteId?: number }).__qfLastPasteId = dropId;
+          const sep = getPathSeparator(currentPath);
+          const destPaths = filtered.map(p => normalizeFsPath(`${currentPath}${sep}${getFileName(p)}`));
+          clipboardHook.pendingPasteSelectRef.current = destPaths;
           try {
             await runCopyWithProgress(filtered, currentPath, false, (info) => {
               setPasteProgressList(prev => prev.map(p =>
@@ -910,6 +931,9 @@ export default function FileExplorer({
             setPasteProgressList(prev => prev.filter(p => p.id !== dropId));
           }
         } else {
+          const sep = getPathSeparator(currentPath);
+          const destPaths = filtered.map(p => normalizeFsPath(`${currentPath}${sep}${getFileName(p)}`));
+          clipboardHook.pendingPasteSelectRef.current = destPaths;
           await invoke('move_items', { sources: filtered, dest: currentPath });
         }
         loadDirectory(currentPath);
