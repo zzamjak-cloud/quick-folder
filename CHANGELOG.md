@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.16] - 2026-05-12
+
+### Fixed
+- **GitHub Actions 릴리스**: `merge-updater-json` 단계가 `latest.json`을 `src-tauri/target`에서만 찾아 실패하던 문제 수정 — `tauri-action` v0.5는 저장소 루트에 `latest.json`을 생성하므로 `./latest.json` 우선 후 `src-tauri/target` 폴백으로 조각 업로드
+
 ## [1.27.15] - 2026-05-12
 
 ### Added
