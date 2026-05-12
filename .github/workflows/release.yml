@@ -138,14 +138,20 @@ jobs:
           args: ${{ matrix.args }}
 
       # 병렬 빌드마다 전체 latest.json이 교체되므로, 플랫폼별 조각을 아티팩트로 남겨 merge job에서 합침
+      # tauri-action v0.5+ 는 latest.json 을 repo 루트(process.cwd)에 생성함 — 예전처럼 target/ 아래만 찾으면 실패함
       - name: Upload updater fragment for merge
         shell: bash
         run: |
           set -euo pipefail
-          F=$(find src-tauri/target -name latest.json -type f | head -1)
-          if [ -z "${F}" ]; then
-            echo "::error::latest.json not found under src-tauri/target"
-            find src-tauri/target -type f -name "*.json" 2>/dev/null | head -40 || true
+          if [ -f latest.json ]; then
+            F=latest.json
+          else
+            F=$(find src-tauri/target -name latest.json -type f 2>/dev/null | head -1 || true)
+          fi
+          if [ -z "${F}" ] || [ ! -f "$F" ]; then
+            echo "::error::latest.json not found (checked ./latest.json and src-tauri/target/)"
+            ls -la
+            find . -maxdepth 4 -name latest.json -type f 2>/dev/null || true
             exit 1
           fi
           echo "Using updater metadata: $F"
