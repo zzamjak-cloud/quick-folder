@@ -799,9 +799,27 @@ export default function FileExplorer({
         const firstIdx = entries.findIndex(e => pathMatches(matchedPaths[0], e.path));
         if (firstIdx >= 0) setFocusedIndex(firstIdx);
         fileOps.pendingDuplicateSelectRef.current = [];
+        // 렌더링이 끝난 뒤 즉시 스크롤 (smooth 사용 시 도중에 다른 effect가 끼어들어 실패할 수 있음)
         requestAnimationFrame(() => {
           const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
-          el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          el?.scrollIntoView({ block: 'center', behavior: 'auto' });
+        });
+      }
+    }
+
+    // 압축 해제된 폴더 자동 선택·스크롤
+    if (fileOps.pendingExtractSelectRef.current.length > 0) {
+      const targets = fileOps.pendingExtractSelectRef.current;
+      const matched = entries.filter(e => targets.some(t => pathMatches(t, e.path)));
+      if (matched.length > 0) {
+        const matchedPaths = matched.map(e => e.path);
+        setSelectedPaths(matchedPaths);
+        const firstIdx = entries.findIndex(e => pathMatches(matchedPaths[0], e.path));
+        if (firstIdx >= 0) setFocusedIndex(firstIdx);
+        fileOps.pendingExtractSelectRef.current = [];
+        requestAnimationFrame(() => {
+          const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(matchedPaths[0])}"]`);
+          el?.scrollIntoView({ block: 'center', behavior: 'auto' });
         });
       }
     }

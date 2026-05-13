@@ -4,6 +4,7 @@ import { FileEntry } from '../../../types';
 import { useUndoStack } from './useUndoStack';
 import { getFileName, getBaseName, getExtension, getPathSeparator, getParentDir } from '../../../utils/pathUtils';
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
+import type { LaigterParamsUI } from '../MapMakerModal';
 
 export interface UseFileOperationsConfig {
   currentPath: string | null;
@@ -61,6 +62,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
   /** 복제 후 목록 갱신 시 선택·스크롤 (loadDirectory가 선택을 비울 수 있어 ref로 이어줌) */
   const pendingDuplicateSelectRef = useRef<string[]>([]);
+
+  /** 압축 해제 후 새 폴더로 선택·스크롤하기 위한 경로 ref */
+  const pendingExtractSelectRef = useRef<string[]>([]);
 
   // 영구삭제 확인 다이얼로그
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
@@ -526,25 +530,30 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (paths.length === 0 || !currentPath) return;
     const sep = getPathSeparator(currentPath);
     try {
+      const createdDirs: string[] = [];
+      // 해제마다 누적 사용 중인 폴더명 (이전 해제 결과 + 기존 entries)
+      const existingNames = new Set(entries.map(e => e.name));
       for (const zipPath of paths) {
         const fileName = getFileName(zipPath);
         const baseName = fileName.replace(/\.zip$/i, '');
         // 동일 이름 폴더가 있으면 번호 붙이기
-        let destDir = `${currentPath}${sep}${baseName}`;
         let counter = 2;
-        // Rust 측에서 디렉토리를 생성하므로, 프론트에서 존재 여부만 확인
-        const existingNames = new Set(entries.map(e => e.name));
         let folderName = baseName;
         while (existingNames.has(folderName)) {
           folderName = `${baseName} (${counter})`;
           counter++;
         }
-        destDir = `${currentPath}${sep}${folderName}`;
-        await invoke('extract_zip', { zipPath, destDir });
+        existingNames.add(folderName);
+        const destDir = `${currentPath}${sep}${folderName}`;
+        const resultDir = await invoke<string>('extract_zip', { zipPath, destDir });
+        createdDirs.push(resultDir || destDir);
       }
-      loadDirectory(currentPath);
+      // 해제된 폴더로 선택·스크롤 이동 (entries 갱신 후 effect가 처리)
+      pendingExtractSelectRef.current = createdDirs;
+      await loadDirectory(currentPath);
       showCopyToast('압축 풀기 완료');
     } catch (e) {
+      pendingExtractSelectRef.current = [];
       console.error('압축 풀기 실패:', e);
       setError(`압축 풀기 실패: ${e}`);
     }
@@ -553,7 +562,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // --- Map Maker (Laigter 스타일 맵)보내기 ---
   const handleLaigterMapsExport = useCallback(async (
     inputPath: string,
-    params: Record<string, unknown>,
+    params: LaigterParamsUI,
     options: { saveNormal: boolean; saveParallax: boolean; saveSpecular: boolean; saveOcclusion: boolean },
   ) => {
     const outputs = await invoke<string[]>('laigter_maps_export', {
@@ -769,6 +778,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleUndo,
     showCopyToast,
     pendingDuplicateSelectRef,
+    pendingExtractSelectRef,
     // 상태
     copyToast,
     operationProgress,

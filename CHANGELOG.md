@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.17] - 2026-05-14
+
+### Added
+- **ZIP 압축 해제 후 폴더 자동 포커싱**: `Ctrl+Shift+Alt+Z` 또는 우클릭 → 「압축 풀기」 완료 시 새로 생성된 폴더로 자동 선택·스크롤 — 파일이 많아 폴더가 화면 밖에 만들어져도 위치 추적 가능
+- **이미지 편집 헤더 「PNG 저장」 버튼**: 이미지 미리보기 편집 모드에서 헤더 우측에 녹색 「PNG 저장」 버튼 추가 — 좌측 툴바 저장 버튼은 그대로 유지(시각적 가시성 강화). 그려진 스트로크가 있을 때만 표시
+- **도움말 모달 전면 보강**: 7개 탭(단축키 / 파일 탐색기 / 미리보기 & 편집 / 이미지 도구 / 미디어 & 압축 / 마크다운 / 사이드바)으로 확장, 모달 크기를 `max-w-4xl × 88vh`로 키워 신규 기능(분할 뷰, 컬럼 뷰, 드로잉/크롭, 배경 제거, 픽셀화, 시트 패커, Map Maker, 폰트 병합, ZIP·동영상·GIF·PDF 압축, 마크다운 자동 저장 등) 전체 사용법 수록
+
+### Changed
+- **복제 결과 스크롤 동작**: `Ctrl+D` 복제 후 결과 항목으로 스크롤 시 `behavior: 'smooth'` → `'auto'` — 진행 중 다른 effect가 끼어들어 포커싱이 풀리던 케이스 차단
+- **「편집 종료」 버튼 톤 다운**: 이미지 편집 모달의 「편집 종료」 버튼을 surface 컬러로 변경 — 신규 녹색 「PNG 저장」이 시각적으로 부각되도록 위계 정리
+
+### Fixed
+- **TS 타입 에러**: `CodePreviewModal`의 `hljs.LanguageFn` 네임스페이스 참조를 `import type { LanguageFn } from 'highlight.js'`로 교체, `useFileOperations.handleLaigterMapsExport`의 `params` 타입을 `Record<string, unknown>` → `LaigterParamsUI`로 정정해 `MapMakerModal.onExport` 시그니처와 호환
+
 ## [1.27.16] - 2026-05-12
 
 ### Fixed

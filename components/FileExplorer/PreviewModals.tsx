@@ -192,16 +192,37 @@ export function PreviewModals({ preview, themeVars, onCropSave, onRemoveBg, onFi
                     편집(E)
                   </button>
                 )}
+                {/* 편집 모드: PNG 저장 (헤더 노출용 — 좌측 툴바와 동일 기능) */}
+                {editMode && hasDrawStrokes && (
+                  <button
+                    className="text-xs px-3 py-1 rounded hover:opacity-90"
+                    style={{
+                      background: '#22c55e',
+                      color: '#fff',
+                      fontWeight: 600,
+                      cursor: saving ? 'wait' : 'pointer',
+                      border: 'none',
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!saving) handleDrawingSave();
+                    }}
+                    title="편집 결과를 PNG로 저장 (Ctrl+S 가능)"
+                  >
+                    PNG 저장
+                  </button>
+                )}
                 {/* 편집 모드 종료 버튼 */}
                 {editMode && (
                   <button
                     className="text-xs px-3 py-1 rounded hover:opacity-80"
                     style={{
-                      background: themeVars?.accent ?? '#4ade80',
-                      color: '#000',
-                      fontWeight: 600,
+                      background: themeVars?.surface ?? '#333',
+                      color: themeVars?.text ?? '#e5e7eb',
+                      fontWeight: 500,
                       cursor: 'pointer',
-                      border: 'none',
+                      border: `1px solid ${themeVars?.border ?? '#444'}`,
                     }}
                     onClick={(e) => {
                       e.stopPropagation();

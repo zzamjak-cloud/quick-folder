@@ -6,6 +6,7 @@ import { getBaseName, getExtension } from '../../utils/pathUtils';
 
 // highlight.js 코어만 임포트 (전체 번들 제외)
 import hljs from 'highlight.js/lib/core';
+import type { LanguageFn } from 'highlight.js';
 import 'highlight.js/styles/vs2015.css';
 
 // ──────────────────────────────────────────────
@@ -71,7 +72,7 @@ const EXT_TO_LANG: Record<string, string> = {
 };
 
 // 언어별 동적 임포트 맵
-const LANG_IMPORTERS: Record<string, () => Promise<{ default: hljs.LanguageFn }>> = {
+const LANG_IMPORTERS: Record<string, () => Promise<{ default: LanguageFn }>> = {
   javascript: () => import('highlight.js/lib/languages/javascript'),
   typescript: () => import('highlight.js/lib/languages/typescript'),
   python: () => import('highlight.js/lib/languages/python'),
