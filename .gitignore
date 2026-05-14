@@ -34,3 +34,4 @@ src-tauri/binaries/*
 src-tauri/.omc
 .omc
 .claude
+docs/superpowers
