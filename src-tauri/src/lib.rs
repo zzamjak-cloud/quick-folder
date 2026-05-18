@@ -19,6 +19,7 @@ pub fn run() {
         copy_path,
         select_folder,
         list_directory,
+        list_system_roots,
         get_image_dimensions,
         get_file_thumbnail,
         get_psd_thumbnail,

@@ -7,9 +7,11 @@ const TABS_KEY = 'qf_explorer_tabs';
 const ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
 
 const RECENT_PATH = '__recent__';
+const SYSTEM_ROOT_PATH = '__system_root__';
 
 function pathTitle(path: string): string {
   if (path === RECENT_PATH) return '최근항목';
+  if (path === SYSTEM_ROOT_PATH) return navigator.platform.startsWith('Mac') ? 'Macintosh HD' : '내 PC';
   if (!path) return '';
   return getFileName(path.replace(/[/\\]+$/, ''));
 }

@@ -140,6 +140,10 @@ export default memo(function NavigationBar({
     if (!currentPath) return [];
     // 최근항목 특수 경로
     if (currentPath === '__recent__') return [{ name: '최근항목', path: '__recent__' }];
+    if (currentPath === '__system_root__') {
+      const isMac = navigator.platform.startsWith('Mac');
+      return [{ name: isMac ? 'Macintosh HD' : '내 PC', path: '__system_root__' }];
+    }
     const sep = getPathSeparator(currentPath);
     const parts = currentPath.replace(/[/\\]+$/, '').split(sep).filter(Boolean);
 

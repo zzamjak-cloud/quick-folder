@@ -5,6 +5,17 @@ use crate::helpers::*;
 use super::types::{FileEntry, FileType, classify_file};
 use super::error::{AppError, Result};
 
+fn virtual_dir_entry(name: String, path: String) -> FileEntry {
+    FileEntry {
+        name,
+        path,
+        is_dir: true,
+        size: 0,
+        modified: 0,
+        file_type: FileType::Directory,
+    }
+}
+
 // ===== 디렉토리 목록 조회 =====
 
 // 디렉토리 목록 조회
@@ -64,6 +75,58 @@ pub async fn list_directory(path: String) -> Result<Vec<FileEntry>> {
     })
     .await
     .map_err(|e| AppError::Internal(format!("디렉토리 읽기 태스크 실패: {}", e)))?
+}
+
+// ===== 가상 시스템 루트 목록 =====
+
+#[tauri::command]
+pub async fn list_system_roots() -> Result<Vec<FileEntry>> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut result: Vec<FileEntry> = Vec::new();
+        for letter in 'A'..='Z' {
+            let drive = format!("{}:\\", letter);
+            let drive_path = std::path::Path::new(&drive);
+            if drive_path.is_dir() {
+                result.push(virtual_dir_entry(format!("{}:", letter), drive));
+            }
+        }
+
+        // Google Drive for desktop: "Google Drive - <email>" 사용자 폴더 항목 표시
+        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+            if let Ok(entries) = std::fs::read_dir(&user_profile) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_dir() {
+                        continue;
+                    }
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with("Google Drive") {
+                        result.push(virtual_dir_entry(name, path.to_string_lossy().to_string()));
+                    }
+                }
+            }
+        }
+
+        result.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        return Ok(result);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let result = vec![
+            virtual_dir_entry("사용자 폴더".to_string(), "/Users".to_string()),
+            virtual_dir_entry("응용 프로그램".to_string(), "/Applications".to_string()),
+            virtual_dir_entry("라이브러리".to_string(), "/Library".to_string()),
+            virtual_dir_entry("시스템".to_string(), "/System".to_string()),
+        ];
+        return Ok(result);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        Ok(vec![])
+    }
 }
 
 // ===== 경로 확인 =====

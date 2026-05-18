@@ -132,6 +132,10 @@ export default function FontPreviewModal({ path, onClose, themeVars }: FontPrevi
     { label: 'A-Z',    text: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' },
     { label: 'a-z',    text: 'abcdefghijklmnopqrstuvwxyz' },
     { label: '0-9',    text: '0123456789' },
+    { label: '日本語', text: 'こんにちは 世界 アイウエオ 漢字 ひらがな カタカナ' },
+    { label: '简体中文', text: '你好 世界 欢迎使用 字体 预览 测试 文本' },
+    { label: '繁體中文', text: '你好 世界 歡迎使用 字體 預覽 測試 文字' },
+    { label: 'Español', text: 'Hola mundo, rápido zorro marrón, corazón, acción, niño' },
     { label: 'Random', text: generateRandomText() },
     { label: '가-힣',  text: '가나다라마바사아자차카타파하' },
   ];

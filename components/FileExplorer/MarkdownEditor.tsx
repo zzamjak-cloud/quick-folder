@@ -125,6 +125,13 @@ const ArrowReplace = Extension.create({
 
 /** 미저장일 때만 주기적으로 디스크에 씀. 짧은 디바운스 저장과 달리 UI 렉이 거의 없음 (구글 드라이브 등 동기화 이슈 대비). */
 const AUTOSAVE_INTERVAL_MS = 60_000;
+const AUTO_PAIR_MAP: Record<string, string> = {
+  '"': '"',
+  "'": "'",
+  '(': ')',
+  '[': ']',
+  '{': '}',
+};
 
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClose }) => {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
@@ -186,6 +193,28 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         spellcheck: 'false',
         autocorrect: 'off',
         autocapitalize: 'off',
+      },
+      handleTextInput: (view, from, to, text) => {
+        const close = AUTO_PAIR_MAP[text];
+        if (!close) return false;
+        const { state } = view;
+        const { tr, selection } = state;
+
+        // 선택 영역이 있으면 양쪽으로 감싸기
+        if (!selection.empty && from !== to) {
+          const selected = state.doc.textBetween(from, to, '\n');
+          tr.insertText(`${text}${selected}${close}`, from, to);
+          const cursor = from + selected.length + 2;
+          tr.setSelection(TextSelection.create(tr.doc, cursor));
+          view.dispatch(tr);
+          return true;
+        }
+
+        // 커서를 괄호/따옴표 사이에 위치
+        tr.insertText(`${text}${close}`, from, to);
+        tr.setSelection(TextSelection.create(tr.doc, from + 1));
+        view.dispatch(tr);
+        return true;
       },
     },
     onUpdate: () => {
@@ -408,6 +437,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       <div
         className="flex flex-col rounded-lg shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         style={{
           width: '60vw',
           height: '90vh',

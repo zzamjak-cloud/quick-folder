@@ -49,6 +49,7 @@ import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
+const SYSTEM_ROOT_PATH = '__system_root__';
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
@@ -244,9 +245,10 @@ export default function FileExplorer({
 
     // 최근항목 특수 경로 처리
     const isRecent = path === RECENT_PATH;
+    const isSystemRoot = path === SYSTEM_ROOT_PATH;
 
     // 캐시에 있으면 즉시 표시 (탭 전환 시 대기 없음) — 최근항목은 캐시 안 함
-    const cached = isRecent ? null : entriesCacheRef.current.get(path);
+    const cached = (isRecent || isSystemRoot) ? null : entriesCacheRef.current.get(path);
     if (cached) {
       setEntries(sortEntries(cached, sortBy, sortDir));
       setSelectedPaths([]);
@@ -259,12 +261,14 @@ export default function FileExplorer({
     try {
       const result = isRecent
         ? await invoke<FileEntry[]>('get_recent_files', { roots: recentRoots, days: 7 })
+        : isSystemRoot
+        ? await invoke<FileEntry[]>('list_system_roots')
         : await invoke<FileEntry[]>('list_directory', { path });
       // 이미 다른 디렉토리로 이동한 경우 무시
       if (requestId !== loadRequestRef.current) return;
-      if (!isRecent) entriesCacheRef.current.set(path, result); // 캐시 갱신 (최근항목 제외)
+      if (!isRecent && !isSystemRoot) entriesCacheRef.current.set(path, result); // 캐시 갱신 (특수 경로 제외)
       // 최근항목은 이미 서버에서 수정시간 내림차순 정렬된 상태
-      const sortedResult = isRecent ? result : sortEntries(result, sortBy, sortDir);
+      const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(result, sortBy, sortDir);
       setEntries(sortedResult);
       // 캐시 히트가 없었던 경우에만 선택 초기화 (첫 진입)
       if (!cached) {
@@ -533,6 +537,22 @@ export default function FileExplorer({
   // goUp: 상위 경로로 이동
   const goUp = useCallback(() => {
     if (!currentPath) return;
+    if (currentPath === SYSTEM_ROOT_PATH) return;
+
+    // Windows 드라이브 루트(C:\)에서는 가상 루트(내 PC)로 이동
+    if (/^[A-Za-z]:[\\/]*$/.test(currentPath)) {
+      lastVisitedChildRef.current = currentPath.replace(/\//g, '\\').replace(/[\\]+$/, '\\');
+      handleNavigateTo(SYSTEM_ROOT_PATH);
+      return;
+    }
+
+    // macOS 최상위 루트(/)에서는 가상 루트(Macintosh HD)로 이동
+    if (currentPath === '/') {
+      lastVisitedChildRef.current = currentPath;
+      handleNavigateTo(SYSTEM_ROOT_PATH);
+      return;
+    }
+
     const sep = getPathSeparator(currentPath);
     const parts = currentPath.replace(/[/\\]+$/, '').split(sep);
     if (parts.length <= 1) return;

@@ -13,6 +13,7 @@ import {
   Clock,
   Download,
   Monitor,
+  HardDrive,
   HelpCircle,
 } from 'lucide-react';
 import {
@@ -72,6 +73,7 @@ import {
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
+const SYSTEM_ROOT_PATH = '__system_root__';
 
 export default function App() {
   const isMac = navigator.platform.startsWith('Mac');
@@ -297,6 +299,19 @@ export default function App() {
       setExplorerPath2(desktopPath);
     }
   }, [splitMode, focusedPane, desktopPath]);
+
+  const openPathInFocusedPane = useCallback((path: string) => {
+    if (!path) return;
+    if (splitMode === 'single' || focusedPane === 0) {
+      setExplorerPath(path);
+    } else {
+      setExplorerPath2(path);
+    }
+  }, [splitMode, focusedPane, setExplorerPath, setExplorerPath2]);
+
+  const handleOpenSystemRoot = useCallback(() => {
+    openPathInFocusedPane(SYSTEM_ROOT_PATH);
+  }, [openPathInFocusedPane]);
 
   // 폴더 이름 변경 시 사이드바 즐겨찾기 경로 동기화
   useEffect(() => {
@@ -696,7 +711,7 @@ export default function App() {
           {/* 사이드바 콘텐츠 (접힌 상태에서 숨김) */}
           {!sidebarCollapsed && (
             <>
-              {/* 고정 영역: 최근항목/데스크탑/다운로드 */}
+              {/* 고정 영역: 최근항목/데스크탑/다운로드/시스템 루트 */}
               <div className="shrink-0 px-4 pt-4 pb-1">
                 <div
                   className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
@@ -704,6 +719,13 @@ export default function App() {
                 >
                   <Clock size={14} className="text-[var(--qf-accent)]" />
                   <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
+                </div>
+                <div
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
+                  onClick={handleOpenSystemRoot}
+                >
+                  <HardDrive size={14} className="text-[var(--qf-accent)]" />
+                  <span className="text-xs font-semibold text-[var(--qf-text)]">{isMac ? 'Macintosh HD' : '내 PC'}</span>
                 </div>
                 <div
                   className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
