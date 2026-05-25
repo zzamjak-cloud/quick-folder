@@ -33,8 +33,8 @@ export default function GifCompressModal({
     try {
       const installed = await invoke<boolean>('check_ffmpeg');
       if (!installed) {
-        setCurrentFile('ffmpeg 다운로드 중...');
-        await invoke('download_ffmpeg');
+        setErrorText('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        return;
       }
 
       const failures: string[] = [];

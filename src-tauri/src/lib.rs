@@ -51,7 +51,6 @@ pub fn run() {
         get_recent_files,
         search_files,
         check_ffmpeg,
-        download_ffmpeg,
         compress_video,
         trim_video,
         cut_video,

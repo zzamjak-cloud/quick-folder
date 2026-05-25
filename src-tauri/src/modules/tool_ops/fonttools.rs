@@ -646,7 +646,7 @@ pub async fn check_fonttools() -> Result<bool> {
     Ok(ok)
 }
 
-/// 내장 런타임 + pip로 fonttools 확보 (`download_ffmpeg`와 동일 UX)
+/// 내장 런타임 + pip로 fonttools 확보
 #[tauri::command]
 pub async fn download_fonttools() -> Result<()> {
     tauri::async_runtime::spawn_blocking(install_fonttools_inner)

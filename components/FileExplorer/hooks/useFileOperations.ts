@@ -50,13 +50,13 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // 동영상 압축 진행률
   const [videoCompression, setVideoCompression] = useState<{
     fileName: string;
-    percent: number;  // -1: ffmpeg 다운로드 중, 0~: 인코딩 시간(초)
+    percent: number;  // 0~: 인코딩 시간(초)
     speed: string;
     current?: number;
     total?: number;
   } | null>(null);
 
-  /** PDF 압축: Ghostscript 자동 설치 중 (ffmpeg 다운로드 UI와 동일 패턴) */
+  /** PDF 압축: Ghostscript 자동 설치 중 */
   const [gsSetup, setGsSetup] = useState<{ fileName: string } | null>(null);
 
   // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
@@ -647,8 +647,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       // 1. ffmpeg 설치 확인
       const installed = await invoke<boolean>('check_ffmpeg');
       if (!installed) {
-        setVideoCompression({ fileName: getFileName(paths[0]), percent: -1, speed: 'ffmpeg 다운로드 중...', current: 0, total: paths.length });
-        await invoke('download_ffmpeg');
+        showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        return;
       }
 
       let successCount = 0;
@@ -694,8 +694,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     try {
       const installed = await invoke<boolean>('check_ffmpeg');
       if (!installed) {
-        setOperationProgress({ type: 'FFmpeg 다운로드', current: 0, total: paths.length, itemLabel: getFileName(paths[0]) });
-        await invoke('download_ffmpeg');
+        showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        return;
       }
 
       let successCount = 0;

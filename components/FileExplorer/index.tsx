@@ -1322,21 +1322,15 @@ export default function FileExplorer({
               className="flex items-center gap-2 px-3 py-1.5 text-xs"
               style={{ backgroundColor: 'var(--qf-surface-2)', color: 'var(--qf-text)', borderTop: '1px solid var(--qf-border)' }}
             >
-              {fileOps.videoCompression.percent === -1 ? (
-                <span>⏳ ffmpeg 다운로드 중...</span>
-              ) : (
-                <>
-                  <span className="shrink-0">
-                    🎬 압축 중... {fileOps.videoCompression.total && fileOps.videoCompression.total > 1
-                      ? `${fileOps.videoCompression.current}/${fileOps.videoCompression.total}개 `
-                      : ''}
-                    {fileOps.videoCompression.fileName}
-                  </span>
-                  <span className="text-[var(--qf-muted)]">
-                    ({Math.floor(fileOps.videoCompression.percent)}초{fileOps.videoCompression.speed ? ` · ${fileOps.videoCompression.speed}` : ''})
-                  </span>
-                </>
-              )}
+              <span className="shrink-0">
+                🎬 압축 중... {fileOps.videoCompression.total && fileOps.videoCompression.total > 1
+                  ? `${fileOps.videoCompression.current}/${fileOps.videoCompression.total}개 `
+                  : ''}
+                {fileOps.videoCompression.fileName}
+              </span>
+              <span className="text-[var(--qf-muted)]">
+                ({Math.floor(fileOps.videoCompression.percent)}초{fileOps.videoCompression.speed ? ` · ${fileOps.videoCompression.speed}` : ''})
+              </span>
             </div>
           )}
 

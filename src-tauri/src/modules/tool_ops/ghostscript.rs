@@ -608,7 +608,7 @@ pub async fn check_gs() -> Result<bool> {
     Ok(find_gs_path().is_some())
 }
 
-/// Ghostscript 확보 (ffmpeg `download_ffmpeg`와 동일 UX — Windows: 공식 설치 파일 다운로드·sidecar 복사 우선)
+/// Ghostscript 확보 (Windows: 공식 설치 파일 다운로드·sidecar 복사 우선)
 #[tauri::command]
 pub async fn download_gs() -> Result<()> {
     tauri::async_runtime::spawn_blocking(ensure_ghostscript_installed_inner)
