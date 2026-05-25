@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.19] - 2026-05-25
+
+### Added
+- GIF 압축/동영상 압축 다중 선택 일괄 처리 및 진행률 표시 추가
+- GIF → MP4 변환 메뉴 추가
+
+### Fixed
+- GIF 압축 결과가 원본보다 커질 경우 출력 파일을 폐기하도록 처리
+
 ## [1.27.18] - 2026-05-18
 
 ### Added
@@ -57,7 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Plain Vite 개발 서버**: `downloadDir`/`desktopDir`·창 상태·OS DnD·업데이트 체크 등에서 `invoke`/`metadata` undefined 오류 방지 (`isTauri` 가드)
-
 ## [1.27.14] - 2026-04-30
 
 ### Fixed

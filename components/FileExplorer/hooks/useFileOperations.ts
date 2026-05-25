@@ -52,6 +52,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     fileName: string;
     percent: number;  // -1: ffmpeg 다운로드 중, 0~: 인코딩 시간(초)
     speed: string;
+    current?: number;
+    total?: number;
   } | null>(null);
 
   /** PDF 압축: Ghostscript 자동 설치 중 (ffmpeg 다운로드 UI와 동일 패턴) */
@@ -638,41 +640,77 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   }, [sheetPackPaths]);
 
   // --- 동영상 압축 ---
-  const handleCompressVideo = useCallback(async (path: string, quality: 'low' | 'medium' | 'high' = 'medium') => {
-    const fileName = getFileName(path);
+  const handleCompressVideo = useCallback(async (targetPaths: string | string[], quality: 'low' | 'medium' | 'high' = 'medium') => {
+    const paths = Array.isArray(targetPaths) ? targetPaths : [targetPaths];
+    if (paths.length === 0) return;
     try {
       // 1. ffmpeg 설치 확인
       const installed = await invoke<boolean>('check_ffmpeg');
       if (!installed) {
-        setVideoCompression({ fileName, percent: -1, speed: 'ffmpeg 다운로드 중...' });
+        setVideoCompression({ fileName: getFileName(paths[0]), percent: -1, speed: 'ffmpeg 다운로드 중...', current: 0, total: paths.length });
         await invoke('download_ffmpeg');
       }
 
-      // 2. Channel 생성 + 압축 시작
-      const onProgress = new Channel<{ percent: number; speed: string; fps: number }>();
-      let lastSpeed = '';
-      onProgress.onmessage = (p) => {
-        if (p.percent === -2) {
-          // 스피드만 업데이트
-          lastSpeed = p.speed;
-        } else if (p.percent >= 0) {
-          setVideoCompression(prev => ({
-            fileName,
-            percent: p.percent,
-            speed: p.speed || lastSpeed || prev?.speed || '',
-          }));
-        }
-      };
+      let successCount = 0;
+      for (let i = 0; i < paths.length; i += 1) {
+        const path = paths[i];
+        const fileName = getFileName(path);
+        const current = i + 1;
 
-      setVideoCompression({ fileName, percent: 0, speed: '준비 중...' });
-      const output = await invoke<string>('compress_video', { input: path, quality, onProgress });
+        // 2. Channel 생성 + 압축 시작
+        const onProgress = new Channel<{ percent: number; speed: string; fps: number }>();
+        let lastSpeed = '';
+        onProgress.onmessage = (p) => {
+          if (p.percent === -2) {
+            lastSpeed = p.speed;
+          } else if (p.percent >= 0) {
+            setVideoCompression(prev => ({
+              fileName,
+              percent: p.percent,
+              speed: p.speed || lastSpeed || prev?.speed || '',
+              current,
+              total: paths.length,
+            }));
+          }
+        };
+
+        setVideoCompression({ fileName, percent: 0, speed: '준비 중...', current, total: paths.length });
+        await invoke<string>('compress_video', { input: path, quality, onProgress });
+        successCount += 1;
+      }
 
       setVideoCompression(null);
       if (currentPath) loadDirectory(currentPath);
-      showCopyToast(`압축 완료: ${getFileName(output)}`);
+      showCopyToast(paths.length > 1 ? `동영상 압축 완료: ${successCount}/${paths.length}개` : '동영상 압축 완료');
     } catch (e) {
       setVideoCompression(null);
       showCopyToast(`압축 실패: ${e}`);
+    }
+  }, [currentPath, loadDirectory, showCopyToast]);
+
+  // --- GIF → MP4 변환 ---
+  const handleGifToMp4 = useCallback(async (paths: string[]) => {
+    if (paths.length === 0) return;
+    try {
+      const installed = await invoke<boolean>('check_ffmpeg');
+      if (!installed) {
+        setOperationProgress({ type: 'FFmpeg 다운로드', current: 0, total: paths.length, itemLabel: getFileName(paths[0]) });
+        await invoke('download_ffmpeg');
+      }
+
+      let successCount = 0;
+      for (let i = 0; i < paths.length; i += 1) {
+        setOperationProgress({ type: 'GIF → MP4 변환', current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
+        await invoke<string>('gif_to_mp4', { path: paths[i] });
+        successCount += 1;
+      }
+
+      setOperationProgress(null);
+      if (currentPath) loadDirectory(currentPath);
+      showCopyToast(`GIF → MP4 완료: ${successCount}/${paths.length}개`);
+    } catch (e) {
+      setOperationProgress(null);
+      showCopyToast(`GIF → MP4 실패: ${e}`);
     }
   }, [currentPath, loadDirectory, showCopyToast]);
 
@@ -773,6 +811,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleRemoveWhiteBgApply,
     handleSpritePack,
     handleCompressVideo,
+    handleGifToMp4,
     handleCompressPdf,
     handleCopyPath,
     handleUndo,

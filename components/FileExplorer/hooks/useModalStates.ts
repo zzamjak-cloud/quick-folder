@@ -33,8 +33,8 @@ export function useModalStates() {
   const [fontPreviewPath, setFontPreviewPath] = useState<string | null>(null);
   // PDF 미리보기 대상 경로
   const [pdfPreviewPath, setPdfPreviewPath] = useState<string | null>(null);
-  // GIF 압축 대상 경로
-  const [gifCompressPath, setGifCompressPath] = useState<string | null>(null);
+  // GIF 압축 대상 경로 목록
+  const [gifCompressPaths, setGifCompressPaths] = useState<string[] | null>(null);
   // 오디오 미리듣기 대상 경로
   const [audioPreviewPath, setAudioPreviewPath] = useState<string | null>(null);
 
@@ -53,7 +53,7 @@ export function useModalStates() {
     fontMergePaths, setFontMergePaths,
     fontPreviewPath, setFontPreviewPath,
     pdfPreviewPath, setPdfPreviewPath,
-    gifCompressPath, setGifCompressPath,
+    gifCompressPaths, setGifCompressPaths,
     audioPreviewPath, setAudioPreviewPath,
   };
 }

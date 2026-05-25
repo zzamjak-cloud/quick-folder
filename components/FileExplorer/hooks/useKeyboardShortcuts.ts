@@ -71,7 +71,7 @@ export interface UseKeyboardShortcutsConfig {
   columnView: ReturnType<typeof useColumnView>;
   setMarkdownEditorPath: (path: string | null) => void;
   handleCreateMarkdown: () => void;
-  handleCompressVideo: (path: string, quality: string) => void;
+  handleCompressVideo: (path: string | string[], quality: 'low' | 'medium' | 'high') => void;
   handleCompressPdf: (path: string) => void;
   handleCompressZip: (paths: string[]) => void;
   handleExtractZip: (paths: string[]) => void;

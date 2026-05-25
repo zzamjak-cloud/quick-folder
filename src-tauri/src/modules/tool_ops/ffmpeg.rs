@@ -41,3 +41,17 @@ pub fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
 pub async fn check_ffmpeg() -> Result<bool> {
     Ok(find_ffmpeg_path().is_some())
 }
+
+/// FFmpeg 자동 다운로드
+#[tauri::command]
+pub async fn download_ffmpeg() -> Result<()> {
+    tauri::async_runtime::spawn_blocking(|| {
+        ffmpeg_sidecar::download::auto_download()
+            .map_err(|e| AppError::ToolExecution {
+                tool: "FFmpeg".to_string(),
+                reason: e.to_string(),
+            })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("FFmpeg 다운로드 작업 실패: {}", e)))?
+}

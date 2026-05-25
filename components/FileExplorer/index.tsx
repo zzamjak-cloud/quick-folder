@@ -1326,7 +1326,12 @@ export default function FileExplorer({
                 <span>⏳ ffmpeg 다운로드 중...</span>
               ) : (
                 <>
-                  <span className="shrink-0">🎬 압축 중... {fileOps.videoCompression.fileName}</span>
+                  <span className="shrink-0">
+                    🎬 압축 중... {fileOps.videoCompression.total && fileOps.videoCompression.total > 1
+                      ? `${fileOps.videoCompression.current}/${fileOps.videoCompression.total}개 `
+                      : ''}
+                    {fileOps.videoCompression.fileName}
+                  </span>
                   <span className="text-[var(--qf-muted)]">
                     ({Math.floor(fileOps.videoCompression.percent)}초{fileOps.videoCompression.speed ? ` · ${fileOps.videoCompression.speed}` : ''})
                   </span>
@@ -1525,10 +1530,10 @@ export default function FileExplorer({
       )}
 
       {/* GIF 압축 모달 */}
-      {modals.gifCompressPath && (
+      {modals.gifCompressPaths && (
         <GifCompressModal
-          filePath={modals.gifCompressPath}
-          onClose={() => modals.setGifCompressPath(null)}
+          filePaths={modals.gifCompressPaths}
+          onClose={() => modals.setGifCompressPaths(null)}
           onSuccess={() => {
             if (currentPath) loadDirectory(currentPath);
           }}

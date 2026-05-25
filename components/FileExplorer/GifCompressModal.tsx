@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import { ThemeVars } from './types';
 
 interface GifCompressModalProps {
-  filePath: string;
+  filePaths: string[];
   onClose: () => void;
   onSuccess?: () => void;
   onError?: (error: string) => void;
@@ -14,7 +14,7 @@ interface GifCompressModalProps {
 type CompressionQuality = 'high' | 'medium' | 'low';
 
 export default function GifCompressModal({
-  filePath,
+  filePaths,
   onClose,
   onSuccess,
   onError,
@@ -23,22 +23,51 @@ export default function GifCompressModal({
   const [quality, setQuality] = useState<CompressionQuality>('medium');
   const [reduceSize, setReduceSize] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentFile, setCurrentFile] = useState('');
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   const handleCompress = async () => {
     setIsCompressing(true);
+    setErrorText(null);
     try {
-      await invoke('compress_gif', {
-        path: filePath,
-        quality,
-        reduceSize,
-      });
+      const installed = await invoke<boolean>('check_ffmpeg');
+      if (!installed) {
+        setCurrentFile('ffmpeg 다운로드 중...');
+        await invoke('download_ffmpeg');
+      }
+
+      const failures: string[] = [];
+      for (let i = 0; i < filePaths.length; i += 1) {
+        const path = filePaths[i];
+        const name = path.split(/[\\/]/).pop() ?? path;
+        setCurrentIndex(i + 1);
+        setCurrentFile(name);
+        try {
+          await invoke('compress_gif', { path, quality, reduceSize });
+        } catch (e) {
+          failures.push(`${name}: ${String(e)}`);
+        }
+      }
+
+      if (failures.length > 0) {
+        const message = failures.join('\n');
+        setErrorText(message);
+        onError?.(message);
+        return;
+      }
+
       onSuccess?.();
       onClose();
     } catch (e) {
       console.error('GIF 압축 실패:', e);
-      onError?.(String(e));
+      const message = String(e);
+      setErrorText(message);
+      onError?.(message);
     } finally {
       setIsCompressing(false);
+      setCurrentIndex(0);
+      setCurrentFile('');
     }
   };
 
@@ -73,6 +102,25 @@ export default function GifCompressModal({
             <X size={18} style={{ color: themeVars?.text ?? '#94a3b8', opacity: 0.6 }} />
           </button>
         </div>
+
+        {filePaths.length > 1 && (
+          <div
+            className="mb-4 rounded-lg px-3 py-2 text-xs"
+            style={{
+              backgroundColor: themeVars?.surface2 ?? '#0f172a',
+              color: themeVars?.text ?? '#e2e8f0',
+              border: `1px solid ${themeVars?.border ?? '#334155'}`,
+            }}
+          >
+            대상 {filePaths.length}개
+            {isCompressing && currentIndex > 0 ? ` · ${currentIndex}/${filePaths.length}개 처리중` : ''}
+            {currentFile ? (
+              <span className="block truncate mt-1" title={currentFile} style={{ color: themeVars?.muted ?? '#94a3b8' }}>
+                {currentFile}
+              </span>
+            ) : null}
+          </div>
+        )}
 
         {/* 압축 품질 선택 */}
         <div className="mb-6">
@@ -170,6 +218,19 @@ export default function GifCompressModal({
         </div>
 
         {/* 버튼 */}
+        {errorText && (
+          <div
+            className="mb-4 rounded-lg px-3 py-2 text-xs whitespace-pre-line max-h-24 overflow-auto"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.12)',
+              color: '#fca5a5',
+              border: '1px solid rgba(239,68,68,0.35)',
+            }}
+          >
+            {errorText}
+          </div>
+        )}
+
         <div className="flex gap-3">
           <button
             onClick={onClose}

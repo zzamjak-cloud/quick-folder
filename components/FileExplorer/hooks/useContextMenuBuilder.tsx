@@ -28,7 +28,8 @@ export interface UseContextMenuBuilderConfig {
     handleDelete: (paths: string[], permanent: boolean) => void;
     handleCompressZip: (paths: string[]) => void;
     handleExtractZip: (paths: string[]) => void;
-    handleCompressVideo: (path: string, quality: string) => void;
+    handleCompressVideo: (paths: string | string[], quality: 'low' | 'medium' | 'high') => void;
+    handleGifToMp4: (paths: string[]) => void;
     handleCompressPdf: (path: string) => void;
     handleCopyPath: (path: string) => void;
     handleSpritePack: (paths: string[]) => void;
@@ -44,7 +45,7 @@ export interface UseContextMenuBuilderConfig {
     setFontPreviewPath: (path: string | null) => void;
     setFontMergePaths: (paths: string[]) => void;
     setPdfPreviewPath: (path: string | null) => void;
-    setGifCompressPath: (path: string | null) => void;
+    setGifCompressPaths: (paths: string[] | null) => void;
   };
   preview: {
     handlePreviewImage: (path: string) => void;
@@ -211,18 +212,21 @@ export function useContextMenuBuilder({
       });
     }
     // 동영상 압축 (서브메뉴)
-    if (isSingle && singleEntry && singleEntry.file_type === 'video') {
+    {
+      const videoPaths = paths.filter(p => /\.(mp4|mov|avi|mkv|webm)$/i.test(p));
+      if (videoPaths.length > 0) {
       toolSection.items.push({
         id: 'compress-video',
         icon: <Film size={13} />,
         label: '동영상 압축',
         onClick: () => {}, // 부모 항목 클릭 없음 (서브메뉴 전용)
         submenu: [
-          { id: 'quality-low', icon: undefined, label: '보통 화질', onClick: () => fileOps.handleCompressVideo(singlePath, 'low') },
-          { id: 'quality-medium', icon: undefined, label: '좋은 화질', onClick: () => fileOps.handleCompressVideo(singlePath, 'medium') },
-          { id: 'quality-high', icon: undefined, label: '최고 화질', onClick: () => fileOps.handleCompressVideo(singlePath, 'high') },
+          { id: 'quality-low', icon: undefined, label: '보통 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'low') },
+          { id: 'quality-medium', icon: undefined, label: '좋은 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'medium') },
+          { id: 'quality-high', icon: undefined, label: '최고 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'high') },
         ],
       });
+      }
     }
     // 픽셀화 (PNG/JPG)
     if (isSingle && singleEntry && /\.(png|jpe?g)$/i.test(singleEntry.name)) {
@@ -339,14 +343,23 @@ export function useContextMenuBuilder({
       });
     }
 
-    // GIF 압축 (단일 GIF 선택 시)
-    if (isSingle && singleEntry && /\.gif$/i.test(singleEntry.name)) {
+    // GIF 압축/변환 (단일 또는 다중 GIF 선택 시)
+    {
+      const gifPaths = paths.filter(p => /\.gif$/i.test(p));
+      if (gifPaths.length > 0) {
       toolSection.items.push({
         id: 'compress-gif',
         icon: <Image size={13} />,
         label: 'GIF 압축',
-        onClick: () => modals.setGifCompressPath(singlePath),
+        onClick: () => modals.setGifCompressPaths(gifPaths),
       });
+      toolSection.items.push({
+        id: 'gif-to-mp4',
+        icon: <Film size={13} />,
+        label: 'GIF → MP4 변환',
+        onClick: () => fileOps.handleGifToMp4(gifPaths),
+      });
+      }
     }
 
     // 폰트 병합 (폰트 2개 선택 시)
@@ -537,12 +550,12 @@ export function useContextMenuBuilder({
     openEntry, openInOsExplorer, preview.handlePreviewImage,
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
     fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleConvertCase, fileOps.handleDelete,
-    fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleCompressPdf, fileOps.handleCopyPath,
+    fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleGifToMp4, fileOps.handleCompressPdf, fileOps.handleCopyPath,
     fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
     handleAddTag, handleRemoveTag,
     onAddToFavorites, modals.setPixelatePath, modals.setMapMakerPath, modals.setSheetUnpackPath,
     modals.setFontPreviewPath, modals.setFontMergePaths,
-    modals.setPdfPreviewPath,
+    modals.setPdfPreviewPath, modals.setGifCompressPaths,
   ]);
 
   return { contextMenuSections };
