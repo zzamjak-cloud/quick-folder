@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.20] - 2026-05-25
+
+### Fixed
+- 동영상/GIF 압축용 FFmpeg 자동 다운로드를 사용자 데이터 폴더 캐시에 저장하도록 수정
+
 ## [1.27.19] - 2026-05-25
 
 ### Added
