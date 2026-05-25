@@ -69,6 +69,12 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
     updatePreview(previewNames.map(n => n.replaceAll(inputName, replaceName)));
   };
 
+  // Delete: 현재 미리보기 이름에서 일치하는 문자열 제거
+  const handleDelete = () => {
+    if (!inputName) { setWarning('변경할 이름을 입력하세요'); return; }
+    updatePreview(previewNames.map(n => n.replaceAll(inputName, '')));
+  };
+
   // Prefix: 접두사 추가
   const handlePrefix = () => {
     if (!inputName) { setWarning('변경할 이름을 입력하세요'); return; }
@@ -173,6 +179,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
           <button style={btnStyle} onClick={handleRename}>Rename</button>
           <button style={btnStyle} onClick={handleReplace}>Replace</button>
+          <button style={btnStyle} onClick={handleDelete}>Delete</button>
           <button style={btnStyle} onClick={handlePrefix}>Prefix</button>
           <button style={btnStyle} onClick={handleSuffix}>Suffix</button>
           <button style={btnStyle} onClick={handleNumber}>Number</button>
