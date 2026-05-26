@@ -65,6 +65,7 @@ interface FileExplorerProps {
   // 분할 뷰에서 클립보드 공유용 (App.tsx에서 상태 관리)
   sharedClipboard?: ClipboardData | null;
   onClipboardChange?: (cb: ClipboardData | null) => void;
+  onStageFilesToTray?: (paths: string[]) => void;
   // 최근항목 조회 시 사용할 즐겨찾기 폴더 경로 목록
   recentRoots?: string[];
 }
@@ -83,6 +84,7 @@ export default function FileExplorer({
   themeVars,
   sharedClipboard,
   onClipboardChange,
+  onStageFilesToTray,
   recentRoots = [],
   initialPathKey = 0,
 }: FileExplorerProps) {
@@ -898,13 +900,20 @@ export default function FileExplorer({
 
   // --- 드롭 중복 확인 다이얼로그 상태 (내부 드래그 + OS 드래그 공용) ---
   const [dropConfirm, setDropConfirm] = useState<PendingDrop | null>(null);
-
   // --- 내부 드래그 → 폴더 이동 / 사이드바 즐겨찾기 등록 ---
-  const { isDragging: isInternalDragging, dropTargetPath, handleDragMouseDown, executeDrop } = useInternalDragDrop({
+  const {
+    isDragging: isInternalDragging,
+    activeDragPaths,
+    isTrayTargetActive,
+    dropTargetPath,
+    handleDragMouseDown,
+    executeDrop,
+  } = useInternalDragDrop({
     selectedPaths,
     currentPath,
     onMoveComplete: () => loadDirectory(currentPath),
     onAddToCategory,
+    onStageFilesToTray,
     onDuplicateDetected: setDropConfirm,
   });
 
@@ -1313,7 +1322,26 @@ export default function FileExplorer({
               folderTags={folderTags}
               instanceId={instanceId}
               pendingCopyPaths={pendingCopySet}
+              draggedPaths={new Set(activeDragPaths.length > 0 ? activeDragPaths : selectedPaths)}
+              isDraggingNow={isInternalDragging}
             />
+          )}
+
+          {isInternalDragging && onStageFilesToTray && (
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-[9998] flex items-stretch">
+              <div
+                className="m-2 flex w-20 items-center justify-center rounded-md border border-dashed text-[10px] font-semibold transition-colors"
+                style={{
+                  borderColor: isTrayTargetActive ? (themeVars?.accent ?? '#3b82f6') : 'rgba(148,163,184,0.75)',
+                  backgroundColor: isTrayTargetActive ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'rgba(15,23,42,0.72)',
+                  color: isTrayTargetActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8'),
+                  writingMode: 'vertical-rl',
+                  transform: 'rotate(180deg)',
+                }}
+              >
+                임시 트레이
+              </div>
+            </div>
           )}
 
           {/* 동영상 압축 진행률 */}
@@ -1783,6 +1811,7 @@ export default function FileExplorer({
           </div>
         </div>
       )}
+
     </div>
   );
 }

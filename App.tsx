@@ -46,9 +46,11 @@ import { UpdateModal } from './components/UpdateModal';
 import { UpdateFailedModal } from './components/UpdateFailedModal';
 import { HelpModal } from './components/HelpModal';
 import FileExplorer from './components/FileExplorer';
+import TempFileTray from './components/TempFileTray';
 import { invoke } from '@tauri-apps/api/core';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauri } from './utils/isTauri';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
@@ -74,6 +76,29 @@ import {
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
+const EDGE_TRAY_LABEL = 'edge-tray';
+const WINDOW_STATE_KEY = 'quickfolder_window_state';
+const TEMP_TRAY_STORAGE_KEY = 'qf_temp_file_tray_paths';
+const TEMP_TRAY_WINDOW_RESTORE_KEY = 'qf_temp_file_tray_restore_window';
+const TEMP_TRAY_WINDOW_WIDTH = 360;
+const TEMP_TRAY_WINDOW_MIN_HEIGHT = 520;
+const TEMP_TRAY_WINDOW_MAX_HEIGHT = 720;
+const TEMP_TRAY_WINDOW_MARGIN = 16;
+
+interface WindowFrame {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}
+
+function mergeUniquePaths(prev: string[], next: string[]) {
+  const merged = [...prev];
+  for (const path of next) {
+    if (!merged.includes(path)) merged.push(path);
+  }
+  return merged;
+}
 
 export default function App() {
   const isMac = navigator.platform.startsWith('Mac');
@@ -144,6 +169,153 @@ export default function App() {
     return saved ? Number(saved) : 0.5;
   });
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [tempTrayPaths, setTempTrayPaths] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(TEMP_TRAY_STORAGE_KEY);
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const tempTrayWindowAppliedRef = useRef(false);
+
+  useEffect(() => {
+    localStorage.setItem(TEMP_TRAY_STORAGE_KEY, JSON.stringify(tempTrayPaths));
+  }, [tempTrayPaths]);
+
+  const handleStageFilesToTray = useCallback((paths: string[]) => {
+    setTempTrayPaths(prev => mergeUniquePaths(prev, paths));
+  }, []);
+
+  const handleRemoveTrayFiles = useCallback((paths: string[]) => {
+    setTempTrayPaths(prev => prev.filter(path => !paths.includes(path)));
+  }, []);
+
+  const handleClearTray = useCallback(() => {
+    setTempTrayPaths([]);
+  }, []);
+
+  // --- 임시 트레이 진입 시 창을 우측 트레이 크기로 정렬 ---
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const appWindow = getCurrentWindow();
+
+    const getWindowFrame = async (): Promise<WindowFrame> => {
+      const [size, position, scaleFactor] = await Promise.all([
+        appWindow.innerSize(),
+        appWindow.outerPosition(),
+        appWindow.scaleFactor(),
+      ]);
+      return {
+        width: Math.round(size.width / scaleFactor),
+        height: Math.round(size.height / scaleFactor),
+        x: Math.round(position.x / scaleFactor),
+        y: Math.round(position.y / scaleFactor),
+      };
+    };
+
+    const getCurrentMonitorBounds = async () => {
+      const [monitors, size, position] = await Promise.all([
+        availableMonitors(),
+        appWindow.innerSize(),
+        appWindow.outerPosition(),
+      ]);
+      if (monitors.length === 0) return null;
+
+      const centerX = position.x + size.width / 2;
+      const centerY = position.y + size.height / 2;
+      const monitor = monitors.find((m) => {
+        const area = m.workArea ?? { position: m.position, size: m.size };
+        return centerX >= area.position.x
+          && centerX <= area.position.x + area.size.width
+          && centerY >= area.position.y
+          && centerY <= area.position.y + area.size.height;
+      }) ?? monitors[0];
+
+      const area = monitor.workArea ?? { position: monitor.position, size: monitor.size };
+      const scaleFactor = monitor.scaleFactor || await appWindow.scaleFactor();
+      return {
+        x: Math.round(area.position.x / scaleFactor),
+        y: Math.round(area.position.y / scaleFactor),
+        width: Math.round(area.size.width / scaleFactor),
+        height: Math.round(area.size.height / scaleFactor),
+      };
+    };
+
+    const alignTrayWindow = async () => {
+      if (!localStorage.getItem(TEMP_TRAY_WINDOW_RESTORE_KEY)) {
+        localStorage.setItem(TEMP_TRAY_WINDOW_RESTORE_KEY, JSON.stringify(await getWindowFrame()));
+      }
+      tempTrayWindowAppliedRef.current = true;
+      await appWindow.setAlwaysOnTop(true);
+
+      const monitor = await getCurrentMonitorBounds();
+      if (!monitor || cancelled) return;
+
+      const width = Math.min(TEMP_TRAY_WINDOW_WIDTH, Math.max(280, monitor.width - TEMP_TRAY_WINDOW_MARGIN * 2));
+      const availableHeight = Math.max(360, monitor.height - TEMP_TRAY_WINDOW_MARGIN * 2);
+      const preferredHeight = Math.min(
+        TEMP_TRAY_WINDOW_MAX_HEIGHT,
+        Math.max(TEMP_TRAY_WINDOW_MIN_HEIGHT, Math.round(monitor.height * 0.72))
+      );
+      const height = Math.min(preferredHeight, availableHeight);
+      const x = monitor.x + monitor.width - width - TEMP_TRAY_WINDOW_MARGIN;
+      const y = monitor.y + Math.max(TEMP_TRAY_WINDOW_MARGIN, Math.round((monitor.height - height) / 2));
+
+      await appWindow.setSize(new LogicalSize(width, height));
+      await appWindow.setPosition(new LogicalPosition(x, y));
+    };
+
+    const restoreExplorerWindow = async () => {
+      await appWindow.setAlwaysOnTop(false);
+      const saved = localStorage.getItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
+      if (!saved) return;
+
+      if (!tempTrayWindowAppliedRef.current) {
+        localStorage.removeItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
+        return;
+      }
+
+      const frame = JSON.parse(saved) as WindowFrame;
+      localStorage.removeItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
+      tempTrayWindowAppliedRef.current = false;
+
+      if (cancelled) return;
+      await appWindow.setSize(new LogicalSize(frame.width, frame.height));
+      await appWindow.setPosition(new LogicalPosition(frame.x, frame.y));
+      localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify(frame));
+    };
+
+    timer = setTimeout(() => {
+      const task = tempTrayPaths.length > 0 ? alignTrayWindow : restoreExplorerWindow;
+      task().catch((err) => console.error('임시 트레이 창 정렬 실패:', err));
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [tempTrayPaths.length]);
+
+  // --- 문제 발생 시 떠 있는 Edge Tray 오버레이 즉시 정리 ---
+  useEffect(() => {
+    if (!isTauri()) return;
+    const closeEdgeTray = async () => {
+      try {
+        const edgeWin = await WebviewWindow.getByLabel(EDGE_TRAY_LABEL);
+        if (!edgeWin) return;
+        await edgeWin.close();
+      } catch (e) {
+        console.error('Edge Tray 정리 실패:', e);
+      }
+    };
+    void closeEdgeTray();
+  }, []);
 
   // --- 분할 뷰 localStorage 동기화 ---
   useEffect(() => {
@@ -641,7 +813,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Split Panel */}
+      {tempTrayPaths.length > 0 ? (
+        <TempFileTray
+          paths={tempTrayPaths}
+          onRemove={handleRemoveTrayFiles}
+          onClear={handleClearTray}
+          onError={(message) => addToast(message, 'error')}
+        />
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Favorites Panel */}
         <div
@@ -896,6 +1075,7 @@ export default function App() {
               themeVars={themeVars}
               sharedClipboard={sharedClipboard}
               onClipboardChange={setSharedClipboard}
+              onStageFilesToTray={handleStageFilesToTray}
               recentRoots={recentRoots}
             />
           </div>
@@ -935,6 +1115,7 @@ export default function App() {
                   themeVars={themeVars}
                   sharedClipboard={sharedClipboard}
                   onClipboardChange={setSharedClipboard}
+                  onStageFilesToTray={handleStageFilesToTray}
                   recentRoots={recentRoots}
                 />
               </div>
@@ -942,6 +1123,7 @@ export default function App() {
           )}
         </div>
       </div>
+      )}
 
       {/* --- Modals --- */}
 

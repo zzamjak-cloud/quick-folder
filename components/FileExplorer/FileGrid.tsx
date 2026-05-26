@@ -36,10 +36,12 @@ interface FileGridProps {
   folderTags?: Record<string, string>;
   instanceId?: string;
   pendingCopyPaths?: Set<string>;
+  draggedPaths?: Set<string>;
+  isDraggingNow?: boolean;
 }
 
 // --- ListRow 컴포넌트 ---
-const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -47,6 +49,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
   isCut: boolean;
   isDropTarget: boolean;
   isPending?: boolean;
+  isDimmed?: boolean;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
@@ -77,7 +80,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       data-file-path={entry.path}
       {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
       className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer select-none"
-      style={{ backgroundColor: bg, opacity: isPending ? 0.5 : isCut ? 0.4 : 1, border, pointerEvents: isPending ? 'none' : undefined }}
+      style={{ backgroundColor: bg, opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1, border, pointerEvents: isPending ? 'none' : undefined }}
       title={formatTooltip(entry)}
       onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
@@ -128,7 +131,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
 });
 
 // --- DetailsRow 컴포넌트 ---
-const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -136,6 +139,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
   isCut: boolean;
   isDropTarget: boolean;
   isPending?: boolean;
+  isDimmed?: boolean;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
@@ -173,7 +177,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
     <tr
       data-file-path={entry.path}
       {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
-      style={{ backgroundColor: bg ?? undefined, opacity: isPending ? 0.5 : isCut ? 0.4 : 1, outline, pointerEvents: isPending ? 'none' : undefined }}
+      style={{ backgroundColor: bg ?? undefined, opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1, outline, pointerEvents: isPending ? 'none' : undefined }}
       className="cursor-pointer hover:opacity-80"
       title={formatTooltip(entry)}
       onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
@@ -231,7 +235,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId, pendingCopyPaths }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId, pendingCopyPaths, draggedPaths, isDraggingNow }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
@@ -250,6 +254,8 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   themeVars: ThemeVars | null;
   instanceId?: string;
   pendingCopyPaths?: Set<string>;
+  draggedPaths?: Set<string>;
+  isDraggingNow?: boolean;
 }) {
   const storageKey = `qf_details_cols_${instanceId ?? 'default'}`;
 
@@ -356,6 +362,7 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
               isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
               isDropTarget={dropTargetPath === entry.path && entry.is_dir}
               isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
+              isDimmed={!!isDraggingNow && !!draggedPaths?.has(entry.path)}
               onDragMouseDown={onDragMouseDown}
               onSelect={onSelect}
               onOpen={onOpen}
@@ -401,6 +408,8 @@ export default memo(function FileGrid({
   folderTags,
   instanceId,
   pendingCopyPaths,
+  draggedPaths,
+  isDraggingNow = false,
 }: FileGridProps) {
 
   // --- 박스 드래그 선택 ---
@@ -626,6 +635,7 @@ export default memo(function FileGrid({
                   hideText={hideText}
                   tag={folderTags?.[entry.path]}
                   isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
+                  isDimmed={isDraggingNow && !!draggedPaths?.has(entry.path)}
                 />
               </React.Fragment>
             );
@@ -655,6 +665,7 @@ export default memo(function FileGrid({
                   isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
                   isDropTarget={dropTargetPath === entry.path && entry.is_dir}
                   isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
+                  isDimmed={isDraggingNow && !!draggedPaths?.has(entry.path)}
                   onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
@@ -690,6 +701,8 @@ export default memo(function FileGrid({
           themeVars={themeVars}
           instanceId={instanceId}
           pendingCopyPaths={pendingCopyPaths}
+          draggedPaths={draggedPaths}
+          isDraggingNow={isDraggingNow}
         />
       )}
 

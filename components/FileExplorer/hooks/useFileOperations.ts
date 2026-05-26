@@ -389,6 +389,74 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     setContextMenu(null);
   }, [currentPath, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu]);
 
+  // --- URL 인코딩 파일명 복구 ---
+  const handleRecoverFileNames = useCallback(async (paths: string[]) => {
+    if (!paths.length) return;
+
+    const decodeFileName = (name: string): string | null => {
+      if (!/%[0-9a-f]{2}/i.test(name)) return null;
+      try {
+        let decoded = name;
+        for (let i = 0; i < 3 && /%[0-9a-f]{2}/i.test(decoded); i += 1) {
+          const next = decodeURIComponent(decoded);
+          if (next === decoded) break;
+          decoded = next;
+        }
+        decoded = decoded.normalize('NFC');
+        if (!decoded || decoded === '.' || decoded === '..' || /[/\\]/.test(decoded)) return null;
+        return decoded === name ? null : decoded;
+      } catch {
+        return null;
+      }
+    };
+
+    const renamed: { oldPath: string; newPath: string }[] = [];
+    let skipped = 0;
+    for (const oldPath of paths) {
+      const oldName = getFileName(oldPath);
+      const decodedName = decodeFileName(oldName);
+      if (!decodedName) {
+        skipped += 1;
+        continue;
+      }
+      const sep = getPathSeparator(oldPath);
+      const newPath = getParentDir(oldPath) + sep + decodedName;
+      if (newPath === oldPath) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        await invoke('rename_item', { oldPath, newPath });
+        renamed.push({ oldPath, newPath });
+      } catch (e) {
+        console.error('파일명 복구 실패:', e);
+        skipped += 1;
+      }
+    }
+
+    if (renamed.length > 0) {
+      for (const r of [...renamed].reverse()) {
+        undoStack.push({ type: 'rename', oldPath: r.newPath, newPath: r.oldPath });
+      }
+      for (const r of renamed) {
+        window.dispatchEvent(new CustomEvent('qf-tab-rename', { detail: { oldPath: r.oldPath, newPath: r.newPath } }));
+      }
+      window.dispatchEvent(new Event('qf-files-changed'));
+
+      if (currentPath) {
+        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+        setEntries(sortEntries(result, sortBy, sortDir));
+        setSelectedPaths(renamed.map(r => r.newPath));
+      }
+    }
+
+    const msg = renamed.length > 0
+      ? (skipped > 0 ? `${renamed.length}개 복구, ${skipped}개 건너뜀` : `${renamed.length}개 복구 완료`)
+      : '복구할 파일명이 없습니다';
+    showCopyToast(msg);
+    setContextMenu(null);
+  }, [currentPath, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast]);
+
   // --- 이름변경 커밋 ---
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
     setRenamingPath(null);
@@ -802,6 +870,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleBulkRename,
     handleBulkRenameApply,
     handleConvertCase,
+    handleRecoverFileNames,
     handleGroupIntoFolder,
     handleUngroupFolder,
     handleCompressZip,

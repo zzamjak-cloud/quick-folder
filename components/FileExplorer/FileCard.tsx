@@ -26,6 +26,7 @@ interface FileCardProps {
   hideText?: boolean;
   tag?: string; // 폴더 태그 (프로젝트명)
   isPending?: boolean; // 복사/이동 진행 중 (비활성 + 스피너 표시)
+  isDimmed?: boolean;
 }
 
 export default memo(function FileCard({
@@ -46,6 +47,7 @@ export default memo(function FileCard({
   hideText = false,
   tag,
   isPending = false,
+  isDimmed = false,
 }: FileCardProps) {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -181,7 +183,7 @@ export default memo(function FileCard({
         backgroundColor: bg,
         border: `1px solid ${border}`,
         outline: 'none',
-        opacity: isPending ? 0.5 : isCut ? 0.4 : 1,
+        opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1,
         pointerEvents: isPending ? 'none' : undefined,
       }}
       onClick={handleClick}

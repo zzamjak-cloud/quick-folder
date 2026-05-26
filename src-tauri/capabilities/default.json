@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "QuickFolder Widget default permissions",
   "windows": [
-    "main"
+    "main",
+    "edge-tray"
   ],
   "permissions": [
     "core:default",
@@ -18,6 +19,7 @@
     "core:window:allow-current-monitor",
     "core:window:allow-center",
     "core:window:allow-available-monitors",
+    "core:window:allow-set-always-on-top",
     "opener:default",
     "clipboard-manager:default",
     "dialog:default",

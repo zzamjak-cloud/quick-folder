@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { invoke, Channel } from '@tauri-apps/api/core';
-import { DRAG_IMAGE } from '../fileUtils';
+import { invoke } from '@tauri-apps/api/core';
 import { getFileName, sameVolume } from '../../../utils/pathUtils';
+
+const TRAY_STAGE_WIDTH = 96;
+const TRAY_EDGE_COMMIT_MARGIN = 4;
 
 /** 드롭 중복 발생 시 상위(FileExplorer)로 전달되는 정보 — 덮어쓰기 확인 후 재시도 */
 export interface PendingDrop {
@@ -16,6 +18,7 @@ interface UseInternalDragDropOptions {
   currentPath: string;
   onMoveComplete: () => void;
   onAddToCategory?: (categoryId: string, path: string, name: string) => void;
+  onStageFilesToTray?: (paths: string[]) => void;
   /** 중복 파일 감지 시 호출 — 사용자 확인 후 executeDrop로 재시도 */
   onDuplicateDetected?: (info: PendingDrop) => void;
 }
@@ -37,18 +40,27 @@ function clearCategoryHighlight() {
   });
 }
 
+function getSourceElement(path: string): HTMLElement | null {
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-file-path]'))) {
+    if (el.getAttribute('data-file-path') === path) return el;
+  }
+  return null;
+}
+
 /**
- * 파일 드래그 → 폴더/패널 이동 훅 (내부 드래그 + OS 드래그 통합)
+ * 파일 드래그 → 폴더/패널 이동 또는 임시 트레이 등록 훅
  *
  * 내부 드래그: 폴더 카드 또는 다른 패널 위에 드롭 → move_items
- * OS 드래그: 윈도우 가장자리에 도달하면 네이티브 OS 드래그로 전환
+ * 트레이 드래그: 우측 내부 레일에 드롭하거나 우측 경계까지 밀면 임시 트레이 등록
  *
  * 리스너를 handleMouseDown에서 동기적으로 등록하여
  * useEffect 재실행 의존 문제를 회피.
  */
-export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory, onDuplicateDetected }: UseInternalDragDropOptions) {
+export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected }: UseInternalDragDropOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+  const [isTrayTargetActive, setIsTrayTargetActive] = useState(false);
+  const [activeDragPaths, setActiveDragPaths] = useState<string[]>([]);
   const ghostRef = useRef<HTMLDivElement | null>(null);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, entryPath: string) => {
@@ -60,9 +72,10 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       : [entryPath];
 
     let dragging = false;
-    let osStarted = false;
     let localDropTarget: string | null = null;
     let localCategoryTarget: string | null = null;
+    let localTrayTarget = false;
+    let stagedToTray = false;
 
     // --- 드래그 고스트 ---
     function createGhost(x: number, y: number) {
@@ -71,40 +84,42 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       ghost.style.cssText = `
         position: fixed; pointer-events: none; z-index: 99999;
         left: ${x + 14}px; top: ${y + 14}px;
-        display: flex; align-items: center; gap: 8px;
-        padding: 6px 10px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        width: 86px; height: 86px; border-radius: 14px;
         background: var(--qf-surface-2, #1f2937);
         border: 1px solid var(--qf-border, #334155);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-        font-size: 12px; color: var(--qf-text, #e5e7eb);
-        max-width: 220px; opacity: 0.92;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+        opacity: 0.94;
       `;
 
-      // 소스 카드에서 아이콘 복제
-      const escapedPath = paths[0].replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      const sourceCard = document.querySelector(`[data-file-path="${escapedPath}"]`);
+      const sourceCard = getSourceElement(paths[0]);
       const iconImg = sourceCard?.querySelector('img');
       if (iconImg) {
         const iconClone = document.createElement('img');
         iconClone.src = iconImg.src;
-        iconClone.style.cssText = 'width: 24px; height: 24px; object-fit: contain; flex-shrink: 0;';
+        iconClone.style.cssText = 'width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; border-radius: 10px;';
         ghost.appendChild(iconClone);
+      } else {
+        const fallback = document.createElement('div');
+        fallback.textContent = getFileName(paths[0]).slice(0, 1).toUpperCase();
+        fallback.style.cssText = `
+          width: 62px; height: 62px; border-radius: 12px;
+          display: flex; align-items: center; justify-content: center;
+          background: var(--qf-accent, #3b82f6); color: #fff;
+          font-size: 24px; font-weight: 700;
+        `;
+        ghost.appendChild(fallback);
       }
 
-      // 파일명
-      const nameEl = document.createElement('span');
-      nameEl.textContent = getFileName(paths[0]);
-      nameEl.style.cssText = 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;';
-      ghost.appendChild(nameEl);
-
-      // 다중 선택 배지
       if (paths.length > 1) {
         const badge = document.createElement('span');
         badge.textContent = String(paths.length);
         badge.style.cssText = `
+          position: absolute; right: -4px; bottom: -4px;
           background: var(--qf-accent, #3b82f6); color: #fff;
-          padding: 1px 6px; border-radius: 9999px;
-          font-size: 10px; font-weight: 600; flex-shrink: 0;
+          min-width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+          border: 2px solid var(--qf-surface-2, #1f2937);
+          border-radius: 9999px; font-size: 12px; font-weight: 700;
         `;
         ghost.appendChild(badge);
       }
@@ -133,12 +148,22 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       destroyGhost();
       localDropTarget = null;
       localCategoryTarget = null;
+      localTrayTarget = false;
       setIsDragging(false);
+      setActiveDragPaths([]);
       setDropTargetPath(null);
+      setIsTrayTargetActive(false);
+    }
+
+    function stageToTray() {
+      if (!onStageFilesToTray || stagedToTray) return;
+      stagedToTray = true;
+      cleanup();
+      onStageFilesToTray(paths);
     }
 
     function onMouseMove(moveEvt: MouseEvent) {
-      if (osStarted) return;
+      if (stagedToTray) return;
 
       const dx = moveEvt.clientX - startX;
       const dy = moveEvt.clientY - startY;
@@ -147,26 +172,28 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       if (!dragging && Math.sqrt(dx * dx + dy * dy) >= 6) {
         dragging = true;
         setIsDragging(true);
+        setActiveDragPaths(paths);
         createGhost(moveEvt.clientX, moveEvt.clientY);
       }
       if (!dragging) return;
 
       moveGhost(moveEvt.clientX, moveEvt.clientY);
 
-      // 윈도우 가장자리 감지 → OS 드래그로 전환
-      const margin = 5;
-      if (
-        moveEvt.clientX <= margin ||
-        moveEvt.clientY <= margin ||
-        moveEvt.clientX >= window.innerWidth - margin ||
-        moveEvt.clientY >= window.innerHeight - margin
-      ) {
-        osStarted = true;
-        cleanup();
-        const onEvent = new Channel<unknown>();
-        invoke('plugin:drag|start_drag', { item: paths, image: DRAG_IMAGE, onEvent })
-          .catch(err => console.error('OS 드래그 실패:', err));
-        return;
+      if (onStageFilesToTray) {
+        localTrayTarget = moveEvt.clientX >= window.innerWidth - TRAY_STAGE_WIDTH;
+        setIsTrayTargetActive(localTrayTarget);
+        if (moveEvt.clientX >= window.innerWidth - TRAY_EDGE_COMMIT_MARGIN) {
+          stageToTray();
+          return;
+        }
+        if (localTrayTarget) {
+          clearPaneHighlight();
+          clearCategoryHighlight();
+          localCategoryTarget = null;
+          localDropTarget = null;
+          setDropTargetPath(null);
+          return;
+        }
       }
 
       // 드롭 대상 감지 (고스트를 숨기고 elementFromPoint 호출)
@@ -222,9 +249,14 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     async function onMouseUp() {
       const target = localDropTarget;
       const catTarget = localCategoryTarget;
+      const shouldStageToTray = localTrayTarget;
       cleanup();
 
       if (!dragging || paths.length === 0) return;
+      if (shouldStageToTray && onStageFilesToTray) {
+        onStageFilesToTray(paths);
+        return;
+      }
 
       // 카테고리 드롭: 폴더만 즐겨찾기에 등록
       if (catTarget && onAddToCategory) {
@@ -268,7 +300,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     // 동기적으로 리스너 등록 (useEffect 의존 문제 회피)
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onDuplicateDetected]);
+  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected]);
 
   /**
    * 중복 확인 다이얼로그 이후 덮어쓰기 또는 스킵으로 재실행.
@@ -292,6 +324,8 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
   return {
     isDragging,
+    activeDragPaths,
+    isTrayTargetActive,
     dropTargetPath,
     handleDragMouseDown: handleMouseDown,
     executeDrop,

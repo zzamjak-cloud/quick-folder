@@ -6,6 +6,7 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
+  RotateCcw,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { NamingCase } from '../../../utils/caseConvert';
@@ -25,6 +26,7 @@ export interface UseContextMenuBuilderConfig {
     handleRenameStart: (path: string) => void;
     handleBulkRename: (paths: string[]) => void;
     handleConvertCase: (paths: string[], target: NamingCase) => void;
+    handleRecoverFileNames: (paths: string[]) => void;
     handleDelete: (paths: string[], permanent: boolean) => void;
     handleCompressZip: (paths: string[]) => void;
     handleExtractZip: (paths: string[]) => void;
@@ -180,6 +182,14 @@ export function useContextMenuBuilder({
             onClick: () => fileOps.handleConvertCase(paths, 'snake'),
           },
         ],
+      });
+    }
+    if (paths.some(p => /%[0-9a-f]{2}/i.test(getFileName(p)))) {
+      editSection.items.push({
+        id: 'filename-recovery',
+        icon: <RotateCcw size={13} />,
+        label: '파일명 복구',
+        onClick: () => fileOps.handleRecoverFileNames(paths),
       });
     }
     editSection.items.push({
