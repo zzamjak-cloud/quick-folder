@@ -1482,8 +1482,10 @@ export default function FileExplorer({
       <PreviewModals
         preview={preview}
         themeVars={themeVars}
+        previewEntry={entries.find((e) => e.path === preview.previewImagePath) ?? null}
         onCropSave={(outputPath) => {
           fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
+          pendingSelectRef.current = outputPath;
           if (currentPath) {
             loadDirectory(currentPath);
           }
@@ -1491,6 +1493,9 @@ export default function FileExplorer({
         onRemoveBg={(path) => {
           modals.setRemoveWhiteBgPaths([path]);
         }}
+        onOpenGifCompress={(paths) => modals.setGifCompressPaths(paths)}
+        onOpenImageCompress={() => {}}
+        onOpenImageResize={() => {}}
         onFileChanged={() => {
           if (currentPath) loadDirectory(currentPath);
         }}

@@ -3,6 +3,13 @@
 use crate::helpers::*;
 use super::constants::MAX_HEAVY_OPS;
 use super::error::{AppError, Result};
+use image::ImageEncoder;
+
+#[derive(serde::Serialize)]
+pub struct ImageCompressPreview {
+    pub data_url: String,
+    pub size: u64,
+}
 
 // 이미지 규격 조회 (헤더만 읽어 빠르게 반환)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
@@ -547,6 +554,114 @@ pub async fn save_annotated_image(original_path: String, image_data: String) -> 
     })
     .await
     .map_err(|e| AppError::Internal(format!("드로잉 저장 실패: {}", e)))?
+}
+
+// ─── 이미지 압축/리사이즈 ───────────────────────────────────────────
+
+fn encode_compressed_image(path: &str, quality: &str) -> Result<(Vec<u8>, &'static str, &'static str)> {
+    use image::codecs::jpeg::JpegEncoder;
+    use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+
+    let img = image::open(path)?;
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+    let out_ext = if ext == "jpg" || ext == "jpeg" { "jpg" } else { "png" };
+    let mut bytes = Vec::new();
+
+    if out_ext == "jpg" {
+        let q = match quality {
+            "low" => 88,
+            "medium" => 76,
+            "high" => 62,
+            _ => 76,
+        };
+        let rgb = img.to_rgb8();
+        let (w, h) = rgb.dimensions();
+        let mut enc = JpegEncoder::new_with_quality(&mut bytes, q);
+        enc.encode(&rgb, w, h, image::ExtendedColorType::Rgb8)?;
+        Ok((bytes, "image/jpeg", "jpg"))
+    } else {
+        let rgba = img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        let (compression, filter) = match quality {
+            "low" => (CompressionType::Fast, FilterType::NoFilter),
+            "medium" => (CompressionType::Default, FilterType::Adaptive),
+            "high" => (CompressionType::Best, FilterType::Adaptive),
+            _ => (CompressionType::Default, FilterType::Adaptive),
+        };
+        let enc = PngEncoder::new_with_quality(&mut bytes, compression, filter);
+        enc.write_image(&rgba, w, h, image::ExtendedColorType::Rgba8)?;
+        Ok((bytes, "image/png", "png"))
+    }
+}
+
+#[tauri::command]
+pub async fn compress_image_preview(path: String, quality: String) -> Result<ImageCompressPreview> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
+
+        let (bytes, mime, _) = encode_compressed_image(&path, &quality)?;
+        let size = bytes.len() as u64;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+        Ok(ImageCompressPreview {
+            data_url: format!("data:{};base64,{}", mime, b64),
+            size,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("이미지 압축 미리보기 실패: {}", e)))?
+}
+
+#[tauri::command]
+pub async fn compress_image(path: String, quality: String) -> Result<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let input_path = std::path::Path::new(&path);
+        let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        let (bytes, _, out_ext) = encode_compressed_image(&path, &quality)?;
+        let output_path = find_unique_path(parent, stem, "_compressed", &format!(".{}", out_ext));
+        std::fs::write(&output_path, bytes)?;
+
+        output_path
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| AppError::Internal("출력 경로 변환 실패".to_string()))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("이미지 압축 실패: {}", e)))?
+}
+
+#[tauri::command]
+pub async fn resize_image(path: String, width: u32, height: u32) -> Result<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if width == 0 || height == 0 {
+            return Err(AppError::InvalidInput("너비/높이는 1px 이상이어야 합니다.".to_string()));
+        }
+        let img = image::open(&path)?;
+        let resized = img.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
+
+        let input_path = std::path::Path::new(&path);
+        let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+        let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        let ext = input_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("png")
+            .to_lowercase();
+        let out_ext = if ext == "jpg" || ext == "jpeg" { "jpg" } else { &ext };
+        let output_path = find_unique_path(parent, stem, &format!("_{}x{}", width, height), &format!(".{}", out_ext));
+        resized.save(&output_path)?;
+
+        output_path
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| AppError::Internal("출력 경로 변환 실패".to_string()))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("이미지 크기조정 실패: {}", e)))?
 }
 
 // ─── 배경 제거 ───────────────────────────────────────────────────

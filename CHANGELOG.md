@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.24] - 2026-05-27
+
+### Added
+- 이미지 미리보기 팝업에 압축/크기조정 작업 화면 추가
+- PNG/JPG 압축 결과 미리보기, 예상 용량, 스크롤 동기화 비교 추가
+- PNG/JPG 크기조정 픽셀 입력 및 결과 미리보기 추가
+
+### Changed
+- 이미지 미리보기 팝업 헤더/툴바/푸터 레이아웃 정리
+- GIF 미리보기 팝업은 GIF 압축만 노출하도록 버튼 범위 정리
+
 ## [1.27.23] - 2026-05-27
 
 ### Fixed

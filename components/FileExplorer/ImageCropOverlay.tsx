@@ -37,6 +37,8 @@ export default function ImageCropOverlay({
 }: ImageCropOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [crop, setCrop] = useState<CropRect | null>(null);
+  const [widthInput, setWidthInput] = useState('');
+  const [heightInput, setHeightInput] = useState('');
   const dragRef = useRef<{
     mode: DragMode;
     startX: number;
@@ -127,6 +129,19 @@ export default function ImageCropOverlay({
   useEffect(() => {
     onCropChange?.(crop !== null && crop.w >= MIN_CROP_SIZE && crop.h >= MIN_CROP_SIZE);
   }, [crop, onCropChange]);
+
+  // 크롭 영역이 생기면 실제 픽셀 기준 입력값 동기화
+  useEffect(() => {
+    if (!crop) {
+      setWidthInput('');
+      setHeightInput('');
+      return;
+    }
+    const scaleX = naturalSize.width / imageRect.width;
+    const scaleY = naturalSize.height / imageRect.height;
+    setWidthInput(String(Math.max(1, Math.round(crop.w * scaleX))));
+    setHeightInput(String(Math.max(1, Math.round(crop.h * scaleY))));
+  }, [crop, naturalSize, imageRect]);
 
   // --- 드래그 모드 판별 ---
   const getDragMode = useCallback((mx: number, my: number): DragMode => {
@@ -295,20 +310,83 @@ export default function ImageCropOverlay({
   }, [handleSave, onRegisterSave]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: imageRect.width,
-        height: imageRect.height,
-        cursor: 'crosshair',
-      }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: imageRect.width,
+          height: imageRect.height,
+          cursor: 'crosshair',
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      />
+      {crop && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 8,
+            bottom: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'rgba(0, 0, 0, 0.72)',
+            border: '1px solid rgba(255,255,255,0.18)',
+            borderRadius: 8,
+            padding: '6px 8px',
+            color: '#e2e8f0',
+            fontSize: 12,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            value={widthInput}
+            onChange={(e) => {
+              const next = e.target.value.replace(/[^\d]/g, '');
+              setWidthInput(next);
+              if (!crop || !next) return;
+              const scaleX = naturalSize.width / imageRect.width;
+              const px = Math.max(1, Number(next));
+              const newW = Math.max(MIN_CROP_SIZE, Math.round(px / scaleX));
+              setCrop((prev) => {
+                if (!prev) return prev;
+                return { ...prev, w: Math.min(newW, imageRect.width - prev.x) };
+              });
+            }}
+            className="w-16 px-1.5 py-1 rounded"
+            style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0' }}
+            inputMode="numeric"
+            placeholder="width"
+          />
+          <span style={{ opacity: 0.8 }}>x</span>
+          <input
+            value={heightInput}
+            onChange={(e) => {
+              const next = e.target.value.replace(/[^\d]/g, '');
+              setHeightInput(next);
+              if (!crop || !next) return;
+              const scaleY = naturalSize.height / imageRect.height;
+              const px = Math.max(1, Number(next));
+              const newH = Math.max(MIN_CROP_SIZE, Math.round(px / scaleY));
+              setCrop((prev) => {
+                if (!prev) return prev;
+                return { ...prev, h: Math.min(newH, imageRect.height - prev.y) };
+              });
+            }}
+            className="w-16 px-1.5 py-1 rounded"
+            style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0' }}
+            inputMode="numeric"
+            placeholder="height"
+          />
+          <span style={{ opacity: 0.8 }}>px</span>
+        </div>
+      )}
+    </>
   );
 }
