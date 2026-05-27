@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.25] - 2026-05-28
+
+### Fixed
+- Windows 릴리스 빌드에서 Rust cache 복원 실패가 전체 릴리스를 중단하지 않도록 수정
+
 ## [1.27.24] - 2026-05-27
 
 ### Added
