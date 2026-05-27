@@ -1330,16 +1330,14 @@ export default function FileExplorer({
           {isInternalDragging && onStageFilesToTray && (
             <div className="pointer-events-none absolute inset-y-0 right-0 z-[9998] flex items-stretch">
               <div
-                className="m-2 flex w-20 items-center justify-center rounded-md border border-dashed text-[10px] font-semibold transition-colors"
+                className="m-2 flex w-20 flex-col items-center justify-start rounded-md border border-dashed pt-2 text-[10px] font-semibold transition-colors"
                 style={{
                   borderColor: isTrayTargetActive ? (themeVars?.accent ?? '#3b82f6') : 'rgba(148,163,184,0.75)',
                   backgroundColor: isTrayTargetActive ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'rgba(15,23,42,0.72)',
                   color: isTrayTargetActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8'),
-                  writingMode: 'vertical-rl',
-                  transform: 'rotate(180deg)',
                 }}
               >
-                임시 트레이
+                Temp
               </div>
             </div>
           )}

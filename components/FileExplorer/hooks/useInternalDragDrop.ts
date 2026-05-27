@@ -84,12 +84,8 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       ghost.style.cssText = `
         position: fixed; pointer-events: none; z-index: 99999;
         left: ${x + 14}px; top: ${y + 14}px;
-        display: flex; align-items: center; justify-content: center;
-        width: 86px; height: 86px; border-radius: 14px;
-        background: var(--qf-surface-2, #1f2937);
-        border: 1px solid var(--qf-border, #334155);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.45);
-        opacity: 0.94;
+        width: 80px; height: 80px;
+        opacity: 0.92;
       `;
 
       const sourceCard = getSourceElement(paths[0]);
@@ -97,16 +93,17 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       if (iconImg) {
         const iconClone = document.createElement('img');
         iconClone.src = iconImg.src;
-        iconClone.style.cssText = 'width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; border-radius: 10px;';
+        iconClone.style.cssText = 'width: 80px; height: 80px; object-fit: cover; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);';
         ghost.appendChild(iconClone);
       } else {
         const fallback = document.createElement('div');
         fallback.textContent = getFileName(paths[0]).slice(0, 1).toUpperCase();
         fallback.style.cssText = `
-          width: 62px; height: 62px; border-radius: 12px;
+          width: 80px; height: 80px; border-radius: 12px;
           display: flex; align-items: center; justify-content: center;
           background: var(--qf-accent, #3b82f6); color: #fff;
           font-size: 24px; font-weight: 700;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
         `;
         ghost.appendChild(fallback);
       }
@@ -115,11 +112,11 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
         const badge = document.createElement('span');
         badge.textContent = String(paths.length);
         badge.style.cssText = `
-          position: absolute; right: -4px; bottom: -4px;
+          position: absolute; right: 4px; bottom: 4px;
           background: var(--qf-accent, #3b82f6); color: #fff;
-          min-width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-          border: 2px solid var(--qf-surface-2, #1f2937);
-          border-radius: 9999px; font-size: 12px; font-weight: 700;
+          min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+          border-radius: 9999px; font-size: 11px; font-weight: 700;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.45);
         `;
         ghost.appendChild(badge);
       }

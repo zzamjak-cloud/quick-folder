@@ -813,15 +813,15 @@ export default function App() {
         </div>
       )}
 
-      {tempTrayPaths.length > 0 ? (
+      {tempTrayPaths.length > 0 && (
         <TempFileTray
           paths={tempTrayPaths}
           onRemove={handleRemoveTrayFiles}
           onClear={handleClearTray}
           onError={(message) => addToast(message, 'error')}
         />
-      ) : (
-      <div className="flex flex-1 overflow-hidden">
+      )}
+      <div className={`flex flex-1 overflow-hidden${tempTrayPaths.length > 0 ? ' hidden' : ''}`}>
         {/* Left: Favorites Panel */}
         <div
           style={{ width: sidebarCollapsed ? 32 : leftPanelWidth }}
@@ -1123,7 +1123,6 @@ export default function App() {
           )}
         </div>
       </div>
-      )}
 
       {/* --- Modals --- */}
 

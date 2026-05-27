@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.23] - 2026-05-27
+
+### Fixed
+- 임시 트레이 사이드바 표시 텍스트 회전 제거, 상단에 "Temp"로 표시
+- 임시 트레이 취소/X 클릭 후 파일 탐색기가 빈 상태로 표시되는 문제 수정 (FileExplorer unmount 방지)
+- 임시 트레이 썸네일이 간헐적으로 유실되는 문제 수정 (전역 cancelAllQueued 영향 차단)
+
+### Changed
+- 드래그 고스트에서 외곽 박스 제거, 썸네일 이미지만 표시
+- 다중 파일 드래그 시 개수 배지를 썸네일 우측 하단 내부에 표시
+
 ## [1.27.20] - 2026-05-25
 
 ### Fixed

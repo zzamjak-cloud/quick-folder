@@ -3,7 +3,6 @@ import { invoke, Channel } from '@tauri-apps/api/core';
 import { ArrowUpRight, GripVertical, Trash2, X } from 'lucide-react';
 import { getFileName } from '../utils/pathUtils';
 import { DRAG_IMAGE, FileTypeIcon, iconColor } from './FileExplorer/fileUtils';
-import { queuedInvoke } from './FileExplorer/hooks/invokeQueue';
 
 type DragCallbackResult = {
   result: 'Dropped' | 'Cancel' | string;
@@ -50,15 +49,15 @@ function TrayThumbnail({ path }: { path: string }) {
       : fileType === 'video'
         ? 'get_video_thumbnail'
         : 'get_file_icon';
-    const { promise, cancel } = queuedInvoke<string | null>(cmd, { path, size: 160 });
 
-    promise
+    let cancelled = false;
+    invoke<string | null>(cmd, { path, size: 160 })
       .then((b64) => {
-        if (b64) setSrc(`data:image/png;base64,${b64}`);
+        if (!cancelled && b64) setSrc(`data:image/png;base64,${b64}`);
       })
-      .catch(() => setSrc(null));
+      .catch(() => { if (!cancelled) setSrc(null); });
 
-    return () => cancel();
+    return () => { cancelled = true; };
   }, [fileType, path]);
 
   if (src) {
