@@ -304,6 +304,28 @@ export default function ImageCropOverlay({
     setCrop(null);
   }, [crop, naturalSize, imageRect, onSave]);
 
+  const applyCropSize = useCallback(() => {
+    if (!crop) return;
+
+    const nextWidthPx = Math.max(1, Number(widthInput || '0'));
+    const nextHeightPx = Math.max(1, Number(heightInput || '0'));
+    if (!Number.isFinite(nextWidthPx) || !Number.isFinite(nextHeightPx)) return;
+
+    const scaleX = naturalSize.width / imageRect.width;
+    const scaleY = naturalSize.height / imageRect.height;
+    const newW = Math.max(MIN_CROP_SIZE, Math.round(nextWidthPx / scaleX));
+    const newH = Math.max(MIN_CROP_SIZE, Math.round(nextHeightPx / scaleY));
+
+    setCrop((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        w: Math.min(newW, imageRect.width - prev.x),
+        h: Math.min(newH, imageRect.height - prev.y),
+      };
+    });
+  }, [crop, widthInput, heightInput, naturalSize, imageRect]);
+
   // 부모에게 저장 함수 등록
   useEffect(() => {
     onRegisterSave?.(handleSave);
@@ -350,14 +372,12 @@ export default function ImageCropOverlay({
             onChange={(e) => {
               const next = e.target.value.replace(/[^\d]/g, '');
               setWidthInput(next);
-              if (!crop || !next) return;
-              const scaleX = naturalSize.width / imageRect.width;
-              const px = Math.max(1, Number(next));
-              const newW = Math.max(MIN_CROP_SIZE, Math.round(px / scaleX));
-              setCrop((prev) => {
-                if (!prev) return prev;
-                return { ...prev, w: Math.min(newW, imageRect.width - prev.x) };
-              });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyCropSize();
+              }
             }}
             className="w-16 px-1.5 py-1 rounded"
             style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0' }}
@@ -370,14 +390,12 @@ export default function ImageCropOverlay({
             onChange={(e) => {
               const next = e.target.value.replace(/[^\d]/g, '');
               setHeightInput(next);
-              if (!crop || !next) return;
-              const scaleY = naturalSize.height / imageRect.height;
-              const px = Math.max(1, Number(next));
-              const newH = Math.max(MIN_CROP_SIZE, Math.round(px / scaleY));
-              setCrop((prev) => {
-                if (!prev) return prev;
-                return { ...prev, h: Math.min(newH, imageRect.height - prev.y) };
-              });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyCropSize();
+              }
             }}
             className="w-16 px-1.5 py-1 rounded"
             style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0' }}
@@ -385,6 +403,19 @@ export default function ImageCropOverlay({
             placeholder="height"
           />
           <span style={{ opacity: 0.8 }}>px</span>
+          <button
+            type="button"
+            onClick={applyCropSize}
+            className="px-2 py-1 rounded"
+            style={{
+              background: accentColor,
+              border: '1px solid rgba(255,255,255,0.2)',
+              color: '#0f172a',
+              fontWeight: 600,
+            }}
+          >
+            적용
+          </button>
         </div>
       )}
     </>

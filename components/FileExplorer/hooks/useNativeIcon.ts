@@ -30,11 +30,13 @@ export function useNativeIcon(
   size: number,
   isVisible: boolean = true,
 ): string | null {
-  const ext = entry.name.lastIndexOf('.') > 0
-    ? entry.name.slice(entry.name.lastIndexOf('.') + 1).toLowerCase()
+  const lowerName = entry.name.toLowerCase();
+  const ext = lowerName.lastIndexOf('.') > 0
+    ? lowerName.slice(lowerName.lastIndexOf('.') + 1)
     : '';
+  const isJsFallbackTarget = ext === 'jsx' || lowerName.endsWith('.config.js');
   // PSD 등은 image 타입이지만 시스템 아이콘 사용 (썸네일 미생성)
-  const skip = THUMBNAIL_IMAGE_EXTS.has(ext) || (!entry.is_dir && SKIP_NATIVE_EXTS.has(ext));
+  const skip = THUMBNAIL_IMAGE_EXTS.has(ext) || (!entry.is_dir && (SKIP_NATIVE_EXTS.has(ext) || isJsFallbackTarget));
 
   const [nativeIcon, setNativeIcon] = useState<string | null>(() => {
     if (skip) return null;
