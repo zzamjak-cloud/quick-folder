@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.29] - 2026-05-29
+
+### Fixed
+- Windows에서 구글 드라이브 전용 우클릭 메뉴가 표시되지 않던 문제 수정
+- Windows Google Drive 파일 ID 조회(DriveFS user.drive.id 스트림) 지원
+
 ## [1.27.28] - 2026-05-29
 
 ### Fixed

@@ -1,5 +1,6 @@
 //! Google Drive 통합 모듈
-//! xattr 기반 파일 ID 추출 및 오프라인 핀 설정 (macOS 전용)
+//! macOS: xattr 기반 파일 ID 추출 및 오프라인 핀 설정
+//! Windows: DriveFS 가상 스트림(user.drive.id) 기반 파일 ID 추출
 
 /// Google 서비스 파일(.gsheet, .gdoc 등)의 JSON에서 doc_id 추출 폴백
 fn try_parse_google_service_file(path: &str) -> Option<String> {
@@ -23,8 +24,34 @@ fn try_parse_google_service_file(path: &str) -> Option<String> {
     None
 }
 
+/// DriveFS 메타데이터 스트림 읽기 (Windows 전용)
+#[cfg(target_os = "windows")]
+fn read_drive_metadata_stream(path: &str, stream: &str) -> Option<String> {
+    let stream_path = format!("{}:{}", path, stream);
+    let value = std::fs::read_to_string(&stream_path).ok()?;
+    let trimmed = value.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// Windows DriveFS user.drive.id 스트림에서 파일 ID 추출
+#[cfg(target_os = "windows")]
+fn try_read_drive_id_stream(path: &str) -> Option<String> {
+    let id = read_drive_metadata_stream(path, "user.drive.id")?;
+    // 업로드 직후 'local' 접두사가 붙은 임시 ID는 무시
+    if id.starts_with("local") {
+        None
+    } else {
+        Some(id)
+    }
+}
+
 /// Google Drive 파일의 extended attribute에서 파일 ID 추출
 /// macOS: xattr -p com.google.drivefs.item-id#S <path>
+/// Windows: path:user.drive.id 스트림
 /// 폴백: .gsheet/.gdoc 파일은 JSON 내 doc_id 사용
 #[tauri::command]
 pub fn get_google_drive_file_id(path: String) -> Result<String, String> {
@@ -44,15 +71,15 @@ pub fn get_google_drive_file_id(path: String) -> Result<String, String> {
         }
     }
 
+    // 1차: DriveFS 스트림 (Windows 전용)
+    #[cfg(target_os = "windows")]
+    if let Some(id) = try_read_drive_id_stream(&path) {
+        return Ok(id);
+    }
+
     // 2차 폴백: Google 서비스 파일의 JSON에서 doc_id 추출
     if let Some(doc_id) = try_parse_google_service_file(&path) {
         return Ok(doc_id);
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Windows: Google 서비스 파일 JSON 폴백만 사용
-        let _ = &path;
     }
 
     Ok(String::new())
@@ -86,7 +113,7 @@ pub fn set_google_drive_offline(path: String, offline: bool) -> Result<(), Strin
 
     #[cfg(not(target_os = "macos"))]
     {
-        // Windows 등: no-op
+        // Windows DriveFS 스트림은 읽기 전용 — no-op
         let _ = (path, offline);
         Ok(())
     }

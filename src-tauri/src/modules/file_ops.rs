@@ -496,11 +496,36 @@ pub async fn move_items(sources: Vec<String>, dest: String, overwrite: Option<bo
 /// macOS에서 trash::delete 시 시스템 권한 팝업을 방지하기 위해 사용
 fn is_cloud_path(path: &str) -> bool {
     let lower = path.to_lowercase();
+    let norm = lower.replace('\\', "/");
     lower.contains("/library/cloudstorage/")
         || lower.contains("/library/mobile documents/")
         || lower.contains("/google drive/")
+        || lower.contains("\\google drive")
+        || is_windows_google_drive_virtual(&norm)
         || lower.contains("/onedrive/")
+        || lower.contains("\\onedrive")
         || lower.contains("/dropbox/")
+        || lower.contains("\\dropbox")
+}
+
+/// Windows Google Drive 가상 드라이브 (G:\My Drive 등)
+fn is_windows_google_drive_virtual(norm: &str) -> bool {
+    const ROOTS: &[&str] = &[
+        "my drive",
+        "내 드라이브",
+        "shared drives",
+        "공유 드라이브",
+        "other computers",
+        "computers",
+    ];
+    let Some(colon) = norm.find(":/") else {
+        return false;
+    };
+    if colon != 1 {
+        return false;
+    }
+    let after = &norm[colon + 2..];
+    ROOTS.iter().any(|root| after == *root || after.starts_with(&format!("{}/", root)))
 }
 
 /// 경로에 따라 직접 삭제 수행 (디렉토리/파일 구분)
