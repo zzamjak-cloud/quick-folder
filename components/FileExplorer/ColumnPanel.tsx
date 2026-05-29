@@ -4,6 +4,7 @@ import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor } from './fileUtils';
 import { useNativeIcon } from './hooks/useNativeIcon';
+import { useRenameInput } from './hooks/useRenameInput';
 import { ColumnData } from './hooks/useColumnView';
 
 // 개별 행 컴포넌트
@@ -11,23 +12,41 @@ const ColumnRow = memo(function ColumnRow({
   entry,
   isSelected,
   isFocused,
+  isRenaming,
   themeVars,
   onClick,
   onDoubleClick,
   onContextMenu,
   onDragMouseDown,
+  onRenameCommit,
 }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
+  isRenaming: boolean;
   themeVars: ThemeVars | null;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
+  onRenameCommit: (oldPath: string, newName: string) => void;
 }) {
   const nativeIcon = useNativeIcon(entry, 16);
   const rowRef = useRef<HTMLDivElement>(null);
+  const {
+    renameValue,
+    setRenameValue,
+    inputRef,
+    handleKeyDown,
+    handleBlur,
+  } = useRenameInput({
+    name: entry.name,
+    isDir: entry.is_dir,
+    isRenaming,
+    onRenameCommit,
+    path: entry.path,
+    selectBeforeExtension: true,
+  });
 
   // 포커스된 항목 자동 스크롤
   useEffect(() => {
@@ -51,7 +70,11 @@ const ColumnRow = memo(function ColumnRow({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
+      onMouseDown={(e) => {
+        if (isRenaming) return;
+        e.stopPropagation();
+        onDragMouseDown(e, entry.path);
+      }}
     >
       {/* 아이콘 */}
       {nativeIcon ? (
@@ -63,15 +86,35 @@ const ColumnRow = memo(function ColumnRow({
       )}
 
       {/* 파일명 */}
-      <span
-        className="flex-1 min-w-0 truncate"
-        style={{ color: themeVars?.text ?? '#e5e7eb' }}
-      >
-        {entry.name}
-      </span>
+      {isRenaming ? (
+        <input
+          ref={inputRef}
+          value={renameValue}
+          onChange={e => setRenameValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          onClick={e => e.stopPropagation()}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          className="min-w-0 flex-1 rounded px-1 text-xs outline-none"
+          style={{
+            backgroundColor: themeVars?.surface2 ?? '#1f2937',
+            color: themeVars?.text ?? '#e5e7eb',
+            border: `1px solid ${themeVars?.accent ?? '#3b82f6'}`,
+          }}
+        />
+      ) : (
+        <span
+          className="flex-1 min-w-0 truncate"
+          style={{ color: themeVars?.text ?? '#e5e7eb' }}
+        >
+          {entry.name}
+        </span>
+      )}
 
       {/* 폴더면 ChevronRight */}
-      {entry.is_dir && (
+      {entry.is_dir && !isRenaming && (
         <ChevronRight size={12} style={{ color: themeVars?.muted ?? '#94a3b8', flexShrink: 0 }} />
       )}
     </div>
@@ -85,12 +128,14 @@ interface ColumnPanelProps {
   focusedRow: number;
   themeVars: ThemeVars | null;
   selectedPaths: string[];
+  renamingPath: string | null;
   width?: number;
   onResize?: (delta: number) => void;
   onSelect: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
+  onRenameCommit: (oldPath: string, newName: string) => void;
 }
 
 export default memo(function ColumnPanel({
@@ -100,12 +145,14 @@ export default memo(function ColumnPanel({
   focusedRow,
   themeVars,
   selectedPaths,
+  renamingPath,
   width = 220,
   onResize,
   onSelect,
   onOpen,
   onContextMenu,
   onDragMouseDown,
+  onRenameCommit,
 }: ColumnPanelProps) {
   const resizeStartRef = useRef<number | null>(null);
 
@@ -174,11 +221,13 @@ export default memo(function ColumnPanel({
             entry={entry}
             isSelected={selectedSet.has(entry.path)}
             isFocused={isFocusedCol && focusedRow === rowIdx}
+            isRenaming={renamingPath === entry.path}
             themeVars={themeVars}
             onClick={(e) => handleClick(e, entry)}
             onDoubleClick={() => onOpen(entry)}
             onContextMenu={(e) => handleContextMenu(e, entry.path)}
             onDragMouseDown={onDragMouseDown}
+            onRenameCommit={onRenameCommit}
           />
         ))
       )}

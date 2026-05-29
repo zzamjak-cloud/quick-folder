@@ -878,10 +878,16 @@ export default function FileExplorer({
 
   // --- 다른 패널에서 파일 이동 시 새로고침 ---
   useEffect(() => {
-    const handler = () => { if (currentPath) loadDirectory(currentPath); };
+    const handler = async () => {
+      if (!currentPath) return;
+      await loadDirectory(currentPath);
+      if (viewMode === 'columns') {
+        await columnView.refreshOpenColumns();
+      }
+    };
     window.addEventListener('qf-files-changed', handler);
     return () => window.removeEventListener('qf-files-changed', handler);
-  }, [currentPath, loadDirectory]);
+  }, [currentPath, loadDirectory, viewMode, columnView.refreshOpenColumns]);
 
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
   useEffect(() => {
@@ -1260,6 +1266,7 @@ export default function FileExplorer({
               focusedCol={columnView.focusedCol}
               focusedRow={columnView.focusedRow}
               selectedPaths={selectedPaths}
+              renamingPath={modals.renamingPath}
               loading={loading}
               error={error}
               themeVars={themeVars}
@@ -1294,6 +1301,7 @@ export default function FileExplorer({
               onOpenEntry={openEntry}
               onContextMenu={handleContextMenu}
               onDragMouseDown={handleDragMouseDown}
+              onRenameCommit={fileOps.handleRenameCommit}
             />
           ) : (
             <FileGrid

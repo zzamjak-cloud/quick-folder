@@ -12,6 +12,7 @@ interface ColumnViewProps {
   focusedCol: number;
   focusedRow: number;
   selectedPaths: string[];
+  renamingPath: string | null;
   loading: boolean;
   error: string | null;
   themeVars: ThemeVars | null;
@@ -20,6 +21,7 @@ interface ColumnViewProps {
   onOpenEntry: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
+  onRenameCommit: (oldPath: string, newName: string) => void;
 }
 
 export default memo(function ColumnView({
@@ -35,6 +37,8 @@ export default memo(function ColumnView({
   onContextMenu,
   onDragMouseDown,
   selectedPaths,
+  renamingPath,
+  onRenameCommit,
   instanceId,
 }: ColumnViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -128,6 +132,7 @@ export default memo(function ColumnView({
           isFocusedCol={focusedCol === idx}
           focusedRow={focusedRow}
           selectedPaths={selectedPaths}
+          renamingPath={renamingPath}
           themeVars={themeVars}
           width={columnWidth}
           onResize={(delta) => handleColumnResize(idx, delta)}
@@ -135,6 +140,7 @@ export default memo(function ColumnView({
           onOpen={onOpenEntry}
           onContextMenu={onContextMenu}
           onDragMouseDown={onDragMouseDown}
+          onRenameCommit={onRenameCommit}
         />
       ))}
 

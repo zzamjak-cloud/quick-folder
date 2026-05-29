@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.28] - 2026-05-29
+
+### Fixed
+- 컬럼 뷰에서 F2·우클릭 이름 바꾸기가 동작하지 않던 문제 수정
+
 ## [1.27.27] - 2026-05-29
 
 ### Fixed

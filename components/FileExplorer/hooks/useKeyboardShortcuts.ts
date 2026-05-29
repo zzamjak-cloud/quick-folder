@@ -475,6 +475,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       if (e.key === 'F2') {
+        e.preventDefault();
         if (selectedPaths.length === 1) {
           handleRenameStart(selectedPaths[0]);
         } else if (selectedPaths.length > 1) {

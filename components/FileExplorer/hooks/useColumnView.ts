@@ -325,6 +325,36 @@ export function useColumnView() {
     });
   }, []);
 
+  // 열려 있는 모든 컬럼 새로고침 (이름 변경·파일 조작 후)
+  const refreshOpenColumns = useCallback(async () => {
+    let snapshot: ColumnData[] = [];
+    setColumns(prev => {
+      snapshot = prev;
+      return prev;
+    });
+    if (snapshot.length === 0) return;
+
+    const refreshed = await Promise.all(
+      snapshot.map(async (col) => {
+        try {
+          const result = await invoke<FileEntry[]>('list_directory', { path: col.path });
+          const sorted = sortEntries(result);
+          dirCacheRef.current.set(col.path, sorted);
+          return { path: col.path, entries: sorted };
+        } catch {
+          return { path: col.path, entries: col.entries };
+        }
+      }),
+    );
+
+    setColumns(current =>
+      current.map(col => {
+        const update = refreshed.find(r => r.path === col.path);
+        return update ? { ...col, entries: update.entries } : col;
+      }),
+    );
+  }, [sortEntries]);
+
   return {
     columns,
     preview,
@@ -337,5 +367,6 @@ export function useColumnView() {
     selectInColumn,
     trimColumnsAfter,
     updateFirstColumn,
+    refreshOpenColumns,
   };
 }
