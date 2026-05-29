@@ -169,6 +169,18 @@ export default function App() {
     return saved ? Number(saved) : 0.5;
   });
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [trayDragStates, setTrayDragStates] = useState<Record<string, { dragging: boolean; trayActive: boolean }>>({});
+  const handleTrayDragStateChange = useCallback((instanceId: string, dragging: boolean, trayActive: boolean) => {
+    setTrayDragStates(prev => ({ ...prev, [instanceId]: { dragging, trayActive } }));
+  }, []);
+  const trayDropOverlayVisible = useMemo(
+    () => Object.values(trayDragStates).some(state => state.dragging),
+    [trayDragStates],
+  );
+  const trayDropOverlayActive = useMemo(
+    () => Object.values(trayDragStates).some(state => state.trayActive),
+    [trayDragStates],
+  );
   const [tempTrayPaths, setTempTrayPaths] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(TEMP_TRAY_STORAGE_KEY);
@@ -179,6 +191,8 @@ export default function App() {
     }
   });
   const tempTrayWindowAppliedRef = useRef(false);
+  // 트레이 종료 시 창 뎁스: 닫기/취소는 전면, OS 드래그로 비우면 배경
+  const trayRestoreDepthRef = useRef<'foreground' | 'background'>('foreground');
 
   useEffect(() => {
     localStorage.setItem(TEMP_TRAY_STORAGE_KEY, JSON.stringify(tempTrayPaths));
@@ -188,11 +202,18 @@ export default function App() {
     setTempTrayPaths(prev => mergeUniquePaths(prev, paths));
   }, []);
 
-  const handleRemoveTrayFiles = useCallback((paths: string[]) => {
-    setTempTrayPaths(prev => prev.filter(path => !paths.includes(path)));
+  const handleRemoveTrayFiles = useCallback((paths: string[], source: 'trash' | 'drag' = 'trash') => {
+    setTempTrayPaths((prev) => {
+      const next = prev.filter(path => !paths.includes(path));
+      if (next.length === 0) {
+        trayRestoreDepthRef.current = source === 'drag' ? 'background' : 'foreground';
+      }
+      return next;
+    });
   }, []);
 
   const handleClearTray = useCallback(() => {
+    trayRestoreDepthRef.current = 'foreground';
     setTempTrayPaths([]);
   }, []);
 
@@ -272,6 +293,9 @@ export default function App() {
     };
 
     const restoreExplorerWindow = async () => {
+      const depth = trayRestoreDepthRef.current;
+      trayRestoreDepthRef.current = 'foreground';
+
       await appWindow.setAlwaysOnTop(false);
       const saved = localStorage.getItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
       if (!saved) return;
@@ -289,6 +313,21 @@ export default function App() {
       await appWindow.setSize(new LogicalSize(frame.width, frame.height));
       await appWindow.setPosition(new LogicalPosition(frame.x, frame.y));
       localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify(frame));
+
+      try {
+        if (depth === 'foreground') {
+          if (await appWindow.isMinimized()) {
+            await appWindow.unminimize();
+          }
+          await appWindow.setFocus();
+        } else {
+          // 드롭 대상 앱이 전면에 남도록 포커스·Z-order를 내림
+          await appWindow.setFocusable(false);
+          await appWindow.setFocusable(true);
+        }
+      } catch (err) {
+        console.error('탐색기 창 뎁스 복원 실패:', err);
+      }
     };
 
     timer = setTimeout(() => {
@@ -1050,8 +1089,22 @@ export default function App() {
         {/* Right: File Explorer(s) — 분할 뷰 지원 */}
         <div
           ref={splitContainerRef}
-          className={`flex-1 min-w-0 overflow-hidden flex ${splitMode === 'vertical' ? 'flex-col' : 'flex-row'}`}
+          className={`relative flex-1 min-w-0 overflow-hidden flex ${splitMode === 'vertical' ? 'flex-col' : 'flex-row'}`}
         >
+          {trayDropOverlayVisible && (
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-[9998] flex items-stretch">
+              <div
+                className="m-2 flex w-20 flex-col items-center justify-start rounded-md border border-dashed pt-2 text-[10px] font-semibold transition-colors"
+                style={{
+                  borderColor: trayDropOverlayActive ? (themeVars?.accent ?? '#3b82f6') : 'rgba(148,163,184,0.75)',
+                  backgroundColor: trayDropOverlayActive ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'rgba(15,23,42,0.72)',
+                  color: trayDropOverlayActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8'),
+                }}
+              >
+                Temp
+              </div>
+            </div>
+          )}
           {/* 패널 0 (메인) */}
           <div
             className="min-w-0 min-h-0 overflow-hidden"
@@ -1076,6 +1129,7 @@ export default function App() {
               sharedClipboard={sharedClipboard}
               onClipboardChange={setSharedClipboard}
               onStageFilesToTray={handleStageFilesToTray}
+              onTrayDragStateChange={(dragging, trayActive) => handleTrayDragStateChange('default', dragging, trayActive)}
               recentRoots={recentRoots}
             />
           </div>
@@ -1116,6 +1170,7 @@ export default function App() {
                   sharedClipboard={sharedClipboard}
                   onClipboardChange={setSharedClipboard}
                   onStageFilesToTray={handleStageFilesToTray}
+                  onTrayDragStateChange={(dragging, trayActive) => handleTrayDragStateChange('pane-1', dragging, trayActive)}
                   recentRoots={recentRoots}
                 />
               </div>

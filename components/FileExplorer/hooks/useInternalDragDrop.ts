@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { getFileName, sameVolume } from '../../../utils/pathUtils';
 
 const TRAY_STAGE_WIDTH = 96;
-const TRAY_EDGE_COMMIT_MARGIN = 4;
 
 /** 드롭 중복 발생 시 상위(FileExplorer)로 전달되는 정보 — 덮어쓰기 확인 후 재시도 */
 export interface PendingDrop {
@@ -51,7 +50,7 @@ function getSourceElement(path: string): HTMLElement | null {
  * 파일 드래그 → 폴더/패널 이동 또는 임시 트레이 등록 훅
  *
  * 내부 드래그: 폴더 카드 또는 다른 패널 위에 드롭 → move_items
- * 트레이 드래그: 우측 내부 레일에 드롭하거나 우측 경계까지 밀면 임시 트레이 등록
+ * 트레이 드래그: 우측 Temp 레일에 드롭(mouseup)하면 임시 트레이 등록
  *
  * 리스너를 handleMouseDown에서 동기적으로 등록하여
  * useEffect 재실행 의존 문제를 회피.
@@ -75,7 +74,6 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     let localDropTarget: string | null = null;
     let localCategoryTarget: string | null = null;
     let localTrayTarget = false;
-    let stagedToTray = false;
 
     // --- 드래그 고스트 ---
     function createGhost(x: number, y: number) {
@@ -152,16 +150,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       setIsTrayTargetActive(false);
     }
 
-    function stageToTray() {
-      if (!onStageFilesToTray || stagedToTray) return;
-      stagedToTray = true;
-      cleanup();
-      onStageFilesToTray(paths);
-    }
-
     function onMouseMove(moveEvt: MouseEvent) {
-      if (stagedToTray) return;
-
       const dx = moveEvt.clientX - startX;
       const dy = moveEvt.clientY - startY;
 
@@ -179,10 +168,6 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       if (onStageFilesToTray) {
         localTrayTarget = moveEvt.clientX >= window.innerWidth - TRAY_STAGE_WIDTH;
         setIsTrayTargetActive(localTrayTarget);
-        if (moveEvt.clientX >= window.innerWidth - TRAY_EDGE_COMMIT_MARGIN) {
-          stageToTray();
-          return;
-        }
         if (localTrayTarget) {
           clearPaneHighlight();
           clearCategoryHighlight();

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.27] - 2026-05-29
+
+### Fixed
+- 임시 트레이 종료 시 창 뎁스 복원 개선 (닫기/취소는 전면, OS 드래그로 비우면 배경 유지)
+- 분할 화면에서 Temp 드롭존 표시 위치를 팝업 우측에 맞게 수정
+- 우측 끝으로 드래그만 해도 트레이가 실행되던 문제 수정 (드롭 시에만 실행)
+
 ## [1.27.25] - 2026-05-28
 
 ### Fixed

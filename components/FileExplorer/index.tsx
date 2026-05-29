@@ -66,6 +66,8 @@ interface FileExplorerProps {
   sharedClipboard?: ClipboardData | null;
   onClipboardChange?: (cb: ClipboardData | null) => void;
   onStageFilesToTray?: (paths: string[]) => void;
+  /** 분할 뷰에서 트레이 드롭존 시각화를 App 레벨로 올리기 위한 콜백 */
+  onTrayDragStateChange?: (dragging: boolean, trayActive: boolean) => void;
   // 최근항목 조회 시 사용할 즐겨찾기 폴더 경로 목록
   recentRoots?: string[];
 }
@@ -85,6 +87,7 @@ export default function FileExplorer({
   sharedClipboard,
   onClipboardChange,
   onStageFilesToTray,
+  onTrayDragStateChange,
   recentRoots = [],
   initialPathKey = 0,
 }: FileExplorerProps) {
@@ -917,6 +920,13 @@ export default function FileExplorer({
     onDuplicateDetected: setDropConfirm,
   });
 
+  useEffect(() => {
+    onTrayDragStateChange?.(isInternalDragging, isTrayTargetActive);
+    return () => {
+      onTrayDragStateChange?.(false, false);
+    };
+  }, [isInternalDragging, isTrayTargetActive, onTrayDragStateChange]);
+
   // --- OS에서 파일 드래그 수신 (Tauri onDragDropEvent) ---
   useEffect(() => {
     if (!currentPath || !isTauri()) return;
@@ -1325,21 +1335,6 @@ export default function FileExplorer({
               draggedPaths={new Set(activeDragPaths.length > 0 ? activeDragPaths : selectedPaths)}
               isDraggingNow={isInternalDragging}
             />
-          )}
-
-          {isInternalDragging && onStageFilesToTray && (
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-[9998] flex items-stretch">
-              <div
-                className="m-2 flex w-20 flex-col items-center justify-start rounded-md border border-dashed pt-2 text-[10px] font-semibold transition-colors"
-                style={{
-                  borderColor: isTrayTargetActive ? (themeVars?.accent ?? '#3b82f6') : 'rgba(148,163,184,0.75)',
-                  backgroundColor: isTrayTargetActive ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)') : 'rgba(15,23,42,0.72)',
-                  color: isTrayTargetActive ? (themeVars?.text ?? '#e5e7eb') : (themeVars?.muted ?? '#94a3b8'),
-                }}
-              >
-                Temp
-              </div>
-            </div>
           )}
 
           {/* 동영상 압축 진행률 */}

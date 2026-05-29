@@ -11,7 +11,7 @@ type DragCallbackResult = {
 
 interface TempFileTrayProps {
   paths: string[];
-  onRemove: (paths: string[]) => void;
+  onRemove: (paths: string[], source: 'trash' | 'drag') => void;
   onClear: () => void;
   onError?: (message: string) => void;
 }
@@ -108,7 +108,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
 
       const onEvent = new Channel<DragCallbackResult>((event) => {
         if (event.result === 'Dropped') {
-          onRemove(dragPaths);
+          onRemove(dragPaths, 'drag');
         }
       });
 
@@ -175,7 +175,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
                       type="button"
                       className="absolute right-1 top-1 rounded bg-black/55 p-1 text-white opacity-0 hover:bg-black/75 group-hover:opacity-100"
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => onRemove([path])}
+                      onClick={() => onRemove([path], 'trash')}
                       title="제거"
                     >
                       <Trash2 size={12} />
