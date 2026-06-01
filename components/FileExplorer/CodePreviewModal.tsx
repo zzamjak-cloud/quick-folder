@@ -396,6 +396,32 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
     }
   }, [path, editedContent, langName, saving]);
 
+  const exitEditMode = useCallback(() => {
+    if (isDirty) {
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 편집 모드를 종료하시겠습니까?');
+      if (!ok) return false;
+    }
+    setEditMode(false);
+    setIsDirty(false);
+    setSearchVisible(false);
+    setSearchQuery('');
+    setReplaceQuery('');
+    return true;
+  }, [isDirty]);
+
+  const handleCloseModal = useCallback(() => {
+    if (editMode && isDirty) {
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 닫으시겠습니까?');
+      if (!ok) return;
+    }
+    setSearchVisible(false);
+    setSearchQuery('');
+    setReplaceQuery('');
+    onClose();
+  }, [editMode, isDirty, onClose]);
+
   // ── 검색어 다음 매칭으로 이동 (편집 모드) ──
   const findNextInTextarea = useCallback((startFrom?: number): number => {
     if (!searchQuery) return -1;
@@ -503,17 +529,10 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
           return;
         }
         if (editMode) {
-          // 미저장 변경이 있으면 확인
-          if (isDirty) {
-            // eslint-disable-next-line no-alert
-            const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 편집 모드를 종료하시겠습니까?');
-            if (!ok) return;
-          }
-          setEditMode(false);
-          setIsDirty(false);
+          exitEditMode();
           return;
         }
-        onClose();
+        handleCloseModal();
         return;
       }
 
@@ -554,7 +573,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [searchVisible, matchLines, onClose, editMode, isDirty, handleSave, enterEditMode, findNextInTextarea, goToTextareaMatch, searchQuery, editedContent]);
+  }, [searchVisible, matchLines, editMode, handleSave, enterEditMode, exitEditMode, handleCloseModal, findNextInTextarea, goToTextareaMatch, searchQuery, editedContent]);
 
   // ── 전체 접기 / 펼치기 ──
   const foldAll = useCallback(() => {
@@ -634,7 +653,9 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
     <div
       className="fixed inset-0 flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000 }}
-      onClick={onClose}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) handleCloseModal();
+      }}
     >
       <div
         className="rounded-lg shadow-2xl flex flex-col overflow-hidden"
@@ -645,6 +666,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
           maxWidth: '1100px',
           height: '90vh',
         }}
+        onMouseDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
         {/* ── 헤더 ── */}
@@ -769,13 +791,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                     border: `1px solid ${themeVars.border}`,
                   }}
                   onClick={() => {
-                    if (isDirty) {
-                      // eslint-disable-next-line no-alert
-                      const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 편집 모드를 종료하시겠습니까?');
-                      if (!ok) return;
-                    }
-                    setEditMode(false);
-                    setIsDirty(false);
+                    exitEditMode();
                   }}
                   title="편집 모드 종료 (ESC)"
                 >
@@ -788,13 +804,10 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
             <button
               className="p-1.5 rounded transition-opacity hover:bg-red-500/20"
               style={{ color: themeVars.text }}
-              onClick={() => {
-                if (editMode && isDirty) {
-                  // eslint-disable-next-line no-alert
-                  const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 닫으시겠습니까?');
-                  if (!ok) return;
-                }
-                onClose();
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCloseModal();
               }}
               title="닫기 (ESC)"
             >

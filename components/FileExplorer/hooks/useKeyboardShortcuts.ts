@@ -302,6 +302,11 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
             preview.handlePreviewJson(entry.path, true);
             return;
           }
+          if (entry.file_type === 'image' || /\.(psd|psb)$/i.test(entry.name)) {
+            if (!preview.previewImagePath) preview.closeAllPreviews();
+            preview.handlePreviewImage(entry.path, true);
+            return;
+          }
           // 코드 파일은 CodePreviewModal을 편집 모드로 열기 (구문 강조 + 검색·치환)
           if (CODE_EDIT_EXTS_REGEX.test(entry.name)) {
             if (!preview.codePreviewPath) preview.closeAllPreviews();
@@ -668,6 +673,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     thumbnailSize, focusedIndex, clipboard, isSearchActive,
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     previewFile, preview.isAnyPreviewOpen, preview.closeAllPreviews,
+    preview.previewImagePath, preview.handlePreviewImage, preview.previewJsonPath, preview.handlePreviewJson,
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,

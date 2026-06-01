@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { ArrowUpRight, GripVertical, Trash2, X } from 'lucide-react';
 import { getFileName } from '../utils/pathUtils';
-import { DRAG_IMAGE, FileTypeIcon, iconColor } from './FileExplorer/fileUtils';
+import { createFileDragImage, FileTypeIcon, iconColor } from './FileExplorer/fileUtils';
 
 type DragCallbackResult = {
   result: 'Dropped' | 'Cancel' | string;
@@ -89,6 +89,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
 
     const startX = e.clientX;
     const startY = e.clientY;
+    const sourceElement = e.currentTarget as HTMLElement;
     let started = false;
     let onMove: (ev: MouseEvent) => void;
     let onUp: () => void;
@@ -111,8 +112,9 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
           onRemove(dragPaths, 'drag');
         }
       });
+      const image = createFileDragImage(dragPaths, sourceElement);
 
-      invoke('plugin:drag|start_drag', { item: dragPaths, image: DRAG_IMAGE, onEvent })
+      invoke('plugin:drag|start_drag', { item: dragPaths, image, onEvent })
         .catch((err) => {
           console.error('트레이 OS 드래그 실패:', err);
           onError?.('파일 드래그를 시작하지 못했습니다.');

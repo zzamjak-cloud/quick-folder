@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { X, Play, Pause } from 'lucide-react';
+import { X, Play, Pause, Loader2, AlertCircle } from 'lucide-react';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
 import VideoEditToolbar, { VideoEditToolbarHandle } from './VideoEditToolbar';
@@ -37,9 +37,19 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
   });
   // 비디오 원본 크기
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 1920, height: 1080 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const videoSrc = convertFileSrc(path);
   const fileName = getFileName(path);
+
+  useEffect(() => {
+    setIsLoading(true);
+    setLoadError(false);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  }, [path]);
 
   // 시크바 조작
   const handleSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,6 +71,39 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
     const s = Math.floor(sec % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  const handleVideoCanPlay = useCallback(() => {
+    setIsLoading(false);
+    setLoadError(false);
+  }, []);
+
+  const handleVideoWaiting = useCallback(() => {
+    setIsLoading(true);
+  }, []);
+
+  const handleVideoError = useCallback(() => {
+    setIsLoading(false);
+    setLoadError(true);
+  }, []);
+
+  const loadingOverlay = (compact = false) => (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)', pointerEvents: 'none' }}
+    >
+      {loadError ? (
+        <>
+          <AlertCircle size={compact ? 22 : 28} className="text-red-300" />
+          <span className="text-sm text-red-200">동영상을 불러오지 못했습니다.</span>
+        </>
+      ) : (
+        <>
+          <Loader2 size={compact ? 22 : 28} className="text-white/80 animate-spin" />
+          <span className="text-sm text-white/80">로딩 중...</span>
+        </>
+      )}
+    </div>
+  );
 
   // 비디오 요소 크기 추적 (크롭 오버레이용)
   useEffect(() => {
@@ -229,14 +272,23 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
         {/* HTML5 비디오 플레이어 */}
         {!editMode ? (
           // 일반 모드: 브라우저 기본 컨트롤
-          <video
-            ref={videoRef}
-            src={videoSrc}
-            controls
-            autoPlay
-            className="max-w-[90vw] max-h-[85vh] rounded-lg"
-            style={{ outline: 'none' }}
-          />
+          <div className="relative inline-block">
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              controls
+              autoPlay
+              className="max-w-[90vw] max-h-[85vh] rounded-lg"
+              style={{ outline: 'none', display: 'block', minWidth: 'min(640px, 90vw)', minHeight: 'min(360px, 55vh)' }}
+              onLoadStart={() => { setIsLoading(true); setLoadError(false); }}
+              onLoadedData={handleVideoCanPlay}
+              onCanPlay={handleVideoCanPlay}
+              onPlaying={handleVideoCanPlay}
+              onWaiting={handleVideoWaiting}
+              onError={handleVideoError}
+            />
+            {(isLoading || loadError) && loadingOverlay()}
+          </div>
         ) : (
           // 편집 모드: 커스텀 컨트롤 + VideoEditToolbar
           <div className="flex flex-col items-center w-full gap-3">
@@ -248,13 +300,23 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
                 autoPlay
                 className="max-w-[90vw] rounded-lg"
                 style={{ outline: 'none', maxHeight: '55vh', display: 'block' }}
+                onLoadStart={() => { setIsLoading(true); setLoadError(false); }}
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onLoadedMetadata={(e) => {
                   setDuration(e.currentTarget.duration);
                 }}
-                onPlay={() => setIsPlaying(true)}
+                onLoadedData={handleVideoCanPlay}
+                onCanPlay={handleVideoCanPlay}
+                onPlay={() => {
+                  setIsPlaying(true);
+                  setIsLoading(false);
+                }}
+                onPlaying={handleVideoCanPlay}
                 onPause={() => setIsPlaying(false)}
+                onWaiting={handleVideoWaiting}
+                onError={handleVideoError}
               />
+              {(isLoading || loadError) && loadingOverlay(true)}
               {/* 크롭 오버레이 (편집 모드에서만 표시) */}
               {videoRect.width > 0 && naturalSize.width > 0 && (
                 <VideoCropOverlay

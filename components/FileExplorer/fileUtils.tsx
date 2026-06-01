@@ -105,6 +105,64 @@ export const DRAG_IMAGE = (() => {
   }
 })();
 
+function getBaseName(path: string) {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+export function createFileDragImage(paths: string[], sourceElement?: HTMLElement | null) {
+  try {
+    const size = 96;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return DRAG_IMAGE;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, size, size, 16);
+    ctx.fill();
+
+    const img = sourceElement?.querySelector('img') as HTMLImageElement | null;
+    if (img?.complete && img.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(8, 8, 80, 80, 12);
+      ctx.clip();
+      ctx.drawImage(img, 8, 8, 80, 80);
+      ctx.restore();
+    } else {
+      const label = getBaseName(paths[0] ?? '').slice(0, 1).toUpperCase() || 'F';
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+      ctx.beginPath();
+      ctx.roundRect(12, 12, 72, 72, 14);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 32px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, 48, 50);
+    }
+
+    if (paths.length > 1) {
+      ctx.fillStyle = '#3b82f6';
+      ctx.beginPath();
+      ctx.roundRect(58, 62, 30, 24, 12);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(paths.length), 73, 74);
+    }
+
+    return canvas.toDataURL('image/png');
+  } catch {
+    return DRAG_IMAGE;
+  }
+}
+
 // 파일 크기 포맷
 export function formatSize(bytes: number, isDir: boolean): string {
   if (isDir) return '폴더';

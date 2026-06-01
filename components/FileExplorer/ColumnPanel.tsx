@@ -6,6 +6,7 @@ import { FileTypeIcon, iconColor } from './fileUtils';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { useRenameInput } from './hooks/useRenameInput';
 import { ColumnData } from './hooks/useColumnView';
+import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
 
 // 개별 행 컴포넌트
 const ColumnRow = memo(function ColumnRow({
@@ -33,6 +34,7 @@ const ColumnRow = memo(function ColumnRow({
 }) {
   const nativeIcon = useNativeIcon(entry, 16);
   const rowRef = useRef<HTMLDivElement>(null);
+  const wasFocusedRef = useRef(isFocused);
   const {
     renameValue,
     setRenameValue,
@@ -50,9 +52,10 @@ const ColumnRow = memo(function ColumnRow({
 
   // 포커스된 항목 자동 스크롤
   useEffect(() => {
-    if (isFocused && rowRef.current) {
+    if (isFocused && !wasFocusedRef.current && rowRef.current) {
       rowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
+    wasFocusedRef.current = isFocused;
   }, [isFocused]);
 
   const bg = isSelected
@@ -129,6 +132,7 @@ interface ColumnPanelProps {
   themeVars: ThemeVars | null;
   selectedPaths: string[];
   renamingPath: string | null;
+  instanceId?: string;
   width?: number;
   onResize?: (delta: number) => void;
   onSelect: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
@@ -146,6 +150,7 @@ export default memo(function ColumnPanel({
   themeVars,
   selectedPaths,
   renamingPath,
+  instanceId,
   width = 220,
   onResize,
   onSelect,
@@ -155,6 +160,9 @@ export default memo(function ColumnPanel({
   onRenameCommit,
 }: ColumnPanelProps) {
   const resizeStartRef = useRef<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollStorageKey = createScrollStorageKey('column-panel', instanceId ?? 'default', 'vertical', column.path);
+  const { handleScroll } = usePersistentScroll(scrollRef, scrollStorageKey, [column.entries.length]);
 
   // selectedPaths를 Set으로 변환 — O(1) 조회
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
@@ -197,45 +205,56 @@ export default memo(function ColumnPanel({
 
   return (
     <div
-      className="flex-shrink-0 h-full overflow-y-auto overflow-x-hidden border-r py-0.5 relative"
+      className="flex-shrink-0 h-full flex overflow-hidden"
       style={{
         width,
-        borderColor: themeVars?.border ?? '#334155',
       }}
     >
-      {column.loading ? (
-        <div className="flex items-center justify-center h-full">
-          <Loader2 size={18} className="animate-spin" style={{ color: themeVars?.accent ?? '#3b82f6' }} />
-        </div>
-      ) : column.entries.length === 0 ? (
-        <div
-          className="flex items-center justify-center h-full text-xs"
-          style={{ color: themeVars?.muted ?? '#94a3b8' }}
-        >
-          빈 폴더
-        </div>
-      ) : (
-        column.entries.map((entry, rowIdx) => (
-          <ColumnRow
-            key={entry.path}
-            entry={entry}
-            isSelected={selectedSet.has(entry.path)}
-            isFocused={isFocusedCol && focusedRow === rowIdx}
-            isRenaming={renamingPath === entry.path}
-            themeVars={themeVars}
-            onClick={(e) => handleClick(e, entry)}
-            onDoubleClick={() => onOpen(entry)}
-            onContextMenu={(e) => handleContextMenu(e, entry.path)}
-            onDragMouseDown={onDragMouseDown}
-            onRenameCommit={onRenameCommit}
-          />
-        ))
-      )}
+      <div
+        ref={scrollRef}
+        className="qf-scrollable min-w-0 flex-1 h-full overflow-y-auto overflow-x-hidden py-0.5"
+        onScroll={handleScroll}
+      >
+        {column.loading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 size={18} className="animate-spin" style={{ color: themeVars?.accent ?? '#3b82f6' }} />
+          </div>
+        ) : column.entries.length === 0 ? (
+          <div
+            className="flex items-center justify-center h-full text-xs"
+            style={{ color: themeVars?.muted ?? '#94a3b8' }}
+          >
+            빈 폴더
+          </div>
+        ) : (
+          column.entries.map((entry, rowIdx) => (
+            <ColumnRow
+              key={entry.path}
+              entry={entry}
+              isSelected={selectedSet.has(entry.path)}
+              isFocused={isFocusedCol && focusedRow === rowIdx}
+              isRenaming={renamingPath === entry.path}
+              themeVars={themeVars}
+              onClick={(e) => handleClick(e, entry)}
+              onDoubleClick={() => onOpen(entry)}
+              onContextMenu={(e) => handleContextMenu(e, entry.path)}
+              onDragMouseDown={onDragMouseDown}
+              onRenameCommit={onRenameCommit}
+            />
+          ))
+        )}
+      </div>
       {/* 리사이즈 핸들 */}
-      {onResize && (
+      {onResize ? (
         <div
-          className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/30"
+          className="h-full w-2 flex-shrink-0 cursor-col-resize border-l hover:bg-blue-500/30"
+          style={{ borderColor: themeVars?.border ?? '#334155' }}
           onMouseDown={handleResizeStart}
+        />
+      ) : (
+        <div
+          className="h-full w-px flex-shrink-0"
+          style={{ backgroundColor: themeVars?.border ?? '#334155' }}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import React, { memo, useState, useRef, useEffect, useCallback } from 'react';
+import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FileEntry, ThumbnailSize, ClipboardData, ViewMode } from '../../types';
 import { ThemeVars } from './types';
@@ -7,6 +7,7 @@ import { normalizeFsPath } from '../../utils/pathUtils';
 import FileCard from './FileCard';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
+import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
 
 interface FileGridProps {
   entries: FileEntry[];
@@ -19,6 +20,7 @@ interface FileGridProps {
   sortDir: 'asc' | 'desc';
   focusedIndex: number;
   gridRef: React.RefObject<HTMLDivElement>;
+  currentPath: string;
   loading: boolean;
   error: string | null;
   dropTargetPath: string | null;
@@ -89,7 +91,11 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
         else onOpen(entry);
       }}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
-      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (isRenaming) return;
+        onDragMouseDown(e, entry.path);
+      }}
     >
       {/* 아이콘 (네이티브 우선, lucide 폴백) */}
       <div className="relative flex-shrink-0" style={{ width: 16, height: 16 }}>
@@ -187,7 +193,11 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
         else onOpen(entry);
       }}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
-      onMouseDown={(e) => { e.stopPropagation(); onDragMouseDown(e, entry.path); }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (isRenaming) return;
+        onDragMouseDown(e, entry.path);
+      }}
     >
       <td className="px-3 py-1">
         <div className="flex items-center gap-2">
@@ -391,6 +401,7 @@ export default memo(function FileGrid({
   sortDir,
   focusedIndex,
   gridRef,
+  currentPath,
   loading,
   error,
   dropTargetPath,
@@ -411,6 +422,11 @@ export default memo(function FileGrid({
   draggedPaths,
   isDraggingNow = false,
 }: FileGridProps) {
+  const scrollStorageKey = useMemo(
+    () => currentPath ? createScrollStorageKey('file-grid', instanceId ?? 'default', viewMode, currentPath) : null,
+    [currentPath, instanceId, viewMode],
+  );
+  const { handleScroll } = usePersistentScroll(gridRef, scrollStorageKey, [entries.length, viewMode]);
 
   // --- 박스 드래그 선택 ---
   const dragState = useRef<{
@@ -589,11 +605,12 @@ export default memo(function FileGrid({
   return (
     <div
       ref={gridRef}
-      className="flex-1 overflow-y-auto p-3 relative"
+      className="qf-scrollable flex-1 overflow-y-auto p-3 relative"
       style={{ backgroundColor: themeVars?.bg ?? '#0f172a' }}
       onClick={handleContainerClick}
       onContextMenu={handleContainerContextMenu}
       onMouseDown={handleContainerMouseDown}
+      onScroll={handleScroll}
     >
       {/* 백그라운드 로딩 인디케이터 (기존 파일 표시 중 새 디렉토리 로드) */}
       {loading && entries.length > 0 && (

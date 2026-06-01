@@ -19,8 +19,6 @@ import {
 import {
   DndContext,
   closestCenter,
-  rectIntersection,
-  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -33,7 +31,6 @@ import {
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 // CSS import 제거 - transform 미사용 (드래그 중 아이템 위치 고정)
@@ -648,8 +645,7 @@ export default function App() {
   categoriesRef.current = categories;
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
   // 충돌 감지: 카테고리↔카테고리, 즐겨찾기↔즐겨찾기+빈카테고리 분리
@@ -864,7 +860,7 @@ export default function App() {
         {/* Left: Favorites Panel */}
         <div
           style={{ width: sidebarCollapsed ? 32 : leftPanelWidth }}
-          className="flex-shrink-0 flex flex-col overflow-hidden transition-[width] duration-200"
+          className="qf-sidebar flex-shrink-0 flex flex-col overflow-hidden transition-[width] duration-200"
         >
           {/* 사이드바 헤더: 폴딩 아이콘 + (펼침 시) 검색/버튼 */}
           <div className="flex-shrink-0 border-b border-[var(--qf-border)]">

@@ -1,8 +1,15 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { getFileName, sameVolume } from '../../../utils/pathUtils';
+import { createFileDragImage } from '../fileUtils';
 
 const TRAY_STAGE_WIDTH = 96;
+const EXTERNAL_DRAG_EDGE_PX = 2;
+
+type DragCallbackResult = {
+  result: 'Dropped' | 'Cancel' | string;
+  cursorPos?: unknown;
+};
 
 /** 드롭 중복 발생 시 상위(FileExplorer)로 전달되는 정보 — 덮어쓰기 확인 후 재시도 */
 export interface PendingDrop {
@@ -39,6 +46,15 @@ function clearCategoryHighlight() {
   });
 }
 
+function suppressTextSelection() {
+  document.body.classList.add('qf-internal-file-dragging');
+  window.getSelection()?.removeAllRanges();
+}
+
+function restoreTextSelection() {
+  document.body.classList.remove('qf-internal-file-dragging');
+}
+
 function getSourceElement(path: string): HTMLElement | null {
   for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-file-path]'))) {
     if (el.getAttribute('data-file-path') === path) return el;
@@ -64,6 +80,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
   const handleMouseDown = useCallback((e: React.MouseEvent, entryPath: string) => {
     if (e.button !== 0) return;
+    e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const paths = selectedPaths.includes(entryPath) && selectedPaths.length > 1
@@ -74,6 +91,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     let localDropTarget: string | null = null;
     let localCategoryTarget: string | null = null;
     let localTrayTarget = false;
+    let externalDragStarted = false;
 
     // --- 드래그 고스트 ---
     function createGhost(x: number, y: number) {
@@ -138,8 +156,10 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     function cleanup() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('mouseleave', onMouseLeave);
       clearPaneHighlight();
       clearCategoryHighlight();
+      restoreTextSelection();
       destroyGhost();
       localDropTarget = null;
       localCategoryTarget = null;
@@ -150,6 +170,26 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       setIsTrayTargetActive(false);
     }
 
+    function startExternalDrag() {
+      if (externalDragStarted || paths.length === 0) return;
+      externalDragStarted = true;
+      const image = createFileDragImage(paths, getSourceElement(paths[0]));
+      const onEvent = new Channel<DragCallbackResult>(() => {});
+      cleanup();
+      invoke('plugin:drag|start_drag', { item: paths, image, onEvent }).catch((err) => {
+        console.error('OS 파일 드래그 실패:', err);
+      });
+    }
+
+    function isLeavingWindow(ev: MouseEvent) {
+      return (
+        ev.clientX <= EXTERNAL_DRAG_EDGE_PX ||
+        ev.clientY <= EXTERNAL_DRAG_EDGE_PX ||
+        ev.clientX >= window.innerWidth - EXTERNAL_DRAG_EDGE_PX ||
+        ev.clientY >= window.innerHeight - EXTERNAL_DRAG_EDGE_PX
+      );
+    }
+
     function onMouseMove(moveEvt: MouseEvent) {
       const dx = moveEvt.clientX - startX;
       const dy = moveEvt.clientY - startY;
@@ -157,11 +197,19 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       // 임계값(6px) 초과 시 드래그 시작
       if (!dragging && Math.sqrt(dx * dx + dy * dy) >= 6) {
         dragging = true;
+        suppressTextSelection();
         setIsDragging(true);
         setActiveDragPaths(paths);
         createGhost(moveEvt.clientX, moveEvt.clientY);
       }
       if (!dragging) return;
+      moveEvt.preventDefault();
+      window.getSelection()?.removeAllRanges();
+
+      if (isLeavingWindow(moveEvt)) {
+        startExternalDrag();
+        return;
+      }
 
       moveGhost(moveEvt.clientX, moveEvt.clientY);
 
@@ -229,6 +277,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     }
 
     async function onMouseUp() {
+      if (externalDragStarted) return;
       const target = localDropTarget;
       const catTarget = localCategoryTarget;
       const shouldStageToTray = localTrayTarget;
@@ -279,9 +328,15 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       }
     }
 
+    function onMouseLeave() {
+      if (!dragging) return;
+      startExternalDrag();
+    }
+
     // 동기적으로 리스너 등록 (useEffect 의존 문제 회피)
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('mouseleave', onMouseLeave);
   }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected]);
 
   /**

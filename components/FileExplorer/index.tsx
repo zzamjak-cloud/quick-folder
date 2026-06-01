@@ -143,6 +143,10 @@ export default function FileExplorer({
 
   // --- 스크롤 위치 복원용 ---
   const scrollPositionRef = useRef<Map<string, number>>(new Map());
+  const viewModeRef = useRef<ViewMode>(viewMode);
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   const pendingSelectRef = useRef<string | null>(null);
 
@@ -242,7 +246,7 @@ export default function FileExplorer({
     if (!path) return;
     // 현재 경로의 스크롤 위치 저장
     if (gridRef.current && currentPathRef.current) {
-      scrollPositionRef.current.set(currentPathRef.current, gridRef.current.scrollTop);
+      scrollPositionRef.current.set(`${viewModeRef.current}:${currentPathRef.current}`, gridRef.current.scrollTop);
     }
     currentPathRef.current = path;
     cancelAllQueued(); // 이전 디렉토리의 대기 중인 썸네일 요청 모두 취소
@@ -291,7 +295,7 @@ export default function FileExplorer({
         }
       }
       // 저장된 스크롤 위치 복원 (렌더링 후 실행)
-      const savedScroll = scrollPositionRef.current.get(path);
+      const savedScroll = scrollPositionRef.current.get(`${viewModeRef.current}:${path}`);
       if (savedScroll != null && gridRef.current) {
         requestAnimationFrame(() => {
           if (gridRef.current) gridRef.current.scrollTop = savedScroll;
@@ -1271,6 +1275,7 @@ export default function FileExplorer({
               error={error}
               themeVars={themeVars}
               instanceId={instanceId}
+              currentPath={currentPath}
               onSelectInColumn={(colIndex, entry, multi, range) => {
                 const col = columnView.columns[colIndex];
                 if (!col) return;
@@ -1315,6 +1320,7 @@ export default function FileExplorer({
               sortDir={sortDir}
               focusedIndex={focusedIndex}
               gridRef={gridRef}
+              currentPath={currentPath}
               loading={loading}
               error={error}
               dropTargetPath={dropTargetPath}
@@ -1497,12 +1503,13 @@ export default function FileExplorer({
           modals.setRemoveWhiteBgPaths([path]);
         }}
         onOpenGifCompress={(paths) => modals.setGifCompressPaths(paths)}
+        onGifToMp4={fileOps.handleGifToMp4}
         onOpenImageCompress={() => {}}
         onOpenImageResize={() => {}}
+        onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
         onFileChanged={() => {
           if (currentPath) loadDirectory(currentPath);
         }}
-        onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
       />
 
       {/* 컨텍스트 메뉴 */}

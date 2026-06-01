@@ -21,13 +21,14 @@ interface PreviewModalsProps {
   onCropSave?: (outputPath: string) => void;
   onRemoveBg?: (path: string) => void;
   onOpenGifCompress?: (paths: string[]) => void;
+  onGifToMp4?: (paths: string[]) => void;
   onOpenImageCompress?: (path: string) => void;
   onOpenImageResize?: (path: string) => void;
+  onOpenMdEditor: (path: string) => void;
   onFileChanged?: () => void;
-  onOpenMdEditor?: (path: string) => void;
 }
 
-export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, onRemoveBg, onOpenGifCompress, onOpenImageCompress, onOpenImageResize, onFileChanged, onOpenMdEditor }: PreviewModalsProps) {
+export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, onRemoveBg, onOpenGifCompress, onGifToMp4, onOpenImageCompress, onOpenImageResize, onOpenMdEditor, onFileChanged }: PreviewModalsProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const originalScrollRef = useRef<HTMLDivElement>(null);
@@ -263,6 +264,14 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
     return () => window.removeEventListener('keydown', handler, true);
   }, [preview.previewImagePath, isCroppable, editMode]);
 
+  useEffect(() => {
+    if (!preview.previewImagePath || !isCroppable || preview.previewImageEditRequest === 0) return;
+    setActionMode('none');
+    setHasCrop(false);
+    setEditMode(true);
+    setActiveTool('pen');
+  }, [preview.previewImageEditRequest, preview.previewImagePath, isCroppable]);
+
   return (
     <>
       {/* 비디오 플레이어 모달 */}
@@ -317,16 +326,30 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
               <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{getFileName(preview.previewImagePath)}</span>
               <div className="flex items-center gap-2">
                 {canCompressInHeader && preview.previewImagePath && (
-                  <button
-                    className="text-xs px-3 py-1 rounded hover:opacity-80"
-                    style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenGifCompress?.([preview.previewImagePath!]);
-                    }}
-                  >
-                    압축
-                  </button>
+                  <>
+                    <button
+                      className="text-xs px-3 py-1 rounded hover:opacity-80"
+                      style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenGifCompress?.([preview.previewImagePath!]);
+                      }}
+                    >
+                      압축
+                    </button>
+                    <button
+                      className="text-xs px-3 py-1 rounded hover:opacity-80"
+                      style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const path = preview.previewImagePath!;
+                        handleCloseImage();
+                        onGifToMp4?.([path]);
+                      }}
+                    >
+                      GIF → MP4
+                    </button>
+                  </>
                 )}
                 <button className="text-lg px-2 hover:opacity-70" style={{ color: themeVars?.muted ?? '#94a3b8' }} onClick={handleCloseImage}>✕</button>
               </div>
@@ -652,10 +675,8 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
           themeVars={themeVars}
           onClose={preview.closeMdPreview}
           onEdit={() => {
-            const p = preview.previewMdPath;
-            if (!p) return;
             preview.closeMdPreview();
-            onOpenMdEditor?.(p);
+            onOpenMdEditor(preview.previewMdPath);
           }}
         />
       )}

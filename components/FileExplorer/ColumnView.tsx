@@ -5,6 +5,7 @@ import { ThemeVars } from './types';
 import { ColumnData, ColumnPreviewData } from './hooks/useColumnView';
 import ColumnPanel from './ColumnPanel';
 import ColumnPreviewPanel from './ColumnPreviewPanel';
+import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
 
 interface ColumnViewProps {
   columns: ColumnData[];
@@ -17,6 +18,7 @@ interface ColumnViewProps {
   error: string | null;
   themeVars: ThemeVars | null;
   instanceId?: string;
+  currentPath: string;
   onSelectInColumn: (colIndex: number, entry: FileEntry, multi: boolean, range: boolean) => void;
   onOpenEntry: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
@@ -40,9 +42,17 @@ export default memo(function ColumnView({
   renamingPath,
   onRenameCommit,
   instanceId,
+  currentPath,
 }: ColumnViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const storageKey = `qf_colview_width_${instanceId ?? 'default'}`;
+  const horizontalScrollKey = currentPath
+    ? createScrollStorageKey('column-view', instanceId ?? 'default', 'horizontal', currentPath)
+    : null;
+  const { handleScroll } = usePersistentScroll(scrollRef, horizontalScrollKey, [
+    columns.length,
+    preview?.entry.path ?? '',
+  ]);
 
   // 컬럼 너비 — 모든 컬럼에 동일하게 적용 (단일 값, localStorage 영속화)
   const [columnWidth, setColumnWidth] = useState<number>(() => {
@@ -60,8 +70,21 @@ export default memo(function ColumnView({
     });
   }, [storageKey]);
 
-  // 새 컬럼 추가 시 자동 가로 스크롤
+  // 새 컬럼/미리보기 추가 시에만 자동 가로 스크롤
+  const prevColumnCountRef = useRef(columns.length);
+  const prevPreviewPathRef = useRef(preview?.entry.path ?? null);
   useEffect(() => {
+    const prevColumnCount = prevColumnCountRef.current;
+    const prevPreviewPath = prevPreviewPathRef.current;
+    const currentPreviewPath = preview?.entry.path ?? null;
+    const shouldScrollToEnd =
+      columns.length > prevColumnCount ||
+      (!!currentPreviewPath && currentPreviewPath !== prevPreviewPath);
+
+    prevColumnCountRef.current = columns.length;
+    prevPreviewPathRef.current = currentPreviewPath;
+
+    if (!shouldScrollToEnd) return;
     if (scrollRef.current) {
       requestAnimationFrame(() => {
         if (scrollRef.current) {
@@ -69,7 +92,7 @@ export default memo(function ColumnView({
         }
       });
     }
-  }, [columns.length, preview]);
+  }, [columns.length, preview?.entry.path]);
 
   // 첫 로딩 (컬럼이 없는 상태)
   if (loading && columns.length === 0) {
@@ -112,8 +135,9 @@ export default memo(function ColumnView({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 flex overflow-x-auto overflow-y-hidden"
+      className="qf-scrollable flex-1 flex overflow-x-auto overflow-y-hidden"
       style={{ backgroundColor: themeVars?.bg ?? '#0f172a' }}
+      onScroll={handleScroll}
     >
       {/* 백그라운드 로딩 인디케이터 */}
       {loading && columns.length > 0 && (
@@ -134,6 +158,7 @@ export default memo(function ColumnView({
           selectedPaths={selectedPaths}
           renamingPath={renamingPath}
           themeVars={themeVars}
+          instanceId={instanceId}
           width={columnWidth}
           onResize={(delta) => handleColumnResize(idx, delta)}
           onSelect={onSelectInColumn}

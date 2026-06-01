@@ -10,7 +10,9 @@ export interface PreviewState {
   previewImagePath: string | null;
   previewImageData: string | null;
   previewLoading: boolean;
-  handlePreviewImage: (path: string) => void;
+  /** 편집 모드 요청 토큰 — 같은 이미지로 Enter 재진입 시에도 편집 모드로 전환 */
+  previewImageEditRequest: number;
+  handlePreviewImage: (path: string, initialEdit?: boolean) => void;
   closeImagePreview: () => void;
   // 텍스트
   previewTextPath: string | null;
@@ -58,6 +60,7 @@ export function usePreview(): PreviewState {
   const [previewImagePath, setPreviewImagePath] = useState<string | null>(null);
   const [previewImageData, setPreviewImageData] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewImageEditRequest, setPreviewImageEditRequest] = useState(0);
 
   // 텍스트 미리보기
   const [previewTextPath, setPreviewTextPath] = useState<string | null>(null);
@@ -92,7 +95,8 @@ export function usePreview(): PreviewState {
   // HWP/HWPX 미리보기
   const [hwpPreviewPath, setHwpPreviewPath] = useState<string | null>(null);
 
-  const handlePreviewImage = useCallback(async (path: string) => {
+  const handlePreviewImage = useCallback(async (path: string, initialEdit = false) => {
+    if (initialEdit) setPreviewImageEditRequest(n => n + 1);
     // 같은 파일이면 리로드 안 함 (깜빡임 방지)
     if (path === previewImagePath) return;
     setPreviewImagePath(path);
@@ -245,6 +249,7 @@ export function usePreview(): PreviewState {
   return {
     videoPlayerPath, setVideoPlayerPath,
     previewImagePath, previewImageData, previewLoading,
+    previewImageEditRequest,
     handlePreviewImage, closeImagePreview,
     previewTextPath, previewTextContent,
     handlePreviewText, closeTextPreview,
