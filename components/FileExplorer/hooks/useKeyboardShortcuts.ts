@@ -677,4 +677,44 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,
   ]);
+
+  // --- 마우스 측면 버튼(뒤로/앞으로) 내비게이션 ---
+  // 대부분의 마우스는 좌측 측면에 2개의 보조 버튼을 갖는다.
+  // MouseEvent.button: 3 = 뒤로 가기(BrowserBack), 4 = 앞으로 가기(BrowserForward).
+  // 키보드의 Alt+←/→ 와 동일하게 goBack/goForward 로 연결한다.
+  useEffect(() => {
+    const handleMouseUp = (e: MouseEvent) => {
+      // 보조 버튼(뒤로/앞으로)만 처리
+      if (e.button !== 3 && e.button !== 4) return;
+      // 분할 뷰: 포커스된 패널만 응답 (키보드 단축키와 동일한 정책)
+      if (!isFocused) return;
+      // 이름변경/입력 중에는 무시
+      if (renamingPath) return;
+      const active = document.activeElement;
+      if (active && (active as HTMLElement).isContentEditable) return;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      // 마크다운 편집기가 열려 있으면 무시
+      if (document.querySelector('[data-markdown-editor]')) return;
+
+      // 기본 WebView 내비게이션(페이지 뒤로/앞으로) 차단
+      e.preventDefault();
+      if (e.button === 3) {
+        goBack();
+      } else {
+        goForward();
+      }
+    };
+
+    // auxclick: 일부 환경에서 보조 버튼의 기본 동작을 막기 위해 함께 차단
+    const handleAuxClick = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) e.preventDefault();
+    };
+
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('auxclick', handleAuxClick);
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('auxclick', handleAuxClick);
+    };
+  }, [isFocused, renamingPath, goBack, goForward]);
 }
