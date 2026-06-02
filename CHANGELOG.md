@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.32] - 2026-06-02
+
+### Added
+- **클라우드 파일 썸네일 OS 네이티브 생성**: 구글 드라이브 등 클라우드 경로의 이미지/동영상 썸네일을 macOS QuickLook(QLThumbnailGenerator) / Windows Shell 썸네일로 생성 — 파일 풀 다운로드 없이 제공자 서버 썸네일을 활용해 첫 진입 속도 약 20~50배 향상
+- **디렉토리 목록 디스크 영속 캐시**: 앱 재시작 후에도 한번 방문한 폴더를 즉시 표시한 뒤 백그라운드에서 최신화 (구글 드라이브 콜드스타트 대응)
+- **썸네일 백그라운드 프리워밍 + 폴더 프리페치**: 폴더 진입 직후 보이는 범위 썸네일을 미리 생성하고, 폴더 hover 시 목록을 선반입
+
+### Changed
+- 썸네일 전달을 base64 IPC에서 **asset 프로토콜(convertFileSrc) 직접 로드**로 전환 (메인스레드 부담·전송 용량 감소, WebView 캐시 활용)
+- 전역 썸네일 인메모리 LRU 캐시 도입 — 폴더 재방문 시 IPC 없이 즉시 표시
+- 썸네일 동시성 3→6으로 상향, 클라우드 썸네일은 CPU 퍼밋을 점유하지 않아 병렬도 향상
+- 대용량 폴더에 content-visibility 렌더링 최적화 적용, 방문 폴더 메모리 캐시에 LRU 상한 적용
+
+### Fixed
+- 콜드 마운트 시 간헐 발생하던 무한 렌더 루프(Maximum update depth)와 Tauri 드래그 리스너 레이스(`listeners[eventId]`) 수정 — 임시 트레이 드래그 상태 콜백을 안정화하고 동일 값일 때 리렌더를 생략하도록 개선
+
 ## [1.27.30] - 2026-06-01
 
 ### Added

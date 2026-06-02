@@ -94,10 +94,11 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "app"
-version = "1.27.31"
+version = "1.27.32"
 dependencies = [
  "arboard",
  "base64 0.22.1",
+ "block",
  "dirs",
  "ffmpeg-sidecar",
  "hwarang",

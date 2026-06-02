@@ -33,6 +33,7 @@ interface FileGridProps {
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   onSortChange?: (by: string) => void;
+  onHoverFolder?: (path: string) => void;
   themeVars: ThemeVars | null;
   hideText?: boolean;
   folderTags?: Record<string, string>;
@@ -42,8 +43,11 @@ interface FileGridProps {
   isDraggingNow?: boolean;
 }
 
+// content-visibility 최적화를 켜는 항목 수 임계치 (이하에서는 오버헤드 회피)
+const CV_THRESHOLD = 150;
+
 // --- ListRow 컴포넌트 ---
-const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onHoverFolder, themeVars, cvEnabled }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -58,7 +62,9 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
   onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
+  onHoverFolder?: (path: string) => void;
   themeVars: ThemeVars | null;
+  cvEnabled?: boolean;
 }) {
   const nativeIcon = useNativeIcon(entry, 16);
   const {
@@ -82,8 +88,9 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       data-file-path={entry.path}
       {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
       className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer select-none"
-      style={{ backgroundColor: bg, opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1, border, pointerEvents: isPending ? 'none' : undefined }}
+      style={{ backgroundColor: bg, opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1, border, pointerEvents: isPending ? 'none' : undefined, ...(cvEnabled ? { contentVisibility: 'auto', containIntrinsicSize: '100% 28px' } as React.CSSProperties : {}) }}
       title={formatTooltip(entry)}
+      onMouseEnter={entry.is_dir && onHoverFolder ? () => onHoverFolder(entry.path) : undefined}
       onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
         if (isPending) return;
@@ -137,7 +144,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
 });
 
 // --- DetailsRow 컴포넌트 ---
-const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, themeVars }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onHoverFolder, themeVars, cvEnabled }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -152,7 +159,9 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
   onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
+  onHoverFolder?: (path: string) => void;
   themeVars: ThemeVars | null;
+  cvEnabled?: boolean;
 }) {
   const nativeIcon = useNativeIcon(entry, 14);
   const {
@@ -183,9 +192,10 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
     <tr
       data-file-path={entry.path}
       {...(entry.is_dir ? { 'data-folder-drop-target': entry.path } : {})}
-      style={{ backgroundColor: bg ?? undefined, opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1, outline, pointerEvents: isPending ? 'none' : undefined }}
+      style={{ backgroundColor: bg ?? undefined, opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1, outline, pointerEvents: isPending ? 'none' : undefined, ...(cvEnabled ? { contentVisibility: 'auto', containIntrinsicSize: '100% 26px' } as React.CSSProperties : {}) }}
       className="cursor-pointer hover:opacity-80"
       title={formatTooltip(entry)}
+      onMouseEnter={entry.is_dir && onHoverFolder ? () => onHoverFolder(entry.path) : undefined}
       onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
         if (isPending) return;
@@ -245,7 +255,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, themeVars, instanceId, pendingCopyPaths, draggedPaths, isDraggingNow }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, onHoverFolder, themeVars, instanceId, pendingCopyPaths, draggedPaths, isDraggingNow, cvEnabled }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
@@ -261,11 +271,13 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
   onSortChange?: (by: string) => void;
+  onHoverFolder?: (path: string) => void;
   themeVars: ThemeVars | null;
   instanceId?: string;
   pendingCopyPaths?: Set<string>;
   draggedPaths?: Set<string>;
   isDraggingNow?: boolean;
+  cvEnabled?: boolean;
 }) {
   const storageKey = `qf_details_cols_${instanceId ?? 'default'}`;
 
@@ -379,7 +391,9 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
               onOpenInNewTab={onOpenInNewTab}
               onContextMenu={onContextMenu}
               onRenameCommit={onRenameCommit}
+              onHoverFolder={onHoverFolder}
               themeVars={themeVars}
+              cvEnabled={cvEnabled}
             />
           </React.Fragment>
           );
@@ -414,6 +428,7 @@ export default memo(function FileGrid({
   onContextMenu,
   onRenameCommit,
   onSortChange,
+  onHoverFolder,
   themeVars,
   hideText = false,
   folderTags,
@@ -422,6 +437,8 @@ export default memo(function FileGrid({
   draggedPaths,
   isDraggingNow = false,
 }: FileGridProps) {
+  // 대용량 폴더에서만 content-visibility 활성화
+  const cvEnabled = entries.length > CV_THRESHOLD;
   const scrollStorageKey = useMemo(
     () => currentPath ? createScrollStorageKey('file-grid', instanceId ?? 'default', viewMode, currentPath) : null,
     [currentPath, instanceId, viewMode],
@@ -648,11 +665,13 @@ export default memo(function FileGrid({
                   onOpenInNewTab={onOpenInNewTab}
                   onContextMenu={onContextMenu}
                   onRenameCommit={onRenameCommit}
+                  onHoverFolder={onHoverFolder}
                   themeVars={themeVars}
                   hideText={hideText}
                   tag={folderTags?.[entry.path]}
                   isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
                   isDimmed={isDraggingNow && !!draggedPaths?.has(entry.path)}
+                  cvEnabled={cvEnabled}
                 />
               </React.Fragment>
             );
@@ -689,7 +708,9 @@ export default memo(function FileGrid({
                   onOpenInNewTab={onOpenInNewTab}
                   onContextMenu={onContextMenu}
                   onRenameCommit={onRenameCommit}
+                  onHoverFolder={onHoverFolder}
                   themeVars={themeVars}
+                  cvEnabled={cvEnabled}
                 />
               </React.Fragment>
             );
@@ -701,6 +722,8 @@ export default memo(function FileGrid({
       {viewMode === 'details' && (
         <DetailsTable
           entries={entries}
+          cvEnabled={cvEnabled}
+          onHoverFolder={onHoverFolder}
           selectedPaths={selectedPaths}
           focusedIndex={focusedIndex}
           renamingPath={renamingPath}

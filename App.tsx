@@ -145,8 +145,14 @@ export default function App() {
   }, [sidebarCollapsed]);
 
   // explorerPath: { path, key } 구조로 같은 경로를 다시 설정해도 useEffect가 반응하도록 함
+  // 단, 동일 경로 재요청(=FileExplorer→onPathChange 에코)에서는 key를 올리지 않아
+  // navigateTo→onPathChange→key++→prop변경→effect 재실행의 자기 에코 무한루프를 차단한다.
+  // (같은 경로 재진입은 어차피 index.tsx:585 가드가 막으므로 관측상 동작 변화 없음)
   const [explorerRequest, setExplorerRequest] = useState<{ path: string; key: number }>({ path: '', key: 0 });
+  const lastExplorerPathRef = useRef('');
   const setExplorerPath = useCallback((path: string) => {
+    if (path === lastExplorerPathRef.current) return;
+    lastExplorerPathRef.current = path;
     setExplorerRequest(prev => ({ path, key: prev.key + 1 }));
   }, []);
 
@@ -155,7 +161,10 @@ export default function App() {
     return (localStorage.getItem('qf_split_mode') as 'single' | 'horizontal' | 'vertical') || 'single';
   });
   const [explorerRequest2, setExplorerRequest2] = useState<{ path: string; key: number }>({ path: '', key: 0 });
+  const lastExplorerPath2Ref = useRef('');
   const setExplorerPath2 = useCallback((path: string) => {
+    if (path === lastExplorerPath2Ref.current) return;
+    lastExplorerPath2Ref.current = path;
     setExplorerRequest2(prev => ({ path, key: prev.key + 1 }));
   }, []);
   const [focusedPane, setFocusedPane] = useState<0 | 1>(0);
@@ -168,8 +177,22 @@ export default function App() {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [trayDragStates, setTrayDragStates] = useState<Record<string, { dragging: boolean; trayActive: boolean }>>({});
   const handleTrayDragStateChange = useCallback((instanceId: string, dragging: boolean, trayActive: boolean) => {
-    setTrayDragStates(prev => ({ ...prev, [instanceId]: { dragging, trayActive } }));
+    setTrayDragStates(prev => {
+      // 값이 동일하면 같은 참조 반환 → 리렌더 스킵 (무한 루프 차단)
+      const cur = prev[instanceId];
+      if (cur && cur.dragging === dragging && cur.trayActive === trayActive) return prev;
+      return { ...prev, [instanceId]: { dragging, trayActive } };
+    });
   }, []);
+  // 인스턴스별 안정적 래퍼 — 매 렌더 새 함수가 자식 effect를 재구독시키지 않도록 useCallback 고정
+  const handleTrayDragStateDefault = useCallback(
+    (dragging: boolean, trayActive: boolean) => handleTrayDragStateChange('default', dragging, trayActive),
+    [handleTrayDragStateChange],
+  );
+  const handleTrayDragStatePane1 = useCallback(
+    (dragging: boolean, trayActive: boolean) => handleTrayDragStateChange('pane-1', dragging, trayActive),
+    [handleTrayDragStateChange],
+  );
   const trayDropOverlayVisible = useMemo(
     () => Object.values(trayDragStates).some(state => state.dragging),
     [trayDragStates],
@@ -1125,7 +1148,7 @@ export default function App() {
               sharedClipboard={sharedClipboard}
               onClipboardChange={setSharedClipboard}
               onStageFilesToTray={handleStageFilesToTray}
-              onTrayDragStateChange={(dragging, trayActive) => handleTrayDragStateChange('default', dragging, trayActive)}
+              onTrayDragStateChange={handleTrayDragStateDefault}
               recentRoots={recentRoots}
             />
           </div>
@@ -1166,7 +1189,7 @@ export default function App() {
                   sharedClipboard={sharedClipboard}
                   onClipboardChange={setSharedClipboard}
                   onStageFilesToTray={handleStageFilesToTray}
-                  onTrayDragStateChange={(dragging, trayActive) => handleTrayDragStateChange('pane-1', dragging, trayActive)}
+                  onTrayDragStateChange={handleTrayDragStatePane1}
                   recentRoots={recentRoots}
                 />
               </div>

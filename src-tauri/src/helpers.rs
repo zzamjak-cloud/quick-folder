@@ -15,6 +15,20 @@ use image::{imageops, RgbaImage};
 use crate::modules::types::{FileEntry, FileType, classify_file};
 use crate::modules::error::{AppError, Result};
 
+/// 클라우드 스토리지 경로 감지 (구글드라이브 / iCloud / OneDrive / Dropbox)
+/// 바이트 직접 읽기가 느린(온디맨드 hydration) 경로 → OS 네이티브 썸네일을 우선 사용.
+/// utils/pathUtils.ts 의 isCloudPath()와 동일한 판정 규칙.
+pub fn is_cloud_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    if lower.contains("/library/cloudstorage/") { return true; }     // macOS 구글드라이브/Dropbox 등
+    if lower.contains("/library/mobile documents/") { return true; } // macOS iCloud
+    if lower.contains("google drive") || lower.contains("googledrive") { return true; }
+    let norm = lower.replace('\\', "/");
+    if norm.contains("/onedrive") { return true; }
+    if norm.contains("/dropbox") { return true; }
+    false
+}
+
 /// 출력 경로 중복 회피: 이미 존재하면 suffix + 번호 추가
 ///
 /// 파일 생성 시 기존 파일과 이름이 겹치지 않도록 자동으로 번호를 추가합니다.

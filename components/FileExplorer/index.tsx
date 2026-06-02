@@ -30,7 +30,7 @@ import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDr
 import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
 import { PreviewModals } from './PreviewModals';
-import { cancelAllQueued } from './hooks/invokeQueue';
+import { cancelAllQueued, queuedInvokeLow } from './hooks/invokeQueue';
 import { runCopyWithProgress } from './hooks/runCopyWithProgress';
 import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
@@ -240,7 +240,47 @@ export default function FileExplorer({
 
   // --- 디렉토리 로딩 ---
   const loadRequestRef = useRef(0); // 동시 요청 시 마지막 요청만 반영
-  const entriesCacheRef = useRef<Map<string, FileEntry[]>>(new Map()); // 탭별 entries 캐시
+  const entriesCacheRef = useRef<Map<string, FileEntry[]>>(new Map()); // 방문 폴더 entries 캐시
+  const prefetchInFlightRef = useRef<Set<string>>(new Set()); // 프리페치 중복 방지
+
+  // 디렉토리 캐시 LRU 갱신 (상한 50폴더 — stale은 계속 표시하되 메모리 무한 증가 방지)
+  const cacheEntries = useCallback((p: string, list: FileEntry[]) => {
+    const m = entriesCacheRef.current;
+    if (m.has(p)) m.delete(p);
+    m.set(p, list);
+    if (m.size > 50) {
+      const oldest = m.keys().next().value;
+      if (oldest !== undefined) m.delete(oldest);
+    }
+  }, []);
+
+  // 현재 썸네일 크기를 ref로 보관 (프리워밍이 loadDirectory 의존성을 늘리지 않도록)
+  const thumbnailSizeRef = useRef(thumbnailSize);
+  thumbnailSizeRef.current = thumbnailSize;
+
+  // 백그라운드 프리워밍 (#B): 진입 직후 보이는 범위+α 썸네일을 저우선순위로 미리 디스크 캐시에 생성
+  // → 스크롤 시점엔 이미 준비됨. 화면에 보이는 카드(고우선순위 큐)를 방해하지 않음.
+  const prewarmThumbnails = useCallback((list: FileEntry[]) => {
+    const size = thumbnailSizeRef.current;
+    const run = () => {
+      let count = 0;
+      for (const e of list) {
+        if (count >= 120) break;
+        if (e.is_dir) continue;
+        const lower = e.name.toLowerCase();
+        if (lower.endsWith('.psd') || lower.endsWith('.psb')) continue; // 그리드 미표시
+        let cmd = '';
+        if (e.file_type === 'image') cmd = 'get_file_thumbnail_path';
+        else if (e.file_type === 'video') cmd = 'get_video_thumbnail_path';
+        else continue;
+        count++;
+        queuedInvokeLow(cmd, { path: e.path, size }).promise.catch(() => {});
+      }
+    };
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
+    if (typeof ric === 'function') ric(run, { timeout: 1500 });
+    else setTimeout(run, 300);
+  }, []);
 
   const loadDirectory = useCallback(async (path: string) => {
     if (!path) return;
@@ -267,6 +307,21 @@ export default function FileExplorer({
     // 캐시 히트와 무관하게 항상 백그라운드에서 최신 데이터 요청
     setLoading(true);
     const requestId = ++loadRequestRef.current;
+    let freshArrived = false;
+
+    // 메모리 캐시 미스 시 디스크 영속 캐시로 stale 즉시 표시
+    // (구글 드라이브 등: 앱 재시작 후에도 한번 본 폴더는 즉시 뜨고 백그라운드에서 갱신)
+    if (!cached && !isRecent && !isSystemRoot) {
+      invoke<FileEntry[] | null>('read_cached_listing', { path })
+        .then(diskCached => {
+          // 신선한 결과가 이미 도착했거나 다른 폴더로 이동했으면 무시
+          if (requestId !== loadRequestRef.current || freshArrived) return;
+          if (!diskCached || diskCached.length === 0) return;
+          setEntries(sortEntries(diskCached, sortBy, sortDir));
+        })
+        .catch(() => {});
+    }
+
     try {
       const result = isRecent
         ? await invoke<FileEntry[]>('get_recent_files', { roots: recentRoots, days: 7 })
@@ -275,10 +330,15 @@ export default function FileExplorer({
         : await invoke<FileEntry[]>('list_directory', { path });
       // 이미 다른 디렉토리로 이동한 경우 무시
       if (requestId !== loadRequestRef.current) return;
-      if (!isRecent && !isSystemRoot) entriesCacheRef.current.set(path, result); // 캐시 갱신 (특수 경로 제외)
+      freshArrived = true;
+      if (!isRecent && !isSystemRoot) {
+        cacheEntries(path, result); // 메모리 캐시 갱신 (LRU)
+        invoke('write_cached_listing', { path, entries: result }).catch(() => {}); // 디스크 영속 캐시 갱신
+      }
       // 최근항목은 이미 서버에서 수정시간 내림차순 정렬된 상태
       const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(result, sortBy, sortDir);
       setEntries(sortedResult);
+      if (!isRecent && !isSystemRoot) prewarmThumbnails(sortedResult); // 백그라운드 프리워밍
       // 캐시 히트가 없었던 경우에만 선택 초기화 (첫 진입)
       if (!cached) {
         setSelectedPaths([]);
@@ -308,7 +368,29 @@ export default function FileExplorer({
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [sortBy, sortDir, recentRoots]);
+  }, [sortBy, sortDir, recentRoots, cacheEntries, prewarmThumbnails]);
+
+  // 인접 폴더 프리페치 (#6): 폴더 hover 시 유휴 시점에 저우선순위로 목록 선반입
+  // 썸네일 큐를 방해하지 않고, 진입 시점에는 이미 캐시되어 즉시 표시됨
+  const prefetchDirectory = useCallback((path: string) => {
+    if (!path) return;
+    if (entriesCacheRef.current.has(path)) return; // 이미 캐시됨
+    if (prefetchInFlightRef.current.has(path)) return; // 중복 방지
+    prefetchInFlightRef.current.add(path);
+    const run = () => {
+      const { promise } = queuedInvokeLow<FileEntry[]>('list_directory', { path });
+      promise
+        .then(result => {
+          cacheEntries(path, result);
+          invoke('write_cached_listing', { path, entries: result }).catch(() => {});
+        })
+        .catch(() => {})
+        .finally(() => { prefetchInFlightRef.current.delete(path); });
+    };
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
+    if (typeof ric === 'function') ric(run, { timeout: 1000 });
+    else setTimeout(run, 200);
+  }, [cacheEntries]);
 
   // --- 탭 관리 ---
   const {
@@ -1332,6 +1414,7 @@ export default function FileExplorer({
               onOpenInNewTab={openEntryInNewTab}
               onContextMenu={handleContextMenu}
               onRenameCommit={fileOps.handleRenameCommit}
+              onHoverFolder={prefetchDirectory}
               onSortChange={(by) => {
                 const typedBy = by as 'name' | 'size' | 'modified' | 'type';
                 if (sortBy === typedBy) {

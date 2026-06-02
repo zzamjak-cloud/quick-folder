@@ -1,7 +1,7 @@
 // 공통 타입 정의
 
 // 파일 타입 enum (프론트엔드 FileType 유니온과 1:1 매핑)
-#[derive(serde::Serialize, Clone, Copy)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum FileType {
     Image,
@@ -15,7 +15,7 @@ pub enum FileType {
 }
 
 // 파일 항목 구조체 (파일 탐색기용)
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct FileEntry {
     pub name: String,
     pub path: String,

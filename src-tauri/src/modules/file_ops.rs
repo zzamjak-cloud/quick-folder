@@ -2,6 +2,7 @@
 //! list_directory, rename, copy, move, delete, zip 등 17개 Tauri command 포함
 
 use crate::helpers::*;
+use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
 use super::types::{FileEntry, FileType, classify_file};
 use super::error::{AppError, Result};
 
@@ -75,6 +76,59 @@ pub async fn list_directory(path: String) -> Result<Vec<FileEntry>> {
     })
     .await
     .map_err(|e| AppError::Internal(format!("디렉토리 읽기 태스크 실패: {}", e)))?
+}
+
+// ===== 디렉토리 목록 영속 캐시 (구글 드라이브 등 콜드스타트 대응) =====
+// 마지막으로 본 목록을 디스크에 저장 → 앱 재시작 후 재방문 시 즉시 stale 표시 + 백그라운드 갱신
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedListing {
+    path: String,
+    entries: Vec<FileEntry>,
+}
+
+fn dir_listing_cache_file(app: &tauri::AppHandle, path: &str) -> Result<std::path::PathBuf> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let dir = thumbnail_cache_root(app)?.join("dir_listings");
+    std::fs::create_dir_all(&dir).ok();
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    Ok(dir.join(format!("{:x}.json", hasher.finish())))
+}
+
+// 디스크에 저장된 디렉토리 목록 조회 (없으면 None). 빠른 로컬 읽기.
+#[tauri::command]
+pub async fn read_cached_listing(app: tauri::AppHandle, path: String) -> Result<Option<Vec<FileEntry>>> {
+    let file = dir_listing_cache_file(&app, &path)?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<Vec<FileEntry>>> {
+        if !file.exists() {
+            return Ok(None);
+        }
+        let data = std::fs::read(&file)?;
+        match serde_json::from_slice::<CachedListing>(&data) {
+            // 해시 충돌 방어: 저장된 path가 일치할 때만 사용
+            Ok(c) if c.path == path => Ok(Some(c.entries)),
+            _ => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("디렉토리 캐시 읽기 실패: {}", e)))?
+}
+
+// 디렉토리 목록을 디스크 캐시에 저장 (fire-and-forget).
+#[tauri::command]
+pub async fn write_cached_listing(app: tauri::AppHandle, path: String, entries: Vec<FileEntry>) -> Result<()> {
+    let file = dir_listing_cache_file(&app, &path)?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        let cached = CachedListing { path, entries };
+        if let Ok(data) = serde_json::to_vec(&cached) {
+            std::fs::write(&file, data).ok();
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("디렉토리 캐시 저장 실패: {}", e)))?
 }
 
 // ===== 가상 시스템 루트 목록 =====
@@ -179,15 +233,23 @@ pub async fn write_text_file(path: String, content: String) -> Result<()> {
 
 // ===== 이름 변경 =====
 
-// 이름 바꾸기 (대상 경로에 동일 이름 파일 존재 시 에러)
-#[tauri::command]
-pub async fn rename_item(old_path: String, new_path: String) -> Result<()> {
+async fn rename_item_impl(old_path: String, new_path: String, app_cache: Option<&std::path::Path>) -> Result<()> {
     if old_path == new_path { return Ok(()); }
     if std::path::Path::new(&new_path).exists() {
         return Err(AppError::AlreadyExists("동일한 이름의 파일이 존재합니다.".to_string()));
     }
+    if let Some(app_cache) = app_cache {
+        invalidate_thumbnail_cache_paths_in_root(app_cache, std::slice::from_ref(&old_path));
+    }
     std::fs::rename(&old_path, &new_path)?;
     Ok(())
+}
+
+// 이름 바꾸기 (대상 경로에 동일 이름 파일 존재 시 에러)
+#[tauri::command]
+pub async fn rename_item(app: tauri::AppHandle, old_path: String, new_path: String) -> Result<()> {
+    let app_cache = thumbnail_cache_root(&app)?;
+    rename_item_impl(old_path, new_path, Some(&app_cache)).await
 }
 
 // ===== 복사 관련 헬퍼 =====
@@ -211,6 +273,7 @@ fn collect_copy_jobs(
     sources: &[String],
     dest: &std::path::Path,
     overwrite: bool,
+    app_cache: Option<&std::path::Path>,
 ) -> Result<Vec<(std::path::PathBuf, std::path::PathBuf)>> {
     let mut jobs = Vec::new();
     for source in sources {
@@ -229,6 +292,9 @@ fn collect_copy_jobs(
             let is_dir = src_path.is_dir();
             dest_path = get_copy_destination(dest, &stem, &ext, is_dir);
         } else if dest_path.exists() && overwrite {
+            if let Some(app_cache) = app_cache {
+                invalidate_thumbnail_cache_paths_in_root(app_cache, &[dest_path.to_string_lossy().to_string()]);
+            }
             if dest_path.is_dir() {
                 std::fs::remove_dir_all(&dest_path)?;
             } else {
@@ -323,8 +389,12 @@ pub async fn check_duplicate_items(sources: Vec<String>, dest: String) -> Result
 // ===== 복사 =====
 
 // 파일/폴더 복사 (재귀 지원, overwrite=true면 기존 파일 덮어쓰기)
-#[tauri::command]
-pub async fn copy_items(sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<()> {
+async fn copy_items_impl(
+    sources: Vec<String>,
+    dest: String,
+    overwrite: Option<bool>,
+    app_cache: Option<&std::path::Path>,
+) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     for source in &sources {
         let src_path = std::path::Path::new(source);
@@ -341,6 +411,9 @@ pub async fn copy_items(sources: Vec<String>, dest: String, overwrite: Option<bo
             dest_path = get_copy_destination(std::path::Path::new(&dest), &stem, &ext, is_dir);
         } else if dest_path.exists() && overwrite {
             // 덮어쓰기: 기존 파일/폴더 삭제 후 복사
+            if let Some(app_cache) = app_cache {
+                invalidate_thumbnail_cache_paths_in_root(app_cache, &[dest_path.to_string_lossy().to_string()]);
+            }
             if dest_path.is_dir() {
                 std::fs::remove_dir_all(&dest_path)?;
             } else {
@@ -360,9 +433,17 @@ pub async fn copy_items(sources: Vec<String>, dest: String, overwrite: Option<bo
     Ok(())
 }
 
+// 파일/폴더 복사 (재귀 지원, overwrite=true면 기존 파일 덮어쓰기)
+#[tauri::command]
+pub async fn copy_items(app: tauri::AppHandle, sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<()> {
+    let app_cache = thumbnail_cache_root(&app)?;
+    copy_items_impl(sources, dest, overwrite, Some(&app_cache)).await
+}
+
 /// 파일 단위 진행률(0~100%)을 Channel로 전송하는 복사 (클라우드 드라이브 등 대용량 복사용)
 #[tauri::command]
 pub async fn copy_items_with_progress(
+    app: tauri::AppHandle,
     sources: Vec<String>,
     dest: String,
     overwrite: Option<bool>,
@@ -370,10 +451,11 @@ pub async fn copy_items_with_progress(
 ) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     let dest_path = std::path::PathBuf::from(dest);
+    let app_cache = thumbnail_cache_root(&app)?;
     let on_progress = on_progress.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let jobs = collect_copy_jobs(&sources, &dest_path, overwrite)?;
+        let jobs = collect_copy_jobs(&sources, &dest_path, overwrite, Some(&app_cache))?;
         let mut total_files = 0u64;
         for (src, _) in &jobs {
             total_files += count_files_to_copy(src)?;
@@ -453,8 +535,12 @@ pub async fn duplicate_items(paths: Vec<String>) -> Result<Vec<String>> {
 // ===== 이동 =====
 
 // 파일/폴더 이동 (overwrite=true면 기존 파일 덮어쓰기)
-#[tauri::command]
-pub async fn move_items(sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<()> {
+async fn move_items_impl(
+    sources: Vec<String>,
+    dest: String,
+    overwrite: Option<bool>,
+    app_cache: Option<&std::path::Path>,
+) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     for source in &sources {
         let src_path = std::path::Path::new(source);
@@ -466,6 +552,9 @@ pub async fn move_items(sources: Vec<String>, dest: String, overwrite: Option<bo
         // 대상에 같은 이름 파일이 있으면 덮어쓰기 처리
         if dest_path.exists() && dest_path.canonicalize().ok() != src_path.canonicalize().ok() {
             if overwrite {
+                if let Some(app_cache) = app_cache {
+                    invalidate_thumbnail_cache_paths_in_root(app_cache, &[dest_path.to_string_lossy().to_string()]);
+                }
                 if dest_path.is_dir() {
                     std::fs::remove_dir_all(&dest_path)?;
                 } else {
@@ -474,6 +563,10 @@ pub async fn move_items(sources: Vec<String>, dest: String, overwrite: Option<bo
             } else {
                 continue; // 덮어쓰기 안 함: 스킵
             }
+        }
+
+        if let Some(app_cache) = app_cache {
+            invalidate_thumbnail_cache_paths_in_root(app_cache, std::slice::from_ref(source));
         }
 
         // 같은 볼륨이면 rename, 다른 볼륨이면 복사 후 삭제
@@ -488,6 +581,13 @@ pub async fn move_items(sources: Vec<String>, dest: String, overwrite: Option<bo
         }
     }
     Ok(())
+}
+
+// 파일/폴더 이동 (overwrite=true면 기존 파일 덮어쓰기)
+#[tauri::command]
+pub async fn move_items(app: tauri::AppHandle, sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<()> {
+    let app_cache = thumbnail_cache_root(&app)?;
+    move_items_impl(sources, dest, overwrite, Some(&app_cache)).await
 }
 
 // ===== 삭제 =====
@@ -541,9 +641,12 @@ fn remove_directly(p: &std::path::Path, _path: &str) -> Result<()> {
 // 파일/폴더 삭제 (use_trash=true면 휴지통, 클라우드 경로는 직접 삭제)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 // macOS: NsFileManager 사용 (Finder AppleScript 대비 빠르고 권한 문제 없음)
-#[tauri::command]
-pub async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<()> {
+async fn delete_items_impl(paths: Vec<String>, use_trash: bool, app_cache: Option<std::path::PathBuf>) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        if let Some(app_cache) = app_cache {
+            invalidate_thumbnail_cache_paths_in_root(&app_cache, &paths);
+        }
+
         #[cfg(target_os = "macos")]
         let ctx = {
             use trash::macos::{DeleteMethod, TrashContextExtMacos};
@@ -566,12 +669,19 @@ pub async fn delete_items(paths: Vec<String>, use_trash: bool) -> Result<()> {
     }).await.map_err(|e| AppError::Internal(format!("삭제 작업 실패: {}", e)))?
 }
 
+#[tauri::command]
+pub async fn delete_items(app: tauri::AppHandle, paths: Vec<String>, use_trash: bool) -> Result<()> {
+    let app_cache = thumbnail_cache_root(&app)?;
+    delete_items_impl(paths, use_trash, Some(app_cache)).await
+}
+
 // Windows 관리자 권한으로 파일/폴더 삭제
 // PowerShell Start-Process -Verb RunAs로 UAC 프롬프트 표시
 #[tauri::command]
-pub async fn delete_items_elevated(paths: Vec<String>) -> Result<()> {
+pub async fn delete_items_elevated(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
+        let _ = crate::modules::image_ops::invalidate_thumbnail_cache_paths(&app, &paths);
         // 임시 PowerShell 스크립트 파일에 삭제 명령 작성
         let temp_dir = std::env::temp_dir();
         let script_path = temp_dir.join(format!("qf_elevated_delete_{}.ps1", std::process::id()));
@@ -618,6 +728,7 @@ pub async fn delete_items_elevated(paths: Vec<String>) -> Result<()> {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = app;
         let _ = paths;
         Err(AppError::UnsupportedPlatform("관리자 권한 삭제는 Windows에서만 지원됩니다".to_string()))
     }
@@ -906,9 +1017,10 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             // 정상 이름 변경
-            let result = rename_item(
+            let result = rename_item_impl(
                 old_path.to_string_lossy().to_string(),
                 new_path.to_string_lossy().to_string(),
+                None,
             ).await;
             assert!(result.is_ok());
             assert!(!old_path.exists());
@@ -917,9 +1029,10 @@ mod tests {
             // 이미 존재하는 이름으로 변경 시도 — AlreadyExists 에러
             let another = test_dir.join("another.txt");
             fs::write(&another, "test2").unwrap();
-            let result2 = rename_item(
+            let result2 = rename_item_impl(
                 another.to_string_lossy().to_string(),
                 new_path.to_string_lossy().to_string(),
+                None,
             ).await;
             assert!(result2.is_err());
             assert!(matches!(result2.unwrap_err(), AppError::AlreadyExists(_)));
@@ -995,9 +1108,10 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             // 복사
-            let result = copy_items(
+            let result = copy_items_impl(
                 vec![file1.to_string_lossy().to_string()],
                 dest.to_string_lossy().to_string(),
+                None,
                 None,
             ).await;
             assert!(result.is_ok());
@@ -1020,9 +1134,10 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             // 이동
-            let result = move_items(
+            let result = move_items_impl(
                 vec![file1.to_string_lossy().to_string()],
                 dest.to_string_lossy().to_string(),
+                None,
                 None,
             ).await;
             assert!(result.is_ok());
@@ -1101,7 +1216,7 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             // 직접 삭제 (use_trash = false)
-            let result = delete_items(vec![file1.to_string_lossy().to_string()], false).await;
+            let result = delete_items_impl(vec![file1.to_string_lossy().to_string()], false, None).await;
             assert!(result.is_ok());
             assert!(!file1.exists());
         });

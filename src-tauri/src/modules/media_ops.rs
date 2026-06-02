@@ -2,7 +2,7 @@
 
 use crate::helpers::find_unique_path;
 use crate::modules::tool_ops::find_ffmpeg_path;
-use crate::modules::image_ops::cached_thumbnail;
+use crate::modules::image_ops::{cached_thumbnail, ensure_cached_thumbnail, invalidate_thumbnail_cache_paths};
 use super::error::{AppError, Result};
 
 // --- 동영상 썸네일 (OS 네이티브 API, 디스크 캐시) ---
@@ -18,6 +18,32 @@ pub async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32)
         cached_thumbnail(&cache_dir, &path, size, false, || {
             get_native_video_thumbnail(&path, size)
         })
+    })
+    .await
+    .map_err(|e| AppError::VideoProcessing(e.to_string()))?
+}
+
+// 동영상 썸네일 캐시 PNG 경로 반환 (asset 프로토콜용 — base64/IPC 왕복 없음)
+#[tauri::command]
+pub async fn get_video_thumbnail_path(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>> {
+    use tauri::Manager;
+
+    let cache_dir = app.path().app_cache_dir()
+        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
+        .join("video_thumbnails");
+
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+        // 클라우드 경로: OS 썸네일 우선(풀 다운로드 회피) + mtime 무시 캐시 키
+        let is_cloud = crate::helpers::is_cloud_path(&path);
+        let cache_path = ensure_cached_thumbnail(&cache_dir, &path, size, false, is_cloud, || {
+            if is_cloud {
+                if let Ok(Some(bytes)) = get_os_thumbnail(&path, size) {
+                    return Ok(Some(bytes));
+                }
+            }
+            get_native_video_thumbnail(&path, size)
+        })?;
+        Ok(cache_path.map(|p| p.to_string_lossy().to_string()))
     })
     .await
     .map_err(|e| AppError::VideoProcessing(e.to_string()))?
@@ -131,9 +157,146 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
     }
 }
 
-// Windows: Shell COM 인터페이스로 동영상 썸네일 추출
+// 클라우드 파일용 OS 네이티브 썸네일 (풀 다운로드 없이 제공자 썸네일 활용)
+// macOS: QuickLook(QLThumbnailImageCreate), Windows: Shell(IShellItemImageFactory)
+// 구글드라이브/OneDrive 등은 OS 썸네일 핸들러로 서버측 썸네일을 즉시 제공 → 첫 진입 비용 대폭 절감
+pub(crate) fn get_os_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
+    #[cfg(target_os = "macos")]
+    { get_quicklook_thumbnail(path, size) }
+    #[cfg(target_os = "windows")]
+    { get_windows_shell_thumbnail(path, size) }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    { let _ = (path, size); Ok(None) }
+}
+
+// macOS: CGImage → PNG 바이트 (NSBitmapImageRep). cg_image는 호출측 소유(여기서 release 안 함)
+#[cfg(target_os = "macos")]
+unsafe fn cgimage_to_png(cg_image: *mut std::ffi::c_void) -> Option<Vec<u8>> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+
+    let bitmap_class = Class::get("NSBitmapImageRep")?;
+    let bitmap: *mut Object = msg_send![bitmap_class, alloc];
+    let bitmap: *mut Object = msg_send![bitmap, initWithCGImage: cg_image];
+    if bitmap.is_null() {
+        return None;
+    }
+    let dict_cls = Class::get("NSDictionary")?;
+    let empty_dict: *mut Object = msg_send![dict_cls, dictionary];
+    let png_data: *mut Object = msg_send![
+        bitmap,
+        representationUsingType: 4u64 // NSBitmapImageFileTypePNG
+        properties: empty_dict
+    ];
+    let result = if !png_data.is_null() {
+        let length: usize = msg_send![png_data, length];
+        let bytes: *const u8 = msg_send![png_data, bytes];
+        Some(std::slice::from_raw_parts(bytes, length).to_vec())
+    } else {
+        None
+    };
+    let _: () = msg_send![bitmap, release];
+    result
+}
+
+// macOS: 최신 QLThumbnailGenerator(비동기) — Finder와 동일 경로.
+// File Provider 서버 썸네일을 활용해 클라우드 파일을 풀 다운로드 없이 빠르게 생성.
+// 비동기 completion을 dispatch_semaphore로 동기화하여 spawn_blocking 안에서 사용.
+#[cfg(target_os = "macos")]
+fn get_quicklook_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
+    use objc::runtime::{Class, Object};
+    use objc::{msg_send, sel, sel_impl};
+    use block::ConcreteBlock;
+    use std::ffi::c_void;
+    use std::sync::{Arc, Mutex};
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGSize { width: f64, height: f64 }
+
+    extern "C" {
+        fn dispatch_semaphore_create(value: isize) -> *mut Object;
+        fn dispatch_semaphore_signal(sema: *mut Object) -> isize;
+        fn dispatch_semaphore_wait(sema: *mut Object, timeout: u64) -> isize;
+        fn dispatch_time(when: u64, delta: i64) -> u64;
+    }
+
+    unsafe {
+        let nsstring_cls = Class::get("NSString")
+            .ok_or_else(|| AppError::Internal("NSString not found".to_string()))?;
+        let cpath = std::ffi::CString::new(path)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let path_ns: *mut Object = msg_send![nsstring_cls, stringWithUTF8String: cpath.as_ptr()];
+        let nsurl_cls = Class::get("NSURL")
+            .ok_or_else(|| AppError::Internal("NSURL not found".to_string()))?;
+        let url: *mut Object = msg_send![nsurl_cls, fileURLWithPath: path_ns];
+        if url.is_null() {
+            return Ok(None);
+        }
+
+        // QLThumbnailGenerationRequest(initWithFileAtURL:size:scale:representationTypes:)
+        let req_cls = Class::get("QLThumbnailGenerationRequest")
+            .ok_or_else(|| AppError::Internal("QLThumbnailGenerationRequest not found".to_string()))?;
+        let cg_size = CGSize { width: size as f64, height: size as f64 };
+        let scale: f64 = 1.0;
+        // QLThumbnailGenerationRequestRepresentationTypeThumbnail = 1<<2
+        let rep_types: u64 = 1 << 2;
+        let req: *mut Object = msg_send![req_cls, alloc];
+        let req: *mut Object = msg_send![
+            req,
+            initWithFileAtURL: url
+            size: cg_size
+            scale: scale
+            representationTypes: rep_types
+        ];
+        if req.is_null() {
+            return Ok(None);
+        }
+
+        let gen_cls = Class::get("QLThumbnailGenerator")
+            .ok_or_else(|| AppError::Internal("QLThumbnailGenerator not found".to_string()))?;
+        let generator: *mut Object = msg_send![gen_cls, sharedGenerator];
+
+        let sema = dispatch_semaphore_create(0);
+        let out: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        let out_cb = out.clone();
+        let sema_addr = sema as usize;
+
+        // completion: (thumbnail: QLThumbnailRepresentation*, error: NSError*)
+        let handler = ConcreteBlock::new(move |rep: *mut Object, _err: *mut Object| {
+            if !rep.is_null() {
+                let cg: *mut c_void = msg_send![rep, CGImage];
+                if !cg.is_null() {
+                    if let Some(png) = cgimage_to_png(cg) {
+                        if let Ok(mut g) = out_cb.lock() { *g = Some(png); }
+                    }
+                    // cg는 representation 소유 → release 안 함
+                }
+            }
+            let _ = dispatch_semaphore_signal(sema_addr as *mut Object);
+        });
+        let handler = handler.copy();
+
+        let _: () = msg_send![
+            generator,
+            generateBestRepresentationForRequest: req
+            completionHandler: &*handler
+        ];
+
+        // 최대 10초 대기 (completion은 별도 GCD 큐에서 실행되므로 데드락 없음)
+        let timeout = dispatch_time(0, 10_000_000_000i64);
+        let _ = dispatch_semaphore_wait(sema, timeout);
+
+        let _: () = msg_send![req, release];
+
+        let r = out.lock().ok().and_then(|mut g| g.take());
+        Ok(r)
+    }
+}
+
+// Windows: Shell COM 인터페이스로 썸네일 추출 (영상·이미지·클라우드 파일 공용)
 #[cfg(target_os = "windows")]
-fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
+fn get_windows_shell_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
     use winapi::um::combaseapi::{CoInitializeEx, CoUninitialize};
     use winapi::um::objbase::COINIT_MULTITHREADED;
     use winapi::shared::windef::HBITMAP;
@@ -262,6 +425,12 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
 
         Ok(Some(png_buf.into_inner()))
     }
+}
+
+// Windows 동영상 썸네일: 범용 Shell 썸네일 함수에 위임
+#[cfg(target_os = "windows")]
+fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
+    get_windows_shell_thumbnail(path, size)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -1041,38 +1210,7 @@ pub async fn video_to_gif(
 // --- 썸네일 캐시 무효화 ---
 #[tauri::command]
 pub fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
-    use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
-    use tauri::Manager;
-
-    let sizes: [u32; 10] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
-    let cache_dir_names = ["img_thumbnails", "psd_thumbnails", "video_thumbnails"];
-    let app_cache = app.path().app_cache_dir().map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
-
-    for path in &paths {
-        let modified = std::fs::metadata(path)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-
-        for &size in &sizes {
-            let mut hasher = DefaultHasher::new();
-            path.hash(&mut hasher);
-            modified.hash(&mut hasher);
-            size.hash(&mut hasher);
-            let cache_key = format!("{:x}", hasher.finish());
-
-            for dir_name in &cache_dir_names {
-                let cache_file = app_cache.join(dir_name).join(format!("{}.png", cache_key));
-                if cache_file.exists() {
-                    std::fs::remove_file(&cache_file).ok();
-                }
-            }
-        }
-    }
-    Ok(())
+    invalidate_thumbnail_cache_paths(&app, &paths)
 }
 
 fn apply_no_window(cmd: &mut std::process::Command) {

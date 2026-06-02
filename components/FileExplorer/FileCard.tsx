@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { Play } from 'lucide-react';
@@ -7,6 +7,7 @@ import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils'
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvoke } from './hooks/invokeQueue';
+import { thumbKey, getThumb, setThumb } from './hooks/thumbnailCache';
 
 interface FileCardProps {
   entry: FileEntry;
@@ -22,11 +23,13 @@ interface FileCardProps {
   onOpenInNewTab?: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, paths: string[]) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
+  onHoverFolder?: (path: string) => void; // 폴더 hover 시 프리페치 트리거
   themeVars: ThemeVars | null;
   hideText?: boolean;
   tag?: string; // 폴더 태그 (프로젝트명)
   isPending?: boolean; // 복사/이동 진행 중 (비활성 + 스피너 표시)
   isDimmed?: boolean;
+  cvEnabled?: boolean; // content-visibility 최적화 (대용량 폴더)
 }
 
 export default memo(function FileCard({
@@ -43,13 +46,19 @@ export default memo(function FileCard({
   onOpenInNewTab,
   onContextMenu,
   onRenameCommit,
+  onHoverFolder,
   themeVars,
   hideText = false,
   tag,
   isPending = false,
   isDimmed = false,
+  cvEnabled = false,
 }: FileCardProps) {
-  const [thumbnail, setThumbnail] = useState<string | null>(null);
+  // 초기값을 전역 캐시에서 동기 조회 → 재방문 시 깜빡임 없이 즉시 표시
+  const [thumbnail, setThumbnail] = useState<string | null>(() => {
+    const cached = getThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
+    return cached ? cached : null;
+  });
   const [isVisible, setIsVisible] = useState(false);
   const [imageDims, setImageDims] = useState<[number, number] | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -84,41 +93,48 @@ export default memo(function FileCard({
     return () => observer.disconnect();
   }, []);
 
-  // 화면에 보일 때 이미지/PSD 썸네일 자동 요청
-  // thumbnailSize 변경 시 디바운스(300ms) 후 새 해상도로 재요청 (빠른 줌 시 과부하 방지)
-  // queuedInvoke로 동시성 제한 (최대 4개) → 대량 파일 표시 시 크래시 방지
+  // 화면에 보일 때 이미지/동영상 썸네일 자동 요청
+  // - 전역 캐시 우선 조회 → 재방문 시 IPC 없이 즉시 표시
+  // - 미조회 시 캐시 PNG '경로'만 받아 convertFileSrc로 asset 프로토콜 직접 로드
+  //   (base64-over-IPC 제거: 메인스레드 부담·33% 용량팽창 없음, WebView 자체 캐시 활용)
+  // - thumbnailSize 변경 시 300ms 디바운스 (빠른 줌 과부하 방지)
   useEffect(() => {
     if (!isVisible || isPending) return;
+    const ft = entry.file_type;
+    // PSD는 성능상 그리드 제외 (우클릭 미리보기로 대체)
+    if (ft !== 'image' && ft !== 'video') return;
+
+    const key = thumbKey(entry.path, thumbnailSize, entry.modified);
+    const cached = getThumb(key);
+    if (cached !== undefined) {
+      // '' = 썸네일 없음 확정 → 아이콘 폴백
+      setThumbnail(cached ? cached : null);
+      return;
+    }
 
     const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize;
     lastThumbnailSizeRef.current = thumbnailSize;
-
-    // 크기 변경이 아닌 첫 로드는 즉시, 크기 변경은 디바운스
     const delay = sizeChanged ? 300 : 0;
 
     let cancelFn: (() => void) | null = null;
-
     const timer = setTimeout(() => {
-      const requestSize = thumbnailSize;
-      let cmd = '';
-      if (entry.file_type === 'image') cmd = 'get_file_thumbnail';
-      // PSD 썸네일은 성능 문제로 그리드에서 제외 (우클릭 미리보기로 대체)
-      else if (entry.file_type === 'video') cmd = 'get_video_thumbnail';
-
-      if (cmd) {
-        const { promise, cancel } = queuedInvoke<string | null>(cmd, { path: entry.path, size: requestSize });
-        cancelFn = cancel;
-        promise
-          .then(b64 => { if (b64) setThumbnail(`data:image/png;base64,${b64}`); })
-          .catch(() => {/* 취소 또는 실패 무시 */});
-      }
+      const cmd = ft === 'image' ? 'get_file_thumbnail_path' : 'get_video_thumbnail_path';
+      const { promise, cancel } = queuedInvoke<string | null>(cmd, { path: entry.path, size: thumbnailSize });
+      cancelFn = cancel;
+      promise
+        .then(p => {
+          const url = p ? convertFileSrc(p) : '';
+          setThumb(key, url); // '' 도 캐시 → 불필요한 재요청 방지
+          setThumbnail(url ? url : null);
+        })
+        .catch(() => {/* 취소 또는 실패 무시 (실패는 캐시하지 않음) */});
     }, delay);
 
     return () => {
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, thumbnailSize, isPsd]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, thumbnailSize]);
 
   // 화면에 보일 때 이미지 규격 조회 (이미지만, PSD 제외 - 성능)
   useEffect(() => {
@@ -162,6 +178,8 @@ export default memo(function FileCard({
   // 카드 크기 계산
   const cardWidth = thumbnailSize + 16;
   const imgHeight = thumbnailSize;
+  // content-visibility용 추정 높이 (썸네일 + 파일명/크기 텍스트 영역)
+  const estCardHeight = thumbnailSize + (hideText ? 12 : 48);
 
   const bg = isSelected
     ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)')
@@ -185,10 +203,14 @@ export default memo(function FileCard({
         outline: 'none',
         opacity: isPending ? 0.5 : isDimmed ? 0.35 : isCut ? 0.4 : 1,
         pointerEvents: isPending ? 'none' : undefined,
+        // 대용량 폴더: 화면 밖 카드의 렌더링(레이아웃/페인트) 스킵 — DOM에는 유지되어
+        // 박스드래그 선택(querySelectorAll)·IntersectionObserver 정상 동작
+        ...(cvEnabled ? { contentVisibility: 'auto', containIntrinsicSize: `${cardWidth}px ${estCardHeight}px` } as React.CSSProperties : {}),
       }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
+      onMouseEnter={entry.is_dir && onHoverFolder ? () => onHoverFolder(entry.path) : undefined}
       onMouseDown={(e) => {
         e.stopPropagation();
         // 이름 변경 중에는 드래그 시작 금지 (의도치 않은 폴더 이동 방지)
