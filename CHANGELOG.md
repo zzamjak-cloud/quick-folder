@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.34] - 2026-06-05
+
+### Changed
+- Windows에서 `.tsx`, `.css`, `.plist`, `.rs` 및 연결 프로그램 없는 흐릿한 문서 아이콘을 `.md`/`.json`과 동일한 `.txt` 문서 아이콘으로 통일
+
+### Fixed
+- 시트 패킹 셀 크기 수동 입력 시 값이 즉시 덮어씌워지던 문제 수정 — 드래프트 입력 + **적용** 버튼으로 미리보기 갱신 시점 분리, 최소 셀 크기 1px 지원
+
 ## [1.27.33] - 2026-06-05
 
 ### Added

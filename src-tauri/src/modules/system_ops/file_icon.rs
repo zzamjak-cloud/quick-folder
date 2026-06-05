@@ -105,6 +105,10 @@ fn should_use_text_document_icon(is_dir: bool, ext: &str) -> bool {
             | "lock"
             | "log"
             | "csv"
+            | "tsx"
+            | "css"
+            | "plist"
+            | "rs"
     )
 }
 
@@ -223,15 +227,6 @@ fn resolve_windows_icon_query(path: &str) -> (String, u32) {
     } else {
         (format!("dummy.{}", ext), FILE_ATTRIBUTE_NORMAL)
     }
-}
-
-#[cfg(target_os = "windows")]
-fn stock_icon_lookup_flags(size: u32) -> u32 {
-    const SHGSI_ICON: u32 = 0x0000_0100;
-    const SHGSI_LARGEICON: u32 = 0x0000_0000;
-    const SHGSI_SHELLICONSIZE: u32 = 0x0000_0004;
-
-    SHGSI_ICON | if size >= 64 { SHGSI_SHELLICONSIZE } else { SHGSI_LARGEICON }
 }
 
 #[cfg(target_os = "windows")]
@@ -362,24 +357,6 @@ unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Ve
 }
 
 #[cfg(target_os = "windows")]
-fn get_stock_doc_assoc_icon_bytes(size: u32) -> Option<Vec<u8>> {
-    use winapi::um::winuser::DestroyIcon;
-
-    const SIID_DOCASSOC: i32 = 1;
-
-    unsafe {
-        let info = get_stock_icon_info(SIID_DOCASSOC, stock_icon_lookup_flags(size))?;
-        if info.h_icon.is_null() {
-            return None;
-        }
-
-        let bytes = hicon_to_png_bytes(info.h_icon);
-        DestroyIcon(info.h_icon);
-        bytes
-    }
-}
-
-#[cfg(target_os = "windows")]
 fn get_text_document_icon_bytes(size: u32) -> Option<Vec<u8>> {
     // Windows Shell의 .txt 연결 아이콘을 종이문서 기본 스타일로 재사용한다.
     get_native_icon_bytes_inner("dummy.txt", size)
@@ -459,8 +436,9 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         }
 
         let icon_index = shfi.iIcon;
+        // 연결 프로그램 없는 흐릿한 기본 문서 아이콘도 .md/.json과 동일한 .txt 문서 아이콘으로 통일
         if should_use_doc_assoc_icon(is_dir, icon_index, get_stock_doc_no_assoc_index()) {
-            if let Some(bytes) = get_stock_doc_assoc_icon_bytes(size) {
+            if let Some(bytes) = get_text_document_icon_bytes(size) {
                 return Some(bytes);
             }
         }
@@ -608,6 +586,10 @@ mod tests {
         assert!(should_use_text_document_icon(false, "json"));
         assert!(should_use_text_document_icon(false, "yaml"));
         assert!(should_use_text_document_icon(false, "toml"));
+        assert!(should_use_text_document_icon(false, "tsx"));
+        assert!(should_use_text_document_icon(false, "css"));
+        assert!(should_use_text_document_icon(false, "plist"));
+        assert!(should_use_text_document_icon(false, "rs"));
         assert!(!should_use_text_document_icon(true, "md"));
         assert!(!should_use_text_document_icon(false, "txt"));
         assert!(!should_use_text_document_icon(false, "js"));

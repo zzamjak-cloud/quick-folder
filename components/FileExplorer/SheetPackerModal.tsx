@@ -15,6 +15,8 @@ const DEFAULT_PRESETS = [
 ];
 
 const STORAGE_KEY = 'qf_sheet_presets';
+const CELL_SIZE_MIN = 1;
+const CELL_SIZE_MAX = 4096;
 
 interface CustomPreset {
   label: string;
@@ -45,6 +47,9 @@ export default function SheetPackerModal({
   const [rows, setRows] = useState(Math.ceil(count / defaultCols));
   const [cellWidth, setCellWidth] = useState(256);
   const [cellHeight, setCellHeight] = useState(256);
+  // 셀 크기는 입력 중 미리보기 갱신 없이 드래프트로만 편집, "적용" 시 반영
+  const [draftCellWidth, setDraftCellWidth] = useState('256');
+  const [draftCellHeight, setDraftCellHeight] = useState('256');
 
   // 미리보기
   const [preview, setPreview] = useState<string | null>(null);
@@ -170,6 +175,28 @@ export default function SheetPackerModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const applyCellSize = useCallback((w: number, h: number) => {
+    setCellWidth(w);
+    setCellHeight(h);
+    setDraftCellWidth(String(w));
+    setDraftCellHeight(String(h));
+  }, []);
+
+  const handleApplyCellSize = () => {
+    const w = Number.parseInt(draftCellWidth, 10);
+    const h = Number.parseInt(draftCellHeight, 10);
+    if (
+      !Number.isFinite(w) || !Number.isFinite(h)
+      || w < CELL_SIZE_MIN || h < CELL_SIZE_MIN
+      || w > CELL_SIZE_MAX || h > CELL_SIZE_MAX
+    ) {
+      setError(`셀 크기는 ${CELL_SIZE_MIN}~${CELL_SIZE_MAX} 사이의 정수여야 합니다`);
+      return;
+    }
+    setError('');
+    applyCellSize(w, h);
   };
 
   // 커스텀 프리셋 추가
@@ -342,23 +369,41 @@ export default function SheetPackerModal({
             </label>
             <input
               type="number"
-              value={cellWidth}
-              min={8}
-              max={4096}
-              onChange={e => setCellWidth(Math.max(8, Number(e.target.value)))}
-              onKeyDown={e => e.stopPropagation()}
+              value={draftCellWidth}
+              min={CELL_SIZE_MIN}
+              max={CELL_SIZE_MAX}
+              onChange={e => setDraftCellWidth(e.target.value)}
+              onKeyDown={e => {
+                e.stopPropagation();
+                if (e.key === 'Enter') handleApplyCellSize();
+              }}
               style={inputStyle}
             />
             <span className="text-xs" style={{ color: themeVars?.muted }}>×</span>
             <input
               type="number"
-              value={cellHeight}
-              min={8}
-              max={4096}
-              onChange={e => setCellHeight(Math.max(8, Number(e.target.value)))}
-              onKeyDown={e => e.stopPropagation()}
+              value={draftCellHeight}
+              min={CELL_SIZE_MIN}
+              max={CELL_SIZE_MAX}
+              onChange={e => setDraftCellHeight(e.target.value)}
+              onKeyDown={e => {
+                e.stopPropagation();
+                if (e.key === 'Enter') handleApplyCellSize();
+              }}
               style={inputStyle}
             />
+            <button
+              type="button"
+              className="px-2.5 py-1 text-[10px] rounded-md transition-colors cursor-pointer"
+              style={{
+                backgroundColor: themeVars?.accent ?? '#3b82f6',
+                color: '#fff',
+                border: '1px solid transparent',
+              }}
+              onClick={handleApplyCellSize}
+            >
+              적용
+            </button>
             {/* 프리셋 버튼들 */}
             <div className="flex gap-1 flex-wrap">
               {allPresets.map(p => (
@@ -372,7 +417,7 @@ export default function SheetPackerModal({
                     color: cellWidth === p.w && cellHeight === p.h ? '#fff' : (themeVars?.text ?? '#e5e7eb'),
                     border: `1px solid ${cellWidth === p.w && cellHeight === p.h ? 'transparent' : (themeVars?.border ?? '#334155')}`,
                   }}
-                  onClick={() => { setCellWidth(p.w); setCellHeight(p.h); }}
+                  onClick={() => applyCellSize(p.w, p.h)}
                 >
                   {p.label}
                 </button>
