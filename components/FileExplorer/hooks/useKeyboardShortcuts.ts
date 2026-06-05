@@ -246,6 +246,8 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       if (ctrl && e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault();
         if (currentPath && currentPath !== RECENT_PATH) {
+          setSearchQuery('');
+          setIsSearchActive(false);
           setIsGlobalSearchOpen(true);
         }
         return;
@@ -262,13 +264,13 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // Ctrl+F: 검색 토글
-      if (ctrl && !e.shiftKey && e.key === 'f') {
+      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault();
-        setIsSearchActive(prev => {
-          if (prev) { setSearchQuery(''); return false; }
-          setTimeout(() => searchInputRef.current?.focus(), 0);
-          return true;
-        });
+        if (currentPath && currentPath !== RECENT_PATH) {
+          setSearchQuery('');
+          setIsSearchActive(false);
+          setIsGlobalSearchOpen(true);
+        }
         return;
       }
 

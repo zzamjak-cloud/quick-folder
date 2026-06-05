@@ -167,6 +167,12 @@ export function adjustColorForTheme(hexColor: string, isDark: boolean): string {
   return hslToHex(h, s, l);
 }
 
+export function isDarkHexColor(hexColor: string): boolean {
+  const rgb = hexToRgb(hexColor);
+  if (!rgb) return true;
+  return relativeLuminance(rgb) < 0.35;
+}
+
 function computeThemeVars(bgHex: string, accentHex: string): ThemeVars | null {
   const bgRgb = hexToRgb(bgHex);
   const accentRgb = hexToRgb(accentHex);

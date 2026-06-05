@@ -14,6 +14,100 @@ fn icon_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, S
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn crop_transparent_rgba(
+    pixels: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Option<(Vec<u8>, u32, u32)> {
+    if width == 0 || height == 0 || pixels.len() != (width * height * 4) as usize {
+        return None;
+    }
+
+    let mut min_x = width;
+    let mut min_y = height;
+    let mut max_x = 0;
+    let mut max_y = 0;
+    let mut found = false;
+
+    for y in 0..height {
+        for x in 0..width {
+            let alpha_index = ((y * width + x) * 4 + 3) as usize;
+            if pixels[alpha_index] == 0 {
+                continue;
+            }
+
+            found = true;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+    }
+
+    if !found {
+        return Some((pixels, width, height));
+    }
+
+    let padding = 2;
+    min_x = min_x.saturating_sub(padding);
+    min_y = min_y.saturating_sub(padding);
+    max_x = (max_x + padding).min(width - 1);
+    max_y = (max_y + padding).min(height - 1);
+
+    let cropped_width = max_x - min_x + 1;
+    let cropped_height = max_y - min_y + 1;
+
+    if cropped_width == width && cropped_height == height {
+        return Some((pixels, width, height));
+    }
+
+    let mut cropped = vec![0u8; (cropped_width * cropped_height * 4) as usize];
+    for row in 0..cropped_height {
+        let src_start = (((min_y + row) * width + min_x) * 4) as usize;
+        let src_end = src_start + (cropped_width * 4) as usize;
+        let dst_start = (row * cropped_width * 4) as usize;
+        let dst_end = dst_start + (cropped_width * 4) as usize;
+        cropped[dst_start..dst_end].copy_from_slice(&pixels[src_start..src_end]);
+    }
+
+    Some((cropped, cropped_width, cropped_height))
+}
+
+fn should_use_doc_assoc_icon(is_dir: bool, icon_index: i32, doc_no_assoc_index: Option<i32>) -> bool {
+    !is_dir && doc_no_assoc_index.map(|index| index == icon_index).unwrap_or(false)
+}
+
+fn file_extension(path: &str) -> String {
+    std::path::Path::new(path)
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
+fn should_use_text_document_icon(is_dir: bool, ext: &str) -> bool {
+    if is_dir {
+        return false;
+    }
+
+    // Shell이 빈 문서로 돌려주는 텍스트 기반 문서는 Windows의 .txt 문서 아이콘으로 맞춘다.
+    matches!(
+        ext,
+        "md"
+            | "markdown"
+            | "json"
+            | "jsonc"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "ini"
+            | "conf"
+            | "config"
+            | "lock"
+            | "log"
+            | "csv"
+    )
+}
+
 // OS 네이티브 파일 아이콘 가져오기 (확장자별 캐시)
 #[tauri::command]
 pub fn get_file_icon(path: String, size: u32) -> Result<Option<String>, String> {
@@ -65,12 +159,21 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
         if workspace.is_null() { return None; }
 
         let str_class = Class::get("NSString")?;
-        let c_path = CString::new(path).ok()?;
-        let ns_path: *mut Object = msg_send![str_class, stringWithUTF8String: c_path.as_ptr()];
-        if ns_path.is_null() { return None; }
+        let is_dir = std::path::Path::new(path).is_dir();
+        let ext = file_extension(path);
 
-        // iconForFile: → NSImage
-        let icon: *mut Object = msg_send![workspace, iconForFile: ns_path];
+        let icon: *mut Object = if should_use_text_document_icon(is_dir, &ext) {
+            // 텍스트 기반 문서는 실제 앱 연결 대신 macOS의 .txt 파일 타입 아이콘으로 맞춘다.
+            let c_type = CString::new("txt").ok()?;
+            let ns_type: *mut Object = msg_send![str_class, stringWithUTF8String: c_type.as_ptr()];
+            if ns_type.is_null() { return None; }
+            msg_send![workspace, iconForFileType: ns_type]
+        } else {
+            let c_path = CString::new(path).ok()?;
+            let ns_path: *mut Object = msg_send![str_class, stringWithUTF8String: c_path.as_ptr()];
+            if ns_path.is_null() { return None; }
+            msg_send![workspace, iconForFile: ns_path]
+        };
         if icon.is_null() { return None; }
 
         let target_size = NSSize { width: size as f64, height: size as f64 };
@@ -104,15 +207,203 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
+fn resolve_windows_icon_query(path: &str) -> (String, u32) {
+    use std::path::Path;
+    use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
+
+    let p = Path::new(path);
+    if p.is_dir() {
+        return (path.to_string(), 0);
+    }
+
+    let ext = file_extension(path);
+
+    if ext.is_empty() {
+        (path.to_string(), 0)
+    } else {
+        (format!("dummy.{}", ext), FILE_ATTRIBUTE_NORMAL)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn stock_icon_lookup_flags(size: u32) -> u32 {
+    const SHGSI_ICON: u32 = 0x0000_0100;
+    const SHGSI_LARGEICON: u32 = 0x0000_0000;
+    const SHGSI_SHELLICONSIZE: u32 = 0x0000_0004;
+
+    SHGSI_ICON | if size >= 64 { SHGSI_SHELLICONSIZE } else { SHGSI_LARGEICON }
+}
+
+#[cfg(target_os = "windows")]
+fn stock_icon_sys_index_flags() -> u32 {
+    const SHGSI_SYSICONINDEX: u32 = 0x0000_4000;
+    SHGSI_SYSICONINDEX
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct SHStockIconInfo {
+    cb_size: u32,
+    h_icon: winapi::shared::windef::HICON,
+    i_sys_image_index: i32,
+    i_icon: i32,
+    sz_path: [u16; 260],
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn get_stock_icon_info(stock_id: i32, flags: u32) -> Option<SHStockIconInfo> {
     use std::mem;
-    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_SYSICONINDEX};
-    use winapi::um::combaseapi::CoInitializeEx;
-    use winapi::um::winuser::{GetIconInfo, DestroyIcon, ICONINFO, GetDC, ReleaseDC};
+    use winapi::shared::winerror::S_OK;
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SHGetStockIconInfo(siid: i32, u_flags: u32, info: *mut SHStockIconInfo) -> i32;
+    }
+
+    let mut info = SHStockIconInfo {
+        cb_size: mem::size_of::<SHStockIconInfo>() as u32,
+        h_icon: std::ptr::null_mut(),
+        i_sys_image_index: 0,
+        i_icon: 0,
+        sz_path: [0; 260],
+    };
+
+    if SHGetStockIconInfo(stock_id, flags, &mut info) == S_OK {
+        Some(info)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Vec<u8>> {
+    use std::mem;
+    use winapi::um::winuser::{GetIconInfo, ICONINFO, GetDC, ReleaseDC};
     use winapi::um::wingdi::{
         CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject,
         BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
     };
+
+    let mut icon_info: ICONINFO = mem::zeroed();
+    if GetIconInfo(h_icon, &mut icon_info) == 0 {
+        return None;
+    }
+
+    let hbm_color = icon_info.hbmColor;
+    if hbm_color.is_null() {
+        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+        return None;
+    }
+
+    let mut bmp: BITMAP = mem::zeroed();
+    GetObjectW(
+        hbm_color as _,
+        mem::size_of::<BITMAP>() as i32,
+        &mut bmp as *mut _ as *mut _,
+    );
+
+    let width = bmp.bmWidth as u32;
+    let height = bmp.bmHeight as u32;
+
+    if width == 0 || height == 0 {
+        DeleteObject(icon_info.hbmColor as _);
+        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+        return None;
+    }
+
+    let bmi_size = mem::size_of::<BITMAPINFOHEADER>();
+    let mut bmi_buf = vec![0u8; bmi_size + 4 * 256];
+    let bmi = &mut *(bmi_buf.as_mut_ptr() as *mut winapi::um::wingdi::BITMAPINFO);
+    bmi.bmiHeader.biSize = bmi_size as u32;
+    bmi.bmiHeader.biWidth = width as i32;
+    bmi.bmiHeader.biHeight = -(height as i32);
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    let hdc_screen = GetDC(std::ptr::null_mut());
+    let hdc_mem = CreateCompatibleDC(hdc_screen);
+    let old_bmp = SelectObject(hdc_mem, hbm_color as _);
+
+    let mut pixels: Vec<u8> = vec![0u8; (width * height * 4) as usize];
+    GetDIBits(
+        hdc_mem,
+        hbm_color,
+        0,
+        height,
+        pixels.as_mut_ptr() as *mut _,
+        bmi,
+        DIB_RGB_COLORS,
+    );
+
+    SelectObject(hdc_mem, old_bmp);
+    DeleteDC(hdc_mem);
+    ReleaseDC(std::ptr::null_mut(), hdc_screen);
+    DeleteObject(icon_info.hbmColor as _);
+    if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+
+    for chunk in pixels.chunks_exact_mut(4) {
+        chunk.swap(0, 2);
+    }
+
+    let has_alpha = pixels.chunks_exact(4).any(|c| c[3] != 0);
+    if !has_alpha {
+        for chunk in pixels.chunks_exact_mut(4) {
+            chunk[3] = 255;
+        }
+    }
+
+    let (pixels, width, height) = crop_transparent_rgba(pixels, width, height)?;
+    let img = image::RgbaImage::from_raw(width, height, pixels)?;
+    let mut png_buf = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut png_buf, image::ImageFormat::Png).ok()?;
+
+    Some(png_buf.into_inner())
+}
+
+#[cfg(target_os = "windows")]
+fn get_stock_doc_assoc_icon_bytes(size: u32) -> Option<Vec<u8>> {
+    use winapi::um::winuser::DestroyIcon;
+
+    const SIID_DOCASSOC: i32 = 1;
+
+    unsafe {
+        let info = get_stock_icon_info(SIID_DOCASSOC, stock_icon_lookup_flags(size))?;
+        if info.h_icon.is_null() {
+            return None;
+        }
+
+        let bytes = hicon_to_png_bytes(info.h_icon);
+        DestroyIcon(info.h_icon);
+        bytes
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_text_document_icon_bytes(size: u32) -> Option<Vec<u8>> {
+    // Windows Shell의 .txt 연결 아이콘을 종이문서 기본 스타일로 재사용한다.
+    get_native_icon_bytes_inner("dummy.txt", size)
+}
+
+#[cfg(target_os = "windows")]
+fn get_stock_doc_no_assoc_index() -> Option<i32> {
+    const SIID_DOCNOASSOC: i32 = 0;
+
+    unsafe {
+        get_stock_icon_info(SIID_DOCNOASSOC, stock_icon_sys_index_flags())
+            .map(|info| info.i_sys_image_index)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
+    use std::mem;
+    use winapi::um::shellapi::{
+        SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_SYSICONINDEX,
+        SHGFI_USEFILEATTRIBUTES,
+    };
+    use winapi::um::combaseapi::CoInitializeEx;
+    use winapi::um::winuser::DestroyIcon;
     use winapi::shared::windef::HICON;
     use winapi::shared::winerror::S_OK;
 
@@ -136,16 +427,31 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         // COINIT_APARTMENTTHREADED = 0x2 — Shell/IImageList STA
         let _ = CoInitializeEx(std::ptr::null_mut(), 0x2);
 
+        let is_dir = std::path::Path::new(path).is_dir();
+        let original_ext = file_extension(path);
+        if should_use_text_document_icon(is_dir, &original_ext) {
+            if let Some(bytes) = get_text_document_icon_bytes(size) {
+                return Some(bytes);
+            }
+        }
+
+        let (query_path, file_attributes) = resolve_windows_icon_query(path);
+        let use_file_attributes = file_attributes != 0;
+
         // 1. 파일의 시스템 아이콘 인덱스 가져오기
-        let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        let wide_path: Vec<u16> = query_path.encode_utf16().chain(std::iter::once(0)).collect();
         let mut shfi: SHFILEINFOW = mem::zeroed();
+        let mut info_flags = SHGFI_SYSICONINDEX;
+        if use_file_attributes {
+            info_flags |= SHGFI_USEFILEATTRIBUTES;
+        }
 
         let result = SHGetFileInfoW(
             wide_path.as_ptr(),
-            0,
+            file_attributes,
             &mut shfi,
             mem::size_of::<SHFILEINFOW>() as u32,
-            SHGFI_SYSICONINDEX,
+            info_flags,
         );
 
         if result == 0 {
@@ -153,6 +459,11 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         }
 
         let icon_index = shfi.iIcon;
+        if should_use_doc_assoc_icon(is_dir, icon_index, get_stock_doc_no_assoc_index()) {
+            if let Some(bytes) = get_stock_doc_assoc_icon_bytes(size) {
+                return Some(bytes);
+            }
+        }
 
         // 2. 요청 크기에 맞는 이미지 리스트 가져오기
         // 256x256 시도 → 48x48 폴백 → 32x32 폴백
@@ -196,12 +507,16 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         // SHGetImageList 경로 실패 시 SHGetFileInfo(SHGFI_ICON) 직접 획득 (vtable/OS 차이 대비)
         if h_icon.is_null() {
             let mut shfi_direct: SHFILEINFOW = mem::zeroed();
+            let mut direct_flags = SHGFI_ICON | SHGFI_LARGEICON;
+            if use_file_attributes {
+                direct_flags |= SHGFI_USEFILEATTRIBUTES;
+            }
             let ok = SHGetFileInfoW(
                 wide_path.as_ptr(),
-                0,
+                file_attributes,
                 &mut shfi_direct,
                 mem::size_of::<SHFILEINFOW>() as u32,
-                SHGFI_ICON | SHGFI_LARGEICON,
+                direct_flags,
             );
             if ok != 0 && !shfi_direct.hIcon.is_null() {
                 h_icon = shfi_direct.hIcon;
@@ -212,97 +527,90 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
             return None;
         }
 
-        // 3. HICON → 비트맵 픽셀 데이터 추출
-        let mut icon_info: ICONINFO = mem::zeroed();
-        if GetIconInfo(h_icon, &mut icon_info) == 0 {
-            DestroyIcon(h_icon);
-            return None;
-        }
-
-        let hbm_color = icon_info.hbmColor;
-        if hbm_color.is_null() {
-            if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
-            DestroyIcon(h_icon);
-            return None;
-        }
-
-        let mut bmp: BITMAP = mem::zeroed();
-        GetObjectW(
-            hbm_color as _,
-            mem::size_of::<BITMAP>() as i32,
-            &mut bmp as *mut _ as *mut _,
-        );
-
-        let width = bmp.bmWidth as u32;
-        let height = bmp.bmHeight as u32;
-
-        if width == 0 || height == 0 {
-            DeleteObject(icon_info.hbmColor as _);
-            if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
-            DestroyIcon(h_icon);
-            return None;
-        }
-
-        // 4. BITMAPINFOHEADER 준비 (top-down DIB)
-        let bmi_size = mem::size_of::<BITMAPINFOHEADER>();
-        let mut bmi_buf = vec![0u8; bmi_size + 4 * 256];
-        let bmi = &mut *(bmi_buf.as_mut_ptr() as *mut winapi::um::wingdi::BITMAPINFO);
-        bmi.bmiHeader.biSize = bmi_size as u32;
-        bmi.bmiHeader.biWidth = width as i32;
-        bmi.bmiHeader.biHeight = -(height as i32);
-        bmi.bmiHeader.biPlanes = 1;
-        bmi.bmiHeader.biBitCount = 32;
-        bmi.bmiHeader.biCompression = BI_RGB;
-
-        // 5. 픽셀 데이터 추출
-        let hdc_screen = GetDC(std::ptr::null_mut());
-        let hdc_mem = CreateCompatibleDC(hdc_screen);
-        let old_bmp = SelectObject(hdc_mem, hbm_color as _);
-
-        let mut pixels: Vec<u8> = vec![0u8; (width * height * 4) as usize];
-
-        GetDIBits(
-            hdc_mem,
-            hbm_color,
-            0,
-            height,
-            pixels.as_mut_ptr() as *mut _,
-            bmi,
-            DIB_RGB_COLORS,
-        );
-
-        SelectObject(hdc_mem, old_bmp);
-
-        // 6. BGRA → RGBA 변환
-        for chunk in pixels.chunks_exact_mut(4) {
-            chunk.swap(0, 2);
-        }
-
-        // 7. 알파 채널이 모두 0인 경우 불투명으로 설정 (구형 아이콘 호환)
-        let has_alpha = pixels.chunks_exact(4).any(|c| c[3] != 0);
-        if !has_alpha {
-            for chunk in pixels.chunks_exact_mut(4) {
-                chunk[3] = 255;
-            }
-        }
-
-        // 8. GDI 리소스 정리
-        DeleteDC(hdc_mem);
-        ReleaseDC(std::ptr::null_mut(), hdc_screen);
-        DeleteObject(icon_info.hbmColor as _);
-        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+        let bytes = hicon_to_png_bytes(h_icon);
         DestroyIcon(h_icon);
-
-        // 9. PNG 인코딩
-        let img = image::RgbaImage::from_raw(width, height, pixels)?;
-        let mut png_buf = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut png_buf, image::ImageFormat::Png).ok()?;
-
-        Some(png_buf.into_inner())
+        bytes
     }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn get_native_icon_bytes(_path: &str, _size: u32) -> Option<Vec<u8>> {
     None
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::{
+        crop_transparent_rgba, resolve_windows_icon_query, should_use_doc_assoc_icon,
+        should_use_text_document_icon,
+    };
+    use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
+
+    #[test]
+    fn crops_transparent_padding_around_icon_pixels() {
+        let width = 10;
+        let height = 10;
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+
+        for y in 4..=5 {
+            for x in 4..=5 {
+                let base = ((y * width + x) * 4) as usize;
+                pixels[base] = 255;
+                pixels[base + 1] = 255;
+                pixels[base + 2] = 255;
+                pixels[base + 3] = 255;
+            }
+        }
+
+        let (cropped, cropped_width, cropped_height) =
+            crop_transparent_rgba(pixels, width, height).expect("crop should succeed");
+
+        assert_eq!(cropped_width, 6);
+        assert_eq!(cropped_height, 6);
+        assert_eq!(cropped.len(), (cropped_width * cropped_height * 4) as usize);
+    }
+
+    #[test]
+    fn uses_extension_query_for_code_like_files() {
+        let (query_path, file_attributes) = resolve_windows_icon_query(r"C:\repo\vite.config.ts");
+        assert_eq!(query_path, "dummy.ts");
+        assert_eq!(file_attributes, FILE_ATTRIBUTE_NORMAL);
+    }
+
+    #[test]
+    fn keeps_real_path_for_extensionless_files() {
+        let path = r"C:\repo\Dockerfile";
+        let (query_path, file_attributes) = resolve_windows_icon_query(path);
+        assert_eq!(query_path, path);
+        assert_eq!(file_attributes, 0);
+    }
+
+    #[test]
+    fn keeps_real_path_for_directories() {
+        let dir = std::env::temp_dir();
+        let dir_str = dir.to_string_lossy().to_string();
+        let (query_path, file_attributes) = resolve_windows_icon_query(&dir_str);
+        assert_eq!(query_path, dir_str);
+        assert_eq!(file_attributes, 0);
+    }
+
+    #[test]
+    fn switches_to_doc_assoc_only_for_non_directory_doc_no_assoc_icon() {
+        assert!(should_use_doc_assoc_icon(false, 12, Some(12)));
+        assert!(!should_use_doc_assoc_icon(true, 12, Some(12)));
+        assert!(!should_use_doc_assoc_icon(false, 12, Some(7)));
+        assert!(!should_use_doc_assoc_icon(false, 12, None));
+    }
+
+    #[test]
+    fn uses_text_document_icon_for_plain_text_document_extensions() {
+        assert!(should_use_text_document_icon(false, "md"));
+        assert!(should_use_text_document_icon(false, "json"));
+        assert!(should_use_text_document_icon(false, "yaml"));
+        assert!(should_use_text_document_icon(false, "toml"));
+        assert!(!should_use_text_document_icon(true, "md"));
+        assert!(!should_use_text_document_icon(false, "txt"));
+        assert!(!should_use_text_document_icon(false, "js"));
+        assert!(!should_use_text_document_icon(false, "html"));
+    }
 }

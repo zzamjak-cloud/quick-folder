@@ -1,4 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import VideoPlayer from './VideoPlayer';
 import ImageCropOverlay from './ImageCropOverlay';
@@ -26,6 +27,45 @@ interface PreviewModalsProps {
   onOpenImageResize?: (path: string) => void;
   onOpenMdEditor: (path: string) => void;
   onFileChanged?: () => void;
+}
+
+interface PreviewIconActionButtonProps {
+  label: string;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  buttonStyle: React.CSSProperties;
+  icon: React.ReactNode;
+  className?: string;
+}
+
+function PreviewIconActionButton({
+  label,
+  onClick,
+  buttonStyle,
+  icon,
+  className = 'hover:opacity-85',
+}: PreviewIconActionButtonProps) {
+  return (
+    <div className="relative flex items-center group/qf-preview-tooltip">
+      <button
+        className={className}
+        style={buttonStyle}
+        onClick={onClick}
+        aria-label={label}
+      >
+        {icon}
+      </button>
+      <div
+        className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] opacity-0 translate-y-1 transition-all duration-150 group-hover/qf-preview-tooltip:translate-y-0 group-hover/qf-preview-tooltip:opacity-100"
+        style={{
+          backgroundColor: 'rgba(15, 23, 42, 0.96)',
+          color: '#f8fafc',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.24)',
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
 }
 
 export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, onRemoveBg, onOpenGifCompress, onGifToMp4, onOpenImageCompress, onOpenImageResize, onOpenMdEditor, onFileChanged }: PreviewModalsProps) {
@@ -63,6 +103,33 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
     background: themeVars?.surface ?? '#0f172a',
     border: `1px solid ${themeVars?.border ?? '#334155'}`,
   };
+  const iconButtonStyle = useCallback((options?: { active?: boolean; accent?: boolean; disabled?: boolean }): React.CSSProperties => {
+    const active = options?.active ?? false;
+    const accent = options?.accent ?? false;
+    const disabled = options?.disabled ?? false;
+    return {
+      width: 30,
+      height: 30,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+      background: accent
+        ? (themeVars?.accent ?? '#4ade80')
+        : active
+          ? (themeVars?.accent20 ?? 'rgba(74, 222, 128, 0.2)')
+          : (themeVars?.surface ?? '#333'),
+      color: accent
+        ? '#000'
+        : active
+          ? (themeVars?.accent ?? '#4ade80')
+          : (themeVars?.text ?? '#e5e7eb'),
+      border: `1px solid ${accent ? 'transparent' : active ? (themeVars?.accent ?? '#4ade80') : (themeVars?.border ?? '#444')}`,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.45 : 1,
+      flexShrink: 0,
+    };
+  }, [themeVars]);
 
   // 이미지 로드 완료 시 표시 크기와 원본 크기 기록
   const handleImageLoad = useCallback(() => {
@@ -296,7 +363,12 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
             className="relative max-w-[94vw] max-h-[92vh] rounded-lg overflow-hidden shadow-2xl flex"
             style={{
               backgroundColor: themeVars?.surface2 ?? '#1e293b',
-              minWidth: actionMode === 'none' ? (editMode ? 360 : undefined) : 'min(1180px, 94vw)',
+              minWidth: actionMode === 'none'
+                ? (editMode ? 'min(760px, 94vw)' : 'min(560px, 94vw)')
+                : 'min(1180px, 94vw)',
+              minHeight: actionMode === 'none'
+                ? (editMode ? 'min(520px, 92vh)' : 'min(360px, 92vh)')
+                : 'min(720px, 92vh)',
               height: actionMode === 'none' ? undefined : '92vh',
             }}
             onClick={(e) => e.stopPropagation()}
@@ -322,40 +394,128 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
             {/* 우측: 헤더 + 이미지 영역 */}
             <div className="flex flex-col flex-1 min-w-0">
             {/* 헤더 1행: 제목 / 압축( gif ) / 닫기 */}
-            <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
-              <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{getFileName(preview.previewImagePath)}</span>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="min-w-0 truncate text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                {getFileName(preview.previewImagePath)}
+              </span>
+              <div className="flex items-center gap-1.5">
                 {canCompressInHeader && preview.previewImagePath && (
                   <>
-                    <button
-                      className="text-xs px-3 py-1 rounded hover:opacity-80"
-                      style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
+                    <PreviewIconActionButton
+                      label="GIF 압축"
+                      buttonStyle={iconButtonStyle()}
                       onClick={(e) => {
                         e.stopPropagation();
                         onOpenGifCompress?.([preview.previewImagePath!]);
                       }}
-                    >
-                      압축
-                    </button>
-                    <button
-                      className="text-xs px-3 py-1 rounded hover:opacity-80"
-                      style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
+                      icon={<Minimize2 size={15} />}
+                    />
+                    <PreviewIconActionButton
+                      label="GIF를 MP4로 변환"
+                      buttonStyle={iconButtonStyle()}
                       onClick={(e) => {
                         e.stopPropagation();
                         const path = preview.previewImagePath!;
                         handleCloseImage();
                         onGifToMp4?.([path]);
                       }}
-                    >
-                      GIF → MP4
-                    </button>
+                      icon={<Film size={15} />}
+                    />
                   </>
                 )}
-                <button className="text-lg px-2 hover:opacity-70" style={{ color: themeVars?.muted ?? '#94a3b8' }} onClick={handleCloseImage}>✕</button>
+                {isCroppable && (
+                  <PreviewIconActionButton
+                    label={editMode ? '편집 종료' : '편집'}
+                    buttonStyle={iconButtonStyle({ active: editMode })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (editMode) {
+                        setEditMode(false);
+                        return;
+                      }
+                      setActionMode('none');
+                      setActiveTool('pen');
+                      setEditMode(true);
+                    }}
+                    icon={<Edit3 size={15} />}
+                  />
+                )}
+                {canImageActions && (
+                  <>
+                    <PreviewIconActionButton
+                      label="이미지 압축"
+                      buttonStyle={iconButtonStyle({ active: actionMode === 'compress' })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditMode(false);
+                        setHasCrop(false);
+                        setActionMode((m) => (m === 'compress' ? 'none' : 'compress'));
+                        if (preview.previewImagePath) onOpenImageCompress?.(preview.previewImagePath);
+                      }}
+                      icon={<Minimize2 size={15} />}
+                    />
+                    <PreviewIconActionButton
+                      label="크기 조정"
+                      buttonStyle={iconButtonStyle({ active: actionMode === 'resize' })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditMode(false);
+                        setHasCrop(false);
+                        setActionMode((m) => (m === 'resize' ? 'none' : 'resize'));
+                        if (preview.previewImagePath) onOpenImageResize?.(preview.previewImagePath);
+                      }}
+                      icon={<Maximize2 size={15} />}
+                    />
+                  </>
+                )}
+                {isCroppable && !editMode && !hasCrop && onRemoveBg && preview.previewImagePath && (
+                  <PreviewIconActionButton
+                    label="배경 제거"
+                    buttonStyle={iconButtonStyle()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const path = preview.previewImagePath!;
+                      handleCloseImage();
+                      onRemoveBg(path);
+                    }}
+                    icon={<Eraser size={15} />}
+                  />
+                )}
+                {editMode && hasDrawStrokes && (
+                  <PreviewIconActionButton
+                    label="PNG 저장"
+                    className="hover:opacity-90"
+                    buttonStyle={iconButtonStyle({ accent: true, disabled: saving })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!saving) handleDrawingSave();
+                    }}
+                    icon={<Save size={15} />}
+                  />
+                )}
+                {isCroppable && !editMode && hasCrop && (
+                  <PreviewIconActionButton
+                    label="PNG 저장"
+                    className="hover:opacity-90"
+                    buttonStyle={iconButtonStyle({ accent: true })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      cropSaveFnRef.current?.();
+                    }}
+                    icon={<Save size={15} />}
+                  />
+                )}
+                <PreviewIconActionButton
+                  label="닫기"
+                  className="hover:opacity-80"
+                  buttonStyle={iconButtonStyle()}
+                  onClick={handleCloseImage}
+                  icon={<X size={16} />}
+                />
               </div>
             </div>
             {/* 헤더 2행: 편집/압축/크기조정/배경제거/PNG저장 */}
-            <div className="flex items-center justify-end gap-2 px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+            <div className="hidden">
               {isCroppable && !editMode && (
                 <button className="text-xs px-3 py-1 rounded hover:opacity-80" style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }} onClick={(e) => { e.stopPropagation(); setEditMode(true); setActiveTool('pen'); }}>편집</button>
               )}
@@ -408,8 +568,8 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
               ref={imgContainerRef}
               className="relative flex items-center justify-center p-4"
               style={{
-                minWidth: actionMode === 'none' ? 300 : 980,
-                minHeight: actionMode === 'none' ? 200 : 0,
+                minWidth: actionMode === 'none' ? 380 : 980,
+                minHeight: actionMode === 'none' ? 240 : 0,
                 flex: actionMode === 'none' ? undefined : '1 1 0',
                 overflow: actionMode === 'none' ? undefined : 'hidden',
               }}
@@ -605,7 +765,7 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
             {/* 푸터 */}
             <div
               className="px-4 py-2 text-xs flex items-center justify-between"
-              style={{ borderTop: `1px solid ${themeVars?.border ?? '#334155'}`, color: themeVars?.muted ?? '#94a3b8' }}
+              style={{ color: themeVars?.muted ?? '#94a3b8' }}
             >
               <span>{imageDims ? `${imageDims.width} x ${imageDims.height}px` : '-'}</span>
               <span>{previewEntry ? formatSize(previewEntry.size, false) : '-'}</span>

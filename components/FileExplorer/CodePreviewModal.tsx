@@ -3,6 +3,7 @@ import { X, Search, ChevronDown, ChevronRight, Maximize2, Minimize2, Edit3, Save
 import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getBaseName, getExtension } from '../../utils/pathUtils';
+import { isDarkHexColor } from '../../hooks/useThemeManagement';
 
 // highlight.js 코어만 임포트 (전체 번들 제외)
 import hljs from 'highlight.js/lib/core';
@@ -212,6 +213,21 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
   const editGutterRef = useRef<HTMLDivElement>(null);
 
   const fileName = getBaseName(path);
+  const isLightTheme = !isDarkHexColor(themeVars.bg ?? themeVars.surface ?? '#0f172a');
+  const codeSurface = isLightTheme ? '#f8fafc' : '#1e1e1e';
+  const codeText = isLightTheme ? '#1f2937' : '#d4d4d4';
+  const codeMuted = isLightTheme ? '#64748b' : themeVars.muted;
+  const codeBorder = isLightTheme ? 'rgba(100, 116, 139, 0.24)' : `${themeVars.border}22`;
+  const codeCommentColor = isLightTheme ? '#4d7c0f' : '#6a9955';
+  const codeKeywordColor = isLightTheme ? '#1d4ed8' : '#569cd6';
+  const codeStringColor = isLightTheme ? '#b45309' : '#ce9178';
+  const codeNumberColor = isLightTheme ? '#0f766e' : '#b5cea8';
+  const codeTypeColor = isLightTheme ? '#0f766e' : '#4ec9b0';
+  const codeFunctionColor = isLightTheme ? '#7c3aed' : '#dcdcaa';
+  const codeMetaColor = isLightTheme ? '#9333ea' : '#c586c0';
+  const codeSelectorColor = isLightTheme ? '#be123c' : '#d7ba7d';
+  const codeAdditionColor = isLightTheme ? '#166534' : '#4ade80';
+  const codeDeletionColor = isLightTheme ? '#b91c1c' : '#f87171';
 
   // ── 파일 로드 및 구문 강조 ──
   useEffect(() => {
@@ -651,7 +667,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center"
+      className="qf-code-preview fixed inset-0 flex items-center justify-center"
       style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000 }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) handleCloseModal();
@@ -952,7 +968,8 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
           ref={codeContainerRef}
           className="flex-1 overflow-auto"
           style={{
-            backgroundColor: '#1e1e1e',
+            backgroundColor: codeSurface,
+            color: codeText,
             fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
             fontSize: 13,
             lineHeight: '1.6',
@@ -973,9 +990,9 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                   paddingBottom: 40,
                   paddingRight: 12,
                   paddingLeft: 8,
-                  color: themeVars.muted,
-                  opacity: 0.5,
-                  borderRight: `1px solid ${themeVars.border}22`,
+                  color: codeMuted,
+                  opacity: isLightTheme ? 0.8 : 0.5,
+                  borderRight: `1px solid ${codeBorder}`,
                   textAlign: 'right',
                   userSelect: 'none',
                   fontVariantNumeric: 'tabular-nums',
@@ -1002,7 +1019,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                     lineHeight: '1.6',
                     margin: 0,
                     overflow: 'auto',
-                    color: '#d4d4d4',
+                    color: codeText,
                     tabSize: 2,
                   }}
                   dangerouslySetInnerHTML={{ __html: editedHighlighted }}
@@ -1072,7 +1089,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                       backgroundColor: isCurrentSearchMatch
                         ? `${themeVars.accent}20`
                         : isSearchMatch
-                          ? 'rgba(255,255,100,0.06)'
+                          ? 'rgba(255,255,100,0.10)'
                           : 'transparent',
                     }}
                   >
@@ -1083,11 +1100,11 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                         width: lineNumWidth,
                         paddingRight: 12,
                         paddingLeft: 8,
-                        color: themeVars.muted,
-                        opacity: 0.5,
-                        borderRight: `1px solid ${themeVars.border}22`,
-                        textAlign: 'right',
-                        userSelect: 'none',
+                          color: codeMuted,
+                          opacity: isLightTheme ? 0.8 : 0.5,
+                          borderRight: `1px solid ${codeBorder}`,
+                          textAlign: 'right',
+                          userSelect: 'none',
                       }}
                     >
                       <span style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -1103,7 +1120,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                       {isStart ? (
                         <button
                           className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          style={{ color: themeVars.muted, lineHeight: 1 }}
+                          style={{ color: codeMuted, lineHeight: 1 }}
                           onClick={() => toggleFold(lineIdx)}
                           title={isFolded ? '블록 펼치기' : '블록 접기'}
                         >
@@ -1117,7 +1134,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
                     {/* 코드 내용 */}
                     <div
                       className="flex-1 px-3 py-0 overflow-x-visible whitespace-pre"
-                      style={{ tabSize: 2 }}
+                      style={{ tabSize: 2, color: codeText }}
                     >
                       {isFolded ? (
                         // 접혀있을 때: 첫 줄 + {...} 축약 표시
@@ -1177,6 +1194,69 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
           </div>
         )}
       </div>
+      <style>{`
+        .qf-code-preview .hljs {
+          background: transparent;
+          color: ${codeText};
+        }
+        .qf-code-preview .hljs-subst,
+        .qf-code-preview .hljs-punctuation,
+        .qf-code-preview .hljs-operator {
+          color: ${codeText};
+        }
+        .qf-code-preview .hljs-comment,
+        .qf-code-preview .hljs-quote {
+          color: ${codeCommentColor};
+          font-style: italic;
+        }
+        .qf-code-preview .hljs-keyword,
+        .qf-code-preview .hljs-selector-tag,
+        .qf-code-preview .hljs-literal,
+        .qf-code-preview .hljs-section,
+        .qf-code-preview .hljs-link {
+          color: ${codeKeywordColor};
+        }
+        .qf-code-preview .hljs-string,
+        .qf-code-preview .hljs-regexp,
+        .qf-code-preview .hljs-bullet,
+        .qf-code-preview .hljs-template-variable {
+          color: ${codeStringColor};
+        }
+        .qf-code-preview .hljs-number,
+        .qf-code-preview .hljs-symbol,
+        .qf-code-preview .hljs-variable,
+        .qf-code-preview .hljs-params {
+          color: ${codeNumberColor};
+        }
+        .qf-code-preview .hljs-type,
+        .qf-code-preview .hljs-class .hljs-title,
+        .qf-code-preview .hljs-built_in,
+        .qf-code-preview .hljs-attr {
+          color: ${codeTypeColor};
+        }
+        .qf-code-preview .hljs-title,
+        .qf-code-preview .hljs-title.function_,
+        .qf-code-preview .hljs-title.class_,
+        .qf-code-preview .hljs-function .hljs-title {
+          color: ${codeFunctionColor};
+        }
+        .qf-code-preview .hljs-meta,
+        .qf-code-preview .hljs-meta .hljs-keyword {
+          color: ${codeMetaColor};
+        }
+        .qf-code-preview .hljs-selector-id,
+        .qf-code-preview .hljs-selector-class,
+        .qf-code-preview .hljs-selector-attr,
+        .qf-code-preview .hljs-selector-pseudo {
+          color: ${codeSelectorColor};
+        }
+        .qf-code-preview .hljs-addition {
+          color: ${codeAdditionColor};
+        }
+        .qf-code-preview .hljs-deletion {
+          color: ${codeDeletionColor};
+        }
+      `}</style>
     </div>
   );
 }

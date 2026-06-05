@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
-import { Play } from 'lucide-react';
-import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
+import { Play, RefreshCw } from 'lucide-react';
+import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvoke } from './hooks/invokeQueue';
@@ -66,6 +66,7 @@ export default memo(function FileCard({
 
   // PSD 파일 여부 확인
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
+  const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns)$/i.test(entry.name);
 
   // 네이티브 아이콘 (공유 캐시 훅)
   const nativeIcon = useNativeIcon(entry, thumbnailSize, isVisible);
@@ -180,6 +181,7 @@ export default memo(function FileCard({
   const imgHeight = thumbnailSize;
   // content-visibility용 추정 높이 (썸네일 + 파일명/크기 텍스트 영역)
   const estCardHeight = thumbnailSize + (hideText ? 12 : 48);
+  const iconShadowStyle = getFileIconShadowStyle(themeVars);
 
   const bg = isSelected
     ? (themeVars?.accent20 ?? 'rgba(59,130,246,0.2)')
@@ -228,7 +230,7 @@ export default memo(function FileCard({
           backgroundColor: 'transparent',
         }}
       >
-        {/* 표시 우선순위: 이미지 썸네일 > 네이티브 아이콘 > lucide 아이콘 */}
+        {/* 표시 우선순위: 이미지 썸네일 > 이미지 대기 표시 > 네이티브 아이콘 > lucide 아이콘 */}
         {thumbnail ? (
           <>
             <img
@@ -251,16 +253,35 @@ export default memo(function FileCard({
               </div>
             )}
           </>
+        ) : isThumbnailImage ? (
+          <div
+            className="flex items-center justify-center"
+            aria-label="썸네일 로딩 중"
+            style={{
+              width: Math.max(28, thumbnailSize * 0.68),
+              height: Math.max(28, thumbnailSize * 0.68),
+              border: `1.5px dashed ${themeVars?.border ?? '#94a3b8'}`,
+              borderRadius: Math.max(6, thumbnailSize * 0.08),
+              backgroundColor: themeVars?.surface ?? 'rgba(148, 163, 184, 0.08)',
+              color: themeVars?.muted ?? '#94a3b8',
+            }}
+          >
+            <RefreshCw
+              className="animate-spin"
+              size={Math.max(14, thumbnailSize * 0.18)}
+              strokeWidth={1.8}
+            />
+          </div>
         ) : nativeIcon ? (
           <img
             src={nativeIcon}
             alt={entry.name}
             className="object-contain"
-            style={{ width: thumbnailSize * 0.6, height: thumbnailSize * 0.6 }}
+            style={{ width: thumbnailSize * 0.6, height: thumbnailSize * 0.6, ...iconShadowStyle }}
             draggable={false}
           />
         ) : (
-          <div style={{ color: iconColor(entry.file_type, entry.name) }}>
+          <div style={{ color: iconColor(entry.file_type, entry.name), ...iconShadowStyle }}>
             <FileTypeIcon
               fileType={entry.file_type}
               size={thumbnailSize * 0.6}

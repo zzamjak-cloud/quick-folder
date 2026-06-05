@@ -473,6 +473,7 @@ export default function FileExplorer({
   // --- 검색/필터 (커스텀 훅) ---
   const searchFilter = useSearchFilter({ entries, currentPath });
   const { displayEntries } = searchFilter;
+  const displayPathSet = useMemo(() => new Set(displayEntries.map(entry => entry.path)), [displayEntries]);
 
   // 붙여넣기 진행 상태 배열 (여러 작업 동시 표시 가능)
   const [pasteProgressList, setPasteProgressList] = useState<{
@@ -577,6 +578,24 @@ export default function FileExplorer({
       columnView.updateFirstColumn(displayEntries);
     }
   }, [displayEntries, currentPath, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 필터로 숨겨진 항목은 선택과 포커스에서도 제외한다.
+  useEffect(() => {
+    const nextSelectedPaths = selectedPaths.filter(path => displayPathSet.has(path));
+    if (nextSelectedPaths.length !== selectedPaths.length) {
+      setSelectedPaths(nextSelectedPaths);
+    }
+
+    const nextFocusedIndex = nextSelectedPaths.length > 0
+      ? displayEntries.findIndex(entry => entry.path === nextSelectedPaths[nextSelectedPaths.length - 1])
+      : -1;
+
+    if (focusedIndex !== nextFocusedIndex) {
+      setFocusedIndex(nextFocusedIndex);
+    }
+
+    selectionAnchorRef.current = -1;
+  }, [displayEntries, displayPathSet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- initialPath 변경 시 현재 탭 경로 변경 (탭이 없으면 새 탭 생성) ---
   useEffect(() => {
@@ -694,7 +713,7 @@ export default function FileExplorer({
   // --- 선택 ---
   const selectEntry = useCallback((path: string, multi: boolean, range: boolean) => {
     // 마우스 클릭 시 focusedIndex도 동기화 (키보드 이동 기준점 갱신)
-    const clickedIdx = entries.findIndex(e => e.path === path);
+    const clickedIdx = displayEntries.findIndex(e => e.path === path);
     if (clickedIdx >= 0) setFocusedIndex(clickedIdx);
 
     if (multi) {
@@ -702,7 +721,7 @@ export default function FileExplorer({
         prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
       );
     } else if (range) {
-      const paths = entries.map(e => e.path);
+      const paths = displayEntries.map(e => e.path);
       const lastSelected = selectedPaths[selectedPaths.length - 1];
       const lastIdx = paths.indexOf(lastSelected);
       const curIdx = paths.indexOf(path);
@@ -716,7 +735,7 @@ export default function FileExplorer({
     } else {
       setSelectedPaths([path]);
     }
-  }, [entries, selectedPaths]);
+  }, [displayEntries, selectedPaths]);
 
   const selectAll = useCallback(() => {
     setSelectedPaths(displayEntries.map(e => e.path));
@@ -729,9 +748,12 @@ export default function FileExplorer({
 
   // 박스 드래그 선택용 다중 경로 설정
   const handleSelectPaths = useCallback((paths: string[]) => {
-    setSelectedPaths(paths);
-    setFocusedIndex(-1);
-  }, []);
+    const nextPaths = paths.filter(path => displayPathSet.has(path));
+    setSelectedPaths(nextPaths);
+    setFocusedIndex(nextPaths.length > 0
+      ? displayEntries.findIndex(entry => entry.path === nextPaths[nextPaths.length - 1])
+      : -1);
+  }, [displayEntries, displayPathSet]);
 
   // 폴더 태그 추가 (모달 상태 기반)
   const handleAddTag = useCallback((path: string) => {
@@ -753,7 +775,7 @@ export default function FileExplorer({
     renamingPath: modals.renamingPath,
     currentPath,
     viewMode,
-    entries,
+    entries: displayEntries,
     selectedPaths,
     focusedIndex,
     clipboard: clipboardHook.clipboard,

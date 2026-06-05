@@ -13,6 +13,7 @@ import { marked } from 'marked';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../utils/readTextFileWithTimeout';
+import { getMarkdownSyntaxColors } from './markdownTheme';
 
 interface MarkdownEditorProps {
   path: string;
@@ -140,6 +141,14 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
   const [copyFeedback, setCopyFeedback] = useState(false);
   const fileName = getFileName(path);
   const isMarkdown = /\.md$/i.test(fileName);
+  const {
+    headingColor,
+    markerColor,
+    quoteColor,
+    inlineCodeColor,
+    strongColor,
+    emphasisColor,
+  } = getMarkdownSyntaxColors(themeVars);
 
   // --- onUpdate 콜백에서 최신 loaded 상태 참조용 ref (선언 위치 주의: useEditor 위) ---
   const loadedRef = useRef(false);
@@ -439,7 +448,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          width: '60vw',
+          width: '70vw',
+          maxWidth: 860,
           height: '90vh',
           backgroundColor: themeVars?.surface ?? '#1e1e2e',
           border: `1px solid ${themeVars?.border ?? '#334155'}`,
@@ -591,7 +601,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
             style={{
               padding: '20px 24px',
               color: themeVars?.text ?? '#ddd',
-              fontSize: 14,
+              fontSize: 15,
               lineHeight: 1.8,
               minHeight: '100%',
             }}
@@ -605,20 +615,20 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
           outline: none;
           min-height: 100%;
         }
-        .tiptap-editor h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; color: #dcdcaa; }
-        .tiptap-editor h2 { font-size: 1.5em; font-weight: bold; margin: 0.5em 0; color: #dcdcaa; }
-        .tiptap-editor h3 { font-size: 1.17em; font-weight: bold; margin: 0.5em 0; color: #dcdcaa; }
-        .tiptap-editor h4, .tiptap-editor h5, .tiptap-editor h6 { font-weight: bold; margin: 0.5em 0; color: #dcdcaa; }
-        .tiptap-editor p { margin: 0.5em 0; }
+        .tiptap-editor h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; color: ${headingColor}; }
+        .tiptap-editor h2 { font-size: 1.5em; font-weight: bold; margin: 0.5em 0; color: ${headingColor}; }
+        .tiptap-editor h3 { font-size: 1.17em; font-weight: bold; margin: 0.5em 0; color: ${headingColor}; }
+        .tiptap-editor h4, .tiptap-editor h5, .tiptap-editor h6 { font-weight: bold; margin: 0.5em 0; color: ${headingColor}; }
+        .tiptap-editor p { margin: 0.5em 0; line-height: 1.75; }
         .tiptap-editor ul { padding-left: 1.5em; margin: 0.5em 0; list-style-type: disc; }
         .tiptap-editor ol { padding-left: 1.5em; margin: 0.5em 0; list-style-type: decimal; }
         .tiptap-editor li { margin: 0.25em 0; }
-        .tiptap-editor ul li::marker, .tiptap-editor ol li::marker { color: #d7ba7d; }
+        .tiptap-editor ul li::marker, .tiptap-editor ol li::marker { color: ${markerColor}; }
         .tiptap-editor blockquote {
-          border-left: 3px solid #6a9955;
+          border-left: 3px solid ${quoteColor};
           padding-left: 1em;
           margin: 0.5em 0;
-          color: #6a9955;
+          color: ${quoteColor};
         }
         .tiptap-editor pre {
           background: ${themeVars?.surface2 ?? '#252540'};
@@ -630,7 +640,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         .tiptap-editor code {
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 0.9em;
-          color: #ce9178;
+          color: ${inlineCodeColor};
         }
         .tiptap-editor pre code { color: inherit; }
         .tiptap-editor hr {
@@ -638,7 +648,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
           border-top: 2px solid ${themeVars?.text ?? '#e2e8f0'};
           margin: 1em 0;
         }
-        .tiptap-editor strong { font-weight: 800; color: #569cd6; }
+        .tiptap-editor strong { font-weight: 800; color: ${strongColor}; }
         .tiptap-editor ul[data-type="taskList"] {
           list-style: none;
           padding-left: 0;
@@ -660,7 +670,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
         .tiptap-editor ul[data-type="taskList"] li > div {
           flex: 1;
         }
-        .tiptap-editor em { font-style: italic; color: #c586c0; }
+        .tiptap-editor em { font-style: italic; color: ${emphasisColor}; }
         .tiptap-editor .is-editor-empty:first-child::before {
           content: attr(data-placeholder);
           float: left;

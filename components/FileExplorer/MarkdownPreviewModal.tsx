@@ -4,6 +4,7 @@ import hljs from 'highlight.js/lib/core';
 import 'highlight.js/styles/vs2015.css';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
+import { getMarkdownSyntaxColors } from './markdownTheme';
 
 // 마크다운 언어 로딩 가드 (중복 등록 방지)
 let mdLangRegistered = false;
@@ -130,6 +131,15 @@ export default function MarkdownPreviewModal({
   const text = themeVars?.text ?? '#e5e7eb';
   const muted = themeVars?.muted ?? '#94a3b8';
   const border = themeVars?.border ?? '#334155';
+  const {
+    headingColor,
+    markerColor,
+    linkColor,
+    strongColor,
+    emphasisColor,
+    quoteColor,
+    inlineCodeColor,
+  } = getMarkdownSyntaxColors(themeVars);
 
   return (
     <div
@@ -258,11 +268,13 @@ export default function MarkdownPreviewModal({
             />
           ) : (
             <pre
-              className="md-source-content px-6 py-5 text-xs leading-relaxed whitespace-pre-wrap break-words"
+              className="md-source-content px-6 py-5 whitespace-pre-wrap break-words"
               style={{
                 color: text,
                 userSelect: 'text',
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                fontSize: 15,
+                lineHeight: 1.75,
               }}
               dangerouslySetInnerHTML={{ __html: highlightedSource }}
             />
@@ -271,31 +283,38 @@ export default function MarkdownPreviewModal({
       </div>
 
       {/* 렌더링된 MD 스타일 + 선택 허용 */}
-      {/* 컬러 가이드 (vs2015 hljs 컨벤션 일치) — 편집기와 통일:
-         h1/h2/h3/h4: 노란색(#dcdcaa)  ·  strong: 파랑  ·  em: 보라  ·  code: 주황  ·  blockquote: 녹색  ·  link: 하늘 */}
+      {/* 제목은 현재 테마 accent를 대비 보정해 사용하고, 나머지 문법 색은 편집기 하이라이트 톤을 유지 */}
       <style>{`
         .md-preview-content, .md-preview-content * {
           user-select: text !important;
           -webkit-user-select: text !important;
         }
-        .md-preview-content h1 { font-size: 1.8em; font-weight: 700; margin: 0.6em 0 0.4em; border-bottom: 1px solid ${border}; padding-bottom: 0.2em; color: #dcdcaa; }
-        .md-preview-content h2 { font-size: 1.45em; font-weight: 700; margin: 0.6em 0 0.35em; border-bottom: 1px solid ${border}; padding-bottom: 0.15em; color: #dcdcaa; }
-        .md-preview-content h3 { font-size: 1.2em; font-weight: 700; margin: 0.5em 0 0.3em; color: #dcdcaa; }
-        .md-preview-content h4 { font-size: 1.05em; font-weight: 700; margin: 0.5em 0 0.3em; color: #dcdcaa; }
-        .md-preview-content h5, .md-preview-content h6 { font-weight: 700; margin: 0.5em 0 0.3em; color: #dcdcaa; }
-        .md-preview-content p { margin: 0.5em 0; line-height: 1.7; }
+        .md-source-content .hljs-section { color: ${headingColor}; font-weight: 700; }
+        .md-source-content .hljs-bullet { color: ${markerColor}; }
+        .md-source-content .hljs-link { color: ${linkColor}; }
+        .md-source-content .hljs-quote { color: ${quoteColor}; }
+        .md-source-content .hljs-code { color: ${inlineCodeColor}; }
+        .md-source-content .hljs-strong { color: ${strongColor}; font-weight: 700; }
+        .md-source-content .hljs-emphasis { color: ${emphasisColor}; font-style: italic; }
+        .md-preview-content { font-size: 15px; line-height: 1.75; }
+        .md-preview-content h1 { font-size: 1.8em; font-weight: 700; margin: 0.6em 0 0.4em; border-bottom: 1px solid ${border}; padding-bottom: 0.2em; color: ${headingColor}; }
+        .md-preview-content h2 { font-size: 1.45em; font-weight: 700; margin: 0.6em 0 0.35em; border-bottom: 1px solid ${border}; padding-bottom: 0.15em; color: ${headingColor}; }
+        .md-preview-content h3 { font-size: 1.2em; font-weight: 700; margin: 0.5em 0 0.3em; color: ${headingColor}; }
+        .md-preview-content h4 { font-size: 1.05em; font-weight: 700; margin: 0.5em 0 0.3em; color: ${headingColor}; }
+        .md-preview-content h5, .md-preview-content h6 { font-weight: 700; margin: 0.5em 0 0.3em; color: ${headingColor}; }
+        .md-preview-content p { margin: 0.5em 0; line-height: 1.75; }
         .md-preview-content ul { list-style-type: disc; padding-left: 1.5em; margin: 0.4em 0; }
         .md-preview-content ol { list-style-type: decimal; padding-left: 1.5em; margin: 0.4em 0; }
         .md-preview-content li { margin: 0.2em 0; line-height: 1.6; }
-        .md-preview-content ul li::marker, .md-preview-content ol li::marker { color: #d7ba7d; }
-        .md-preview-content a { color: #9cdcfe; text-decoration: underline; }
-        .md-preview-content strong { font-weight: 700; color: #569cd6; }
-        .md-preview-content em { font-style: italic; color: #c586c0; }
+        .md-preview-content ul li::marker, .md-preview-content ol li::marker { color: ${markerColor}; }
+        .md-preview-content a { color: ${linkColor}; text-decoration: underline; }
+        .md-preview-content strong { font-weight: 700; color: ${strongColor}; }
+        .md-preview-content em { font-style: italic; color: ${emphasisColor}; }
         .md-preview-content blockquote {
-          border-left: 3px solid #6a9955;
+          border-left: 3px solid ${quoteColor};
           padding: 0.2em 0.8em;
           margin: 0.6em 0;
-          color: #6a9955;
+          color: ${quoteColor};
           background: ${surface};
           border-radius: 0 4px 4px 0;
         }
@@ -305,7 +324,7 @@ export default function MarkdownPreviewModal({
           padding: 0.1em 0.35em;
           border-radius: 3px;
           font-size: 0.9em;
-          color: #ce9178;
+          color: ${inlineCodeColor};
         }
         .md-preview-content pre {
           background: ${surface};

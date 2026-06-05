@@ -2,7 +2,7 @@ import React, { memo, useMemo, useRef, useState, useEffect, useCallback } from '
 import { Loader2 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
-import { FileTypeIcon, iconColor, formatSize } from './fileUtils';
+import { FileTypeIcon, iconColor, formatSize, getFileIconShadowStyle } from './fileUtils';
 import { ColumnPreviewData } from './hooks/useColumnView';
 
 interface ColumnPreviewPanelProps {
@@ -39,6 +39,7 @@ const typeLabels: Record<string, string> = {
 export default memo(function ColumnPreviewPanel({ preview, themeVars }: ColumnPreviewPanelProps) {
   const { entry, thumbnail, textContent, videoPath, loading } = preview;
   const hasContent = !!thumbnail || !!textContent || !!videoPath;
+  const iconShadowStyle = getFileIconShadowStyle(themeVars);
 
   // 컨테이너 높이 측정 → 이미지 maxHeight 동적 계산
   const containerRef = useRef<HTMLDivElement>(null);
@@ -146,7 +147,7 @@ export default memo(function ColumnPreviewPanel({ preview, themeVars }: ColumnPr
           className="flex items-center justify-center rounded-lg flex-shrink-0"
           style={{ width: 180, height: 180, backgroundColor: themeVars?.surface ?? '#111827' }}
         >
-          <span style={{ color: iconColor(entry.file_type, entry.name) }}>
+          <span style={{ color: iconColor(entry.file_type, entry.name), ...iconShadowStyle }}>
             <FileTypeIcon fileType={entry.file_type} size={64} fileName={entry.name} />
           </span>
         </div>

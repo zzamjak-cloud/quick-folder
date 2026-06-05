@@ -2,7 +2,7 @@ import React, { memo, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
-import { FileTypeIcon, iconColor } from './fileUtils';
+import { FileTypeIcon, iconColor, getFileIconShadowStyle } from './fileUtils';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { useRenameInput } from './hooks/useRenameInput';
 import { ColumnData } from './hooks/useColumnView';
@@ -33,6 +33,7 @@ const ColumnRow = memo(function ColumnRow({
   onRenameCommit: (oldPath: string, newName: string) => void;
 }) {
   const nativeIcon = useNativeIcon(entry, 16);
+  const iconShadowStyle = getFileIconShadowStyle(themeVars, true);
   const rowRef = useRef<HTMLDivElement>(null);
   const wasFocusedRef = useRef(isFocused);
   const {
@@ -81,9 +82,9 @@ const ColumnRow = memo(function ColumnRow({
     >
       {/* 아이콘 */}
       {nativeIcon ? (
-        <img src={nativeIcon} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} draggable={false} />
+        <img src={nativeIcon} alt="" style={{ width: 16, height: 16, flexShrink: 0, ...iconShadowStyle }} draggable={false} />
       ) : (
-        <span style={{ color: iconColor(entry.file_type, entry.name), flexShrink: 0 }}>
+        <span style={{ color: iconColor(entry.file_type, entry.name), flexShrink: 0, ...iconShadowStyle }}>
           <FileTypeIcon fileType={entry.file_type} size={16} fileName={entry.name} />
         </span>
       )}

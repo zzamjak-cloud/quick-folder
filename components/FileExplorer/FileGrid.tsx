@@ -2,7 +2,7 @@ import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from '
 import { Loader2, AlertCircle } from 'lucide-react';
 import { FileEntry, ThumbnailSize, ClipboardData, ViewMode } from '../../types';
 import { ThemeVars } from './types';
-import { FileTypeIcon, iconColor, formatSize, formatTooltip } from './fileUtils';
+import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
 import { normalizeFsPath } from '../../utils/pathUtils';
 import FileCard from './FileCard';
 import { useRenameInput } from './hooks/useRenameInput';
@@ -67,6 +67,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
   cvEnabled?: boolean;
 }) {
   const nativeIcon = useNativeIcon(entry, 16);
+  const iconShadowStyle = getFileIconShadowStyle(themeVars, true);
   const {
     renameValue, setRenameValue, inputRef,
     handleKeyDown, handleBlur,
@@ -107,9 +108,9 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       {/* 아이콘 (네이티브 우선, lucide 폴백) */}
       <div className="relative flex-shrink-0" style={{ width: 16, height: 16 }}>
         {nativeIcon ? (
-          <img src={nativeIcon} alt="" style={{ width: 16, height: 16 }} draggable={false} />
+          <img src={nativeIcon} alt="" style={{ width: 16, height: 16, ...iconShadowStyle }} draggable={false} />
         ) : (
-          <span style={{ color: iconColor(entry.file_type, entry.name) }}>
+          <span style={{ color: iconColor(entry.file_type, entry.name), ...iconShadowStyle }}>
             <FileTypeIcon fileType={entry.file_type} size={16} fileName={entry.name} />
           </span>
         )}
@@ -164,6 +165,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
   cvEnabled?: boolean;
 }) {
   const nativeIcon = useNativeIcon(entry, 14);
+  const iconShadowStyle = getFileIconShadowStyle(themeVars, true);
   const {
     renameValue, setRenameValue,
     handleKeyDown, handleBlur,
@@ -214,9 +216,9 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
           {/* 아이콘 (네이티브 우선, lucide 폴백) */}
           <div className="relative flex-shrink-0" style={{ width: 14, height: 14 }}>
             {nativeIcon ? (
-              <img src={nativeIcon} alt="" style={{ width: 14, height: 14 }} draggable={false} />
+              <img src={nativeIcon} alt="" style={{ width: 14, height: 14, ...iconShadowStyle }} draggable={false} />
             ) : (
-              <span style={{ color: iconColor(entry.file_type, entry.name) }}>
+              <span style={{ color: iconColor(entry.file_type, entry.name), ...iconShadowStyle }}>
                 <FileTypeIcon fileType={entry.file_type} size={14} fileName={entry.name} />
               </span>
             )}

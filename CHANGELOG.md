@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.33] - 2026-06-05
+
+### Added
+- 이미지 썸네일 로딩 전 Lucide 파일 아이콘 대신 점선 placeholder와 회전 로딩 표시를 적용해 초기 로딩 상태를 명확하게 표시
+
+### Changed
+- 마크다운 미리보기와 편집 화면의 제목·문법 색상을 테마 기반 공통 컬러로 통일해 라이트 테마 가독성 개선
+- 코드·텍스트 기반 문서 아이콘을 Windows/macOS OS 네이티브 문서 스타일에 맞추고, 라이트 테마에서만 파일 아이콘 shadow를 적용하도록 조정
+
+### Fixed
+- Windows 네이티브 아이콘 추출 시 확장자 기반 Shell 아이콘 조회와 투명 여백 crop을 적용해 코드 파일 아이콘 위치·크기 표시 불안정 문제 수정
+
 ## [1.27.32] - 2026-06-02
 
 ### Added

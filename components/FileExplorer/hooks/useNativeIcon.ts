@@ -15,8 +15,8 @@ function getCacheKey(isDir: boolean, path: string, name: string): string {
   return ext;
 }
 
-// 네이티브 아이콘이 부정확하게 표시되는 확장자 → lucide 폴백
-const SKIP_NATIVE_EXTS = new Set(['md', 'json', 'sh', 'exe', 'unitypackage']);
+// Shell 아이콘보다 전용 폴백이 더 안정적인 확장자만 예외 처리
+const SKIP_NATIVE_EXTS = new Set(['exe', 'unitypackage']);
 // 썸네일이 생성되므로 네이티브 아이콘 불필요한 이미지 확장자
 const THUMBNAIL_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'icns']);
 
@@ -34,9 +34,8 @@ export function useNativeIcon(
   const ext = lowerName.lastIndexOf('.') > 0
     ? lowerName.slice(lowerName.lastIndexOf('.') + 1)
     : '';
-  const isJsFallbackTarget = ext === 'jsx' || lowerName.endsWith('.config.js');
   // PSD 등은 image 타입이지만 시스템 아이콘 사용 (썸네일 미생성)
-  const skip = THUMBNAIL_IMAGE_EXTS.has(ext) || (!entry.is_dir && (SKIP_NATIVE_EXTS.has(ext) || isJsFallbackTarget));
+  const skip = THUMBNAIL_IMAGE_EXTS.has(ext) || (!entry.is_dir && SKIP_NATIVE_EXTS.has(ext));
 
   const [nativeIcon, setNativeIcon] = useState<string | null>(() => {
     if (skip) return null;
