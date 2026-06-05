@@ -29,6 +29,18 @@ pub fn is_cloud_path(path: &str) -> bool {
     false
 }
 
+/// 릴리스가 바뀌어도 유지되어야 하는 디스크 캐시 키용 안정 해시.
+pub fn stable_cache_key(parts: &[&[u8]]) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for part in parts {
+        for b in (part.len() as u64).to_le_bytes().iter().chain(part.iter()) {
+            hash ^= u64::from(*b);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("{:016x}", hash)
+}
+
 /// 출력 경로 중복 회피: 이미 존재하면 suffix + 번호 추가
 ///
 /// 파일 생성 시 기존 파일과 이름이 겹치지 않도록 자동으로 번호를 추가합니다.

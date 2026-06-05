@@ -7,7 +7,7 @@ import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowSt
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvoke } from './hooks/invokeQueue';
-import { thumbKey, getThumb, setThumb } from './hooks/thumbnailCache';
+import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
 
 interface FileCardProps {
   entry: FileEntry;
@@ -59,10 +59,12 @@ export default memo(function FileCard({
     const cached = getThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
     return cached ? cached : null;
   });
+  const [thumbnailReloadSeq, setThumbnailReloadSeq] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [imageDims, setImageDims] = useState<[number, number] | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastThumbnailSizeRef = useRef<number>(0);
+  const failedThumbnailUrlsRef = useRef<Set<string>>(new Set());
 
   // PSD 파일 여부 확인
   const isPsd = entry.name.toLowerCase().endsWith('.psd');
@@ -113,6 +115,14 @@ export default memo(function FileCard({
       return;
     }
 
+    let cancelled = false;
+    getPersistentThumbUrl(entry.path, ft, thumbnailSize, entry.modified, entry.size)
+      .then(url => {
+        if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
+        if (getThumb(key) === undefined) setThumbnail(prev => prev ?? url);
+      })
+      .catch(() => {});
+
     const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize;
     lastThumbnailSizeRef.current = thumbnailSize;
     const delay = sizeChanged ? 300 : 0;
@@ -132,10 +142,24 @@ export default memo(function FileCard({
     }, delay);
 
     return () => {
+      cancelled = true;
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, thumbnailSize]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, entry.size, thumbnailSize, thumbnailReloadSeq]);
+
+  const handleThumbnailLoad = useCallback(() => {
+    if (!thumbnail) return;
+    failedThumbnailUrlsRef.current.delete(thumbnail);
+    setThumb(thumbKey(entry.path, thumbnailSize, entry.modified), thumbnail);
+  }, [thumbnail, entry.path, entry.modified, thumbnailSize]);
+
+  const handleThumbnailError = useCallback(() => {
+    if (thumbnail) failedThumbnailUrlsRef.current.add(thumbnail);
+    deleteThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
+    setThumbnail(null);
+    setThumbnailReloadSeq(n => n + 1);
+  }, [thumbnail, entry.path, entry.modified, thumbnailSize]);
 
   // 화면에 보일 때 이미지 규격 조회 (이미지만, PSD 제외 - 성능)
   useEffect(() => {
@@ -239,6 +263,8 @@ export default memo(function FileCard({
               className="w-full h-full object-contain"
               loading="lazy"
               draggable={false}
+              onLoad={handleThumbnailLoad}
+              onError={handleThumbnailError}
             />
             {/* 동영상 플레이 아이콘 오버레이 */}
             {entry.file_type === 'video' && (

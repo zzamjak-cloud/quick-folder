@@ -86,21 +86,58 @@ pub(crate) fn thumbnail_cache_root(app: &tauri::AppHandle) -> Result<PathBuf> {
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))
 }
 
-fn thumbnail_cache_key(path: &str, size: u32) -> Option<String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+fn thumbnail_modified_millis(meta: &std::fs::Metadata, ignore_mtime: bool) -> u128 {
+    if ignore_mtime {
+        return 0;
+    }
 
-    let meta = std::fs::metadata(path).ok()?;
-    let modified = meta.modified().ok()
+    meta.modified().ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_millis())
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
+
+fn stable_thumbnail_cache_key(path: &str, modified: u128, file_len: u64, size: u32) -> String {
+    let modified = modified.to_string();
+    let file_len = file_len.to_string();
+    let size = size.to_string();
+    stable_cache_key(&[
+        b"thumbnail-v2",
+        path.as_bytes(),
+        modified.as_bytes(),
+        file_len.as_bytes(),
+        size.as_bytes(),
+    ])
+}
+
+fn legacy_thumbnail_cache_key(path: &str, modified: u128, size: u32) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
     modified.hash(&mut hasher);
     size.hash(&mut hasher);
-    Some(format!("{:x}", hasher.finish()))
+    format!("{:x}", hasher.finish())
+}
+
+fn thumbnail_cache_keys(path: &str, size: u32) -> Vec<String> {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return Vec::new();
+    };
+    let file_len = meta.len();
+    let actual_modified = thumbnail_modified_millis(&meta, false);
+    let mut modified_variants = vec![actual_modified];
+    if actual_modified != 0 {
+        modified_variants.push(0);
+    }
+
+    let mut keys = Vec::new();
+    for modified in modified_variants {
+        keys.push(stable_thumbnail_cache_key(path, modified, file_len, size));
+        keys.push(legacy_thumbnail_cache_key(path, modified, size));
+    }
+    keys
 }
 
 fn collect_thumbnail_source_paths(path: &Path, out: &mut Vec<String>) {
@@ -126,13 +163,13 @@ pub(crate) fn invalidate_thumbnail_cache_paths_in_root(app_cache: &Path, paths: 
 
     for source_path in source_paths {
         for size in THUMBNAIL_CACHE_SIZES {
-            let Some(cache_key) = thumbnail_cache_key(&source_path, size) else {
-                continue;
-            };
+            let cache_keys = thumbnail_cache_keys(&source_path, size);
             for dir_name in THUMBNAIL_CACHE_DIR_NAMES {
-                let cache_file = app_cache.join(dir_name).join(format!("{}.png", cache_key));
-                if cache_file.exists() {
-                    let _ = std::fs::remove_file(cache_file);
+                for cache_key in &cache_keys {
+                    let cache_file = app_cache.join(dir_name).join(format!("{}.png", cache_key));
+                    if cache_file.exists() {
+                        let _ = std::fs::remove_file(cache_file);
+                    }
                 }
             }
         }
@@ -234,34 +271,28 @@ pub(crate) fn ensure_cached_thumbnail<F>(
 where
     F: FnOnce() -> Result<Option<Vec<u8>>>,
 {
-    use std::hash::{Hash, Hasher};
-    use std::collections::hash_map::DefaultHasher;
-
     let meta = std::fs::metadata(path)?;
     // ignore_mtime=true (클라우드 경로): mtime을 키에서 제외 → 재동기화로 mtime이 바뀌어도
-    // 캐시 유지(불필요한 재다운로드 방지). 내용 변경은 size 변화로 대부분 감지됨.
-    let modified = if ignore_mtime {
-        0
-    } else {
-        meta.modified().ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    };
-
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    modified.hash(&mut hasher);
-    size.hash(&mut hasher);
-    let cache_key = format!("{:x}", hasher.finish());
+    // 캐시 유지(불필요한 재다운로드 방지). 내용 변경은 파일 크기 변화로 대부분 감지됨.
+    let modified = thumbnail_modified_millis(&meta, ignore_mtime);
+    let cache_key = stable_thumbnail_cache_key(path, modified, meta.len(), size);
+    let legacy_cache_key = legacy_thumbnail_cache_key(path, modified, size);
 
     std::fs::create_dir_all(cache_dir).ok();
     let cache_file = cache_dir.join(format!("{}.png", cache_key));
+    let legacy_cache_file = cache_dir.join(format!("{}.png", legacy_cache_key));
 
     // 캐시 히트
     if cache_file.exists() {
         prune_thumbnail_cache_for_dir(cache_dir);
         return Ok(Some(cache_file));
+    }
+    if legacy_cache_file.exists() {
+        if cache_file != legacy_cache_file {
+            std::fs::copy(&legacy_cache_file, &cache_file).ok();
+        }
+        prune_thumbnail_cache_for_dir(cache_dir);
+        return Ok(Some(if cache_file.exists() { cache_file } else { legacy_cache_file }));
     }
 
     // 선택적 동시성 제한 + 패닉 방지
