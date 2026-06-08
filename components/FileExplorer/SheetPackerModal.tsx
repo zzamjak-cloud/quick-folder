@@ -90,6 +90,44 @@ export default function SheetPackerModal({
     });
   }, [imagePaths]);
 
+  const [cellSizeReady, setCellSizeReady] = useState(false);
+
+  const applyCellSize = useCallback((w: number, h: number) => {
+    setCellWidth(w);
+    setCellHeight(h);
+    setDraftCellWidth(String(w));
+    setDraftCellHeight(String(h));
+  }, []);
+
+  // 선택 목록 첫 번째(인덱스 0) 이미지 규격을 셀 기본값으로 사용
+  useEffect(() => {
+    let cancelled = false;
+    setCellSizeReady(false);
+
+    (async () => {
+      const firstPath = imagePaths[0];
+      if (!firstPath) {
+        if (!cancelled) setCellSizeReady(true);
+        return;
+      }
+
+      try {
+        const dims = await invoke<[number, number] | null>('get_image_dimensions', { path: firstPath });
+        if (!cancelled && dims) {
+          const w = Math.min(Math.max(dims[0], CELL_SIZE_MIN), CELL_SIZE_MAX);
+          const h = Math.min(Math.max(dims[1], CELL_SIZE_MIN), CELL_SIZE_MAX);
+          applyCellSize(w, h);
+        }
+      } catch {
+        // 조회 실패 시 256 기본값 유지
+      } finally {
+        if (!cancelled) setCellSizeReady(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [imagePaths, applyCellSize]);
+
   // 열 변경 시 행 자동 계산
   const handleColsChange = useCallback((val: number) => {
     const c = Math.max(1, val);
@@ -125,8 +163,9 @@ export default function SheetPackerModal({
     }
   }, [sortedPaths, cellWidth, cellHeight, cols, rows]);
 
-  // 파라미터 변경 시 200ms 디바운스 후 미리보기 갱신
+  // 파라미터 변경 시 200ms 디바운스 후 미리보기 갱신 (셀 기본 크기 확정 후 시작)
   useEffect(() => {
+    if (!cellSizeReady) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       fetchPreview();
@@ -134,7 +173,7 @@ export default function SheetPackerModal({
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [fetchPreview]);
+  }, [fetchPreview, cellSizeReady]);
 
   // 시퀀스 재생
   useEffect(() => {
@@ -176,13 +215,6 @@ export default function SheetPackerModal({
       setSaving(false);
     }
   };
-
-  const applyCellSize = useCallback((w: number, h: number) => {
-    setCellWidth(w);
-    setCellHeight(h);
-    setDraftCellWidth(String(w));
-    setDraftCellHeight(String(h));
-  }, []);
 
   const handleApplyCellSize = () => {
     const w = Number.parseInt(draftCellWidth, 10);

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.35] - 2026-06-08
+
+### Changed
+- 시트 패킹 진입 시 셀 크기 기본값을 선택 목록 첫 번째 이미지 규격으로 자동 설정
+
 ## [1.27.34] - 2026-06-05
 
 ### Changed
