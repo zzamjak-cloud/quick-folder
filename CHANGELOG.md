@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.36] - 2026-06-10
+
+### Added
+- 긴 경로와 URL 인코딩된 UTF-8 파일명을 포함한 ZIP 압축 해제를 보강
+- ZIP 압축 해제 중 파일 카드 pending 표시, 폴더 용량 정보 팝업, 그리드 Ctrl+마우스 휠 썸네일 확대/축소 추가
+
+### Fixed
+- 사이드바 즐겨찾기 항목의 더보기 버튼 영역 때문에 폴더명이 불필요하게 클리핑되던 문제 수정
+
 ## [1.27.35] - 2026-06-08
 
 ### Changed

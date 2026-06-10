@@ -5,7 +5,7 @@ import { ThemeVars, ContextMenuSection } from './types';
 import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
-  FolderPlus, FileText, Image, List, Eraser, Type,
+  FolderPlus, FileText, Image, List, Eraser, Type, HardDrive, Loader2, X,
 } from 'lucide-react';
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
@@ -43,7 +43,7 @@ import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
 import { useSearchFilter } from './hooks/useSearchFilter';
 import { useClipboard } from './hooks/useClipboard';
-import { useFileOperations } from './hooks/useFileOperations';
+import { useFileOperations, type FolderSizeDialogState } from './hooks/useFileOperations';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 
@@ -545,6 +545,13 @@ export default function FileExplorer({
     setError,
   });
 
+  const fileOperationPendingSet = useMemo(() => {
+    if (fileOps.extractingZipPaths.size === 0) return pendingCopySet;
+    const merged = new Set(pendingCopySet);
+    fileOps.extractingZipPaths.forEach(path => merged.add(normalizeFsPath(path)));
+    return merged;
+  }, [pendingCopySet, fileOps.extractingZipPaths]);
+
   // --- 컬럼 뷰 초기화/정리 ---
   // viewMode 변경 시: 컬럼뷰 퇴장 처리
   useEffect(() => {
@@ -1000,10 +1007,14 @@ export default function FileExplorer({
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
   useEffect(() => {
     const handler = (e: WheelEvent) => {
+      if (!isFocused || viewMode !== 'grid') return;
       if (!(e.ctrlKey || e.metaKey)) return;
+      const absDeltaY = Math.abs(e.deltaY);
+      if (absDeltaY === 0) return;
+      // 터치패드 precision wheel은 작은 pixel delta가 연속으로 들어오므로 무시한다.
+      if (e.deltaMode === 0 && absDeltaY < 80) return;
       e.preventDefault();
-      // 마우스 휠만 허용 (deltaMode=1: 라인 단위)
-      if (e.deltaMode === 0) return;
+      // 일반 마우스 휠 delta를 썸네일 크기 한 단계로 반영한다.
       cancelAllQueued();
       const direction = e.deltaY < 0 ? 1 : -1;
       setThumbnailSize(prev => {
@@ -1013,7 +1024,7 @@ export default function FileExplorer({
     };
     window.addEventListener('wheel', handler, { passive: false });
     return () => window.removeEventListener('wheel', handler);
-  }, []);
+  }, [isFocused, viewMode]);
 
   // --- 드롭 중복 확인 다이얼로그 상태 (내부 드래그 + OS 드래그 공용) ---
   const [dropConfirm, setDropConfirm] = useState<PendingDrop | null>(null);
@@ -1169,6 +1180,14 @@ export default function FileExplorer({
       )}
 
       {/* 영구삭제 확인 다이얼로그 */}
+      {fileOps.folderSizeDialog && (
+        <FolderSizeInfoDialog
+          dialog={fileOps.folderSizeDialog}
+          themeVars={themeVars}
+          onClose={fileOps.closeFolderSizeDialog}
+        />
+      )}
+
       {fileOps.permanentDeleteConfirm && (
         <div
           className="fixed inset-0 z-[10000] flex items-center justify-center"
@@ -1450,7 +1469,7 @@ export default function FileExplorer({
               hideText={searchFilter.hideText}
               folderTags={folderTags}
               instanceId={instanceId}
-              pendingCopyPaths={pendingCopySet}
+              pendingCopyPaths={fileOperationPendingSet}
               draggedPaths={new Set(activeDragPaths.length > 0 ? activeDragPaths : selectedPaths)}
               isDraggingNow={isInternalDragging}
             />
@@ -1930,6 +1949,130 @@ export default function FileExplorer({
         </div>
       )}
 
+    </div>
+  );
+}
+
+// 폴더 용량 정보 다이얼로그
+function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
+  dialog: FolderSizeDialogState;
+  themeVars: ThemeVars | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const mutedColor = themeVars?.muted ?? '#94a3b8';
+  const textColor = themeVars?.text ?? '#e5e7eb';
+  const borderColor = themeVars?.border ?? '#334155';
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center px-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="폴더 용량 정보"
+    >
+      <div
+        className="w-full max-w-md rounded-lg shadow-2xl overflow-hidden"
+        style={{
+          backgroundColor: themeVars?.surface2 ?? '#1e293b',
+          border: `1px solid ${borderColor}`,
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${borderColor}` }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <HardDrive size={16} className="shrink-0" style={{ color: themeVars?.accent ?? '#3b82f6' }} />
+            <span className="text-sm font-medium truncate" style={{ color: textColor }} title={dialog.folderName}>
+              폴더 용량 정보
+            </span>
+          </div>
+          <button
+            type="button"
+            className="p-1 rounded-md hover:opacity-75"
+            style={{ color: mutedColor }}
+            onClick={onClose}
+            aria-label="닫기"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-4 py-4">
+          <div className="mb-4 min-w-0">
+            <div className="text-xs mb-1" style={{ color: mutedColor }}>폴더</div>
+            <div className="text-sm font-medium truncate" style={{ color: textColor }} title={dialog.path}>
+              {dialog.folderName}
+            </div>
+            <div className="mt-1 text-[11px] truncate" style={{ color: mutedColor }} title={dialog.path}>
+              {dialog.path}
+            </div>
+          </div>
+
+          {dialog.status === 'loading' && (
+            <div className="flex items-center gap-2 rounded-md px-3 py-3" style={{ backgroundColor: themeVars?.surface ?? '#111827', color: textColor }}>
+              <Loader2 size={16} className="animate-spin shrink-0" />
+              <span className="text-sm">폴더 용량 계산 중...</span>
+            </div>
+          )}
+
+          {dialog.status === 'error' && (
+            <div className="rounded-md px-3 py-3 text-sm" style={{ backgroundColor: '#7f1d1d33', color: '#fecaca', border: '1px solid #ef444455' }}>
+              폴더 용량 확인 실패: {dialog.error}
+            </div>
+          )}
+
+          {dialog.status === 'ready' && (
+            <div className="grid grid-cols-1 gap-2">
+              <InfoPopupRow label="용량" value={dialog.sizeText ?? '-'} themeVars={themeVars} />
+              <InfoPopupRow label="정확한 바이트" value={`${dialog.bytes ?? '0'} bytes`} themeVars={themeVars} />
+              <InfoPopupRow label="파일" value={`${(dialog.fileCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
+              <InfoPopupRow label="폴더" value={`${(dialog.folderCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end px-4 py-3" style={{ borderTop: `1px solid ${borderColor}` }}>
+          <button
+            type="button"
+            className="px-4 py-1.5 text-xs rounded-md transition-colors hover:opacity-80"
+            style={{
+              backgroundColor: themeVars?.accent ?? '#3b82f6',
+              color: '#fff',
+              border: 'none',
+            }}
+            onClick={onClose}
+          >
+            확인
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoPopupRow({ label, value, themeVars }: {
+  label: string;
+  value: string;
+  themeVars: ThemeVars | null;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-md px-3 py-2"
+      style={{ backgroundColor: themeVars?.surface ?? '#111827' }}
+    >
+      <span className="text-xs shrink-0" style={{ color: themeVars?.muted ?? '#94a3b8' }}>{label}</span>
+      <span className="text-sm font-medium text-right truncate" style={{ color: themeVars?.text ?? '#e5e7eb' }} title={value}>
+        {value}
+      </span>
     </div>
   );
 }

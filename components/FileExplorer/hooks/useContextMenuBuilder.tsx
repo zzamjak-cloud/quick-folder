@@ -6,7 +6,7 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
-  RotateCcw,
+  RotateCcw, HardDrive,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { NamingCase } from '../../../utils/caseConvert';
@@ -33,11 +33,12 @@ export interface UseContextMenuBuilderConfig {
     handleCompressVideo: (paths: string | string[], quality: 'low' | 'medium' | 'high') => void;
     handleGifToMp4: (paths: string[]) => void;
     handleCompressPdf: (path: string) => void;
+    handleInspectFolderSize: (path: string) => void;
     handleCopyPath: (path: string) => void;
     handleSpritePack: (paths: string[]) => void;
     handleCreateDirectory: () => void;
     handleCreateMarkdown: () => void;
-    showCopyToast: (message: string) => void;
+    showCopyToast: (message: string, duration?: number) => void;
   };
   modals: {
     setPixelatePath: (path: string | null) => void;
@@ -537,6 +538,18 @@ export function useContextMenuBuilder({
     }
 
     // 섹션 7: 빈 공간 전용 (새로 만들기)
+    if (isSingle && singleEntry?.is_dir) {
+      sections.push({
+        id: 'folder-size',
+        items: [{
+          id: 'folder-size-check',
+          icon: <HardDrive size={13} />,
+          label: '폴더 용량 확인',
+          onClick: () => fileOps.handleInspectFolderSize(singlePath),
+        }],
+      });
+    }
+
     if (paths.length === 0) {
       const createSection: ContextMenuSection = { id: 'create', items: [] };
       createSection.items.push({
@@ -560,7 +573,8 @@ export function useContextMenuBuilder({
     openEntry, openInOsExplorer, preview.handlePreviewImage,
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
     fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleConvertCase, fileOps.handleDelete,
-    fileOps.handleCompressZip, fileOps.handleCompressVideo, fileOps.handleGifToMp4, fileOps.handleCompressPdf, fileOps.handleCopyPath,
+    fileOps.handleCompressZip, fileOps.handleExtractZip, fileOps.handleCompressVideo, fileOps.handleGifToMp4,
+    fileOps.handleCompressPdf, fileOps.handleInspectFolderSize, fileOps.handleCopyPath,
     fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
     handleAddTag, handleRemoveTag,
     onAddToFavorites, modals.setPixelatePath, modals.setMapMakerPath, modals.setSheetUnpackPath,

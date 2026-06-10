@@ -81,12 +81,12 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
     <li
       ref={setNodeRef}
       style={style}
-      className="group/item flex items-center justify-between p-2 rounded-lg transition-colors border border-transparent bg-[var(--qf-surface)] hover:bg-[var(--qf-surface-hover)] hover:border-[var(--qf-border)]"
+      className="group/item relative flex items-center p-2 rounded-lg transition-colors border border-transparent bg-[var(--qf-surface)] hover:bg-[var(--qf-surface-hover)] hover:border-[var(--qf-border)]"
       {...attributes}
       {...listeners}
     >
       <div
-        className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+        className={`flex items-center gap-3 min-w-0 w-full cursor-pointer transition-[padding] duration-150 ${menuOpen ? 'pr-8' : 'pr-0 group-hover/item:pr-8'}`}
         onClick={(e) => {
           if (e.ctrlKey || e.metaKey) {
             handleOpenInNewTab(shortcut.path);
@@ -96,14 +96,14 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
         }}
         title={`${shortcut.path} (클릭: 탐색기에서 열기 / Ctrl+클릭: 새 탭)`}
       >
-        <div className="text-[var(--qf-accent)] transition-colors">
+        <div className="shrink-0 text-[var(--qf-accent)] transition-colors">
           {folderIcon ? (
             <img src={folderIcon} alt="" style={{ width: 16, height: 16 }} draggable={false} />
           ) : (
             <Folder size={16} />
           )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div
             className="text-sm font-medium group-hover/item:opacity-80 truncate"
             style={{
@@ -122,7 +122,7 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
 
       {/* MoreVertical 드롭다운 */}
       <div
-        className="opacity-0 group-hover/item:opacity-100 transition-opacity"
+        className={`absolute right-1 top-1/2 -translate-y-1/2 transition-opacity ${menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover/item:opacity-100 group-hover/item:pointer-events-auto'}`}
       >
         <button
           ref={btnRef}

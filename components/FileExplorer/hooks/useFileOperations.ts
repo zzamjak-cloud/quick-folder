@@ -5,6 +5,26 @@ import { useUndoStack } from './useUndoStack';
 import { getFileName, getBaseName, getExtension, getPathSeparator, getParentDir } from '../../../utils/pathUtils';
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
+import { formatSize } from '../fileUtils';
+
+type FolderSizeResponse = {
+  bytes: string;
+  file_count?: number;
+  fileCount?: number;
+  folder_count?: number;
+  folderCount?: number;
+};
+
+export type FolderSizeDialogState = {
+  status: 'loading' | 'ready' | 'error';
+  path: string;
+  folderName: string;
+  sizeText?: string;
+  bytes?: string;
+  fileCount?: number;
+  folderCount?: number;
+  error?: string;
+};
 
 export interface UseFileOperationsConfig {
   currentPath: string | null;
@@ -46,6 +66,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // 복사 피드백 토스트
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [folderSizeDialog, setFolderSizeDialog] = useState<FolderSizeDialogState | null>(null);
 
   // 동영상 압축 진행률
   const [videoCompression, setVideoCompression] = useState<{
@@ -61,6 +82,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
   // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
   const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number; itemLabel?: string } | null>(null);
+  const [extractingZipPaths, setExtractingZipPaths] = useState<Set<string>>(() => new Set());
 
   /** 복제 후 목록 갱신 시 선택·스크롤 (loadDirectory가 선택을 비울 수 있어 ref로 이어줌) */
   const pendingDuplicateSelectRef = useRef<string[]>([]);
@@ -78,10 +100,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const [ungroupConfirm, setUngroupConfirm] = useState<{ path: string } | null>(null);
 
   // 토스트 표시 헬퍼
-  const showCopyToast = useCallback((msg: string) => {
+  const showCopyToast = useCallback((msg: string, duration = 1500) => {
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
     setCopyToast(msg);
-    copyToastTimerRef.current = setTimeout(() => setCopyToast(null), 1500);
+    copyToastTimerRef.current = setTimeout(() => setCopyToast(null), duration);
+  }, []);
+
+  const closeFolderSizeDialog = useCallback(() => {
+    setFolderSizeDialog(null);
   }, []);
 
   // --- 삭제 ---
@@ -599,6 +625,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleExtractZip = useCallback(async (paths: string[]) => {
     if (paths.length === 0 || !currentPath) return;
     const sep = getPathSeparator(currentPath);
+    setExtractingZipPaths(prev => {
+      const next = new Set(prev);
+      paths.forEach(path => next.add(path));
+      return next;
+    });
+    showCopyToast(paths.length === 1 ? `압축 해제 중: ${getFileName(paths[0])}` : `압축 해제 중: ${paths.length}개`, 3000);
     try {
       const createdDirs: string[] = [];
       // 해제마다 누적 사용 중인 폴더명 (이전 해제 결과 + 기존 entries)
@@ -617,6 +649,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         const destDir = `${currentPath}${sep}${folderName}`;
         const resultDir = await invoke<string>('extract_zip', { zipPath, destDir });
         createdDirs.push(resultDir || destDir);
+        setExtractingZipPaths(prev => {
+          const next = new Set(prev);
+          next.delete(zipPath);
+          return next;
+        });
       }
       // 해제된 폴더로 선택·스크롤 이동 (entries 갱신 후 effect가 처리)
       pendingExtractSelectRef.current = createdDirs;
@@ -626,6 +663,15 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       pendingExtractSelectRef.current = [];
       console.error('압축 풀기 실패:', e);
       setError(`압축 풀기 실패: ${e}`);
+    } finally {
+      setExtractingZipPaths(prev => {
+        const next = new Set(prev);
+        let changed = false;
+        paths.forEach(path => {
+          if (next.delete(path)) changed = true;
+        });
+        return changed ? next : prev;
+      });
     }
   }, [currentPath, entries, loadDirectory, showCopyToast, setError]);
 
@@ -809,6 +855,36 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, loadDirectory, showCopyToast]);
 
+  // --- 폴더 용량 확인 ---
+  const handleInspectFolderSize = useCallback(async (path: string) => {
+    const folderName = getFileName(path) || path;
+    setFolderSizeDialog({ status: 'loading', path, folderName });
+    try {
+      const info = await invoke<FolderSizeResponse>('calculate_folder_size', { path });
+      const bytes = Number(info.bytes);
+      const sizeText = Number.isFinite(bytes) ? formatSize(bytes, false) : `${info.bytes} bytes`;
+      const fileCount = info.file_count ?? info.fileCount ?? 0;
+      const folderCount = info.folder_count ?? info.folderCount ?? 0;
+      setFolderSizeDialog({
+        status: 'ready',
+        path,
+        folderName,
+        sizeText,
+        bytes: info.bytes,
+        fileCount,
+        folderCount,
+      });
+    } catch (e) {
+      console.error('폴더 용량 확인 실패:', e);
+      setFolderSizeDialog({
+        status: 'error',
+        path,
+        folderName,
+        error: String(e),
+      });
+    }
+  }, []);
+
   // --- 경로 복사 ---
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -882,14 +958,18 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleCompressVideo,
     handleGifToMp4,
     handleCompressPdf,
+    handleInspectFolderSize,
     handleCopyPath,
     handleUndo,
     showCopyToast,
+    closeFolderSizeDialog,
     pendingDuplicateSelectRef,
     pendingExtractSelectRef,
     // 상태
     copyToast,
+    folderSizeDialog,
     operationProgress,
+    extractingZipPaths,
     videoCompression,
     gsSetup,
     sheetPackDefaultName,

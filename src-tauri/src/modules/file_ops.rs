@@ -217,6 +217,69 @@ pub fn is_directory(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct FolderSizeInfo {
+    pub bytes: String,
+    pub file_count: u64,
+    pub folder_count: u64,
+}
+
+#[derive(Default)]
+struct FolderSizeAccumulator {
+    bytes: u64,
+    file_count: u64,
+    folder_count: u64,
+}
+
+// 폴더 내부 파일 크기 합계를 계산한다.
+#[tauri::command]
+pub async fn calculate_folder_size(path: String) -> Result<FolderSizeInfo> {
+    tauri::async_runtime::spawn_blocking(move || calculate_folder_size_impl(&path))
+        .await
+        .map_err(|e| AppError::Internal(format!("폴더 용량 계산 작업 실패: {}", e)))?
+}
+
+fn calculate_folder_size_impl(path: &str) -> Result<FolderSizeInfo> {
+    let root = std::path::Path::new(path);
+    let metadata = std::fs::symlink_metadata(root)?;
+    if !metadata.is_dir() {
+        return Err(AppError::InvalidInput("폴더 경로가 아닙니다".to_string()));
+    }
+
+    let mut acc = FolderSizeAccumulator::default();
+    collect_folder_size(root, &mut acc)?;
+    Ok(FolderSizeInfo {
+        bytes: acc.bytes.to_string(),
+        file_count: acc.file_count,
+        folder_count: acc.folder_count,
+    })
+}
+
+fn collect_folder_size(path: &std::path::Path, acc: &mut FolderSizeAccumulator) -> Result<()> {
+    for entry_result in std::fs::read_dir(path)? {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let entry_path = entry.path();
+        let metadata = match std::fs::symlink_metadata(&entry_path) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            acc.folder_count = acc.folder_count.saturating_add(1);
+            collect_folder_size(&entry_path, acc)?;
+        } else if metadata.is_file() {
+            acc.file_count = acc.file_count.saturating_add(1);
+            acc.bytes = acc.bytes.saturating_add(metadata.len());
+        }
+    }
+    Ok(())
+}
+
 // ===== 파일/디렉토리 생성 =====
 
 // 새 폴더 생성
@@ -894,6 +957,75 @@ fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
 
 // ZIP 압축 풀기
 // zip_path: 압축 파일 경로, dest_dir: 출력 디렉토리 경로
+fn zip_entry_output_path(entry: &zip::read::ZipFile<'_>) -> std::path::PathBuf {
+    let raw_path = entry.enclosed_name().unwrap_or_else(|| entry.mangled_name());
+    let mut output_path = std::path::PathBuf::new();
+
+    for component in raw_path.components() {
+        if let std::path::Component::Normal(part) = component {
+            output_path.push(sanitize_zip_entry_component(&part.to_string_lossy()));
+        }
+    }
+
+    output_path
+}
+
+fn sanitize_zip_entry_component(component: &str) -> String {
+    let decoded = percent_decode_utf8(component);
+    let mut safe = String::with_capacity(decoded.len());
+
+    for ch in decoded.chars() {
+        match ch {
+            // ZIP 항목명 안에서 디코딩된 구분자는 새 경로로 해석하지 않는다.
+            '/' | '\\' => safe.push('_'),
+            '\0' => {}
+            _ => safe.push(ch),
+        }
+    }
+
+    if safe.is_empty() || safe == "." || safe == ".." {
+        component.replace(['/', '\\'], "_")
+    } else {
+        safe
+    }
+}
+
+fn percent_decode_utf8(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut changed = false;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(high), Some(low)) = (hex_value(bytes[i + 1]), hex_value(bytes[i + 2])) {
+                decoded.push((high << 4) | low);
+                changed = true;
+                i += 3;
+                continue;
+            }
+        }
+
+        decoded.push(bytes[i]);
+        i += 1;
+    }
+
+    if changed {
+        String::from_utf8(decoded).unwrap_or_else(|_| input.to_string())
+    } else {
+        input.to_string()
+    }
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 #[tauri::command]
 pub async fn extract_zip(zip_path: String, dest_dir: String) -> Result<String> {
     let file = std::fs::File::open(&zip_path)?;
@@ -903,7 +1035,11 @@ pub async fn extract_zip(zip_path: String, dest_dir: String) -> Result<String> {
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let out_path = dest.join(entry.mangled_name());
+        let relative_path = zip_entry_output_path(&entry);
+        if relative_path.as_os_str().is_empty() {
+            continue;
+        }
+        let out_path = dest.join(relative_path);
 
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
@@ -1230,6 +1366,113 @@ mod tests {
             assert!(extract_dir.join("source/file1.txt").exists());
             assert!(extract_dir.join("source/subdir/file2.txt").exists());
         });
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_extract_zip_with_long_nested_paths() {
+        let test_dir = setup_test_dir("zip_long_path");
+        let zip_path = test_dir.join("long_paths.zip");
+        let extract_dir = test_dir.join("extracted");
+
+        let nested_path = (0..10)
+            .map(|i| format!("notion_export_section_{:02}_with_verbose_title", i))
+            .collect::<Vec<_>>()
+            .join("/");
+        let entry_name = format!("{}/document.txt", nested_path);
+        let expected_path = extract_dir.join(entry_name.replace('/', std::path::MAIN_SEPARATOR_STR));
+        assert!(
+            expected_path.to_string_lossy().chars().count() > 260,
+            "테스트 경로가 Windows 기본 한계보다 길어야 합니다: {}",
+            expected_path.display()
+        );
+
+        {
+            let file = std::fs::File::create(&zip_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            zip.start_file(&entry_name, options).unwrap();
+            std::io::Write::write_all(&mut zip, b"long path content").unwrap();
+            zip.finish().unwrap();
+        }
+
+        tauri::async_runtime::block_on(async {
+            let result = extract_zip(
+                zip_path.to_string_lossy().to_string(),
+                extract_dir.to_string_lossy().to_string(),
+            ).await;
+            assert!(result.is_ok(), "긴 경로 ZIP 해제 실패: {:?}", result.err());
+            assert!(expected_path.exists());
+            assert_eq!(fs::read_to_string(expected_path).unwrap(), "long path content");
+        });
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_extract_zip_decodes_percent_encoded_utf8_names() {
+        let test_dir = setup_test_dir("zip_percent_encoded");
+        let zip_path = test_dir.join("percent_encoded.zip");
+        let extract_dir = test_dir.join("extracted");
+        let encoded_name = "%EB%A8%B8%EC%A7%80%EB%A8%B8%EC%A7%80_%ED%83%80%EC%9D%B4%ED%8B%80_en_black.png";
+        let decoded_name = "머지머지_타이틀_en_black.png";
+
+        {
+            let file = std::fs::File::create(&zip_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            zip.start_file(format!("assets/{}", encoded_name), options).unwrap();
+            std::io::Write::write_all(&mut zip, b"image bytes").unwrap();
+            zip.finish().unwrap();
+        }
+
+        tauri::async_runtime::block_on(async {
+            let result = extract_zip(
+                zip_path.to_string_lossy().to_string(),
+                extract_dir.to_string_lossy().to_string(),
+            ).await;
+            assert!(result.is_ok(), "percent-encoded 파일명 ZIP 해제 실패: {:?}", result.err());
+            assert!(extract_dir.join("assets").join(decoded_name).exists());
+            assert!(!extract_dir.join("assets").join(encoded_name).exists());
+        });
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_calculate_folder_size_counts_nested_files() {
+        let test_dir = setup_test_dir("folder_size");
+        let nested_dir = test_dir.join("nested");
+        let empty_dir = test_dir.join("empty");
+        fs::create_dir_all(&nested_dir).unwrap();
+        fs::create_dir_all(&empty_dir).unwrap();
+        fs::write(test_dir.join("root.txt"), b"12345").unwrap();
+        fs::write(nested_dir.join("child.bin"), b"1234567").unwrap();
+
+        let info = tauri::async_runtime::block_on(calculate_folder_size(
+            test_dir.to_string_lossy().to_string(),
+        ))
+        .unwrap();
+        assert_eq!(info.bytes, "12");
+        assert_eq!(info.file_count, 2);
+        assert_eq!(info.folder_count, 2);
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_calculate_folder_size_rejects_file_path() {
+        let test_dir = setup_test_dir("folder_size_reject_file");
+        let file_path = test_dir.join("file.txt");
+        fs::write(&file_path, b"content").unwrap();
+
+        let result = tauri::async_runtime::block_on(calculate_folder_size(
+            file_path.to_string_lossy().to_string(),
+        ));
+        assert!(matches!(result, Err(AppError::InvalidInput(_))));
 
         cleanup_test_dir(&test_dir);
     }

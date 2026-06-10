@@ -22,6 +22,7 @@ pub fn run() {
         read_cached_listing,
         write_cached_listing,
         list_system_roots,
+        calculate_folder_size,
         get_image_dimensions,
         get_file_thumbnail,
         get_file_thumbnail_path,
