@@ -635,6 +635,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       const createdDirs: string[] = [];
       // 해제마다 누적 사용 중인 폴더명 (이전 해제 결과 + 기존 entries)
       const existingNames = new Set(entries.map(e => e.name));
+      let totalFailed = 0; // 부분 실패 누적 (개별 파일 단위)
       for (const zipPath of paths) {
         const fileName = getFileName(zipPath);
         const baseName = fileName.replace(/\.zip$/i, '');
@@ -647,8 +648,18 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         }
         existingNames.add(folderName);
         const destDir = `${currentPath}${sep}${folderName}`;
-        const resultDir = await invoke<string>('extract_zip', { zipPath, destDir });
-        createdDirs.push(resultDir || destDir);
+        const result = await invoke<{
+          destDir: string;
+          total: number;
+          extracted: number;
+          failed: { name: string; reason: string }[];
+        }>('extract_zip', { zipPath, destDir });
+        createdDirs.push(result.destDir || destDir);
+        if (result.failed.length > 0) {
+          totalFailed += result.failed.length;
+          // 어떤 항목이 왜 실패했는지 콘솔에 상세 기록
+          console.warn(`압축 해제 일부 실패 (${fileName}):`, result.failed);
+        }
         setExtractingZipPaths(prev => {
           const next = new Set(prev);
           next.delete(zipPath);
@@ -658,7 +669,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       // 해제된 폴더로 선택·스크롤 이동 (entries 갱신 후 effect가 처리)
       pendingExtractSelectRef.current = createdDirs;
       await loadDirectory(currentPath);
-      showCopyToast('압축 풀기 완료');
+      // 일부 항목이 실패했어도 나머지는 해제되었으므로 폴더 이동은 유지하고 경고만 표시
+      if (totalFailed > 0) {
+        showCopyToast(`압축 풀기 완료 — ${totalFailed}개 항목 실패`);
+      } else {
+        showCopyToast('압축 풀기 완료');
+      }
     } catch (e) {
       pendingExtractSelectRef.current = [];
       console.error('압축 풀기 실패:', e);

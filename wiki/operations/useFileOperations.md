@@ -15,7 +15,7 @@
 | `groupSelected(folderName)` | Ctrl+G | `create_directory` + `move_items` | 새 폴더로 그룹화 |
 | `ungroupFolder(path)` | Ctrl+Alt+G | `move_items` | 폴더 내용 꺼내기 |
 | `compressToZip(paths)` | Ctrl+Shift+Z | `compress_to_zip` | ZIP 압축 |
-| `extractZip(path)` | Ctrl+Shift+Alt+Z | `extract_zip` | ZIP 해제 |
+| `extractZip(path)` | Ctrl+Shift+Alt+Z | `extract_zip` | ZIP 해제 (부분 실패 시 토스트에 실패 개수 표시) |
 | `compressVideo(paths)` | Ctrl+Shift+P | `compress_video` | 비디오 압축 |
 | `createFolder()` | Ctrl+Shift+N | `create_directory` | 새 폴더 생성 |
 | `createMarkdownFile()` | Ctrl+Shift+M | `create_text_file` | .md 파일 생성 |

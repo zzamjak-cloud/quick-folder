@@ -21,6 +21,14 @@
 | ZIP 압축 | `compress_to_zip` | `Ctrl+Shift+Z` |
 | ZIP 해제 | `extract_zip` | `Ctrl+Shift+Alt+Z` |
 
+### ZIP 해제 회귀 방지 (Windows)
+
+`extract_zip`(`src-tauri/src/modules/file_ops.rs`)는 ZIP 항목명을 그대로 디스크 경로로 쓰면 안 된다.
+
+- **경로 컴포넌트 끝의 공백·점은 반드시 제거**한다(`sanitize_zip_entry_component`). Windows 는 폴더 생성 시 끝 공백/점을 자동으로 잘라내지만, 그 컴포넌트가 하위 파일 경로의 *중간 요소*로 쓰일 때는 잘리지 않아 `ERROR_PATH_NOT_FOUND`(os error 3)가 난다. → Notion 내보내기처럼 제목이 공백으로 끝나는 폴더(`...for /a.png`)에서 일부 파일만 풀리던 버그의 원인.
+- Windows 예약 문자(`< > : " | ? *`)·제어문자·예약 장치명(CON/PRN/NUL/COM1~9/LPT1~9)도 치환한다.
+- 항목별 실패는 `?`로 전체 중단하지 말고 `ExtractResult.failed`에 모아 계속 진행한다. 프론트(`useFileOperations.ts`)는 부분 실패 시 토스트에 실패 개수를 표시한다.
+
 ## 새 파일 조작 기능 추가 체크리스트
 
 > **Ctrl+Z 실행취소는 필수다. 빠뜨리면 안 된다.**

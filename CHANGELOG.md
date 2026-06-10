@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.37] - 2026-06-10
+
+### Fixed
+- 폴더명이 공백·점으로 끝나는 ZIP(예: Notion 내보내기) 압축 해제 시 Windows에서 일부 파일만 풀리고 나머지가 실패하던 문제 수정 — 경로 컴포넌트 끝의 공백·점 제거, Windows 금지문자·예약어 치환
+- ZIP 해제 중 한 항목이 실패해도 전체가 중단되지 않고 나머지를 계속 해제하도록 변경 — 부분 실패 시 토스트에 실패 개수 표시
+
 ## [1.27.36] - 2026-06-10
 
 ### Added

@@ -29,6 +29,23 @@
 | `delete_items_elevated` | `paths: Vec<String>` | `()` | 관리자 권한 삭제 |
 | `restore_trash_items` | `paths: Vec<String>` | `()` | 휴지통에서 복원 |
 | `check_duplicate_items` | `paths[], dest: String` | `Vec<String>` | 중복 파일 목록 반환 |
+| `compress_to_zip` | `paths[], dest: String` | `String` | ZIP 압축 (dest 경로 반환) |
+| `extract_zip` | `zip_path, dest_dir: String` | `ExtractResult` | ZIP 해제 (부분 실패 보고) |
+
+### `ExtractResult` (extract_zip 반환)
+
+```rust
+struct ExtractResult {
+    dest_dir: String,          // 해제 폴더
+    total: usize,              // 시도한 파일 수 (디렉토리 제외)
+    extracted: usize,          // 성공한 파일 수
+    failed: Vec<ExtractFailure>, // 실패 항목 { name, reason }
+}
+```
+
+- 항목 하나가 실패해도 `?`로 전체 중단하지 않고 나머지를 계속 해제한 뒤 `failed`에 모아 반환한다.
+- 프론트엔드(JSON)는 camelCase: `{ destDir, total, extracted, failed: [{ name, reason }] }`.
+- 회귀 방지 규칙은 [operations/overview.md](../operations/overview.md#zip-해제-회귀-방지-windows) 참조.
 
 ## 클립보드 & 시스템
 
