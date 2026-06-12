@@ -20,6 +20,30 @@ type FolderSizeResponse = {
   fileCount?: number;
   folder_count?: number;
   folderCount?: number;
+  children?: FolderSizeChildResponse[];
+};
+
+type FolderSizeChildResponse = {
+  name: string;
+  path: string;
+  is_dir?: boolean;
+  isDir?: boolean;
+  bytes: string;
+  file_count?: number;
+  fileCount?: number;
+  folder_count?: number;
+  folderCount?: number;
+};
+
+export type FolderSizeChildInfo = {
+  name: string;
+  path: string;
+  isDir: boolean;
+  bytes: number;
+  bytesText: string;
+  fileCount: number;
+  folderCount: number;
+  percent: number;
 };
 
 export type FolderSizeDialogState = {
@@ -30,6 +54,7 @@ export type FolderSizeDialogState = {
   bytes?: string;
   fileCount?: number;
   folderCount?: number;
+  children?: FolderSizeChildInfo[];
   error?: string;
 };
 
@@ -940,6 +965,22 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       const sizeText = Number.isFinite(bytes) ? formatSize(bytes, false) : `${info.bytes} bytes`;
       const fileCount = info.file_count ?? info.fileCount ?? 0;
       const folderCount = info.folder_count ?? info.folderCount ?? 0;
+      const children = (info.children ?? [])
+        .map((child): FolderSizeChildInfo => {
+          const childBytes = Number(child.bytes);
+          const normalizedBytes = Number.isFinite(childBytes) ? childBytes : 0;
+          return {
+            name: child.name,
+            path: child.path,
+            isDir: child.is_dir ?? child.isDir ?? false,
+            bytes: normalizedBytes,
+            bytesText: formatSize(normalizedBytes, false),
+            fileCount: child.file_count ?? child.fileCount ?? 0,
+            folderCount: child.folder_count ?? child.folderCount ?? 0,
+            percent: Number.isFinite(bytes) && bytes > 0 ? Math.min(100, (normalizedBytes / bytes) * 100) : 0,
+          };
+        })
+        .sort((a, b) => b.bytes - a.bytes || a.name.localeCompare(b.name));
       setFolderSizeDialog({
         status: 'ready',
         path,
@@ -948,6 +989,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         bytes: info.bytes,
         fileCount,
         folderCount,
+        children,
       });
     } catch (e) {
       console.error('폴더 용량 확인 실패:', e);

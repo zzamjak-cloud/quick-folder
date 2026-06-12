@@ -49,6 +49,13 @@ interface ContextMenuItem {
 - 저장된 프리셋은 같은 하위 메뉴에 동적으로 추가되고, 실행 시 확인창을 거쳐 `run_terminal_command` Rust 명령을 사용한다.
 - 위험 가능 명령(`rm -rf`, `Remove-Item -Recurse`, `git reset --hard`, `git clean -f` 등)은 `terminalPresets.ts`에서 감지하고 메뉴 라벨을 노란색으로 표시한다.
 
+## 폴더 용량 확인
+- 폴더 단일 선택 시 `폴더 용량 확인` 메뉴를 표시한다.
+- 메뉴 액션은 `useFileOperations.handleInspectFolderSize(path)`를 호출한다.
+- 팝업은 `calculate_folder_size` 결과를 사용해 전체 용량을 상단에 표시하고, 직계 하위 파일/폴더를 용량 내림차순 바 리스트로 렌더링한다.
+- 바 리스트는 세로 스크롤 영역을 크게 사용하며, 항목 클릭 시 폴더는 바로 진입하고 파일은 부모 폴더로 이동한 뒤 선택한다.
+- 컨텍스트 메뉴 항목 추가는 필요 없고, 팝업 UI 변경은 `components/FileExplorer/index.tsx`의 `FolderSizeInfoDialog`에서 처리한다.
+
 ## 메뉴 폭과 텍스트 처리
 - 주 메뉴와 하위 메뉴 모두 텍스트 길이에 맞춰 `width: max-content`로 늘어난다.
 - 최소 폭은 180px, 최대 폭은 360px 기준이다.
@@ -61,3 +68,21 @@ interface ContextMenuItem {
 - 단일 파일 우클릭과 다중 선택 우클릭 모두 `paths` 배열로 처리
 - 메뉴 항목 조건(단일/다중/폴더/파일)은 빌더 내부에서 `paths.length`, `is_dir` 로 분기
 - 프리셋 하위 메뉴를 구성할 때는 `getTerminalPresets(path)`를 통해 현재 폴더 경로의 저장 명령을 읽는다.
+
+## 폴더 도구 (단일 폴더 선택)
+섹션 id: `folder-tools`
+
+| id | 라벨 | 조건 | 동작 |
+|----|------|------|------|
+| `find-duplicates` | 중복 파일 찾기 | `is_dir` 단일 선택 | `setDuplicateFinderPath(path)` → [duplicate-finder.md](duplicate-finder.md) |
+| `folder-size-check` | 폴더 용량 확인 | `is_dir` 단일 선택 | `handleInspectFolderSize` |
+
+## 파일 비교 (2개 선택)
+섹션 id: `open` (열기 섹션에 추가)
+
+| id | 라벨 | 조건 | 동작 |
+|----|------|------|------|
+| `compare-files` | 비교하기 | 파일 2개, `isComparableTextFile(name)` | `setDiffViewerPaths([paths[0], paths[1]])` → [../special/diff-viewer.md](../special/diff-viewer.md) |
+
+- 비교 가능 여부: `utils/isComparableTextFile.ts`
+- 선택 순서 = Diff Viewer 왼쪽·오른쪽 순서

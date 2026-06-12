@@ -107,6 +107,25 @@ export function getArchiveVirtualParent(path: string): string | null {
   return `${buildArchiveBrowsePath(info.archivePath)}${parts.slice(0, -1).join(info.separator)}`;
 }
 
+export interface FolderSizeChildNavigationTarget {
+  navigatePath: string;
+  selectPath: string | null;
+}
+
+export function getFolderSizeChildNavigationTarget(child: { path: string; isDir: boolean }): FolderSizeChildNavigationTarget {
+  if (child.isDir) {
+    return {
+      navigatePath: child.path,
+      selectPath: null,
+    };
+  }
+
+  return {
+    navigatePath: getParentDir(child.path),
+    selectPath: child.path,
+  };
+}
+
 const GOOGLE_DRIVE_VIRTUAL_ROOTS = [
   'my drive',
   '내 드라이브',

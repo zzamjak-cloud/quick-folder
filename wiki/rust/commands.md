@@ -16,12 +16,37 @@
 | `read_text_file` | `path: String` | `String` | 텍스트 파일 읽기 |
 | `write_text_file` | `path, content: String` | `()` | 텍스트 파일 쓰기 |
 | `create_text_file` | `path: String` | `()` | 빈 텍스트 파일 생성 |
+| `calculate_folder_size` | `path: String` | `FolderSizeInfo` | 폴더 총 용량과 직계 하위 항목별 누적 용량 |
 | `list_system_roots` | — | `Vec<String>` | 루트 드라이브 목록 |
 
 ### 압축 탐색 메모
 - 지원 브라우징 포맷: `.zip`, `.rar`, `.7z`, `.tar`, `.tgz`, `.tar.gz`, `.tbz2`, `.tar.bz2`, `.txz`, `.tar.xz`
 - 프런트는 `list_directory`와 `open_folder`만 써도 압축 내부 목록 조회와 내부 파일 열기를 처리할 수 있다.
 - drag-out 또는 내부 복사에서는 `materialize_archive_paths`가 실제 파일 경로 목록을 돌려준다.
+
+### `FolderSizeInfo` (calculate_folder_size 반환)
+
+```rust
+struct FolderSizeInfo {
+    bytes: String,
+    file_count: u64,
+    folder_count: u64,
+    children: Vec<FolderSizeChildInfo>,
+}
+
+struct FolderSizeChildInfo {
+    name: String,
+    path: String,
+    is_dir: bool,
+    bytes: String,
+    file_count: u64,
+    folder_count: u64,
+}
+```
+
+- `children`은 선택한 폴더의 직계 하위 항목만 포함한다.
+- 하위 폴더의 `bytes`는 해당 폴더 내부 전체 누적 용량이다.
+- 반환 순서는 용량 내림차순이며, 같은 용량이면 이름 오름차순이다.
 
 ## 파일 관리
 
@@ -77,7 +102,19 @@ struct ExtractResult {
 | `write_cached_listing` | `path, entries` | 폴더 목록 캐시 저장 |
 | `invalidate_thumbnail_cache` | `path: String` | 썸네일 캐시 무효화 |
 | `get_recent_files` | `count: usize` | 최근 파일 목록 |
-| `search_files` | `dir, query: String` | 파일 검색 |
+| `search_files` | `root, query, max_results` | 파일명 검색 (재귀) |
+| `find_duplicate_files` | `root: String` | 내용 동일 파일 그룹 반환 (`Vec<DuplicateGroup>`, 재귀·xxh3) |
+
+### `DuplicateGroup` (`find_duplicate_files` 반환)
+```rust
+struct DuplicateGroup {
+    size: u64,
+    files: Vec<FileEntry>,
+}
+```
+- 프론트 타입: `DuplicateFileGroup` (`types.ts`)
+- 구현: `system_ops/file_search.rs`
+- 제한: `DUPLICATE_SCAN_MAX_DEPTH`(20), `MAX_DUPLICATE_SCAN_FILES`(100_000), `MAX_DUPLICATE_GROUPS`(500)
 
 ## 썸네일 & 아이콘
 

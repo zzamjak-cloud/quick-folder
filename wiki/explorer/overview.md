@@ -17,6 +17,9 @@ FileExplorer/index.tsx         ← 메인 컨트롤러
 │   ├── ColumnPanel.tsx
 │   └── ColumnPreviewPanel.tsx
 ├── ContextMenu.tsx            ← 우클릭 메뉴 (sections 배열만 받음)
+├── DuplicateFilesModal.tsx    ← 중복 파일 찾기 (썸네일 그룹)
+├── DiffViewerModal.tsx        ← 텍스트/코드 2파일 Diff
+├── GlobalSearchModal.tsx      ← 전역 파일 검색
 ├── StatusBar.tsx              ← 하단 선택 항목 정보
 └── ui/
     ├── ModalShell.tsx         ← 공용 모달 래퍼 (오버레이·헤더·ESC)
@@ -75,3 +78,5 @@ sharedClipboard ← 두 패인 간 공유
 - [tabs.md](tabs.md)
 - [column-view.md](column-view.md)
 - [context-menu.md](context-menu.md)
+- [duplicate-finder.md](duplicate-finder.md)
+- [search.md](search.md)

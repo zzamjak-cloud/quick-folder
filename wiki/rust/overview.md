@@ -21,7 +21,7 @@ src-tauri/src/
     ├── hwp_ops.rs      ← HWP 파일
     ├── system_ops/
     │   ├── file_explorer.rs  ← 폴더 나열·캐시
-    │   ├── file_search.rs    ← 파일 검색
+    │   ├── file_search.rs    ← 파일 검색·중복 파일 탐색
     │   ├── file_icon.rs      ← 네이티브 아이콘
     │   ├── clipboard.rs      ← 클립보드
     │   └── google_drive.rs   ← Google Drive

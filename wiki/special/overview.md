@@ -14,6 +14,8 @@
 | HWP 미리보기 | `HwpPreviewModal.tsx` | — |
 | FBX 미리보기 | `FbxPreviewModal.tsx` | — |
 | JSON 뷰어 | `JsonViewerModal.tsx` | — |
+| Diff Viewer | `DiffViewerModal.tsx` | [diff-viewer.md](diff-viewer.md) |
+| 중복 파일 찾기 | `DuplicateFilesModal.tsx` | [../explorer/duplicate-finder.md](../explorer/duplicate-finder.md) |
 | 자동 업데이트 | `useAutoUpdate.ts` | — |
 | Google Drive 연동 | `system_ops/google_drive.rs` | — |
 

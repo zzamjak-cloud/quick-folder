@@ -242,10 +242,21 @@ pub fn is_directory(path: String) -> bool {
 }
 
 #[derive(Debug, serde::Serialize)]
+pub struct FolderSizeChildInfo {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub bytes: String,
+    pub file_count: u64,
+    pub folder_count: u64,
+}
+
+#[derive(Debug, serde::Serialize)]
 pub struct FolderSizeInfo {
     pub bytes: String,
     pub file_count: u64,
     pub folder_count: u64,
+    pub children: Vec<FolderSizeChildInfo>,
 }
 
 #[derive(Default)]
@@ -271,12 +282,78 @@ fn calculate_folder_size_impl(path: &str) -> Result<FolderSizeInfo> {
     }
 
     let mut acc = FolderSizeAccumulator::default();
-    collect_folder_size(root, &mut acc)?;
+    let children = collect_folder_size_children(root, &mut acc)?;
     Ok(FolderSizeInfo {
         bytes: acc.bytes.to_string(),
         file_count: acc.file_count,
         folder_count: acc.folder_count,
+        children,
     })
+}
+
+fn collect_folder_size_children(
+    root: &std::path::Path,
+    total: &mut FolderSizeAccumulator,
+) -> Result<Vec<FolderSizeChildInfo>> {
+    let mut children: Vec<(u64, String, FolderSizeChildInfo)> = Vec::new();
+
+    for entry_result in std::fs::read_dir(root)? {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let entry_path = entry.path();
+        let metadata = match std::fs::symlink_metadata(&entry_path) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry_path.to_string_lossy().to_string();
+        if metadata.is_dir() {
+            let mut child_acc = FolderSizeAccumulator::default();
+            collect_folder_size(&entry_path, &mut child_acc)?;
+            total.bytes = total.bytes.saturating_add(child_acc.bytes);
+            total.file_count = total.file_count.saturating_add(child_acc.file_count);
+            total.folder_count = total
+                .folder_count
+                .saturating_add(child_acc.folder_count.saturating_add(1));
+            children.push((
+                child_acc.bytes,
+                name.to_lowercase(),
+                FolderSizeChildInfo {
+                    name,
+                    path,
+                    is_dir: true,
+                    bytes: child_acc.bytes.to_string(),
+                    file_count: child_acc.file_count,
+                    folder_count: child_acc.folder_count,
+                },
+            ));
+        } else if metadata.is_file() {
+            let bytes = metadata.len();
+            total.bytes = total.bytes.saturating_add(bytes);
+            total.file_count = total.file_count.saturating_add(1);
+            children.push((
+                bytes,
+                name.to_lowercase(),
+                FolderSizeChildInfo {
+                    name,
+                    path,
+                    is_dir: false,
+                    bytes: bytes.to_string(),
+                    file_count: 1,
+                    folder_count: 0,
+                },
+            ));
+        }
+    }
+
+    children.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    Ok(children.into_iter().map(|(_, _, child)| child).collect())
 }
 
 fn collect_folder_size(path: &std::path::Path, acc: &mut FolderSizeAccumulator) -> Result<()> {
@@ -1760,6 +1837,41 @@ mod tests {
         assert_eq!(info.bytes, "12");
         assert_eq!(info.file_count, 2);
         assert_eq!(info.folder_count, 2);
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    #[test]
+    fn test_calculate_folder_size_returns_direct_children_sorted_by_size() {
+        let test_dir = setup_test_dir("folder_size_children");
+        let cache_dir = test_dir.join("cache");
+        let assets_dir = test_dir.join("assets");
+        let empty_dir = test_dir.join("empty");
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::create_dir_all(&assets_dir).unwrap();
+        fs::create_dir_all(&empty_dir).unwrap();
+        fs::write(cache_dir.join("a.bin"), vec![0u8; 20]).unwrap();
+        fs::write(cache_dir.join("b.bin"), vec![0u8; 15]).unwrap();
+        fs::write(assets_dir.join("image.png"), vec![0u8; 6]).unwrap();
+        fs::write(test_dir.join("root.log"), vec![0u8; 12]).unwrap();
+
+        let info = tauri::async_runtime::block_on(calculate_folder_size(
+            test_dir.to_string_lossy().to_string(),
+        ))
+        .unwrap();
+
+        assert_eq!(info.bytes, "53");
+        assert_eq!(info.children.len(), 4);
+        assert_eq!(info.children[0].name, "cache");
+        assert_eq!(info.children[0].bytes, "35");
+        assert!(info.children[0].is_dir);
+        assert_eq!(info.children[1].name, "root.log");
+        assert_eq!(info.children[1].bytes, "12");
+        assert!(!info.children[1].is_dir);
+        assert_eq!(info.children[2].name, "assets");
+        assert_eq!(info.children[2].bytes, "6");
+        assert_eq!(info.children[3].name, "empty");
+        assert_eq!(info.children[3].bytes, "0");
 
         cleanup_test_dir(&test_dir);
     }

@@ -6,9 +6,10 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
-  RotateCcw, HardDrive, Terminal, Files,
+  RotateCcw, HardDrive, Terminal, Files, GitCompare,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
+import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { NamingCase } from '../../../utils/caseConvert';
 import { getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
 
@@ -52,6 +53,7 @@ export interface UseContextMenuBuilderConfig {
     setGifCompressPaths: (paths: string[] | null) => void;
     setTerminalPresetPath: (path: string | null) => void;
     setDuplicateFinderPath: (path: string | null) => void;
+    setDiffViewerPaths: (paths: [string, string] | null) => void;
   };
   preview: {
     handlePreviewImage: (path: string) => void;
@@ -174,6 +176,20 @@ export function useContextMenuBuilder({
           },
         ],
       });
+    }
+    // 텍스트/코드 파일 2개 선택 시 Diff Viewer
+    if (paths.length === 2) {
+      const compareEntries = paths
+        .map(p => entries.find(e => e.path === p))
+        .filter((e): e is FileEntry => !!e && !e.is_dir && isComparableTextFile(e.name));
+      if (compareEntries.length === 2) {
+        openSection.items.push({
+          id: 'compare-files',
+          icon: <GitCompare size={13} />,
+          label: '비교하기',
+          onClick: () => modals.setDiffViewerPaths([paths[0], paths[1]]),
+        });
+      }
     }
     sections.push(openSection);
 
@@ -643,6 +659,7 @@ export function useContextMenuBuilder({
     modals.setFontPreviewPath, modals.setFontMergePaths,
     modals.setPdfPreviewPath, modals.setGifCompressPaths, modals.setTerminalPresetPath,
     modals.setDuplicateFinderPath,
+    modals.setDiffViewerPaths,
   ]);
 
   return { contextMenuSections };

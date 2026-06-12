@@ -33,6 +33,9 @@
 | `HwpPreviewModal.tsx` | `.hwp` | `extract_hwp_text` |
 | `FbxPreviewModal.tsx` | `.fbx` | — |
 | `LaigterLitPreview.tsx` | `.laigter` | `laigter_maps_preview` |
+| `DuplicateFilesModal.tsx` | — | `find_duplicate_files`, `delete_items` |
+| `DiffViewerModal.tsx` | 텍스트·코드 | `read_text_file` (프론트 diff) |
+| `GlobalSearchModal.tsx` | 파일명 검색 | `search_files` |
 
 ## useModalStates.ts
 
@@ -43,6 +46,15 @@
 모든 모달의 열림/닫힘 state와 토글 함수를 중앙 관리.  
 새 모달 추가 시 이 훅에 state + 토글 함수 추가.
 
+### 주요 state (탐색·비교)
+| state | 타입 | 모달 |
+|-------|------|------|
+| `isGlobalSearchOpen` | `boolean` | GlobalSearchModal |
+| `duplicateFinderPath` | `string \| null` | DuplicateFilesModal |
+| `diffViewerPaths` | `[string, string] \| null` | DiffViewerModal |
+
 ## 관련 위키
 - [../special/drawing.md](../special/drawing.md)
 - [../special/markdown-editor.md](../special/markdown-editor.md)
+- [../special/diff-viewer.md](../special/diff-viewer.md)
+- [../explorer/duplicate-finder.md](../explorer/duplicate-finder.md)

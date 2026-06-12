@@ -40,6 +40,7 @@ import {
   buildArchiveBrowsePath,
   getArchiveVirtualParent,
   getFileName,
+  getFolderSizeChildNavigationTarget,
   getPathSeparator,
   getParentDir,
   isArchiveVirtualPath,
@@ -52,6 +53,7 @@ import { isTauri } from '../../utils/isTauri';
 import GoToFolderModal from './GoToFolderModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import DuplicateFilesModal from './DuplicateFilesModal';
+import DiffViewerModal from './DiffViewerModal';
 import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
 import { useSearchFilter } from './hooks/useSearchFilter';
@@ -658,6 +660,37 @@ export default function FileExplorer({
     }
   }, [handleNavigateTo]);
 
+  const selectVisiblePath = useCallback((targetPath: string) => {
+    const idx = entries.findIndex(entry => entry.path === targetPath);
+    if (idx < 0) return false;
+    setSelectedPaths([entries[idx].path]);
+    setFocusedIndex(idx);
+    pendingSelectRef.current = null;
+    requestAnimationFrame(() => {
+      const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(targetPath)}"]`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return true;
+  }, [entries]);
+
+  const handleFolderSizeChildSelect = useCallback((child: NonNullable<FolderSizeDialogState['children']>[number]) => {
+    const target = getFolderSizeChildNavigationTarget({
+      path: child.path,
+      isDir: child.isDir,
+    });
+    if (target.selectPath) {
+      pendingSelectRef.current = target.selectPath;
+    }
+    fileOps.closeFolderSizeDialog();
+    if (target.navigatePath === currentPath) {
+      if (target.selectPath) {
+        selectVisiblePath(target.selectPath);
+      }
+      return;
+    }
+    handleNavigateTo(target.navigatePath);
+  }, [currentPath, fileOps.closeFolderSizeDialog, handleNavigateTo, selectVisiblePath]);
+
   // 중복 파일 모달에서 삭제
   const handleDuplicateFileDelete = useCallback(async (path: string) => {
     await fileOps.handleDelete([path], false);
@@ -953,18 +986,8 @@ export default function FileExplorer({
   useEffect(() => {
     if (!pendingSelectRef.current) return;
     const targetPath = pendingSelectRef.current;
-    const idx = entries.findIndex(e => e.path === targetPath);
-    if (idx >= 0) {
-      setSelectedPaths([entries[idx].path]);
-      setFocusedIndex(idx);
-      pendingSelectRef.current = null;
-      // 스크롤
-      requestAnimationFrame(() => {
-        const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(targetPath)}"]`);
-        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
-    }
-  }, [entries]);
+    selectVisiblePath(targetPath);
+  }, [entries, selectVisiblePath]);
 
   // --- 붙여넣기·복제 후 파일 자동 선택 (경로 슬래시 차이 흡수) ---
   useEffect(() => {
@@ -1245,6 +1268,7 @@ export default function FileExplorer({
         <FolderSizeInfoDialog
           dialog={fileOps.folderSizeDialog}
           themeVars={themeVars}
+          onChildOpen={handleFolderSizeChildSelect}
           onClose={fileOps.closeFolderSizeDialog}
         />
       )}
@@ -1832,6 +1856,16 @@ export default function FileExplorer({
         />
       )}
 
+      {/* Diff Viewer */}
+      {modals.diffViewerPaths && (
+        <DiffViewerModal
+          leftPath={modals.diffViewerPaths[0]}
+          rightPath={modals.diffViewerPaths[1]}
+          themeVars={themeVars}
+          onClose={() => modals.setDiffViewerPaths(null)}
+        />
+      )}
+
       {/* 마크다운 편집기 */}
       {modals.markdownEditorPath && (
         <MarkdownEditor
@@ -2038,6 +2072,7 @@ export default function FileExplorer({
 function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
   dialog: FolderSizeDialogState;
   themeVars: ThemeVars | null;
+  onChildOpen: (child: NonNullable<FolderSizeDialogState['children']>[number]) => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -2062,7 +2097,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
       aria-label="폴더 용량 정보"
     >
       <div
-        className="w-full max-w-md rounded-lg shadow-2xl overflow-hidden"
+        className="w-full max-w-2xl max-h-[88vh] rounded-lg shadow-2xl overflow-hidden flex flex-col"
         style={{
           backgroundColor: themeVars?.surface2 ?? '#1e293b',
           border: `1px solid ${borderColor}`,
@@ -2087,7 +2122,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
           </button>
         </div>
 
-        <div className="px-4 py-4">
+        <div className="px-4 py-4 overflow-hidden">
           <div className="mb-4 min-w-0">
             <div className="text-xs mb-1" style={{ color: mutedColor }}>폴더</div>
             <div className="text-sm font-medium truncate" style={{ color: textColor }} title={dialog.path}>
@@ -2112,11 +2147,38 @@ function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
           )}
 
           {dialog.status === 'ready' && (
-            <div className="grid grid-cols-1 gap-2">
-              <InfoPopupRow label="용량" value={dialog.sizeText ?? '-'} themeVars={themeVars} />
-              <InfoPopupRow label="정확한 바이트" value={`${dialog.bytes ?? '0'} bytes`} themeVars={themeVars} />
-              <InfoPopupRow label="파일" value={`${(dialog.fileCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
-              <InfoPopupRow label="폴더" value={`${(dialog.folderCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
+            <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <InfoPopupRow label="전체 용량" value={dialog.sizeText ?? '-'} themeVars={themeVars} />
+                <InfoPopupRow label="정확한 바이트" value={`${dialog.bytes ?? '0'} bytes`} themeVars={themeVars} />
+                <InfoPopupRow label="파일" value={`${(dialog.fileCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
+                <InfoPopupRow label="폴더" value={`${(dialog.folderCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
+              </div>
+
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium" style={{ color: textColor }}>용량 상위 항목</span>
+                  <span className="text-[11px]" style={{ color: mutedColor }}>
+                    {(dialog.children?.length ?? 0).toLocaleString()}개
+                  </span>
+                </div>
+                {dialog.children && dialog.children.length > 0 ? (
+                  <div className="max-h-[52vh] overflow-y-auto pr-1 space-y-2">
+                    {dialog.children.map(child => (
+                      <FolderSizeChildRow
+                        key={child.path}
+                        child={child}
+                        themeVars={themeVars}
+                        onOpen={onChildOpen}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md px-3 py-3 text-sm" style={{ backgroundColor: themeVars?.surface ?? '#111827', color: mutedColor }}>
+                    표시할 하위 항목이 없습니다.
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -2137,6 +2199,58 @@ function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
         </div>
       </div>
     </div>
+  );
+}
+
+function FolderSizeChildRow({ child, themeVars }: {
+  child: NonNullable<FolderSizeDialogState['children']>[number];
+  themeVars: ThemeVars | null;
+  onOpen: (child: NonNullable<FolderSizeDialogState['children']>[number]) => void;
+}) {
+  const mutedColor = themeVars?.muted ?? '#94a3b8';
+  const textColor = themeVars?.text ?? '#e5e7eb';
+  const accentColor = themeVars?.accent ?? '#3b82f6';
+  const percentText = `${child.percent >= 10 ? child.percent.toFixed(0) : child.percent.toFixed(1)}%`;
+  const barWidth = child.bytes > 0 ? Math.max(2, child.percent) : 0;
+  const detail = child.isDir
+    ? `파일 ${child.fileCount.toLocaleString()}개 · 폴더 ${child.folderCount.toLocaleString()}개`
+    : '파일';
+
+  return (
+    <button
+      type="button"
+      className="w-full rounded-md px-3 py-2 text-left transition-opacity hover:opacity-85 focus:outline-none focus:ring-2"
+      style={{ backgroundColor: themeVars?.surface ?? '#111827' }}
+      title={child.path}
+      onClick={() => onOpen(child)}
+    >
+      <div className="mb-2 flex items-center justify-between gap-3 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          {child.isDir ? (
+            <Folder size={14} className="shrink-0" style={{ color: accentColor }} />
+          ) : (
+            <FileText size={14} className="shrink-0" style={{ color: mutedColor }} />
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium" style={{ color: textColor }}>{child.name}</div>
+            <div className="truncate text-[11px]" style={{ color: mutedColor }}>{detail}</div>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="text-sm font-medium" style={{ color: textColor }}>{child.bytesText}</div>
+          <div className="text-[11px]" style={{ color: mutedColor }}>{percentText}</div>
+        </div>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: `${accentColor}22` }}>
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${barWidth}%`,
+            backgroundColor: child.isDir ? accentColor : mutedColor,
+          }}
+        />
+      </div>
+    </button>
   );
 }
 

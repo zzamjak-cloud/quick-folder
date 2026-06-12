@@ -19,6 +19,7 @@
 | `compressVideo(paths)` | Ctrl+Shift+P | `compress_video` | 비디오 압축 |
 | `createFolder()` | Ctrl+Shift+N | `create_directory` | 새 폴더 생성 |
 | `createMarkdownFile()` | Ctrl+Shift+M | `create_text_file` | .md 파일 생성 |
+| `handleInspectFolderSize(path)` | 컨텍스트 메뉴 | `calculate_folder_size` | 총 용량과 직계 하위 항목 용량 분석 표시 |
 
 ## 압축 내부 읽기 전용
 - `ensureWritableContext()`가 현재 경로와 선택 경로를 검사한다.
@@ -27,6 +28,13 @@
   - 선택한 `paths` 중 하나라도 archive virtual path
 - 사용자 메시지: `압축 내부는 읽기 전용입니다. 파일을 밖으로 꺼내서 사용하세요.`
 - 이 제약은 삭제, 복제, 그룹화, 새 폴더/파일 생성, 폴더 크기 계산 등 현재 훅이 담당하는 조작 전반에 공통 적용된다.
+
+## 폴더 용량 분석
+- 폴더 우클릭 메뉴의 `폴더 용량 확인`에서 `handleInspectFolderSize(path)`를 호출한다.
+- `calculate_folder_size` 응답의 최상위 `bytes`, `fileCount`, `folderCount`는 팝업 상단 요약에 표시한다.
+- `children`은 직계 하위 파일/폴더 목록이며, 프런트에서 다시 용량 내림차순으로 정렬하고 전체 용량 대비 비율을 계산해 바 리스트로 표시한다.
+- 바 리스트 항목 클릭 시 폴더는 해당 폴더로 이동하고, 파일은 부모 폴더로 이동한 뒤 해당 파일을 선택한다.
+- 압축 내부 경로는 읽기 전용 정책에 따라 차단한다.
 
 ## Undo 지원 현황
 

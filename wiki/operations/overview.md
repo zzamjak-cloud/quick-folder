@@ -16,6 +16,7 @@
 | 이름변경 | `rename_item` | 새 경로 반환 |
 | 폴더 생성 | `create_directory` | |
 | 파일 생성 | `create_text_file` | |
+| 폴더 용량 분석 | `calculate_folder_size` | 직계 하위 항목을 용량 내림차순으로 반환 |
 | 휴지통 복원 | `restore_trash_items` | Undo용 |
 | 중복 확인 | `check_duplicate_items` | 붙여넣기 전 |
 | ZIP 압축 | `compress_to_zip` | `Ctrl+Shift+Z` |
