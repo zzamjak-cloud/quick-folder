@@ -2069,7 +2069,7 @@ export default function FileExplorer({
 }
 
 // 폴더 용량 정보 다이얼로그
-function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
+function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
   dialog: FolderSizeDialogState;
   themeVars: ThemeVars | null;
   onChildOpen: (child: NonNullable<FolderSizeDialogState['children']>[number]) => void;
@@ -2202,7 +2202,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onClose }: {
   );
 }
 
-function FolderSizeChildRow({ child, themeVars }: {
+function FolderSizeChildRow({ child, themeVars, onOpen }: {
   child: NonNullable<FolderSizeDialogState['children']>[number];
   themeVars: ThemeVars | null;
   onOpen: (child: NonNullable<FolderSizeDialogState['children']>[number]) => void;
@@ -2219,7 +2219,7 @@ function FolderSizeChildRow({ child, themeVars }: {
   return (
     <button
       type="button"
-      className="w-full rounded-md px-3 py-2 text-left transition-opacity hover:opacity-85 focus:outline-none focus:ring-2"
+      className="w-full cursor-pointer rounded-md px-3 py-2 text-left transition-opacity hover:opacity-85 focus:outline-none focus:ring-2"
       style={{ backgroundColor: themeVars?.surface ?? '#111827' }}
       title={child.path}
       onClick={() => onOpen(child)}
