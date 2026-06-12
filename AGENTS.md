@@ -18,6 +18,7 @@
 |------|------|
 | 파일 탐색기 구조 파악 | `wiki/explorer/overview.md` |
 | 파일 조작 기능 추가 | `wiki/operations/overview.md` |
+| 파일 전송 작업 큐 | `wiki/operations/task-queue.md` |
 | Ctrl+Z 실행취소 추가 | `wiki/operations/undo.md` |
 | 단축키 추가·충돌 방지 | `wiki/shortcuts/overview.md` |
 | 우클릭 메뉴 항목 추가 | `wiki/explorer/context-menu.md` |

@@ -39,6 +39,7 @@ import { Category, FolderShortcut, ToastMessage, ClipboardData } from './types';
 import { Button } from './components/ui/Button';
 import { Modal } from './components/ui/Modal';
 import { ToastContainer } from './components/ToastContainer';
+import TaskQueuePanel from './components/TaskQueuePanel';
 import { UpdateModal } from './components/UpdateModal';
 import { UpdateFailedModal } from './components/UpdateFailedModal';
 import { HelpModal } from './components/HelpModal';
@@ -1332,6 +1333,9 @@ export default function App() {
 
       {/* 도움말 모달 */}
       <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
+
+      {/* 파일 전송 작업 큐 (복사/이동) */}
+      <TaskQueuePanel themeVars={themeVars} />
 
       {/* Notifications */}
       <ToastContainer toasts={toasts} removeToast={removeToast} />

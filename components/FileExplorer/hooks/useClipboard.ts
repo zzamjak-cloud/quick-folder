@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ClipboardData, FileEntry, FolderMergeRequest } from '../../../types';
 import { getFileName, getPathSeparator, normalizeFsPath } from '../../../utils/pathUtils';
 import { detectFolderMergeScenario } from '../../../utils/folderMerge';
-import { runCopyWithProgress, type CopyProgressInfo } from './runCopyWithProgress';
+import { runTransferWithProgress } from './runTransferWithProgress';
 
 export interface UseClipboardConfig {
   selectedPaths: string[];
@@ -12,12 +12,9 @@ export interface UseClipboardConfig {
   setSelectedPaths: React.Dispatch<React.SetStateAction<string[]>>;
   sharedClipboard?: ClipboardData | null;
   onClipboardChange?: (cb: ClipboardData | null) => void;
-  setOperationProgress?: (p: { type: string; current: number; total: number; itemLabel?: string } | null) => void;
   setEntries?: React.Dispatch<React.SetStateAction<FileEntry[]>>;
   entries?: FileEntry[];
   setPendingCopyPaths?: React.Dispatch<React.SetStateAction<string[]>>;
-  /** copy_items_with_progress 진행률 (파일 수·퍼센트) */
-  onCopyProgress?: (info: CopyProgressInfo) => void;
   /** 스마트 폴더 병합 모달 열기 */
   onFolderMergeRequest?: (request: FolderMergeRequest) => void;
 }
@@ -33,11 +30,9 @@ export function useClipboard({
   setSelectedPaths,
   sharedClipboard,
   onClipboardChange,
-  setOperationProgress,
   setEntries,
   entries: currentEntries,
   setPendingCopyPaths,
-  onCopyProgress,
   onFolderMergeRequest,
 }: UseClipboardConfig) {
   // 분할 뷰: 공유 클립보드 사용, 단일 뷰: 내부 상태 사용
@@ -107,14 +102,15 @@ export function useClipboard({
       paths.length === 1
         ? getFileName(paths[0])
         : `${getFileName(paths[0])} 외 ${paths.length - 1}개`;
-    setOperationProgress?.({ type: label, current: 0, total: 0, itemLabel });
     try {
-      if (action === 'copy') {
-        await runCopyWithProgress(paths, currentPath, overwrite, (info) => {
-          onCopyProgress?.(info);
-        });
-      } else {
-        await invoke('move_items', { sources: paths, dest: currentPath, overwrite });
+      await runTransferWithProgress(
+        action === 'copy' ? 'copy' : 'move',
+        paths,
+        currentPath,
+        overwrite,
+        itemLabel,
+      );
+      if (action === 'cut') {
         setClipboard(null);
       }
       pendingPasteSelectRef.current = destPaths;
@@ -124,10 +120,9 @@ export function useClipboard({
     } catch (e) {
       console.error('붙여넣기 실패:', e);
     } finally {
-      setOperationProgress?.(null);
       setPendingCopyPaths?.(prev => prev.filter(p => !destPaths.includes(normalizeFsPath(p))));
     }
-  }, [currentPath, loadDirectory, setClipboard, setOperationProgress, setEntries, currentEntries, onCopyProgress]);
+  }, [currentPath, loadDirectory, setClipboard, setEntries, currentEntries, setPendingCopyPaths]);
 
   const handlePaste = useCallback(async () => {
     if (!currentPath) return;

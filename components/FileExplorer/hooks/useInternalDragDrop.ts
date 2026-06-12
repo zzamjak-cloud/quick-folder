@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { getFileName, isArchiveVirtualPath, sameVolume } from '../../../utils/pathUtils';
 import { createFileDragImage } from '../fileUtils';
+import { runTransferWithProgress } from './runTransferWithProgress';
 
 const TRAY_STAGE_WIDTH = 96;
 const EXTERNAL_DRAG_EDGE_PX = 2;
@@ -339,11 +340,16 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
             return;
           }
 
-          if (shouldCopy) {
-            await invoke('copy_items', { sources, dest: target });
-          } else {
-            await invoke('move_items', { sources, dest: target });
-          }
+          const label = sources.length === 1
+            ? getFileName(sources[0])
+            : `${getFileName(sources[0])} 외 ${sources.length - 1}개`;
+          await runTransferWithProgress(
+            shouldCopy ? 'copy' : 'move',
+            sources,
+            target,
+            false,
+            label,
+          );
           onMoveComplete();
           // 모든 패널에 새로고침 이벤트 전파
           window.dispatchEvent(new CustomEvent('qf-files-changed'));
@@ -373,11 +379,10 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
   const executeDrop = useCallback(async (info: PendingDrop, overwrite: boolean) => {
     const { sources, dest, action } = info;
     try {
-      if (action === 'copy') {
-        await invoke('copy_items', { sources, dest, overwrite });
-      } else {
-        await invoke('move_items', { sources, dest, overwrite });
-      }
+      const label = sources.length === 1
+        ? getFileName(sources[0])
+        : `${getFileName(sources[0])} 외 ${sources.length - 1}개`;
+      await runTransferWithProgress(action, sources, dest, overwrite, label);
       onMoveComplete();
       window.dispatchEvent(new CustomEvent('qf-files-changed'));
     } catch (err) {

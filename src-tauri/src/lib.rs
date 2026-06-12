@@ -36,6 +36,7 @@ pub fn run() {
             merge_folders,
             copy_items,
             copy_items_with_progress,
+            transfer_items_with_progress,
             duplicate_items,
             move_items,
             delete_items,

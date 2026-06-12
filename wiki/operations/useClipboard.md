@@ -26,10 +26,11 @@ App.tsx의 sharedClipboard state
 Ctrl+V
   → check_duplicate_items(paths, destDir)
   → 중복 있으면 대화상자 (덮어쓰기 / 이름변경 / 취소)
-  → action='copy' → copy_items
-     action='cut'  → move_items
+  → action='copy' | 'cut' → runTransferWithProgress (작업 큐 패널)
   → loadDirectory(currentPath)
 ```
+
+진행률 UI·자동 닫기: [task-queue.md](task-queue.md)
 
 ## 주요 함수
 | 함수명 | 단축키 | 설명 |

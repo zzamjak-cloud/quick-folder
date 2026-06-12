@@ -10,7 +10,8 @@
 | 삭제 | `delete_items` | 휴지통 이동 |
 | 관리자 삭제 | `delete_items_elevated` | 권한 필요 시 |
 | 복사 | `copy_items` | |
-| 복사(진행률) | `copy_items_with_progress` | `runCopyWithProgress.ts` |
+| 복사(진행률) | `copy_items_with_progress` | 레거시 Channel API |
+| 복사/이동(작업 큐) | `transfer_items_with_progress` | `runTransferWithProgress.ts` → [task-queue.md](task-queue.md) |
 | 이동 | `move_items` | |
 | 복제 | `duplicate_items` | 같은 위치에 복제 |
 | 이름변경 | `rename_item` | 새 경로 반환 |
@@ -49,7 +50,14 @@
 
 → [undo.md](undo.md)
 
+## 작업 큐 패널
+
+복사·이동은 우측 하단 **Task Queue Panel**에서 파일별 진행률을 표시한다. 모든 전송이 끝나면 약 1.5초 후 패널이 자동으로 닫힌다.
+
+→ [task-queue.md](task-queue.md)
+
 ## 관련 위키
+- [task-queue.md](task-queue.md)
 - [useFileOperations.md](useFileOperations.md)
 - [useClipboard.md](useClipboard.md)
 - [undo.md](undo.md)

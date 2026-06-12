@@ -53,7 +53,8 @@ struct FolderSizeChildInfo {
 | 명령 | 파라미터 | 반환 | 설명 |
 |------|----------|------|------|
 | `copy_items` | `paths[], dest: String` | `()` | 복사 |
-| `copy_items_with_progress` | `paths[], dest: String` | stream | 진행률 포함 복사 |
+| `copy_items_with_progress` | `paths[], dest: String` | stream | 진행률 포함 복사 (레거시) |
+| `transfer_items_with_progress` | `operation, paths[], dest, overwrite` | stream | 작업 큐용 복사/이동 → [../operations/task-queue.md](../operations/task-queue.md) |
 | `move_items` | `paths[], dest: String` | `()` | 이동 |
 | `duplicate_items` | `paths: Vec<String>` | `()` | 같은 위치에 복제 |
 | `delete_items` | `paths: Vec<String>` | `()` | 휴지통으로 삭제 |

@@ -33,7 +33,7 @@ import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
 import { PreviewModals } from './PreviewModals';
 import { cancelAllQueued, queuedInvokeLow } from './hooks/invokeQueue';
-import { runCopyWithProgress } from './hooks/runCopyWithProgress';
+import { runTransferWithProgress } from './hooks/runTransferWithProgress';
 import { detectFolderMergeScenario } from '../../utils/folderMerge';
 import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
@@ -492,18 +492,6 @@ export default function FileExplorer({
   const { displayEntries } = searchFilter;
   const displayPathSet = useMemo(() => new Set(displayEntries.map(entry => entry.path)), [displayEntries]);
 
-  // 붙여넣기 진행 상태 배열 (여러 작업 동시 표시 가능)
-  const [pasteProgressList, setPasteProgressList] = useState<{
-    id: number;
-    type: string;
-    current: number;
-    total: number;
-    itemLabel?: string;
-    percent?: number;
-    currentFile?: string;
-  }[]>([]);
-  const pasteIdRef = useRef(0);
-
   // 복사/이동 진행 중인 대상 경로 (ghost 항목 pending 표시용)
   const [pendingCopyPaths, setPendingCopyPaths] = useState<string[]>([]);
   const pendingCopySet = useMemo(() => new Set(pendingCopyPaths.map(normalizeFsPath)), [pendingCopyPaths]);
@@ -519,34 +507,6 @@ export default function FileExplorer({
     setEntries,
     entries,
     setPendingCopyPaths,
-    setOperationProgress: (p: { type: string; current: number; total: number; itemLabel?: string } | null) => {
-      if (p) {
-        // 새 작업 시작: ID 부여하여 추가
-        const id = ++pasteIdRef.current;
-        setPasteProgressList(prev => [...prev, { id, ...p }]);
-        // 현재 ID를 반환하기 위해 ref에 저장 (콜백 내부에서 제거 시 사용)
-        (window as any).__qfLastPasteId = id;
-      } else {
-        // 작업 완료: 마지막 ID 제거
-        const id = (window as any).__qfLastPasteId;
-        if (id) setPasteProgressList(prev => prev.filter(item => item.id !== id));
-      }
-    },
-    onCopyProgress: (info) => {
-      const id = (window as unknown as { __qfLastPasteId?: number }).__qfLastPasteId as number | undefined;
-      if (id == null) return;
-      setPasteProgressList(prev => prev.map(item =>
-        item.id === id
-          ? {
-              ...item,
-              percent: info.percent,
-              current: info.doneFiles,
-              total: info.totalFiles,
-              currentFile: info.currentName || undefined,
-            }
-          : item
-      ));
-    },
     onFolderMergeRequest: modals.setFolderMergeRequest,
   });
 
@@ -1212,31 +1172,19 @@ export default function FileExplorer({
           return;
         }
 
-        if (shouldCopy) {
-          const dropId = ++pasteIdRef.current;
-          const dropLabel = filtered.length === 1 ? getFileName(filtered[0]) : `${getFileName(filtered[0])} 외 ${filtered.length - 1}개`;
-          setPasteProgressList(prev => [...prev, { id: dropId, type: '복사', current: 0, total: 0, itemLabel: dropLabel }]);
-          (window as unknown as { __qfLastPasteId?: number }).__qfLastPasteId = dropId;
-          const sep = getPathSeparator(currentPath);
-          const destPaths = filtered.map(p => normalizeFsPath(`${currentPath}${sep}${getFileName(p)}`));
-          clipboardHook.pendingPasteSelectRef.current = destPaths;
-          try {
-            await runCopyWithProgress(filtered, currentPath, false, (info) => {
-              setPasteProgressList(prev => prev.map(p =>
-                p.id === dropId
-                  ? { ...p, percent: info.percent, current: info.doneFiles, total: info.totalFiles, currentFile: info.currentName || undefined }
-                  : p
-              ));
-            });
-          } finally {
-            setPasteProgressList(prev => prev.filter(p => p.id !== dropId));
-          }
-        } else {
-          const sep = getPathSeparator(currentPath);
-          const destPaths = filtered.map(p => normalizeFsPath(`${currentPath}${sep}${getFileName(p)}`));
-          clipboardHook.pendingPasteSelectRef.current = destPaths;
-          await invoke('move_items', { sources: filtered, dest: currentPath });
-        }
+        const dropLabel = filtered.length === 1
+          ? getFileName(filtered[0])
+          : `${getFileName(filtered[0])} 외 ${filtered.length - 1}개`;
+        const sep = getPathSeparator(currentPath);
+        const destPaths = filtered.map(p => normalizeFsPath(`${currentPath}${sep}${getFileName(p)}`));
+        clipboardHook.pendingPasteSelectRef.current = destPaths;
+        await runTransferWithProgress(
+          shouldCopy ? 'copy' : 'move',
+          filtered,
+          currentPath,
+          false,
+          dropLabel,
+        );
         loadDirectory(currentPath);
         window.dispatchEvent(new Event('qf-files-changed'));
       } catch (err) {
@@ -1639,96 +1587,28 @@ export default function FileExplorer({
         </div>
       )}
 
-      {/* 파일 작업 진행 알림 — 우측 하단, 비차단, 여러 개 스택 가능 */}
-      {(fileOps.operationProgress || pasteProgressList.length > 0) && (
+      {/* ZIP 해제 등 기타 작업 진행 알림 (복사/이동은 TaskQueuePanel) */}
+      {fileOps.operationProgress && (
         <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2" style={{ pointerEvents: 'none' }}>
-          {fileOps.operationProgress && (
-            <div className="rounded-lg px-4 py-3 flex flex-col gap-2 min-w-[220px] max-w-sm shadow-xl" style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b', border: `1px solid ${themeVars?.border ?? '#334155'}`, pointerEvents: 'auto' }}>
-              <div className="flex items-center gap-3">
-                <div className="animate-spin w-4 h-4 border-2 border-t-transparent rounded-full flex-shrink-0" style={{ borderColor: `${themeVars?.accent ?? '#4ade80'} transparent ${themeVars?.accent ?? '#4ade80'} ${themeVars?.accent ?? '#4ade80'}` }} />
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium block" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                    {fileOps.operationProgress.type} 중… ({fileOps.operationProgress.total}개 항목)
+          <div className="rounded-lg px-4 py-3 flex flex-col gap-2 min-w-[220px] max-w-sm shadow-xl" style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b', border: `1px solid ${themeVars?.border ?? '#334155'}`, pointerEvents: 'auto' }}>
+            <div className="flex items-center gap-3">
+              <div className="animate-spin w-4 h-4 border-2 border-t-transparent rounded-full flex-shrink-0" style={{ borderColor: `${themeVars?.accent ?? '#4ade80'} transparent ${themeVars?.accent ?? '#4ade80'} ${themeVars?.accent ?? '#4ade80'}` }} />
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium block" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                  {fileOps.operationProgress.type} 중… ({fileOps.operationProgress.total}개 항목)
+                </span>
+                {fileOps.operationProgress.itemLabel && (
+                  <span className="text-[11px] truncate block mt-0.5" style={{ color: themeVars?.muted ?? '#94a3b8' }} title={fileOps.operationProgress.itemLabel}>
+                    {fileOps.operationProgress.itemLabel}
                   </span>
-                  {fileOps.operationProgress.itemLabel && (
-                    <span className="text-[11px] truncate block mt-0.5" style={{ color: themeVars?.muted ?? '#94a3b8' }} title={fileOps.operationProgress.itemLabel}>
-                      {fileOps.operationProgress.itemLabel}
-                    </span>
-                  )}
-                </div>
+                )}
               </div>
-              <div className="h-0.5 w-full rounded overflow-hidden" style={{ backgroundColor: `${themeVars?.accent ?? '#4ade80'}25` }}>
-                <div className="h-full w-1/3 rounded animate-[qf-pulse-bar_1.2s_ease-in-out_infinite]" style={{ backgroundColor: themeVars?.accent ?? '#4ade80' }} />
-              </div>
-              <style>{`@keyframes qf-pulse-bar { 0%,100% { transform: translateX(-20%); opacity: 0.6; } 50% { transform: translateX(180%); opacity: 1; } }`}</style>
             </div>
-          )}
-          {pasteProgressList.map(item => {
-            const pct = Math.min(100, Math.max(0, item.percent ?? 0));
-            const hasFileTotal = (item.total ?? 0) > 0;
-            const done = item.current ?? 0;
-            const indeterminate = !hasFileTotal && pct < 100;
-            return (
-            <div key={item.id} className="rounded-lg px-4 py-3 flex flex-col gap-2 min-w-[240px] max-w-sm shadow-xl" style={{ backgroundColor: themeVars?.surface2 ?? '#1e293b', border: `1px solid ${themeVars?.border ?? '#334155'}`, pointerEvents: 'auto' }}>
-              <div className="flex items-start gap-2">
-                {(indeterminate || pct < 100) && (
-                  <div className="animate-spin w-4 h-4 border-2 border-t-transparent rounded-full flex-shrink-0 mt-0.5" style={{ borderColor: `${themeVars?.accent ?? '#4ade80'} transparent ${themeVars?.accent ?? '#4ade80'} ${themeVars?.accent ?? '#4ade80'}` }} />
-                )}
-                {pct >= 100 && !indeterminate && (
-                  <span className="text-sm flex-shrink-0 mt-0.5" style={{ color: themeVars?.accent ?? '#4ade80' }}>✓</span>
-                )}
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium block" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                    {item.type} 중…
-                    {hasFileTotal ? (
-                      <span style={{ color: themeVars?.muted ?? '#94a3b8' }}> {Math.round(pct)}%</span>
-                    ) : null}
-                  </span>
-                  {item.itemLabel && (
-                    <span className="text-[11px] truncate block mt-0.5" style={{ color: themeVars?.muted ?? '#94a3b8' }} title={item.itemLabel}>
-                      {item.itemLabel}
-                    </span>
-                  )}
-                  {hasFileTotal && (
-                    <span className="text-[10px] block mt-0.5" style={{ color: themeVars?.muted ?? '#94a3b8' }}>
-                      파일 {done} / {item.total}
-                      {item.currentFile ? (
-                        <span className="block truncate mt-0.5" title={item.currentFile}>→ {item.currentFile}</span>
-                      ) : null}
-                    </span>
-                  )}
-                  {!hasFileTotal && indeterminate && (
-                    <span className="text-[10px] block mt-0.5" style={{ color: themeVars?.muted ?? '#94a3b8' }}>용량 계산 중…</span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="text-xs hover:opacity-70 flex-shrink-0 leading-none"
-                  style={{ color: themeVars?.muted ?? '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
-                  onClick={() => {
-                    setPasteProgressList(prev => prev.filter(p => p.id !== item.id));
-                    setPendingCopyPaths([]);
-                    if (currentPath) loadDirectory(currentPath);
-                  }}
-                  title="작업 닫기"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="h-1 w-full rounded overflow-hidden" style={{ backgroundColor: `${themeVars?.accent ?? '#4ade80'}25` }}>
-                {indeterminate ? (
-                  <div className="h-full w-1/3 rounded animate-[qf-paste-pulse_1.2s_ease-in-out_infinite]" style={{ backgroundColor: themeVars?.accent ?? '#4ade80' }} />
-                ) : (
-                  <div
-                    className="h-full rounded transition-[width] duration-150 ease-out"
-                    style={{ width: `${pct}%`, backgroundColor: themeVars?.accent ?? '#4ade80' }}
-                  />
-                )}
-              </div>
-              <style>{`@keyframes qf-paste-pulse { 0%,100% { transform: translateX(-20%); opacity: 0.6; } 50% { transform: translateX(180%); opacity: 1; } }`}</style>
+            <div className="h-0.5 w-full rounded overflow-hidden" style={{ backgroundColor: `${themeVars?.accent ?? '#4ade80'}25` }}>
+              <div className="h-full w-1/3 rounded animate-[qf-pulse-bar_1.2s_ease-in-out_infinite]" style={{ backgroundColor: themeVars?.accent ?? '#4ade80' }} />
             </div>
-            );
-          })}
+            <style>{`@keyframes qf-pulse-bar { 0%,100% { transform: translateX(-20%); opacity: 0.6; } 50% { transform: translateX(180%); opacity: 1; } }`}</style>
+          </div>
         </div>
       )}
 
