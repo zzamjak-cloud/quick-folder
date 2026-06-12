@@ -5,6 +5,8 @@ import { ThemeVars } from './types';
 import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
 import { normalizeFsPath } from '../../utils/pathUtils';
 import FileCard from './FileCard';
+import FuzzyHighlightedName from './FuzzyHighlightedName';
+import InlineFuzzyFilterBar from './InlineFuzzyFilterBar';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
@@ -41,13 +43,19 @@ interface FileGridProps {
   pendingCopyPaths?: Set<string>;
   draggedPaths?: Set<string>;
   isDraggingNow?: boolean;
+  fuzzyMatchIndices?: Map<string, number[]>;
+  isFuzzyFiltering?: boolean;
+  fuzzyQuery?: string;
+  fuzzyMatchCount?: number;
+  onFuzzyFilterClear?: () => void;
+  onFilterInputFocus?: () => void;
 }
 
 // content-visibility 최적화를 켜는 항목 수 임계치 (이하에서는 오버헤드 회피)
 const CV_THRESHOLD = 150;
 
 // --- ListRow 컴포넌트 ---
-const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onHoverFolder, themeVars, cvEnabled }: {
+const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, fuzzyHighlightIndices, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onHoverFolder, themeVars, cvEnabled }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -56,6 +64,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
   isDropTarget: boolean;
   isPending?: boolean;
   isDimmed?: boolean;
+  fuzzyHighlightIndices?: number[];
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
@@ -135,6 +144,13 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
           className="flex-1 min-w-0 text-xs px-1 rounded outline-none"
           style={{ backgroundColor: themeVars?.surface2, color: themeVars?.text, border: `1px solid ${themeVars?.accent}` }}
         />
+      ) : fuzzyHighlightIndices?.length ? (
+        <FuzzyHighlightedName
+          name={entry.name}
+          indices={fuzzyHighlightIndices}
+          themeVars={themeVars}
+          className="flex-1 min-w-0 text-xs truncate"
+        />
       ) : (
         <span className="flex-1 min-w-0 text-xs truncate" style={{ color: themeVars?.text }}>
           {entry.name}
@@ -145,7 +161,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
 });
 
 // --- DetailsRow 컴포넌트 ---
-const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onHoverFolder, themeVars, cvEnabled }: {
+const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRenaming, isCut, isDropTarget, isPending, isDimmed, fuzzyHighlightIndices, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onHoverFolder, themeVars, cvEnabled }: {
   entry: FileEntry;
   isSelected: boolean;
   isFocused: boolean;
@@ -154,6 +170,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
   isDropTarget: boolean;
   isPending?: boolean;
   isDimmed?: boolean;
+  fuzzyHighlightIndices?: number[];
   onDragMouseDown: (e: React.MouseEvent, entryPath: string) => void;
   onSelect: (path: string, multi: boolean, range: boolean) => void;
   onOpen: (entry: FileEntry) => void;
@@ -242,6 +259,13 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
               className="flex-1 min-w-0 px-1 rounded outline-none"
               style={{ backgroundColor: themeVars?.surface2, color: themeVars?.text, border: `1px solid ${themeVars?.accent}` }}
             />
+          ) : fuzzyHighlightIndices?.length ? (
+            <FuzzyHighlightedName
+              name={entry.name}
+              indices={fuzzyHighlightIndices}
+              themeVars={themeVars}
+              className="truncate text-xs"
+            />
           ) : (
             <span className="truncate text-xs" style={{ color: themeVars?.text }}>{entry.name}</span>
           )}
@@ -257,7 +281,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
 });
 
 // --- DetailsTable 컴포넌트 ---
-function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, onHoverFolder, themeVars, instanceId, pendingCopyPaths, draggedPaths, isDraggingNow, cvEnabled }: {
+function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sortBy, sortDir, clipboard, dropTargetPath, onDragMouseDown, onSelect, onOpen, onOpenInNewTab, onContextMenu, onRenameCommit, onSortChange, onHoverFolder, themeVars, instanceId, pendingCopyPaths, draggedPaths, isDraggingNow, cvEnabled, fuzzyMatchIndices, isFuzzyNonMatch }: {
   entries: FileEntry[];
   selectedPaths: string[];
   focusedIndex: number;
@@ -280,6 +304,8 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   draggedPaths?: Set<string>;
   isDraggingNow?: boolean;
   cvEnabled?: boolean;
+  fuzzyMatchIndices?: Map<string, number[]>;
+  isFuzzyNonMatch?: (path: string) => boolean;
 }) {
   const storageKey = `qf_details_cols_${instanceId ?? 'default'}`;
 
@@ -386,7 +412,8 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
               isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
               isDropTarget={dropTargetPath === entry.path && entry.is_dir}
               isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
-              isDimmed={!!isDraggingNow && !!draggedPaths?.has(entry.path)}
+              isDimmed={(!!isDraggingNow && !!draggedPaths?.has(entry.path)) || !!isFuzzyNonMatch?.(entry.path)}
+              fuzzyHighlightIndices={fuzzyMatchIndices?.get(entry.path)}
               onDragMouseDown={onDragMouseDown}
               onSelect={onSelect}
               onOpen={onOpen}
@@ -438,7 +465,17 @@ export default memo(function FileGrid({
   pendingCopyPaths,
   draggedPaths,
   isDraggingNow = false,
+  fuzzyMatchIndices,
+  isFuzzyFiltering = false,
+  fuzzyQuery = '',
+  fuzzyMatchCount = 0,
+  onFuzzyFilterClear,
+  onFilterInputFocus,
 }: FileGridProps) {
+  const isFuzzyNonMatch = useCallback(
+    (path: string) => isFuzzyFiltering && !fuzzyMatchIndices?.has(path),
+    [isFuzzyFiltering, fuzzyMatchIndices],
+  );
   // 대용량 폴더에서만 content-visibility 활성화
   const cvEnabled = entries.length > CV_THRESHOLD;
   const scrollStorageKey = useMemo(
@@ -629,8 +666,17 @@ export default memo(function FileGrid({
       onClick={handleContainerClick}
       onContextMenu={handleContainerContextMenu}
       onMouseDown={handleContainerMouseDown}
+      onPointerDownCapture={() => onFilterInputFocus?.()}
       onScroll={handleScroll}
     >
+      {isFuzzyFiltering && fuzzyQuery && onFuzzyFilterClear && (
+        <InlineFuzzyFilterBar
+          query={fuzzyQuery}
+          matchCount={fuzzyMatchCount}
+          themeVars={themeVars}
+          onClear={onFuzzyFilterClear}
+        />
+      )}
       {/* 백그라운드 로딩 인디케이터 (기존 파일 표시 중 새 디렉토리 로드) */}
       {loading && entries.length > 0 && (
         <div className="absolute top-0 left-0 right-0 z-10 h-0.5 overflow-hidden" style={{ backgroundColor: `${themeVars?.accent ?? '#3b82f6'}20` }}>
@@ -660,6 +706,7 @@ export default memo(function FileGrid({
                   isRenaming={renamingPath === entry.path}
                   isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
                   isDropTarget={dropTargetPath === entry.path && entry.is_dir}
+                  fuzzyHighlightIndices={fuzzyMatchIndices?.get(entry.path)}
                   thumbnailSize={thumbnailSize}
                   onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
@@ -672,7 +719,7 @@ export default memo(function FileGrid({
                   hideText={hideText}
                   tag={folderTags?.[entry.path]}
                   isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
-                  isDimmed={isDraggingNow && !!draggedPaths?.has(entry.path)}
+                  isDimmed={(isDraggingNow && !!draggedPaths?.has(entry.path)) || isFuzzyNonMatch(entry.path)}
                   cvEnabled={cvEnabled}
                 />
               </React.Fragment>
@@ -703,7 +750,8 @@ export default memo(function FileGrid({
                   isCut={clipboard?.action === 'cut' && clipboard.paths.includes(entry.path)}
                   isDropTarget={dropTargetPath === entry.path && entry.is_dir}
                   isPending={pendingCopyPaths?.has(normalizeFsPath(entry.path))}
-                  isDimmed={isDraggingNow && !!draggedPaths?.has(entry.path)}
+                  isDimmed={(isDraggingNow && !!draggedPaths?.has(entry.path)) || isFuzzyNonMatch(entry.path)}
+                  fuzzyHighlightIndices={fuzzyMatchIndices?.get(entry.path)}
                   onDragMouseDown={onDragMouseDown}
                   onSelect={onSelect}
                   onOpen={onOpen}
@@ -745,6 +793,8 @@ export default memo(function FileGrid({
           pendingCopyPaths={pendingCopyPaths}
           draggedPaths={draggedPaths}
           isDraggingNow={isDraggingNow}
+          fuzzyMatchIndices={fuzzyMatchIndices}
+          isFuzzyNonMatch={isFuzzyNonMatch}
         />
       )}
 

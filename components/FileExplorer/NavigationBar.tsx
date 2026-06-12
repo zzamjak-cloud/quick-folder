@@ -359,7 +359,7 @@ export default memo(function NavigationBar({
             value={searchQuery}
             onChange={e => onSearchQueryChange(e.target.value)}
             onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onSearchToggle(); } }}
-            placeholder="파일명 검색..."
+            placeholder="퍼지 검색 (예: utl → utils.ts)"
             className="bg-transparent text-xs outline-none w-28"
             style={{ color: themeVars?.text }}
           />

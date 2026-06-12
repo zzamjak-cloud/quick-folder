@@ -25,7 +25,9 @@
 | 단축키 | 기능 |
 |--------|------|
 | `F2` | 이름 변경 |
-| `Delete` / `Backspace` | 삭제 (휴지통) |
+| `Delete` | 삭제 (휴지통, Windows) |
+| `Backspace` / `Delete` | 삭제 (휴지통, Mac) |
+| `Backspace` | 뒤로 가기 (선택 없을 때) |
 | `Ctrl+D` | 복제 |
 | `Ctrl+G` | 선택 파일 → 새 폴더로 그룹화 |
 | `Ctrl+Alt+G` | 폴더 해제 (내용물 꺼내기) |

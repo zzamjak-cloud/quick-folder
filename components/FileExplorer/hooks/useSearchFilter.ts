@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { FileEntry } from '../../../types';
+import { fuzzyMatch } from '../../../utils/fuzzyMatch';
 
 export interface UseSearchFilterConfig {
   entries: FileEntry[];
@@ -7,8 +8,8 @@ export interface UseSearchFilterConfig {
 }
 
 /**
- * 검색어·확장자 필터·텍스트 숨김 상태를 관리하고,
- * 필터링된 displayEntries를 파생하는 훅.
+ * 검색어·확장자 필터·텍스트 숨김 상태를 관리한다.
+ * 퍼지 검색 시 목록에서 항목을 제거하지 않고, 매칭 글자만 강조·비매칭은 흐리게 표시한다.
  */
 export function useSearchFilter({ entries, currentPath }: UseSearchFilterConfig) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,18 +32,41 @@ export function useSearchFilter({ entries, currentPath }: UseSearchFilterConfig)
     return exts;
   }, [entries, getExt]);
 
-  // 검색 + 확장자 필터로 표시할 항목 파생
+  const isFiltering = searchQuery.trim().length > 0;
+
+  // 확장자 필터만 displayEntries에 반영 (퍼지 검색은 항목 숨기지 않음)
   const displayEntries = useMemo(() => {
-    let result = entries;
-    if (activeExtFilters.size > 0) {
-      result = result.filter(e => activeExtFilters.has(getExt(e)));
+    if (activeExtFilters.size === 0) return entries;
+    return entries.filter(e => activeExtFilters.has(getExt(e)));
+  }, [entries, activeExtFilters, getExt]);
+
+  // 퍼지 매칭 메타데이터 (하이라이트·자동 스크롤·흐림 처리용)
+  const { fuzzyMatchIndices, fuzzyBestPath, fuzzyMatchCount } = useMemo(() => {
+    const indicesMap = new Map<string, number[]>();
+    if (!isFiltering) {
+      return { fuzzyMatchIndices: indicesMap, fuzzyBestPath: null as string | null, fuzzyMatchCount: 0 };
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(e => e.name.toLowerCase().includes(q));
+
+    const q = searchQuery.trim();
+    let bestPath: string | null = null;
+    let bestScore = -Infinity;
+
+    for (const entry of displayEntries) {
+      const result = fuzzyMatch(q, entry.name);
+      if (!result) continue;
+      indicesMap.set(entry.path, result.indices);
+      if (result.score > bestScore) {
+        bestScore = result.score;
+        bestPath = entry.path;
+      }
     }
-    return result;
-  }, [entries, activeExtFilters, searchQuery, getExt]);
+
+    return {
+      fuzzyMatchIndices: indicesMap,
+      fuzzyBestPath: bestPath,
+      fuzzyMatchCount: indicesMap.size,
+    };
+  }, [displayEntries, searchQuery, isFiltering]);
 
   // 폴더/탭 전환 시 확장자 필터 초기화
   useEffect(() => {
@@ -58,5 +82,9 @@ export function useSearchFilter({ entries, currentPath }: UseSearchFilterConfig)
     getExt,
     availableExtensions,
     displayEntries,
+    fuzzyMatchIndices,
+    fuzzyBestPath,
+    fuzzyMatchCount,
+    isFiltering,
   };
 }

@@ -37,7 +37,8 @@ FileExplorer/index.tsx         ← 메인 컨트롤러
 | `useFileOperations` | `hooks/useFileOperations.ts` | 삭제·복제·이름변경·그룹화 |
 | `useClipboard` | `hooks/useClipboard.ts` | 복사·잘라내기·붙여넣기 |
 | `useKeyboardShortcuts` | `hooks/useKeyboardShortcuts.ts` | 전역 키보드 단축키 |
-| `useSearchFilter` | `hooks/useSearchFilter.ts` | 검색어·확장자 필터 |
+| `useSearchFilter` | `hooks/useSearchFilter.ts` | 퍼지 검색·확장자 필터 |
+| `useInlineFuzzyFilter` | `hooks/useInlineFuzzyFilter.ts` | 리스트 포커스 인라인 타이핑 필터 |
 | `usePreview` | `hooks/usePreview.ts` | 파일 미리보기 상태 |
 | `useInternalDragDrop` | `hooks/useInternalDragDrop.ts` | 내부 드래그앤드롭·압축 파일 꺼내기 |
 | `useRenameInput` | `hooks/useRenameInput.ts` | 인라인 이름변경 입력 |

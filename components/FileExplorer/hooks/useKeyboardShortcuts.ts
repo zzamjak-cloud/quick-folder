@@ -25,6 +25,7 @@ export interface UseKeyboardShortcutsConfig {
   focusedIndex: number;
   clipboard: ClipboardData | null;
   isSearchActive: boolean;
+  isFiltering: boolean;
   isMac: boolean;
   tabs: Tab[];
   activeTabId: string | null;
@@ -90,7 +91,7 @@ export interface UseKeyboardShortcutsConfig {
 export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
   const {
     isFocused, renamingPath, currentPath, viewMode,
-    entries, selectedPaths, focusedIndex, clipboard, isSearchActive,
+    entries, selectedPaths, focusedIndex, clipboard, isSearchActive, isFiltering,
     isMac, tabs, activeTabId, activeTab, thumbnailSize,
     gridRef, selectionAnchorRef,
     handleCopy, handleCut, handlePaste, handleDuplicate,
@@ -125,7 +126,10 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       // 마크다운 편집기 열려 있으면 모든 단축키 무시
       const active = document.activeElement;
       if (active && (active as HTMLElement).isContentEditable) return;
-      const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+      const isFuzzyFilterInput = active instanceof HTMLInputElement
+        && active.hasAttribute('data-fuzzy-filter-input');
+      const isInput = (active instanceof HTMLInputElement && !isFuzzyFilterInput)
+        || active instanceof HTMLTextAreaElement;
       if (isInput && e.key !== 'Escape') return;
       // 마크다운/JSON/오디오 미리보기가 열려있으면 파일 단축키는 무시하고 브라우저 네이티브 동작(Ctrl+C 등)을 허용
       // (자체 모달이 ESC/Space 등은 capture 단계에서 처리)
@@ -263,33 +267,52 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
 
-      // Ctrl+F: 검색 토글
+      // Ctrl+F: 현재 폴더 검색창 토글
       if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault();
         if (currentPath && currentPath !== RECENT_PATH) {
-          setSearchQuery('');
-          setIsSearchActive(false);
-          setIsGlobalSearchOpen(true);
+          setIsSearchActive(prev => {
+            if (prev) {
+              setSearchQuery('');
+              return false;
+            }
+            setTimeout(() => searchInputRef.current?.focus(), 0);
+            return true;
+          });
         }
         return;
       }
 
-      // ESC: 검색 닫기 → 클립보드 해제 → 선택 해제
+      // ESC: 검색/인라인 필터 닫기 → 클립보드 해제 → 선택 해제
       if (e.key === 'Escape') {
-        if (isSearchActive) { setSearchQuery(''); setIsSearchActive(false); return; }
+        if (isSearchActive || isFiltering) {
+          setSearchQuery('');
+          setIsSearchActive(false);
+          deselectAll();
+          setFocusedIndex(-1);
+          return;
+        }
         if (clipboard) { setClipboard(null); return; }
         deselectAll();
         return;
       }
 
-      // Mac: ⌫/Delete 키로 파일 삭제 (선택 있을 때), 미선택 시 뒤로 이동
+      // 퍼지 input·검색 중 Backspace/Delete는 탐색기 동작으로 해석하지 않음
       if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (isFuzzyFilterInput || isFiltering || isSearchActive) return;
+
         e.preventDefault();
         if (selectedPaths.length > 0) {
-          handleDelete(selectedPaths, e.shiftKey);
+          // Windows: Delete 키만 삭제. Mac: Backspace(⌫)·Delete 모두 삭제
+          if (e.key === 'Delete' || isMac) {
+            handleDelete(selectedPaths, e.shiftKey);
+          }
           return;
         }
-        if (e.key === 'Backspace' && !ctrl) { goBack(); return; }
+        if (e.key === 'Backspace' && !ctrl) {
+          goBack();
+          return;
+        }
       }
 
       if (e.key === 'Enter') {
@@ -498,14 +521,6 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
 
-      // Windows: Delete 키로 파일 삭제
-      if (e.key === 'Delete') {
-        if (selectedPaths.length > 0) {
-          handleDelete(selectedPaths, e.shiftKey);
-        }
-        return;
-      }
-
       // --- 방향키 포커스 이동 ---
       if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
         e.preventDefault();
@@ -672,7 +687,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     isFocused, renamingPath, selectAll, deselectAll, handleUndo, handleCopy, handleCut, handlePaste, handleDuplicate,
     handleCreateDirectory, handleGroupIntoFolder, handleUngroupFolder, handleRenameStart, handleDelete, handleCopyPath,
     goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
-    thumbnailSize, focusedIndex, clipboard, isSearchActive,
+    thumbnailSize, focusedIndex, clipboard, isSearchActive, isFiltering,
     tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     previewFile, preview.isAnyPreviewOpen, preview.closeAllPreviews,
     preview.previewImagePath, preview.handlePreviewImage, preview.previewJsonPath, preview.handlePreviewJson,

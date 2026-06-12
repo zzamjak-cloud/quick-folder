@@ -59,6 +59,8 @@ import DiffViewerModal from './DiffViewerModal';
 import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
 import { useSearchFilter } from './hooks/useSearchFilter';
+import { useInlineFuzzyFilter, isFuzzyFilterBlocked } from './hooks/useInlineFuzzyFilter';
+import InlineFuzzyFilterInput from './InlineFuzzyFilterInput';
 import { useClipboard } from './hooks/useClipboard';
 import { useFileOperations, type FolderSizeDialogState } from './hooks/useFileOperations';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -251,6 +253,7 @@ export default function FileExplorer({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const fuzzyFilterInputRef = useRef<HTMLInputElement>(null);
   const currentPathRef = useRef<string | null>(null); // loadDirectory에서 스크롤 저장용
   // 뒤로/위로 이동 시 이전 폴더를 자동 선택하기 위한 ref
   const lastVisitedChildRef = useRef<string | null>(null);
@@ -489,7 +492,7 @@ export default function FileExplorer({
 
   // --- 검색/필터 (커스텀 훅) ---
   const searchFilter = useSearchFilter({ entries, currentPath });
-  const { displayEntries } = searchFilter;
+  const { displayEntries, fuzzyMatchIndices, fuzzyBestPath, fuzzyMatchCount, isFiltering } = searchFilter;
   const displayPathSet = useMemo(() => new Set(displayEntries.map(entry => entry.path)), [displayEntries]);
 
   // 복사/이동 진행 중인 대상 경로 (ghost 항목 pending 표시용)
@@ -828,6 +831,66 @@ export default function FileExplorer({
     });
   }, []);
 
+  const handleFuzzyFilterClear = useCallback(() => {
+    searchFilter.setSearchQuery('');
+    searchFilter.setIsSearchActive(false);
+    setFocusedIndex(-1);
+    deselectAll();
+    // 포커스 유지 — 다음 한글/영문 입력이 IME에서 끊기지 않도록
+    requestAnimationFrame(() => fuzzyFilterInputRef.current?.focus({ preventScroll: true }));
+  }, [searchFilter.setSearchQuery, searchFilter.setIsSearchActive, deselectAll]);
+
+  const fuzzyFilterInputEnabled = isFocused
+    && !modals.renamingPath
+    && !searchFilter.isSearchActive
+    && !isFuzzyFilterBlocked();
+
+  // --- 인라인 퍼지 필터: IME 지원 hidden input 포커스 관리 ---
+  const { focusFilterInput } = useInlineFuzzyFilter({
+    enabled: fuzzyFilterInputEnabled,
+    inputRef: fuzzyFilterInputRef,
+    searchQuery: searchFilter.searchQuery,
+    setSearchQuery: searchFilter.setSearchQuery,
+  });
+
+  // 퍼지 필터 시작 시 기존 선택 해제 (Backspace 삭제 오동작 방지)
+  const prevSearchQueryRef = useRef('');
+  useEffect(() => {
+    const prev = prevSearchQueryRef.current.trim();
+    const next = searchFilter.searchQuery.trim();
+    if (!prev && next) {
+      deselectAll();
+    }
+    if (prev && !next) {
+      setFocusedIndex(-1);
+      deselectAll();
+    }
+    prevSearchQueryRef.current = searchFilter.searchQuery;
+  }, [searchFilter.searchQuery, deselectAll]);
+
+  // 퍼지 필터 쿼리 변경 시 최상위 매칭 항목으로 스크롤만 (선택하지 않음 — 삭제 사고 방지)
+  const lastFuzzyScrollQueryRef = useRef('');
+  useEffect(() => {
+    const q = searchFilter.searchQuery.trim();
+    if (!q) {
+      lastFuzzyScrollQueryRef.current = '';
+      return;
+    }
+    if (lastFuzzyScrollQueryRef.current === q) return;
+    lastFuzzyScrollQueryRef.current = q;
+
+    if (!fuzzyBestPath) return;
+
+    const bestIdx = displayEntries.findIndex(entry => entry.path === fuzzyBestPath);
+    if (bestIdx < 0) return;
+
+    setFocusedIndex(bestIdx);
+    requestAnimationFrame(() => {
+      const el = gridRef.current?.querySelector(`[data-file-path="${CSS.escape(fuzzyBestPath)}"]`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }, [searchFilter.searchQuery, displayEntries, fuzzyBestPath]);
+
   // --- 키보드 단축키 (커스텀 훅) ---
   useKeyboardShortcuts({
     isFocused,
@@ -839,6 +902,7 @@ export default function FileExplorer({
     focusedIndex,
     clipboard: clipboardHook.clipboard,
     isSearchActive: searchFilter.isSearchActive,
+    isFiltering,
     isMac,
     tabs,
     activeTabId,
@@ -1232,6 +1296,13 @@ export default function FileExplorer({
         backgroundColor: themeVars?.bg ?? '#0f172a',
       }}
     >
+      <InlineFuzzyFilterInput
+        ref={fuzzyFilterInputRef}
+        value={searchFilter.searchQuery}
+        enabled={fuzzyFilterInputEnabled}
+        onChange={searchFilter.setSearchQuery}
+        onClear={handleFuzzyFilterClear}
+      />
       {/* 복사 완료 토스트 */}
       {fileOps.copyToast && (
         <div
@@ -1540,6 +1611,12 @@ export default function FileExplorer({
               pendingCopyPaths={fileOperationPendingSet}
               draggedPaths={new Set(activeDragPaths.length > 0 ? activeDragPaths : selectedPaths)}
               isDraggingNow={isInternalDragging}
+              fuzzyMatchIndices={fuzzyMatchIndices}
+              isFuzzyFiltering={isFiltering}
+              fuzzyQuery={searchFilter.searchQuery}
+              fuzzyMatchCount={fuzzyMatchCount}
+              onFuzzyFilterClear={handleFuzzyFilterClear}
+              onFilterInputFocus={focusFilterInput}
             />
           )}
 

@@ -8,6 +8,7 @@ import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvoke } from './hooks/invokeQueue';
 import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
+import FuzzyHighlightedName from './FuzzyHighlightedName';
 
 interface FileCardProps {
   entry: FileEntry;
@@ -30,6 +31,7 @@ interface FileCardProps {
   isPending?: boolean; // 복사/이동 진행 중 (비활성 + 스피너 표시)
   isDimmed?: boolean;
   cvEnabled?: boolean; // content-visibility 최적화 (대용량 폴더)
+  fuzzyHighlightIndices?: number[];
 }
 
 export default memo(function FileCard({
@@ -53,6 +55,7 @@ export default memo(function FileCard({
   isPending = false,
   isDimmed = false,
   cvEnabled = false,
+  fuzzyHighlightIndices,
 }: FileCardProps) {
   // 초기값을 전역 캐시에서 동기 조회 → 재방문 시 깜빡임 없이 즉시 표시
   const [thumbnail, setThumbnail] = useState<string | null>(() => {
@@ -364,13 +367,23 @@ export default memo(function FileCard({
           }}
         />
       ) : !hideText ? (
-        <div
-          className="w-full text-center text-xs leading-tight line-clamp-2 break-all"
-          style={{ color: themeVars?.text ?? '#e5e7eb' }}
-          title={entry.name}
-        >
-          {entry.name}
-        </div>
+        fuzzyHighlightIndices?.length ? (
+          <FuzzyHighlightedName
+            name={entry.name}
+            indices={fuzzyHighlightIndices}
+            themeVars={themeVars}
+            className="w-full text-center text-xs leading-tight line-clamp-2 break-all"
+            style={{ color: themeVars?.text ?? '#e5e7eb' }}
+          />
+        ) : (
+          <div
+            className="w-full text-center text-xs leading-tight line-clamp-2 break-all"
+            style={{ color: themeVars?.text ?? '#e5e7eb' }}
+            title={entry.name}
+          >
+            {entry.name}
+          </div>
+        )
       ) : null}
 
       {/* 크기 + 이미지 규격 */}
