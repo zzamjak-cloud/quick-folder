@@ -36,10 +36,22 @@ import { runCopyWithProgress } from './hooks/runCopyWithProgress';
 import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { getFileName, getPathSeparator, getParentDir, normalizeFsPath, sameVolume } from '../../utils/pathUtils';
+import {
+  buildArchiveBrowsePath,
+  getArchiveVirtualParent,
+  getFileName,
+  getPathSeparator,
+  getParentDir,
+  isArchiveVirtualPath,
+  isBrowsableArchiveFilePath,
+  normalizeFsPath,
+  sameVolume,
+  shouldOpenArchiveInCurrentPane,
+} from '../../utils/pathUtils';
 import { isTauri } from '../../utils/isTauri';
 import GoToFolderModal from './GoToFolderModal';
 import GlobalSearchModal from './GlobalSearchModal';
+import DuplicateFilesModal from './DuplicateFilesModal';
 import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
 import { useSearchFilter } from './hooks/useSearchFilter';
@@ -646,6 +658,11 @@ export default function FileExplorer({
     }
   }, [handleNavigateTo]);
 
+  // 중복 파일 모달에서 삭제
+  const handleDuplicateFileDelete = useCallback(async (path: string) => {
+    await fileOps.handleDelete([path], false);
+  }, [fileOps.handleDelete]);
+
   // goBack 래퍼: 이전 경로 자동 선택
   const goBack = useCallback(() => {
     const prevPath = tabGoBack();
@@ -656,6 +673,14 @@ export default function FileExplorer({
   const goUp = useCallback(() => {
     if (!currentPath) return;
     if (currentPath === SYSTEM_ROOT_PATH) return;
+
+    if (isArchiveVirtualPath(currentPath)) {
+      const parent = getArchiveVirtualParent(currentPath);
+      if (!parent) return;
+      lastVisitedChildRef.current = currentPath;
+      handleNavigateTo(parent);
+      return;
+    }
 
     // Windows 드라이브 루트(C:\)에서는 가상 루트(내 PC)로 이동
     if (/^[A-Za-z]:[\\/]*$/.test(currentPath)) {
@@ -680,33 +705,63 @@ export default function FileExplorer({
     handleNavigateTo(parent);
   }, [currentPath, handleNavigateTo]);
 
+  const openArchiveEntry = useCallback((path: string) => {
+    const browsePath = buildArchiveBrowsePath(path);
+    if (shouldOpenArchiveInCurrentPane(currentPath, path)) {
+      handleNavigateTo(browsePath);
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('qf-open-archive-pane', {
+      detail: {
+        path: browsePath,
+        sourceInstanceId: instanceId,
+      },
+    }));
+  }, [currentPath, handleNavigateTo, instanceId]);
+
   // --- 파일/폴더 열기 ---
   const openEntry = useCallback(async (entry: FileEntry) => {
     if (entry.is_dir) {
       handleNavigateTo(entry.path);
-    } else if (entry.file_type === 'video') {
+      return;
+    }
+
+    if (entry.file_type === 'archive' && isBrowsableArchiveFilePath(entry.path)) {
+      openArchiveEntry(entry.path);
+      return;
+    }
+
+    const isVirtualArchiveEntry = isArchiveVirtualPath(entry.path);
+    if (entry.file_type === 'video' && !isVirtualArchiveEntry) {
       // 동영상은 내장 플레이어로 재생
       preview.setVideoPlayerPath(entry.path);
-    } else {
-      // JSON 파일: JSON 뷰어로 미리보기
-      const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
-      if (ext === 'json') {
-        preview.handlePreviewJson(entry.path);
-        return;
-      }
-      // 그 외 파일: OS 기본 앱으로 열기
-      try {
-        await invoke('open_folder', { path: entry.path });
-      } catch (e) {
-        console.error('파일 열기 실패:', e);
-      }
+      return;
     }
-  }, [handleNavigateTo, preview]);
+
+    // JSON 파일: JSON 뷰어로 미리보기
+    const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
+    if (ext === 'json') {
+      preview.handlePreviewJson(entry.path);
+      return;
+    }
+
+    // 그 외 파일: OS 기본 앱으로 열기
+    try {
+      await invoke('open_folder', { path: entry.path });
+    } catch (e) {
+      console.error('파일 열기 실패:', e);
+    }
+  }, [handleNavigateTo, openArchiveEntry, preview]);
 
   // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
   const openEntryInNewTab = useCallback((entry: FileEntry) => {
     if (entry.is_dir) {
       openTab(entry.path);
+      return;
+    }
+    if (entry.file_type === 'archive' && isBrowsableArchiveFilePath(entry.path)) {
+      openTab(buildArchiveBrowsePath(entry.path));
     }
   }, [openTab]);
 
@@ -1044,6 +1099,7 @@ export default function FileExplorer({
     onAddToCategory,
     onStageFilesToTray,
     onDuplicateDetected: setDropConfirm,
+    onError: setError,
   });
 
   useEffect(() => {
@@ -1075,6 +1131,10 @@ export default function FileExplorer({
       const inBounds = (px: number, py: number) =>
         px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom;
       if (!inBounds(pos.x, pos.y) && !inBounds(pos.x / dpr, pos.y / dpr)) return;
+      if (isArchiveVirtualPath(currentPath)) {
+        setError('압축 내부는 읽기 전용입니다. 파일을 밖으로 꺼내서 사용하세요.');
+        return;
+      }
 
       // 이미 같은 디렉토리에 있는 파일은 제외
       const filtered = droppedPaths.filter(p => {
@@ -1757,6 +1817,17 @@ export default function FileExplorer({
           onClose={() => modals.setIsGlobalSearchOpen(false)}
           currentPath={currentPath}
           onSelect={handleGlobalSearchSelect}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 중복 파일 찾기 모달 */}
+      {modals.duplicateFinderPath && (
+        <DuplicateFilesModal
+          rootPath={modals.duplicateFinderPath}
+          onClose={() => modals.setDuplicateFinderPath(null)}
+          onSelect={handleGlobalSearchSelect}
+          onDelete={handleDuplicateFileDelete}
           themeVars={themeVars}
         />
       )}

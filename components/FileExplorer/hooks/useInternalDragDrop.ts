@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Channel, invoke } from '@tauri-apps/api/core';
-import { getFileName, sameVolume } from '../../../utils/pathUtils';
+import { getFileName, isArchiveVirtualPath, sameVolume } from '../../../utils/pathUtils';
 import { createFileDragImage } from '../fileUtils';
 
 const TRAY_STAGE_WIDTH = 96;
@@ -27,6 +27,7 @@ interface UseInternalDragDropOptions {
   onStageFilesToTray?: (paths: string[]) => void;
   /** 중복 파일 감지 시 호출 — 사용자 확인 후 executeDrop로 재시도 */
   onDuplicateDetected?: (info: PendingDrop) => void;
+  onError?: (message: string) => void;
 }
 
 // 드롭 대상 패널의 시각적 피드백 해제
@@ -55,6 +56,21 @@ function restoreTextSelection() {
   document.body.classList.remove('qf-internal-file-dragging');
 }
 
+function formatDragError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object') {
+    const value = err as { message?: unknown };
+    if (typeof value.message === 'string') return value.message;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
+
 function getSourceElement(path: string): HTMLElement | null {
   for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-file-path]'))) {
     if (el.getAttribute('data-file-path') === path) return el;
@@ -71,7 +87,7 @@ function getSourceElement(path: string): HTMLElement | null {
  * 리스너를 handleMouseDown에서 동기적으로 등록하여
  * useEffect 재실행 의존 문제를 회피.
  */
-export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected }: UseInternalDragDropOptions) {
+export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError }: UseInternalDragDropOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const [isTrayTargetActive, setIsTrayTargetActive] = useState(false);
@@ -176,9 +192,15 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       const image = createFileDragImage(paths, getSourceElement(paths[0]));
       const onEvent = new Channel<DragCallbackResult>(() => {});
       cleanup();
-      invoke('plugin:drag|start_drag', { item: paths, image, onEvent }).catch((err) => {
-        console.error('OS 파일 드래그 실패:', err);
-      });
+      const dragPathsPromise = paths.some(isArchiveVirtualPath)
+        ? invoke<string[]>('materialize_archive_paths', { paths })
+        : Promise.resolve(paths);
+      dragPathsPromise
+        .then((dragPaths) => invoke('plugin:drag|start_drag', { item: dragPaths, image, onEvent }))
+        .catch((err) => {
+          console.error('OS 파일 드래그 실패:', err);
+          onError?.(`압축 파일을 꺼내지 못했습니다: ${formatDragError(err)}`);
+        });
     }
 
     function isLeavingWindow(ev: MouseEvent) {
@@ -252,7 +274,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       const folderEl = el?.closest('[data-folder-drop-target]') as HTMLElement | null;
       const folderPath = folderEl?.getAttribute('data-folder-drop-target') ?? null;
 
-      if (folderPath && paths.includes(folderPath)) {
+      if (folderPath && (paths.includes(folderPath) || isArchiveVirtualPath(folderPath))) {
         // 자기 자신 위에 드롭 방지
         localDropTarget = null;
         setDropTargetPath(null);
@@ -264,7 +286,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
         // 3. 폴백: 다른 패널 영역 (패널의 현재 디렉토리로 이동)
         const paneEl = el?.closest('[data-pane-drop-target]') as HTMLElement | null;
         const panePath = paneEl?.getAttribute('data-pane-drop-target') ?? null;
-        if (panePath && panePath !== currentPath) {
+        if (panePath && panePath !== currentPath && !isArchiveVirtualPath(panePath)) {
           localDropTarget = panePath;
           setDropTargetPath(panePath);
           paneEl!.style.outline = '2px dashed var(--qf-accent, #3b82f6)';
@@ -304,26 +326,30 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       // 폴더/패널 드롭: 파일 이동/복사
       if (target) {
         try {
+          const sources = paths.some(isArchiveVirtualPath)
+            ? await invoke<string[]>('materialize_archive_paths', { paths })
+            : paths;
           // 같은 볼륨(로컬-로컬, 동일 클라우드 계정-계정) → 이동, 다른 볼륨(볼륨 경계 넘음) → 복사
-          const shouldCopy = paths.some(p => !sameVolume(p, target));
+          const shouldCopy = paths.some(isArchiveVirtualPath) || sources.some(p => !sameVolume(p, target));
 
           // 중복 파일 감지 → 있으면 상위 핸들러에 위임
-          const duplicates = await invoke<string[]>('check_duplicate_items', { sources: paths, dest: target });
+          const duplicates = await invoke<string[]>('check_duplicate_items', { sources, dest: target });
           if (duplicates.length > 0 && onDuplicateDetected) {
-            onDuplicateDetected({ sources: paths, dest: target, action: shouldCopy ? 'copy' : 'move', duplicates });
+            onDuplicateDetected({ sources, dest: target, action: shouldCopy ? 'copy' : 'move', duplicates });
             return;
           }
 
           if (shouldCopy) {
-            await invoke('copy_items', { sources: paths, dest: target });
+            await invoke('copy_items', { sources, dest: target });
           } else {
-            await invoke('move_items', { sources: paths, dest: target });
+            await invoke('move_items', { sources, dest: target });
           }
           onMoveComplete();
           // 모든 패널에 새로고침 이벤트 전파
           window.dispatchEvent(new CustomEvent('qf-files-changed'));
         } catch (err) {
           console.error('파일 이동/복사 실패:', err);
+          onError?.(`파일을 이동/복사하지 못했습니다: ${formatDragError(err)}`);
         }
       }
     }
@@ -337,7 +363,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     document.addEventListener('mouseleave', onMouseLeave);
-  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected]);
+  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError]);
 
   /**
    * 중복 확인 다이얼로그 이후 덮어쓰기 또는 스킵으로 재실행.
@@ -356,8 +382,9 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       window.dispatchEvent(new CustomEvent('qf-files-changed'));
     } catch (err) {
       console.error('파일 이동/복사 실패:', err);
+      onError?.(`파일을 이동/복사하지 못했습니다: ${formatDragError(err)}`);
     }
-  }, [onMoveComplete]);
+  }, [onMoveComplete, onError]);
 
   return {
     isDragging,

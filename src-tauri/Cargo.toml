@@ -35,8 +35,10 @@ trash = "5"
 psd = "0.3"
 tauri-plugin-drag = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+encoding_rs = "0.8"
 hwarang = { version = "0.2", default-features = false }
 walkdir = "2"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 ureq = { version = "3", default-features = true }
 ffmpeg-sidecar = "2"
 ico = "0.3"

@@ -2,6 +2,7 @@
 //! 폴더 열기, 앱 실행, 경로 복사, 폴더 선택 다이얼로그
 
 use super::FolderSelection;
+use crate::modules::archive_ops::materialize_archive_path_in_cache;
 use std::path::Path;
 
 // ===== 파일 탐색기 연동 =====
@@ -11,8 +12,12 @@ use std::path::Path;
 pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 
+    let resolved_path = materialize_archive_path_in_cache(&app, &path)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| std::path::PathBuf::from(&path));
+
     app.opener()
-        .open_path(&path, None::<&str>)
+        .open_path(resolved_path.to_string_lossy().as_ref(), None::<&str>)
         .map_err(|e| format!("폴더 열기 실패: {}", e))?;
 
     Ok(())
@@ -36,7 +41,10 @@ fn quote_powershell_literal(value: &str) -> String {
 
 #[cfg(any(target_os = "windows", test))]
 fn build_windows_powershell_run_script(path: &str, command: &str) -> String {
-    let cd = format!("Set-Location -LiteralPath {}", quote_powershell_literal(path));
+    let cd = format!(
+        "Set-Location -LiteralPath {}",
+        quote_powershell_literal(path)
+    );
     let trimmed = command.trim();
     if trimmed.is_empty() {
         cd
@@ -61,7 +69,15 @@ fn spawn_terminal(path: &str, command: Option<&str>) -> Result<(), String> {
 
     if let Some(command) = trimmed {
         if std::process::Command::new("wt.exe")
-            .args(["-d", path, "powershell.exe", "-NoExit", "-NoLogo", "-Command", command])
+            .args([
+                "-d",
+                path,
+                "powershell.exe",
+                "-NoExit",
+                "-NoLogo",
+                "-Command",
+                command,
+            ])
             .spawn()
             .is_ok()
         {
@@ -126,14 +142,27 @@ fn spawn_terminal(path: &str, command: Option<&str>) -> Result<(), String> {
     };
 
     let attempts = [
-        ("x-terminal-emulator", vec!["-e", "sh", "-lc", shell_script.as_str()]),
-        ("gnome-terminal", vec!["--", "sh", "-lc", shell_script.as_str()]),
+        (
+            "x-terminal-emulator",
+            vec!["-e", "sh", "-lc", shell_script.as_str()],
+        ),
+        (
+            "gnome-terminal",
+            vec!["--", "sh", "-lc", shell_script.as_str()],
+        ),
         ("konsole", vec!["-e", "sh", "-lc", shell_script.as_str()]),
-        ("xfce4-terminal", vec!["-e", "sh", "-lc", shell_script.as_str()]),
+        (
+            "xfce4-terminal",
+            vec!["-e", "sh", "-lc", shell_script.as_str()],
+        ),
     ];
 
     for (program, args) in attempts {
-        if std::process::Command::new(program).args(args).spawn().is_ok() {
+        if std::process::Command::new(program)
+            .args(args)
+            .spawn()
+            .is_ok()
+        {
             return Ok(());
         }
     }
@@ -285,23 +314,28 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
                     })
                     .max() // 알파벳 순 최대 = 최신 버전
             })
-            .ok_or_else(|| "Photoshop을 찾을 수 없습니다. 설치되어 있는지 확인해주세요.".to_string())?;
+            .ok_or_else(|| {
+                "Photoshop을 찾을 수 없습니다. 설치되어 있는지 확인해주세요.".to_string()
+            })?;
 
         let mut cmd = std::process::Command::new("open");
         cmd.arg("-a").arg(&ps_app);
         for p in &paths {
             cmd.arg(p);
         }
-        cmd.spawn().map_err(|e| format!("Photoshop 실행 실패: {}", e))?;
+        cmd.spawn()
+            .map_err(|e| format!("Photoshop 실행 실패: {}", e))?;
     }
 
     #[cfg(target_os = "windows")]
     {
         // 레지스트리에서 Photoshop 경로 탐색
         fn find_photoshop_path() -> Option<String> {
-            use winapi::um::winreg::{RegOpenKeyExW, RegCloseKey, RegEnumKeyExW, RegQueryValueExW, HKEY_LOCAL_MACHINE};
-            use winapi::um::winnt::{KEY_READ, REG_SZ};
             use std::ptr;
+            use winapi::um::winnt::{KEY_READ, REG_SZ};
+            use winapi::um::winreg::{
+                RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY_LOCAL_MACHINE,
+            };
 
             unsafe {
                 let subkey: Vec<u16> = "SOFTWARE\\Adobe\\Photoshop\0".encode_utf16().collect();
@@ -317,10 +351,18 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
                     let mut name_buf = vec![0u16; 256];
                     let mut name_len = 256u32;
                     let result = RegEnumKeyExW(
-                        hkey, index, name_buf.as_mut_ptr(), &mut name_len,
-                        ptr::null_mut(), ptr::null_mut(), ptr::null_mut(), ptr::null_mut()
+                        hkey,
+                        index,
+                        name_buf.as_mut_ptr(),
+                        &mut name_len,
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
                     );
-                    if result != 0 { break; }
+                    if result != 0 {
+                        break;
+                    }
                     let name = String::from_utf16_lossy(&name_buf[..name_len as usize]);
                     if name > latest_version {
                         latest_version = name;
@@ -337,14 +379,29 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
                 let full_key = format!("SOFTWARE\\Adobe\\Photoshop\\{}\0", latest_version);
                 let full_key_w: Vec<u16> = full_key.encode_utf16().collect();
                 let mut hkey2 = ptr::null_mut();
-                if RegOpenKeyExW(HKEY_LOCAL_MACHINE, full_key_w.as_ptr(), 0, KEY_READ, &mut hkey2) != 0 {
+                if RegOpenKeyExW(
+                    HKEY_LOCAL_MACHINE,
+                    full_key_w.as_ptr(),
+                    0,
+                    KEY_READ,
+                    &mut hkey2,
+                ) != 0
+                {
                     return None;
                 }
 
                 let value_name: Vec<u16> = "ApplicationPath\0".encode_utf16().collect();
                 let mut data_type = 0u32;
                 let mut data_size = 0u32;
-                if RegQueryValueExW(hkey2, value_name.as_ptr(), ptr::null_mut(), &mut data_type, ptr::null_mut(), &mut data_size) != 0 {
+                if RegQueryValueExW(
+                    hkey2,
+                    value_name.as_ptr(),
+                    ptr::null_mut(),
+                    &mut data_type,
+                    ptr::null_mut(),
+                    &mut data_size,
+                ) != 0
+                {
                     RegCloseKey(hkey2);
                     return None;
                 }
@@ -354,14 +411,25 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
                 }
 
                 let mut data = vec![0u8; data_size as usize];
-                if RegQueryValueExW(hkey2, value_name.as_ptr(), ptr::null_mut(), &mut data_type, data.as_mut_ptr(), &mut data_size) != 0 {
+                if RegQueryValueExW(
+                    hkey2,
+                    value_name.as_ptr(),
+                    ptr::null_mut(),
+                    &mut data_type,
+                    data.as_mut_ptr(),
+                    &mut data_size,
+                ) != 0
+                {
                     RegCloseKey(hkey2);
                     return None;
                 }
                 RegCloseKey(hkey2);
 
-                let path_slice: &[u16] = std::slice::from_raw_parts(data.as_ptr() as *const u16, data_size as usize / 2);
-                let app_dir = String::from_utf16_lossy(path_slice).trim_end_matches('\0').to_string();
+                let path_slice: &[u16] =
+                    std::slice::from_raw_parts(data.as_ptr() as *const u16, data_size as usize / 2);
+                let app_dir = String::from_utf16_lossy(path_slice)
+                    .trim_end_matches('\0')
+                    .to_string();
                 // 경로 구분자 보정
                 let sep = if app_dir.ends_with('\\') { "" } else { "\\" };
                 let exe_path = format!("{}{}Photoshop.exe", app_dir, sep);
@@ -400,7 +468,9 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
 
         let ps_path = find_photoshop_path()
             .or_else(find_photoshop_in_program_files)
-            .ok_or_else(|| "Photoshop을 찾을 수 없습니다. 설치되어 있는지 확인해주세요.".to_string())?;
+            .ok_or_else(|| {
+                "Photoshop을 찾을 수 없습니다. 설치되어 있는지 확인해주세요.".to_string()
+            })?;
 
         let mut cmd = std::process::Command::new(&ps_path);
         for p in &paths {
@@ -459,9 +529,7 @@ pub async fn copy_path(app: tauri::AppHandle, path: String) -> Result<(), String
 pub async fn select_folder(app: tauri::AppHandle) -> Result<Option<FolderSelection>, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let folder_path = app.dialog()
-        .file()
-        .blocking_pick_folder();
+    let folder_path = app.dialog().file().blocking_pick_folder();
 
     if let Some(path) = folder_path {
         // FilePath에서 경로 문자열 가져오기
@@ -495,10 +563,8 @@ mod tests {
 
     #[test]
     fn powershell_run_script_keeps_terminal_open_and_runs_in_path() {
-        let script = build_windows_powershell_run_script(
-            "D:\\0_Client\\quick-folder",
-            "npm run build",
-        );
+        let script =
+            build_windows_powershell_run_script("D:\\0_Client\\quick-folder", "npm run build");
 
         assert_eq!(
             script,

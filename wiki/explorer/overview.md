@@ -36,7 +36,7 @@ FileExplorer/index.tsx         ← 메인 컨트롤러
 | `useKeyboardShortcuts` | `hooks/useKeyboardShortcuts.ts` | 전역 키보드 단축키 |
 | `useSearchFilter` | `hooks/useSearchFilter.ts` | 검색어·확장자 필터 |
 | `usePreview` | `hooks/usePreview.ts` | 파일 미리보기 상태 |
-| `useInternalDragDrop` | `hooks/useInternalDragDrop.ts` | 내부 드래그앤드롭 |
+| `useInternalDragDrop` | `hooks/useInternalDragDrop.ts` | 내부 드래그앤드롭·압축 파일 꺼내기 |
 | `useRenameInput` | `hooks/useRenameInput.ts` | 인라인 이름변경 입력 |
 | `useContextMenuBuilder` | `hooks/useContextMenuBuilder.tsx` | 우클릭 메뉴 구성 |
 | `usePersistentScroll` | `hooks/usePersistentScroll.ts` | 스크롤 위치 복원 |
@@ -63,8 +63,15 @@ Pane 1 ← explorerRequest2  (splitMode != 'single' 일 때)
 sharedClipboard ← 두 패인 간 공유
 ```
 
+## 압축 탐색 흐름
+- 압축 파일은 별도 팝업이 아니라 `FileExplorer` 안의 가상 경로로 연다.
+- 일반 파일시스템에서 압축 파일을 더블클릭하면 반대편 패널에 연다.
+- 이미 압축 내부에 있을 때 중첩 압축을 더블클릭하면 현재 패널에서 계속 진입한다.
+- 실제 경로/압축 내부 경로 구분은 `utils/pathUtils.ts`의 `isArchiveVirtualPath`, `splitArchiveVirtualPath`, `shouldOpenArchiveInCurrentPane`에 모여 있다.
+
 ## 관련 위키
 - [FileExplorer.md](FileExplorer.md)
+- [archives.md](archives.md)
 - [tabs.md](tabs.md)
 - [column-view.md](column-view.md)
 - [context-menu.md](context-menu.md)

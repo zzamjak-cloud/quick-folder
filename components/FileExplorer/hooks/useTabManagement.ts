@@ -57,23 +57,23 @@ export function useTabManagement({
 
   // --- 탭 생성/전환 ---
   const openTab = useCallback((path: string) => {
-    const existing = tabs.find(t => t.path === path);
-    if (existing) {
-      setActiveTabId(existing.id);
-      loadDirectory(path);
-    } else {
-      const newTab: Tab = {
-        id: crypto.randomUUID(),
-        path,
-        history: [path],
-        historyIndex: 0,
-        title: pathTitle(path),
-      };
-      setTabs(prev => [...prev, newTab]);
-      setActiveTabId(newTab.id);
-      loadDirectory(path);
-    }
-  }, [tabs, loadDirectory]);
+    const newTab: Tab = {
+      id: crypto.randomUUID(),
+      path,
+      history: [path],
+      historyIndex: 0,
+      title: pathTitle(path),
+    };
+
+    setTabs(prev => {
+      const existing = prev.find(t => t.path === path);
+      const targetTab = existing ?? newTab;
+      setActiveTabId(targetTab.id);
+      return existing ? prev : [...prev, newTab];
+    });
+
+    loadDirectory(path);
+  }, [loadDirectory]);
 
   // --- 내비게이션 ---
   const navigateTo = useCallback((path: string) => {
@@ -269,7 +269,8 @@ export function useTabManagement({
 
     // 사이드바에서 Ctrl+클릭으로 새 탭 열기
     const handleOpenNewTab = (e: Event) => {
-      const { path } = (e as CustomEvent).detail;
+      const { path, targetInstanceId } = (e as CustomEvent<{ path: string; targetInstanceId?: string }>).detail;
+      if (targetInstanceId && targetInstanceId !== instanceId) return;
       const newTab: Tab = {
         id: crypto.randomUUID(),
         path,
@@ -290,7 +291,7 @@ export function useTabManagement({
       window.removeEventListener('qf-tab-delete', handleDelete);
       window.removeEventListener('qf-open-new-tab', handleOpenNewTab);
     };
-  }, [loadDirectory]);
+  }, [instanceId, loadDirectory]);
 
   return {
     tabs, activeTabId, activeTab, currentPath,

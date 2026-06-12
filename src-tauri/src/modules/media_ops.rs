@@ -1,22 +1,34 @@
 //! 미디어 처리 모듈 (비디오/오디오 변환, 썸네일, 압축)
 
-use crate::helpers::find_unique_path;
-use crate::modules::tool_ops::find_ffmpeg_path;
-use crate::modules::image_ops::{cached_thumbnail, ensure_cached_thumbnail, invalidate_thumbnail_cache_paths};
 use super::error::{AppError, Result};
+use crate::helpers::find_unique_path;
+use crate::modules::archive_ops::materialize_archive_path_in_cache;
+use crate::modules::image_ops::{
+    cached_thumbnail, ensure_cached_thumbnail, invalidate_thumbnail_cache_paths,
+};
+use crate::modules::tool_ops::find_ffmpeg_path;
 
 // --- 동영상 썸네일 (OS 네이티브 API, 디스크 캐시) ---
 #[tauri::command]
-pub async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>> {
+pub async fn get_video_thumbnail(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app.path().app_cache_dir()
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
         .join("video_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || {
-        cached_thumbnail(&cache_dir, &path, size, false, || {
-            get_native_video_thumbnail(&path, size)
+        let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+            .unwrap_or_else(|| std::path::PathBuf::from(&path));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        cached_thumbnail(&cache_dir, &resolved_path_str, size, false, || {
+            get_native_video_thumbnail(&resolved_path_str, size)
         })
     })
     .await
@@ -25,24 +37,40 @@ pub async fn get_video_thumbnail(app: tauri::AppHandle, path: String, size: u32)
 
 // 동영상 썸네일 캐시 PNG 경로 반환 (asset 프로토콜용 — base64/IPC 왕복 없음)
 #[tauri::command]
-pub async fn get_video_thumbnail_path(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>> {
+pub async fn get_video_thumbnail_path(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app.path().app_cache_dir()
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
         .join("video_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+        let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+            .unwrap_or_else(|| std::path::PathBuf::from(&path));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
         // 클라우드 경로: OS 썸네일 우선(풀 다운로드 회피) + mtime 무시 캐시 키
-        let is_cloud = crate::helpers::is_cloud_path(&path);
-        let cache_path = ensure_cached_thumbnail(&cache_dir, &path, size, false, is_cloud, || {
-            if is_cloud {
-                if let Ok(Some(bytes)) = get_os_thumbnail(&path, size) {
-                    return Ok(Some(bytes));
+        let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
+        let cache_path = ensure_cached_thumbnail(
+            &cache_dir,
+            &resolved_path_str,
+            size,
+            false,
+            is_cloud,
+            || {
+                if is_cloud {
+                    if let Ok(Some(bytes)) = get_os_thumbnail(&resolved_path_str, size) {
+                        return Ok(Some(bytes));
+                    }
                 }
-            }
-            get_native_video_thumbnail(&path, size)
-        })?;
+                get_native_video_thumbnail(&resolved_path_str, size)
+            },
+        )?;
         Ok(cache_path.map(|p| p.to_string_lossy().to_string()))
     })
     .await
@@ -58,7 +86,8 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
 
     unsafe {
         // NSURL fileURLWithPath:
-        let nsurl_class = Class::get("NSURL").ok_or_else(|| AppError::VideoProcessing("NSURL not found".to_string()))?;
+        let nsurl_class = Class::get("NSURL")
+            .ok_or_else(|| AppError::VideoProcessing("NSURL not found".to_string()))?;
         let path_nsstring: *mut Object = msg_send![
             Class::get("NSString").unwrap(),
             stringWithUTF8String: std::ffi::CString::new(path).map_err(|e| AppError::VideoProcessing(e.to_string()))?.as_ptr()
@@ -69,15 +98,17 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
         }
 
         // AVAsset assetWithURL:
-        let avasset_class = Class::get("AVAsset").ok_or_else(|| AppError::VideoProcessing("AVAsset not found".to_string()))?;
+        let avasset_class = Class::get("AVAsset")
+            .ok_or_else(|| AppError::VideoProcessing("AVAsset not found".to_string()))?;
         let asset: *mut Object = msg_send![avasset_class, assetWithURL: url];
         if asset.is_null() {
             return Ok(None);
         }
 
         // AVAssetImageGenerator alloc/initWithAsset:
-        let generator_class = Class::get("AVAssetImageGenerator")
-            .ok_or_else(|| AppError::VideoProcessing("AVAssetImageGenerator not found".to_string()))?;
+        let generator_class = Class::get("AVAssetImageGenerator").ok_or_else(|| {
+            AppError::VideoProcessing("AVAssetImageGenerator not found".to_string())
+        })?;
         let generator: *mut Object = msg_send![generator_class, alloc];
         let generator: *mut Object = msg_send![generator, initWithAsset: asset];
         if generator.is_null() {
@@ -89,8 +120,14 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
 
         // maximumSize 설정
         #[repr(C)]
-        struct CGSize { width: f64, height: f64 }
-        let max_size = CGSize { width: size as f64, height: size as f64 };
+        struct CGSize {
+            width: f64,
+            height: f64,
+        }
+        let max_size = CGSize {
+            width: size as f64,
+            height: size as f64,
+        };
         let _: () = msg_send![generator, setMaximumSize: max_size];
 
         // CMTime: 1초 지점
@@ -102,7 +139,12 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
             flags: u32,
             epoch: i64,
         }
-        let time = CMTime { value: 1, timescale: 1, flags: 1, epoch: 0 };
+        let time = CMTime {
+            value: 1,
+            timescale: 1,
+            flags: 1,
+            epoch: 0,
+        };
 
         // copyCGImageAtTime:actualTime:error:
         let mut actual_time = time;
@@ -126,7 +168,9 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
         let bitmap: *mut Object = msg_send![bitmap, initWithCGImage: cg_image];
 
         // CGImageRelease
-        extern "C" { fn CGImageRelease(image: *mut c_void); }
+        extern "C" {
+            fn CGImageRelease(image: *mut c_void);
+        }
         CGImageRelease(cg_image);
 
         if bitmap.is_null() {
@@ -162,11 +206,18 @@ fn get_native_video_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> 
 // 구글드라이브/OneDrive 등은 OS 썸네일 핸들러로 서버측 썸네일을 즉시 제공 → 첫 진입 비용 대폭 절감
 pub(crate) fn get_os_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
     #[cfg(target_os = "macos")]
-    { get_quicklook_thumbnail(path, size) }
+    {
+        get_quicklook_thumbnail(path, size)
+    }
     #[cfg(target_os = "windows")]
-    { get_windows_shell_thumbnail(path, size) }
+    {
+        get_windows_shell_thumbnail(path, size)
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    { let _ = (path, size); Ok(None) }
+    {
+        let _ = (path, size);
+        Ok(None)
+    }
 }
 
 // macOS: CGImage → PNG 바이트 (NSBitmapImageRep). cg_image는 호출측 소유(여기서 release 안 함)
@@ -204,15 +255,18 @@ unsafe fn cgimage_to_png(cg_image: *mut std::ffi::c_void) -> Option<Vec<u8>> {
 // 비동기 completion을 dispatch_semaphore로 동기화하여 spawn_blocking 안에서 사용.
 #[cfg(target_os = "macos")]
 fn get_quicklook_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
+    use block::ConcreteBlock;
     use objc::runtime::{Class, Object};
     use objc::{msg_send, sel, sel_impl};
-    use block::ConcreteBlock;
     use std::ffi::c_void;
     use std::sync::{Arc, Mutex};
 
     #[repr(C)]
     #[derive(Copy, Clone)]
-    struct CGSize { width: f64, height: f64 }
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
 
     extern "C" {
         fn dispatch_semaphore_create(value: isize) -> *mut Object;
@@ -224,20 +278,23 @@ fn get_quicklook_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
     unsafe {
         let nsstring_cls = Class::get("NSString")
             .ok_or_else(|| AppError::Internal("NSString not found".to_string()))?;
-        let cpath = std::ffi::CString::new(path)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let cpath = std::ffi::CString::new(path).map_err(|e| AppError::Internal(e.to_string()))?;
         let path_ns: *mut Object = msg_send![nsstring_cls, stringWithUTF8String: cpath.as_ptr()];
-        let nsurl_cls = Class::get("NSURL")
-            .ok_or_else(|| AppError::Internal("NSURL not found".to_string()))?;
+        let nsurl_cls =
+            Class::get("NSURL").ok_or_else(|| AppError::Internal("NSURL not found".to_string()))?;
         let url: *mut Object = msg_send![nsurl_cls, fileURLWithPath: path_ns];
         if url.is_null() {
             return Ok(None);
         }
 
         // QLThumbnailGenerationRequest(initWithFileAtURL:size:scale:representationTypes:)
-        let req_cls = Class::get("QLThumbnailGenerationRequest")
-            .ok_or_else(|| AppError::Internal("QLThumbnailGenerationRequest not found".to_string()))?;
-        let cg_size = CGSize { width: size as f64, height: size as f64 };
+        let req_cls = Class::get("QLThumbnailGenerationRequest").ok_or_else(|| {
+            AppError::Internal("QLThumbnailGenerationRequest not found".to_string())
+        })?;
+        let cg_size = CGSize {
+            width: size as f64,
+            height: size as f64,
+        };
         let scale: f64 = 1.0;
         // QLThumbnailGenerationRequestRepresentationTypeThumbnail = 1<<2
         let rep_types: u64 = 1 << 2;
@@ -268,7 +325,9 @@ fn get_quicklook_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
                 let cg: *mut c_void = msg_send![rep, CGImage];
                 if !cg.is_null() {
                     if let Some(png) = cgimage_to_png(cg) {
-                        if let Ok(mut g) = out_cb.lock() { *g = Some(png); }
+                        if let Ok(mut g) = out_cb.lock() {
+                            *g = Some(png);
+                        }
                     }
                     // cg는 representation 소유 → release 안 함
                 }
@@ -297,26 +356,35 @@ fn get_quicklook_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
 // Windows: Shell COM 인터페이스로 썸네일 추출 (영상·이미지·클라우드 파일 공용)
 #[cfg(target_os = "windows")]
 fn get_windows_shell_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>> {
+    use winapi::shared::guiddef::GUID;
+    use winapi::shared::minwindef::DWORD;
+    use winapi::shared::windef::HBITMAP;
+    use winapi::shared::winerror::HRESULT;
     use winapi::um::combaseapi::{CoInitializeEx, CoUninitialize};
     use winapi::um::objbase::COINIT_MULTITHREADED;
-    use winapi::shared::windef::HBITMAP;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::shared::guiddef::GUID;
-    use winapi::shared::winerror::HRESULT;
     use winapi::um::wingdi::*;
     // use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl}; // 사용하지 않음
-    use std::ptr;
     use std::ffi::c_void;
+    use std::ptr;
 
     // IShellItemImageFactory COM 인터페이스 수동 정의
     #[repr(C)]
     struct IShellItemImageFactoryVtbl {
         // IUnknown
-        query_interface: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw, *const GUID, *mut *mut c_void) -> HRESULT,
+        query_interface: unsafe extern "system" fn(
+            *mut IShellItemImageFactoryRaw,
+            *const GUID,
+            *mut *mut c_void,
+        ) -> HRESULT,
         add_ref: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw) -> u32,
         release: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw) -> u32,
         // IShellItemImageFactory
-        get_image: unsafe extern "system" fn(*mut IShellItemImageFactoryRaw, winapi::shared::windef::SIZE, u32, *mut HBITMAP) -> HRESULT,
+        get_image: unsafe extern "system" fn(
+            *mut IShellItemImageFactoryRaw,
+            winapi::shared::windef::SIZE,
+            u32,
+            *mut HBITMAP,
+        ) -> HRESULT,
     }
 
     #[repr(C)]
@@ -360,7 +428,10 @@ fn get_windows_shell_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>>
         }
 
         // GetImage로 HBITMAP 취득
-        let sz = winapi::shared::windef::SIZE { cx: size as i32, cy: size as i32 };
+        let sz = winapi::shared::windef::SIZE {
+            cx: size as i32,
+            cy: size as i32,
+        };
         let mut hbitmap: HBITMAP = ptr::null_mut();
         let hr = ((*(*factory).vtbl).get_image)(factory, sz, 0x0, &mut hbitmap);
         ((*(*factory).vtbl).release)(factory);
@@ -372,10 +443,19 @@ fn get_windows_shell_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>>
 
         // HBITMAP → 픽셀 데이터 추출
         let mut bmp_info = BITMAP {
-            bmType: 0, bmWidth: 0, bmHeight: 0,
-            bmWidthBytes: 0, bmPlanes: 0, bmBitsPixel: 0, bmBits: ptr::null_mut(),
+            bmType: 0,
+            bmWidth: 0,
+            bmHeight: 0,
+            bmWidthBytes: 0,
+            bmPlanes: 0,
+            bmBitsPixel: 0,
+            bmBits: ptr::null_mut(),
         };
-        GetObjectW(hbitmap as *mut _, std::mem::size_of::<BITMAP>() as i32, &mut bmp_info as *mut _ as *mut _);
+        GetObjectW(
+            hbitmap as *mut _,
+            std::mem::size_of::<BITMAP>() as i32,
+            &mut bmp_info as *mut _ as *mut _,
+        );
 
         let width = bmp_info.bmWidth as u32;
         let height = bmp_info.bmHeight.unsigned_abs();
@@ -401,10 +481,23 @@ fn get_windows_shell_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>>
                 biClrUsed: 0,
                 biClrImportant: 0,
             },
-            bmiColors: [RGBQUAD { rgbBlue: 0, rgbGreen: 0, rgbRed: 0, rgbReserved: 0 }],
+            bmiColors: [RGBQUAD {
+                rgbBlue: 0,
+                rgbGreen: 0,
+                rgbRed: 0,
+                rgbReserved: 0,
+            }],
         };
         let mut pixels = vec![0u8; (width * height * 4) as usize];
-        GetDIBits(hdc, hbitmap, 0, height, pixels.as_mut_ptr() as *mut _, &mut bi, DIB_RGB_COLORS);
+        GetDIBits(
+            hdc,
+            hbitmap,
+            0,
+            height,
+            pixels.as_mut_ptr() as *mut _,
+            &mut bi,
+            DIB_RGB_COLORS,
+        );
         DeleteDC(hdc);
         DeleteObject(hbitmap as *mut _);
         CoUninitialize();
@@ -420,7 +513,8 @@ fn get_windows_shell_thumbnail(path: &str, size: u32) -> Result<Option<Vec<u8>>>
                 .ok_or_else(|| AppError::VideoProcessing("이미지 버퍼 생성 실패".to_string()))?;
 
         let mut png_buf = std::io::Cursor::new(Vec::new());
-        img_buf.write_to(&mut png_buf, image::ImageFormat::Png)
+        img_buf
+            .write_to(&mut png_buf, image::ImageFormat::Png)
             .map_err(|e| AppError::VideoProcessing(format!("PNG 인코딩 실패: {}", e)))?;
 
         Ok(Some(png_buf.into_inner()))
@@ -462,29 +556,36 @@ pub async fn compress_video(
     let output_str = output_path.to_string_lossy().to_string();
 
     // ffmpeg 경로 결정 (sidecar → 시스템 PATH 순)
-    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound { tool: "FFmpeg".to_string() })?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+        tool: "FFmpeg".to_string(),
+    })?;
 
     // 품질별 CRF 설정: low(보통)=높은CRF, medium(좋은)=중간CRF, high(최고)=낮은CRF
     // macOS: H.265(HEVC), Windows: H.264(AVC) — WebView2 HEVC 미지원
     let codec_args: Vec<String> = {
         #[cfg(target_os = "macos")]
         let (codec, tag_args, crf) = match quality.as_str() {
-            "low"  => ("libx265", vec!["-tag:v", "hvc1"], "32"),
+            "low" => ("libx265", vec!["-tag:v", "hvc1"], "32"),
             "high" => ("libx265", vec!["-tag:v", "hvc1"], "22"),
-            _      => ("libx265", vec!["-tag:v", "hvc1"], "28"), // medium (기본)
+            _ => ("libx265", vec!["-tag:v", "hvc1"], "28"), // medium (기본)
         };
         #[cfg(not(target_os = "macos"))]
         let (codec, tag_args, crf) = match quality.as_str() {
-            "low"  => ("libx264", vec![] as Vec<&str>, "28"),
+            "low" => ("libx264", vec![] as Vec<&str>, "28"),
             "high" => ("libx264", vec![] as Vec<&str>, "18"),
-            _      => ("libx264", vec![] as Vec<&str>, "23"), // medium (기본)
+            _ => ("libx264", vec![] as Vec<&str>, "23"), // medium (기본)
         };
         let mut args = vec![
-            "-c:v".to_string(), codec.to_string(),
-            "-crf".to_string(), crf.to_string(),
-            "-preset".to_string(), "medium".to_string(),
-            "-c:a".to_string(), "aac".to_string(),
-            "-b:a".to_string(), "128k".to_string(),
+            "-c:v".to_string(),
+            codec.to_string(),
+            "-crf".to_string(),
+            crf.to_string(),
+            "-preset".to_string(),
+            "medium".to_string(),
+            "-c:a".to_string(),
+            "aac".to_string(),
+            "-b:a".to_string(),
+            "128k".to_string(),
         ];
         for t in tag_args {
             args.push(t.to_string());
@@ -511,7 +612,7 @@ pub async fn compress_video(
         .spawn()
         .map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: e.to_string()
+            reason: e.to_string(),
         })?;
 
     // stdout에서 -progress 출력 파싱 (별도 스레드)
@@ -557,7 +658,7 @@ pub async fn compress_video(
 
     let status = child.wait().map_err(|e| AppError::ToolExecution {
         tool: "FFmpeg".to_string(),
-        reason: format!("대기 실패: {}", e)
+        reason: format!("대기 실패: {}", e),
     })?;
     let _ = progress_thread.join();
     let stderr_output = stderr_thread.join().unwrap_or_default();
@@ -565,8 +666,14 @@ pub async fn compress_video(
     if !status.success() {
         let _ = std::fs::remove_file(&output_path);
         // stderr에서 의미있는 에러 추출
-        let err_msg = stderr_output.lines()
-            .filter(|l| l.contains("Error") || l.contains("error") || l.contains("Unknown") || l.contains("not found"))
+        let err_msg = stderr_output
+            .lines()
+            .filter(|l| {
+                l.contains("Error")
+                    || l.contains("error")
+                    || l.contains("Unknown")
+                    || l.contains("not found")
+            })
             .last()
             .unwrap_or("ffmpeg 인코딩 실패")
             .to_string();
@@ -574,8 +681,10 @@ pub async fn compress_video(
     }
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing(format!("ffmpeg가 출력 파일을 생성하지 않았습니다. stderr: {}",
-            stderr_output.lines().last().unwrap_or("(없음)"))));
+        return Err(AppError::VideoProcessing(format!(
+            "ffmpeg가 출력 파일을 생성하지 않았습니다. stderr: {}",
+            stderr_output.lines().last().unwrap_or("(없음)")
+        )));
     }
 
     Ok(output_str)
@@ -608,14 +717,24 @@ pub async fn trim_video(
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
-    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-    let ext = input_path.extension().unwrap_or_default().to_string_lossy().to_string();
+    let stem = input_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let ext = input_path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
 
     let output_path = find_unique_path(parent, &stem, "_trim", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound { tool: "FFmpeg".to_string() })?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+        tool: "FFmpeg".to_string(),
+    })?;
 
     // 구간 길이 (초) — 진행률 계산 기준
     let duration = (end_sec - start_sec).max(0.001) as f32;
@@ -649,7 +768,7 @@ pub async fn trim_video(
         .spawn()
         .map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: e.to_string()
+            reason: e.to_string(),
         })?;
 
     let stdout = child.stdout.take();
@@ -693,14 +812,15 @@ pub async fn trim_video(
 
     let status = child.wait().map_err(|e| AppError::ToolExecution {
         tool: "FFmpeg".to_string(),
-        reason: format!("대기 실패: {}", e)
+        reason: format!("대기 실패: {}", e),
     })?;
     let _ = progress_thread.join();
     let stderr_output = stderr_thread.join().unwrap_or_default();
 
     if !status.success() {
         let _ = std::fs::remove_file(&output_path);
-        let err_msg = stderr_output.lines()
+        let err_msg = stderr_output
+            .lines()
             .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
             .last()
             .unwrap_or("ffmpeg 트림 실패")
@@ -709,7 +829,9 @@ pub async fn trim_video(
     }
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string()));
+        return Err(AppError::VideoProcessing(
+            "ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string(),
+        ));
     }
 
     Ok(output_str)
@@ -724,14 +846,24 @@ pub async fn cut_video(
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
-    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-    let ext = input_path.extension().unwrap_or_default().to_string_lossy().to_string();
+    let stem = input_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let ext = input_path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
 
     let output_path = find_unique_path(parent, &stem, "_cut", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound { tool: "FFmpeg".to_string() })?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+        tool: "FFmpeg".to_string(),
+    })?;
 
     // 임시 디렉토리 생성 (프로세스 ID 포함으로 충돌 방지)
     let pid = std::process::id();
@@ -759,9 +891,13 @@ pub async fn cut_video(
         send_progress(0, 0.0);
         let mut cmd = std::process::Command::new(&ffmpeg_path);
         cmd.args(&[
-            "-y", "-i", &input,
-            "-t", &start_sec.to_string(),
-            "-c", "copy",
+            "-y",
+            "-i",
+            &input,
+            "-t",
+            &start_sec.to_string(),
+            "-c",
+            "copy",
             &part1.to_string_lossy(),
         ]);
         #[cfg(target_os = "windows")]
@@ -775,16 +911,18 @@ pub async fn cut_video(
             .spawn()
             .map_err(|e| AppError::ToolExecution {
                 tool: "FFmpeg".to_string(),
-                reason: format!("실행 실패 (앞 부분): {}", e)
+                reason: format!("실행 실패 (앞 부분): {}", e),
             })?
             .wait()
             .map_err(|e| AppError::ToolExecution {
                 tool: "FFmpeg".to_string(),
-                reason: format!("대기 실패 (앞 부분): {}", e)
+                reason: format!("대기 실패 (앞 부분): {}", e),
             })?;
         if !status.success() {
             let _ = std::fs::remove_dir_all(&tmp_dir);
-            return Err(AppError::VideoProcessing("ffmpeg 앞 부분 추출 실패".to_string()));
+            return Err(AppError::VideoProcessing(
+                "ffmpeg 앞 부분 추출 실패".to_string(),
+            ));
         }
         send_progress(0, 1.0);
     }
@@ -795,9 +933,13 @@ pub async fn cut_video(
     {
         let mut cmd = std::process::Command::new(&ffmpeg_path);
         cmd.args(&[
-            "-y", "-i", &input,
-            "-ss", &end_sec.to_string(),
-            "-c", "copy",
+            "-y",
+            "-i",
+            &input,
+            "-ss",
+            &end_sec.to_string(),
+            "-c",
+            "copy",
             &part2.to_string_lossy(),
         ]);
         #[cfg(target_os = "windows")]
@@ -811,21 +953,25 @@ pub async fn cut_video(
             .spawn()
             .map_err(|e| AppError::ToolExecution {
                 tool: "FFmpeg".to_string(),
-                reason: format!("실행 실패 (뒷 부분): {}", e)
+                reason: format!("실행 실패 (뒷 부분): {}", e),
             })?
             .wait()
             .map_err(|e| AppError::ToolExecution {
                 tool: "FFmpeg".to_string(),
-                reason: format!("대기 실패 (뒷 부분): {}", e)
+                reason: format!("대기 실패 (뒷 부분): {}", e),
             })?;
         if !status.success() {
             let _ = std::fs::remove_dir_all(&tmp_dir);
-            return Err(AppError::VideoProcessing("ffmpeg 뒷 부분 추출 실패".to_string()));
+            return Err(AppError::VideoProcessing(
+                "ffmpeg 뒷 부분 추출 실패".to_string(),
+            ));
         }
     }
     // 뒷 부분이 비어있으면 (0바이트) 없는 것으로 간주
     let has_part2 = part2.exists()
-        && std::fs::metadata(&part2).map(|m| m.len() > 0).unwrap_or(false);
+        && std::fs::metadata(&part2)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false);
     send_progress(1, 1.0);
 
     // --- 합치기 ---
@@ -834,7 +980,9 @@ pub async fn cut_video(
     // 케이스별 처리
     if !has_part1 && !has_part2 {
         let _ = std::fs::remove_dir_all(&tmp_dir);
-        return Err(AppError::VideoProcessing("삭제 후 남은 영상이 없습니다.".to_string()));
+        return Err(AppError::VideoProcessing(
+            "삭제 후 남은 영상이 없습니다.".to_string(),
+        ));
     } else if !has_part1 {
         // 앞 부분 없음 → 뒷 부분만 복사
         std::fs::copy(&part2, &output_path)?;
@@ -853,10 +1001,14 @@ pub async fn cut_video(
         let mut cmd = std::process::Command::new(&ffmpeg_path);
         cmd.args(&[
             "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", &list_file.to_string_lossy(),
-            "-c", "copy",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            &list_file.to_string_lossy(),
+            "-c",
+            "copy",
             &output_str,
         ]);
         #[cfg(target_os = "windows")]
@@ -870,17 +1022,19 @@ pub async fn cut_video(
             .spawn()
             .map_err(|e| AppError::ToolExecution {
                 tool: "FFmpeg".to_string(),
-                reason: format!("실행 실패 (합치기): {}", e)
+                reason: format!("실행 실패 (합치기): {}", e),
             })?
             .wait()
             .map_err(|e| AppError::ToolExecution {
                 tool: "FFmpeg".to_string(),
-                reason: format!("대기 실패 (합치기): {}", e)
+                reason: format!("대기 실패 (합치기): {}", e),
             })?;
         if !status.success() {
             let _ = std::fs::remove_dir_all(&tmp_dir);
             let _ = std::fs::remove_file(&output_path);
-            return Err(AppError::VideoProcessing("ffmpeg concat 합치기 실패".to_string()));
+            return Err(AppError::VideoProcessing(
+                "ffmpeg concat 합치기 실패".to_string(),
+            ));
         }
     }
 
@@ -888,10 +1042,16 @@ pub async fn cut_video(
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string()));
+        return Err(AppError::VideoProcessing(
+            "ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string(),
+        ));
     }
 
-    let _ = on_progress.send(VideoProgress { percent: 100.0, speed: String::new(), fps: 0.0 });
+    let _ = on_progress.send(VideoProgress {
+        percent: 100.0,
+        speed: String::new(),
+        fps: 0.0,
+    });
     Ok(output_str)
 }
 
@@ -902,19 +1062,31 @@ pub async fn concat_videos(
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     if paths.is_empty() {
-        return Err(AppError::InvalidInput("이어붙일 파일이 없습니다.".to_string()));
+        return Err(AppError::InvalidInput(
+            "이어붙일 파일이 없습니다.".to_string(),
+        ));
     }
 
     // 출력 파일: 첫 번째 파일 기준
     let first_path = std::path::Path::new(&paths[0]);
-    let stem = first_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-    let ext = first_path.extension().unwrap_or_default().to_string_lossy().to_string();
+    let stem = first_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let ext = first_path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let parent = first_path.parent().unwrap_or(std::path::Path::new("."));
 
     let output_path = find_unique_path(parent, &stem, "_merged", &format!(".{}", ext));
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound { tool: "FFmpeg".to_string() })?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+        tool: "FFmpeg".to_string(),
+    })?;
 
     // 임시 concat 리스트 파일 생성
     let pid = std::process::id();
@@ -923,20 +1095,24 @@ pub async fn concat_videos(
     let list_file = tmp_dir.join("list.txt");
 
     // concat 리스트 파일 내용 조립 (각 경로 이스케이프)
-    let list_content: String = paths.iter()
+    let list_content: String = paths
+        .iter()
         .map(|p| format!("file '{}'", p.replace('\'', "'\\''")))
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(&list_file, &list_content)?;
 
     // 재인코딩 방식: filter_complex concat (코덱/해상도 다른 영상 호환)
-    let input_args: Vec<String> = paths.iter()
+    let input_args: Vec<String> = paths
+        .iter()
         .flat_map(|p| vec!["-i".to_string(), p.clone()])
         .collect();
     let n = paths.len();
     let filter_str = format!(
         "{}concat=n={}:v=1:a=1[outv][outa]",
-        (0..n).map(|i| format!("[{i}:v:0][{i}:a:0]")).collect::<String>(),
+        (0..n)
+            .map(|i| format!("[{i}:v:0][{i}:a:0]"))
+            .collect::<String>(),
         n
     );
 
@@ -944,15 +1120,24 @@ pub async fn concat_videos(
     let mut args: Vec<String> = vec!["-y".to_string()];
     args.extend(input_args);
     args.extend([
-        "-filter_complex".to_string(), filter_str,
-        "-map".to_string(), "[outv]".to_string(),
-        "-map".to_string(), "[outa]".to_string(),
-        "-c:v".to_string(), "libx264".to_string(),
-        "-crf".to_string(), "18".to_string(),
-        "-preset".to_string(), "medium".to_string(),
-        "-c:a".to_string(), "aac".to_string(),
-        "-b:a".to_string(), "128k".to_string(),
-        "-progress".to_string(), "pipe:1".to_string(),
+        "-filter_complex".to_string(),
+        filter_str,
+        "-map".to_string(),
+        "[outv]".to_string(),
+        "-map".to_string(),
+        "[outa]".to_string(),
+        "-c:v".to_string(),
+        "libx264".to_string(),
+        "-crf".to_string(),
+        "18".to_string(),
+        "-preset".to_string(),
+        "medium".to_string(),
+        "-c:a".to_string(),
+        "aac".to_string(),
+        "-b:a".to_string(),
+        "128k".to_string(),
+        "-progress".to_string(),
+        "pipe:1".to_string(),
         output_str.clone(),
     ]);
     cmd.args(&args);
@@ -970,7 +1155,7 @@ pub async fn concat_videos(
         .spawn()
         .map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: e.to_string()
+            reason: e.to_string(),
         })?;
 
     let stdout = child.stdout.take();
@@ -1013,7 +1198,7 @@ pub async fn concat_videos(
 
     let status = child.wait().map_err(|e| AppError::ToolExecution {
         tool: "FFmpeg".to_string(),
-        reason: format!("대기 실패: {}", e)
+        reason: format!("대기 실패: {}", e),
     })?;
     let _ = progress_thread.join();
     let stderr_output = stderr_thread.join().unwrap_or_default();
@@ -1023,7 +1208,8 @@ pub async fn concat_videos(
 
     if !status.success() {
         let _ = std::fs::remove_file(&output_path);
-        let err_msg = stderr_output.lines()
+        let err_msg = stderr_output
+            .lines()
             .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
             .last()
             .unwrap_or("ffmpeg concat 실패")
@@ -1032,7 +1218,9 @@ pub async fn concat_videos(
     }
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string()));
+        return Err(AppError::VideoProcessing(
+            "ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string(),
+        ));
     }
 
     Ok(output_str)
@@ -1051,13 +1239,19 @@ pub async fn video_to_gif(
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
-    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let stem = input_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
 
     let output_path = find_unique_path(parent, &stem, "", ".gif");
     let output_str = output_path.to_string_lossy().to_string();
 
-    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound { tool: "FFmpeg".to_string() })?;
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+        tool: "FFmpeg".to_string(),
+    })?;
 
     // 구간 길이
     let duration = (end_sec - start_sec).max(0.001) as f32;
@@ -1087,10 +1281,14 @@ pub async fn video_to_gif(
     let mut cmd1 = std::process::Command::new(&ffmpeg_path);
     cmd1.args(&[
         "-y",
-        "-ss", &start_sec.to_string(),
-        "-to", &end_sec.to_string(),
-        "-i", &input,
-        "-vf", &palette_filter,
+        "-ss",
+        &start_sec.to_string(),
+        "-to",
+        &end_sec.to_string(),
+        "-i",
+        &input,
+        "-vf",
+        &palette_filter,
         &palette_path.to_string_lossy(),
     ]);
     #[cfg(target_os = "windows")]
@@ -1105,12 +1303,12 @@ pub async fn video_to_gif(
         .spawn()
         .map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: format!("실행 실패 (팔레트): {}", e)
+            reason: format!("실행 실패 (팔레트): {}", e),
         })?
         .wait()
         .map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: format!("대기 실패 (팔레트): {}", e)
+            reason: format!("대기 실패 (팔레트): {}", e),
         })?;
 
     if !status1.success() || !palette_path.exists() {
@@ -1121,16 +1319,25 @@ pub async fn video_to_gif(
     // 2단계: GIF 인코딩 (생성된 팔레트 사용, 디더링 최적화)
     // dither=bayer:bayer_scale=3 - 적당한 디더링으로 파일 크기와 품질 균형
     // diff_mode=rectangle - 프레임 간 차이만 기록하여 용량 감소
-    let gif_filter = format!("{} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle", base_filter);
+    let gif_filter = format!(
+        "{} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle",
+        base_filter
+    );
     let mut cmd2 = std::process::Command::new(&ffmpeg_path);
     cmd2.args(&[
         "-y",
-        "-ss", &start_sec.to_string(),
-        "-to", &end_sec.to_string(),
-        "-i", &input,
-        "-i", &palette_path.to_string_lossy(),
-        "-lavfi", &gif_filter,
-        "-progress", "pipe:1",
+        "-ss",
+        &start_sec.to_string(),
+        "-to",
+        &end_sec.to_string(),
+        "-i",
+        &input,
+        "-i",
+        &palette_path.to_string_lossy(),
+        "-lavfi",
+        &gif_filter,
+        "-progress",
+        "pipe:1",
         &output_str,
     ]);
     #[cfg(target_os = "windows")]
@@ -1145,7 +1352,7 @@ pub async fn video_to_gif(
         .spawn()
         .map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: format!("실행 실패 (GIF): {}", e)
+            reason: format!("실행 실패 (GIF): {}", e),
         })?;
 
     let stdout = child.stdout.take();
@@ -1182,7 +1389,7 @@ pub async fn video_to_gif(
 
     let status = child.wait().map_err(|e| AppError::ToolExecution {
         tool: "FFmpeg".to_string(),
-        reason: format!("대기 실패: {}", e)
+        reason: format!("대기 실패: {}", e),
     })?;
     let _ = progress_thread.join();
     let stderr_output = stderr_thread.join().unwrap_or_default();
@@ -1192,7 +1399,8 @@ pub async fn video_to_gif(
 
     if !status.success() {
         let _ = std::fs::remove_file(&output_path);
-        let err_msg = stderr_output.lines()
+        let err_msg = stderr_output
+            .lines()
             .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
             .last()
             .unwrap_or("GIF 변환 실패")
@@ -1201,7 +1409,9 @@ pub async fn video_to_gif(
     }
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing("ffmpeg가 GIF 파일을 생성하지 않았습니다.".to_string()));
+        return Err(AppError::VideoProcessing(
+            "ffmpeg가 GIF 파일을 생성하지 않았습니다.".to_string(),
+        ));
     }
 
     Ok(output_str)
@@ -1227,7 +1437,8 @@ fn apply_no_window(cmd: &mut std::process::Command) {
 }
 
 fn last_ffmpeg_error(stderr: &str, fallback: &str) -> String {
-    stderr.lines()
+    stderr
+        .lines()
         .filter(|line| {
             line.contains("Error")
                 || line.contains("error")
@@ -1305,39 +1516,57 @@ pub async fn compress_gif(path: String, quality: String, reduce_size: bool) -> R
 pub async fn gif_to_mp4(path: String) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<String> {
         let input_path = std::path::Path::new(&path);
-        let parent = input_path.parent().ok_or_else(|| AppError::InvalidInput("부모 디렉토리 없음".to_string()))?;
-        let stem = input_path.file_stem()
+        let parent = input_path
+            .parent()
+            .ok_or_else(|| AppError::InvalidInput("부모 디렉토리 없음".to_string()))?;
+        let stem = input_path
+            .file_stem()
             .ok_or_else(|| AppError::InvalidInput("파일명 없음".to_string()))?
             .to_string_lossy();
         let output_path = find_unique_path(parent, &stem, "_mp4", ".mp4");
-        let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound { tool: "FFmpeg".to_string() })?;
+        let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+            tool: "FFmpeg".to_string(),
+        })?;
 
         let mut cmd = std::process::Command::new(&ffmpeg_path);
         cmd.args([
-            "-y", "-i", &path,
-            "-movflags", "+faststart",
-            "-pix_fmt", "yuv420p",
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-            "-c:v", "libx264",
-            "-crf", "23",
-            "-preset", "medium",
+            "-y",
+            "-i",
+            &path,
+            "-movflags",
+            "+faststart",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "23",
+            "-preset",
+            "medium",
         ]);
         cmd.arg(&output_path);
         apply_no_window(&mut cmd);
 
         let output = cmd.output().map_err(|e| AppError::ToolExecution {
             tool: "FFmpeg".to_string(),
-            reason: e.to_string()
+            reason: e.to_string(),
         })?;
 
         if !output.status.success() {
             let _ = std::fs::remove_file(&output_path);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::VideoProcessing(last_ffmpeg_error(&stderr, "GIF → MP4 변환 실패")));
+            return Err(AppError::VideoProcessing(last_ffmpeg_error(
+                &stderr,
+                "GIF → MP4 변환 실패",
+            )));
         }
 
         if !output_path.exists() {
-            return Err(AppError::VideoProcessing("ffmpeg가 MP4 파일을 생성하지 않았습니다.".to_string()));
+            return Err(AppError::VideoProcessing(
+                "ffmpeg가 MP4 파일을 생성하지 않았습니다.".to_string(),
+            ));
         }
 
         Ok(output_path.to_string_lossy().to_string())

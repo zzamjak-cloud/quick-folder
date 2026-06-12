@@ -2,7 +2,7 @@
 //! Spotlight/Windows Search Index 활용 + walkdir 폴백
 
 use super::super::types::{FileEntry, FileType, classify_file};
-use super::super::constants::{MAX_SEARCH_RESULTS, SEARCH_MAX_DEPTH};
+use super::super::constants::{MAX_SEARCH_RESULTS, SEARCH_MAX_DEPTH, DUPLICATE_SCAN_MAX_DEPTH, MAX_DUPLICATE_SCAN_FILES, MAX_DUPLICATE_GROUPS};
 use crate::helpers::{is_hidden_file, is_system_file, is_system_filename};
 
 #[cfg(target_os = "windows")]
@@ -336,4 +336,160 @@ fn search_with_walkdir(root: &str, query: &str, max_results: usize) -> Result<Ve
     }
 
     Ok(result)
+}
+
+// ===== 중복 파일 탐색 =====
+
+/// 동일 내용(해시) 파일 그룹
+#[derive(serde::Serialize)]
+pub struct DuplicateGroup {
+    pub size: u64,
+    pub files: Vec<FileEntry>,
+}
+
+// 폴더 하위를 재귀 탐색해 내용이 동일한 파일 그룹 반환
+// 1단계: 크기로 후보 축소 → 2단계: xxh3 해시로 동일 내용 확인
+#[tauri::command]
+pub async fn find_duplicate_files(root: String) -> Result<Vec<DuplicateGroup>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_duplicates_blocking(&root))
+        .await
+        .map_err(|e| format!("중복 파일 탐색 태스크 실패: {}", e))?
+}
+
+fn find_duplicates_blocking(root: &str) -> Result<Vec<DuplicateGroup>, String> {
+    use std::collections::HashMap;
+    use std::io::Read;
+    use std::path::Path;
+    use walkdir::WalkDir;
+    use xxhash_rust::xxh3::Xxh3;
+
+    let root_path = Path::new(root);
+    if !root_path.is_dir() {
+        return Err("유효한 폴더 경로가 아닙니다".to_string());
+    }
+
+    // 크기별 파일 후보 수집
+    let mut by_size: HashMap<u64, Vec<FileEntry>> = HashMap::new();
+    let mut scanned = 0usize;
+
+    let walker = WalkDir::new(root)
+        .max_depth(DUPLICATE_SCAN_MAX_DEPTH)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            if is_hidden_file(&name) {
+                return false;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(meta) = entry.metadata() {
+                    if is_system_file(&meta) {
+                        return false;
+                    }
+                }
+            }
+            true
+        });
+
+    for entry in walker.flatten() {
+        if entry.depth() == 0 {
+            continue;
+        }
+
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if meta.is_dir() {
+            continue;
+        }
+
+        scanned += 1;
+        if scanned > MAX_DUPLICATE_SCAN_FILES {
+            break;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_system_filename(&name) {
+            continue;
+        }
+
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let size = meta.len();
+        let file_type = classify_file(&name);
+        let file_entry = FileEntry {
+            path: entry.path().to_string_lossy().to_string(),
+            is_dir: false,
+            size,
+            modified,
+            file_type,
+            name,
+        };
+
+        by_size.entry(size).or_default().push(file_entry);
+    }
+
+    // 크기가 같은 파일 2개 이상인 그룹만 해시 비교
+    let mut by_hash: HashMap<u64, Vec<FileEntry>> = HashMap::new();
+
+    for (size, candidates) in by_size.into_iter().filter(|(_, v)| v.len() >= 2) {
+        // 0바이트 파일은 해시 없이 크기만으로 중복 판정
+        if size == 0 {
+            by_hash.insert(0, candidates);
+            continue;
+        }
+
+        for file in candidates {
+            let path = Path::new(&file.path);
+            let mut file_handle = match std::fs::File::open(path) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            let mut hasher = Xxh3::new();
+            let mut buf = [0u8; 65536];
+            let mut hash_ok = true;
+            loop {
+                match file_handle.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => hasher.update(&buf[..n]),
+                    Err(_) => {
+                        hash_ok = false;
+                        break;
+                    }
+                }
+            }
+            if !hash_ok {
+                continue;
+            }
+            let hash = hasher.digest();
+            by_hash.entry(hash).or_default().push(file);
+        }
+    }
+
+    let mut groups: Vec<DuplicateGroup> = by_hash
+        .into_iter()
+        .filter(|(_, files)| files.len() >= 2)
+        .map(|(_, mut files)| {
+            files.sort_by(|a, b| a.path.cmp(&b.path));
+            let size = files.first().map(|f| f.size).unwrap_or(0);
+            DuplicateGroup { size, files }
+        })
+        .collect();
+
+    // 큰 파일 그룹 우선, 동일 크기면 파일 수 많은 순
+    groups.sort_by(|a, b| {
+        b.size
+            .cmp(&a.size)
+            .then_with(|| b.files.len().cmp(&a.files.len()))
+    });
+    groups.truncate(MAX_DUPLICATE_GROUPS);
+
+    Ok(groups)
 }

@@ -185,7 +185,7 @@ export default memo(function FileCard({
     e.stopPropagation();
     if (isPending) return; // 복사 진행 중 더블클릭 무시
     // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
-    if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) {
+    if ((e.ctrlKey || e.metaKey) && (entry.is_dir || entry.file_type === 'archive') && onOpenInNewTab) {
       onOpenInNewTab(entry);
     } else {
       onOpen(entry);

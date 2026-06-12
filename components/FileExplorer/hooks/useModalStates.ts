@@ -19,6 +19,8 @@ export function useModalStates() {
   const [isGoToFolderOpen, setIsGoToFolderOpen] = useState(false);
   // 글로벌 검색 모달
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  // 중복 파일 찾기 대상 폴더 경로
+  const [duplicateFinderPath, setDuplicateFinderPath] = useState<string | null>(null);
   // 폴더 태그 입력 프롬프트
   const [tagPrompt, setTagPrompt] = useState<{ path: string; defaultName: string } | null>(null);
   // 인라인 이름변경 대상 경로
@@ -48,6 +50,7 @@ export function useModalStates() {
     bulkRenamePaths, setBulkRenamePaths,
     isGoToFolderOpen, setIsGoToFolderOpen,
     isGlobalSearchOpen, setIsGlobalSearchOpen,
+    duplicateFinderPath, setDuplicateFinderPath,
     tagPrompt, setTagPrompt,
     renamingPath, setRenamingPath,
     markdownEditorPath, setMarkdownEditorPath,

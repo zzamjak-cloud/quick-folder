@@ -41,6 +41,44 @@ pub fn stable_cache_key(parts: &[&[u8]]) -> String {
     format!("{:016x}", hash)
 }
 
+/// `%EA%B0%80` 형태의 percent-encoded UTF-8 문자열을 디코딩한다.
+/// 잘못된 시퀀스면 원본 문자열을 그대로 반환한다.
+pub fn percent_decode_utf8(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut changed = false;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(high), Some(low)) = (hex_value(bytes[i + 1]), hex_value(bytes[i + 2])) {
+                decoded.push((high << 4) | low);
+                changed = true;
+                i += 3;
+                continue;
+            }
+        }
+
+        decoded.push(bytes[i]);
+        i += 1;
+    }
+
+    if changed {
+        String::from_utf8(decoded).unwrap_or_else(|_| input.to_string())
+    } else {
+        input.to_string()
+    }
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// 출력 경로 중복 회피: 이미 존재하면 suffix + 번호 추가
 ///
 /// 파일 생성 시 기존 파일과 이름이 겹치지 않도록 자동으로 번호를 추가합니다.

@@ -21,6 +21,13 @@
 | ZIP 압축 | `compress_to_zip` | `Ctrl+Shift+Z` |
 | ZIP 해제 | `extract_zip` | `Ctrl+Shift+Alt+Z` |
 
+## 압축 내부 제한
+`useFileOperations.ts`는 archive virtual path를 읽기 전용으로 취급한다.
+
+- 현재 경로가 압축 내부이거나, 선택 경로 중 하나라도 압축 내부면 쓰기 작업을 막는다.
+- 차단 메시지: `압축 내부는 읽기 전용입니다. 파일을 밖으로 꺼내서 사용하세요.`
+- 압축 내부 항목을 밖으로 꺼내는 흐름은 [drag-drop.md](drag-drop.md)와 [../explorer/archives.md](../explorer/archives.md)를 본다.
+
 ### ZIP 해제 회귀 방지 (Windows)
 
 `extract_zip`(`src-tauri/src/modules/file_ops.rs`)는 ZIP 항목명을 그대로 디스크 경로로 쓰면 안 된다.
@@ -45,3 +52,4 @@
 - [useClipboard.md](useClipboard.md)
 - [undo.md](undo.md)
 - [drag-drop.md](drag-drop.md)
+- [../explorer/archives.md](../explorer/archives.md)

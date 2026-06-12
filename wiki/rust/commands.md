@@ -6,9 +6,10 @@
 
 | 명령 | 파라미터 | 반환 | 설명 |
 |------|----------|------|------|
-| `open_folder` | `path: String` | `()` | OS 파일 탐색기로 열기 |
+| `open_folder` | `path: String` | `()` | OS 탐색기/기본 연결로 열기 (압축 내부 경로면 캐시에 꺼낸 뒤 연다) |
 | `select_folder` | — | `Option<String>` | 네이티브 폴더 선택 다이얼로그 |
-| `list_directory` | `path: String` | `Vec<FileEntry>` | 폴더 내용 나열 |
+| `list_directory` | `path: String` | `Vec<FileEntry>` | 폴더/압축 가상 경로 내용 나열 |
+| `materialize_archive_paths` | `paths: Vec<String>` | `Vec<String>` | 압축 내부 경로를 임시 실경로로 꺼내기 |
 | `create_directory` | `path: String` | `()` | 새 폴더 생성 |
 | `rename_item` | `path, new_name: String` | `String` | 이름 변경 (새 경로 반환) |
 | `is_directory` | `path: String` | `bool` | 폴더 여부 확인 |
@@ -16,6 +17,11 @@
 | `write_text_file` | `path, content: String` | `()` | 텍스트 파일 쓰기 |
 | `create_text_file` | `path: String` | `()` | 빈 텍스트 파일 생성 |
 | `list_system_roots` | — | `Vec<String>` | 루트 드라이브 목록 |
+
+### 압축 탐색 메모
+- 지원 브라우징 포맷: `.zip`, `.rar`, `.7z`, `.tar`, `.tgz`, `.tar.gz`, `.tbz2`, `.tar.bz2`, `.txz`, `.tar.xz`
+- 프런트는 `list_directory`와 `open_folder`만 써도 압축 내부 목록 조회와 내부 파일 열기를 처리할 수 있다.
+- drag-out 또는 내부 복사에서는 `materialize_archive_paths`가 실제 파일 경로 목록을 돌려준다.
 
 ## 파일 관리
 

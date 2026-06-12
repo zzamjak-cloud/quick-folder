@@ -52,6 +52,7 @@
 | 함수명 | 설명 |
 |--------|------|
 | `loadDirectory(path)` | 폴더 내용 로드 (핵심). `list_directory` 호출 → `setEntries` → `prewarmThumbnails` |
+| `openArchiveEntry(path)` | 압축 파일 진입. 일반 압축은 반대편 패널, 중첩 압축은 현재 패널에 연다 |
 | `cacheEntries(path, entries)` | `entriesCacheRef`에 캐시 저장 |
 | `prewarmThumbnails()` | 뷰포트 내 파일 썸네일 일괄 사전 로딩 |
 | `handleSelection(path, e)` | 클릭·Shift·Ctrl 선택 처리 |
@@ -64,7 +65,8 @@
 → [overview.md](overview.md) 훅 맵 참조.
 
 ### 사용하는 Rust 명령
-- `list_directory` — 폴더 내용 나열 (핵심)
+- `list_directory` — 폴더/압축 가상 경로 내용 나열 (핵심)
+- `open_folder` — 일반 파일, 압축 내부 실파일을 OS 기본 연결로 열기
 - `restore_trash_items` — 삭제 취소
 - `rename_item` — 이름변경 취소
 
@@ -72,8 +74,12 @@
 - **`loadRequestRef` 카운터**: `loadDirectory` 호출마다 카운터 증가. 이전 요청 응답이 늦게 오면 카운터 불일치로 무시됨. 비동기 레이스 방지용.
 - **`entriesCacheRef`**: 탭 전환 시 즉시 렌더를 위한 메모리 캐시. 캐시 히트 시 `loadDirectory` 없이 즉시 `setEntries`.
 - **`cancelAllQueued()`**: 폴더 이동 시 반드시 호출해 대기 중인 썸네일 요청 취소.
+- **압축 루트 경로 규칙**: 압축 루트는 `sample.zip\` 같이 separator가 붙은 가상 경로로 다뤄야 한다.
+- **분할 패널 규칙**: 일반 압축은 반대편 패널에 열고, 중첩 압축은 현재 패널에 유지한다.
+- **압축 내부 쓰기 금지**: 삭제/이름변경/새 폴더 생성 같은 조작은 `useFileOperations`에서 차단된다.
 
 ## 관련 위키
+- [archives.md](archives.md)
 - [tabs.md](tabs.md)
 - [context-menu.md](context-menu.md)
 - [../operations/undo.md](../operations/undo.md)

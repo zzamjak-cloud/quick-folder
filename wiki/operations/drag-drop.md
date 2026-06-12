@@ -12,16 +12,23 @@
 `components/FileExplorer/hooks/useInternalDragDrop.ts`
 
 ### 기능
-- 파일 카드 드래그 → 폴더에 드롭 → `move_items` 호출
+- 파일 카드 드래그 → 폴더/패널에 드롭 → `move_items` 또는 `copy_items` 호출
 - 파일 카드 드래그 → 즐겨찾기 패널에 드롭 → 즐겨찾기 등록
+- 압축 내부 파일 드래그 → `materialize_archive_paths`로 임시 실파일 생성 후 copy
 - 커스텀 드래그 고스트: 캔버스 기반 썸네일 합성 (`fileUtils.tsx::DRAG_IMAGE`)
 
 ### OS로 파일 드래그 내보내기
-```typescript
-// tauri-plugin-drag 사용
-// 드래그 시작 시 OS 드래그 이벤트로 전환
-// 다른 앱(Finder, 탐색기 등)에 파일 드롭 가능
-```
+- 일반 파일은 기존 경로 그대로 `tauri-plugin-drag`에 넘긴다.
+- 압축 내부 경로가 섞여 있으면 먼저 `materialize_archive_paths`를 호출한다.
+- 백엔드는 앱 캐시에 실파일을 만들고, 그 경로로 OS drag를 시작한다.
+- 압축 내부 원본은 이동이 아니라 **항상 copy**다.
+- 압축 내부 경로는 드롭 타겟으로는 허용하지 않는다.
+- materialize 또는 OS drag 시작이 실패하면 `onError`를 통해 `FileExplorer` 오류 상태에 반영한다.
+
+### 탐색기 내부 폴더 드롭
+- 일반 파일 → 같은 볼륨이면 `move_items`, 볼륨이 다르면 `copy_items`
+- 압축 내부 파일 → 먼저 `materialize_archive_paths`, 이후 항상 `copy_items`
+- 중복 파일은 `check_duplicate_items`로 먼저 감지하고 상위 confirm 흐름에 위임
 
 ---
 
@@ -49,3 +56,4 @@ OS 파일 탐색기에서 폴더 드래그
 
 ## 관련 위키
 - [../categories/overview.md](../categories/overview.md)
+- [../explorer/archives.md](../explorer/archives.md)

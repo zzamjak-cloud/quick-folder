@@ -6,7 +6,7 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
-  RotateCcw, HardDrive, Terminal,
+  RotateCcw, HardDrive, Terminal, Files,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { NamingCase } from '../../../utils/caseConvert';
@@ -51,6 +51,7 @@ export interface UseContextMenuBuilderConfig {
     setPdfPreviewPath: (path: string | null) => void;
     setGifCompressPaths: (paths: string[] | null) => void;
     setTerminalPresetPath: (path: string | null) => void;
+    setDuplicateFinderPath: (path: string | null) => void;
   };
   preview: {
     handlePreviewImage: (path: string) => void;
@@ -593,13 +594,21 @@ export function useContextMenuBuilder({
     // 섹션 7: 빈 공간 전용 (새로 만들기)
     if (isSingle && singleEntry?.is_dir) {
       sections.push({
-        id: 'folder-size',
-        items: [{
-          id: 'folder-size-check',
-          icon: <HardDrive size={13} />,
-          label: '폴더 용량 확인',
-          onClick: () => fileOps.handleInspectFolderSize(singlePath),
-        }],
+        id: 'folder-tools',
+        items: [
+          {
+            id: 'find-duplicates',
+            icon: <Files size={13} />,
+            label: '중복 파일 찾기',
+            onClick: () => modals.setDuplicateFinderPath(singlePath),
+          },
+          {
+            id: 'folder-size-check',
+            icon: <HardDrive size={13} />,
+            label: '폴더 용량 확인',
+            onClick: () => fileOps.handleInspectFolderSize(singlePath),
+          },
+        ],
       });
     }
 
@@ -633,6 +642,7 @@ export function useContextMenuBuilder({
     onAddToFavorites, modals.setPixelatePath, modals.setMapMakerPath, modals.setSheetUnpackPath,
     modals.setFontPreviewPath, modals.setFontMergePaths,
     modals.setPdfPreviewPath, modals.setGifCompressPaths, modals.setTerminalPresetPath,
+    modals.setDuplicateFinderPath,
   ]);
 
   return { contextMenuSections };

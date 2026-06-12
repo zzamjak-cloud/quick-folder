@@ -1,15 +1,17 @@
 //! 이미지 처리 모듈 (썸네일, 픽셀화, 배경 제거, 스프라이트 시트, ICO/ICNS 변환, 폰트 처리)
 
-use crate::helpers::*;
 use super::constants::MAX_HEAVY_OPS;
 use super::error::{AppError, Result};
+use crate::helpers::*;
+use crate::modules::archive_ops::materialize_archive_path_in_cache;
 use image::ImageEncoder;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(crate) const THUMBNAIL_CACHE_MAX_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 pub(crate) const THUMBNAIL_CACHE_SIZES: [u32; 10] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
-pub(crate) const THUMBNAIL_CACHE_DIR_NAMES: [&str; 3] = ["img_thumbnails", "psd_thumbnails", "video_thumbnails"];
+pub(crate) const THUMBNAIL_CACHE_DIR_NAMES: [&str; 3] =
+    ["img_thumbnails", "psd_thumbnails", "video_thumbnails"];
 const THUMBNAIL_CACHE_PRUNE_INTERVAL_MS: u64 = 60_000;
 static LAST_THUMBNAIL_CACHE_PRUNE_MS: AtomicU64 = AtomicU64::new(0);
 
@@ -22,19 +24,31 @@ pub struct ImageCompressPreview {
 // 이미지 규격 조회 (헤더만 읽어 빠르게 반환)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
-pub async fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>> {
+pub async fn get_image_dimensions(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Option<(u32, u32)>> {
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<(u32, u32)>> {
         use std::io::Read;
 
-        let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
-        let supported = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "psd", "psb", "ico", "icns"];
+        let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+            .unwrap_or_else(|| std::path::PathBuf::from(&path));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        let ext = resolved_path_str
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+        let supported = [
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "psd", "psb", "ico", "icns",
+        ];
         if !supported.contains(&ext.as_str()) {
             return Ok(None);
         }
         if ext == "psd" || ext == "psb" {
             // PSD 헤더에서 규격만 읽음 (26바이트만 필요, 전체 파일 로드 방지)
             let mut buf = [0u8; 26];
-            let mut f = std::fs::File::open(&path)?;
+            let mut f = std::fs::File::open(&resolved_path)?;
             if f.read_exact(&mut buf).is_err() {
                 return Ok(None);
             }
@@ -44,33 +58,42 @@ pub async fn get_image_dimensions(path: String) -> Result<Option<(u32, u32)>> {
         }
         if ext == "ico" {
             // ICO: ico 크레이트로 가장 큰 아이콘 크기 반환
-            let file = std::fs::File::open(&path)?;
+            let file = std::fs::File::open(&resolved_path)?;
             if let Ok(icon_dir) = ico::IconDir::read(file) {
                 let mut max_w = 0u32;
                 let mut max_h = 0u32;
                 for entry in icon_dir.entries() {
                     let w = entry.width();
                     let h = entry.height();
-                    if w >= max_w && h >= max_h { max_w = w; max_h = h; }
+                    if w >= max_w && h >= max_h {
+                        max_w = w;
+                        max_h = h;
+                    }
                 }
-                if max_w > 0 { return Ok(Some((max_w, max_h))); }
+                if max_w > 0 {
+                    return Ok(Some((max_w, max_h)));
+                }
             }
             return Ok(None);
         }
         if ext == "icns" {
             // ICNS: 가장 큰 아이콘의 크기를 반환
-            let file = std::fs::File::open(&path)?;
+            let file = std::fs::File::open(&resolved_path)?;
             if let Ok(family) = icns::IconFamily::read(file) {
                 let mut max_size = 0u32;
                 for icon_type in family.available_icons() {
                     let s = icon_type.pixel_width();
-                    if s > max_size { max_size = s; }
+                    if s > max_size {
+                        max_size = s;
+                    }
                 }
-                if max_size > 0 { return Ok(Some((max_size, max_size))); }
+                if max_size > 0 {
+                    return Ok(Some((max_size, max_size)));
+                }
             }
             return Ok(None);
         }
-        match image::image_dimensions(&path) {
+        match image::image_dimensions(&resolved_path_str) {
             Ok((w, h)) => Ok(Some((w, h))),
             Err(_) => Ok(None),
         }
@@ -91,7 +114,8 @@ fn thumbnail_modified_millis(meta: &std::fs::Metadata, ignore_mtime: bool) -> u1
         return 0;
     }
 
-    meta.modified().ok()
+    meta.modified()
+        .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_millis())
         .unwrap_or(0)
@@ -148,7 +172,10 @@ fn collect_thumbnail_source_paths(path: &Path, out: &mut Vec<String>) {
     if !path.is_dir() {
         return;
     }
-    for entry in walkdir::WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if entry.file_type().is_file() {
             out.push(entry.path().to_string_lossy().to_string());
         }
@@ -176,7 +203,10 @@ pub(crate) fn invalidate_thumbnail_cache_paths_in_root(app_cache: &Path, paths: 
     }
 }
 
-pub(crate) fn invalidate_thumbnail_cache_paths(app: &tauri::AppHandle, paths: &[String]) -> Result<()> {
+pub(crate) fn invalidate_thumbnail_cache_paths(
+    app: &tauri::AppHandle,
+    paths: &[String],
+) -> Result<()> {
     let app_cache = thumbnail_cache_root(app)?;
     invalidate_thumbnail_cache_paths_in_root(&app_cache, paths);
     Ok(())
@@ -292,11 +322,19 @@ where
             std::fs::copy(&legacy_cache_file, &cache_file).ok();
         }
         prune_thumbnail_cache_for_dir(cache_dir);
-        return Ok(Some(if cache_file.exists() { cache_file } else { legacy_cache_file }));
+        return Ok(Some(if cache_file.exists() {
+            cache_file
+        } else {
+            legacy_cache_file
+        }));
     }
 
     // 선택적 동시성 제한 + 패닉 방지
-    let _permit = if use_heavy_op { Some(HeavyOpPermit::acquire()) } else { None };
+    let _permit = if use_heavy_op {
+        Some(HeavyOpPermit::acquire())
+    } else {
+        None
+    };
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(generate));
     match result {
@@ -326,7 +364,9 @@ where
     match ensure_cached_thumbnail(cache_dir, path, size, use_heavy_op, false, generate)? {
         Some(cache_file) => {
             let cached = std::fs::read(&cache_file)?;
-            Ok(Some(base64::engine::general_purpose::STANDARD.encode(&cached)))
+            Ok(Some(
+                base64::engine::general_purpose::STANDARD.encode(&cached),
+            ))
         }
         None => Ok(None),
     }
@@ -359,7 +399,10 @@ fn generate_image_thumbnail_bytes(path: &str, ext: &str, size: u32) -> Result<Op
                                 let dyn_img = image::DynamicImage::ImageRgba8(img);
                                 let thumb = dyn_img.thumbnail(size, size);
                                 let mut buf = vec![];
-                                thumb.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
+                                thumb.write_to(
+                                    &mut std::io::Cursor::new(&mut buf),
+                                    image::ImageFormat::Png,
+                                )?;
                                 return Ok(Some(buf));
                             }
                         }
@@ -383,10 +426,14 @@ fn generate_image_thumbnail_bytes(path: &str, ext: &str, size: u32) -> Result<Op
             }
         }
         if let Some(icon_type) = best_type {
-            let icon = family.get_icon_with_type(icon_type)
+            let icon = family
+                .get_icon_with_type(icon_type)
                 .map_err(|e| AppError::ImageProcessing(format!("ICNS 아이콘 추출 실패: {}", e)))?;
-            let rgba = image::RgbaImage::from_raw(icon.width(), icon.height(), icon.data().to_vec())
-                .ok_or_else(|| AppError::ImageProcessing("ICNS 이미지 변환 실패".to_string()))?;
+            let rgba =
+                image::RgbaImage::from_raw(icon.width(), icon.height(), icon.data().to_vec())
+                    .ok_or_else(|| {
+                        AppError::ImageProcessing("ICNS 이미지 변환 실패".to_string())
+                    })?;
             let img = image::DynamicImage::ImageRgba8(rgba);
             let thumb = img.thumbnail(size, size);
             let mut buf = vec![];
@@ -405,31 +452,53 @@ fn generate_image_thumbnail_bytes(path: &str, ext: &str, size: u32) -> Result<Op
 // 이미지 썸네일 캐시 PNG 경로 반환 (asset 프로토콜용 — base64/IPC 왕복 없음)
 // 그리드의 대량 썸네일 표시 경로. spawn_blocking: 네트워크 파일시스템 차단 방지
 #[tauri::command]
-pub async fn get_file_thumbnail_path(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>> {
+pub async fn get_file_thumbnail_path(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app.path().app_cache_dir()
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
         .join("img_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
-        let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+        let resolved_path =
+            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        let ext = resolved_path_str
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
         if !THUMBNAIL_IMAGE_EXTS.contains(&ext.as_str()) {
             return Ok(None);
         }
         // 클라우드 경로(구글드라이브 등): OS 네이티브 썸네일 우선 → 풀 다운로드 없이 제공자 썸네일 사용.
         // 캐시 키는 mtime 무시(재동기화 시 재다운로드 방지). 실패하면 일반 디코딩으로 폴백.
-        let is_cloud = crate::helpers::is_cloud_path(&path);
+        let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
         // 클라우드(QuickLook)는 I/O 대기형이라 CPU heavy-op 퍼밋을 잡지 않음 → 동시성↑(프론트 큐가 제한)
-        let cache_path = ensure_cached_thumbnail(&cache_dir, &path, size, !is_cloud, is_cloud, || {
-            // 클라우드: OS 네이티브 썸네일(QuickLook) 우선, 실패 시 바이트 디코딩 폴백
-            if is_cloud {
-                if let Ok(Some(bytes)) = crate::modules::media_ops::get_os_thumbnail(&path, size) {
-                    return Ok(Some(bytes));
+        let cache_path = ensure_cached_thumbnail(
+            &cache_dir,
+            &resolved_path_str,
+            size,
+            !is_cloud,
+            is_cloud,
+            || {
+                // 클라우드: OS 네이티브 썸네일(QuickLook) 우선, 실패 시 바이트 디코딩 폴백
+                if is_cloud {
+                    if let Ok(Some(bytes)) =
+                        crate::modules::media_ops::get_os_thumbnail(&resolved_path_str, size)
+                    {
+                        return Ok(Some(bytes));
+                    }
                 }
-            }
-            generate_image_thumbnail_bytes(&path, &ext, size)
-        })?;
+                generate_image_thumbnail_bytes(&resolved_path_str, &ext, size)
+            },
+        )?;
         Ok(cache_path.map(|p| p.to_string_lossy().to_string()))
     })
     .await
@@ -439,21 +508,34 @@ pub async fn get_file_thumbnail_path(app: tauri::AppHandle, path: String, size: 
 // 이미지 썸네일 생성 (디스크 캐시 + base64 PNG 반환 — 미리보기 등 단건 용도)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
-pub async fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>> {
+pub async fn get_file_thumbnail(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app.path().app_cache_dir()
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
         .join("img_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || {
-        let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+        let resolved_path =
+            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        let ext = resolved_path_str
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
         if !THUMBNAIL_IMAGE_EXTS.contains(&ext.as_str()) {
             return Ok(None);
         }
 
-        cached_thumbnail(&cache_dir, &path, size, true, || {
-            generate_image_thumbnail_bytes(&path, &ext, size)
+        cached_thumbnail(&cache_dir, &resolved_path_str, size, true, || {
+            generate_image_thumbnail_bytes(&resolved_path_str, &ext, size)
         })
     })
     .await
@@ -463,16 +545,25 @@ pub async fn get_file_thumbnail(app: tauri::AppHandle, path: String, size: u32) 
 // PSD 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
-pub async fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -> Result<Option<String>> {
+pub async fn get_psd_thumbnail(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app.path().app_cache_dir()
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
         .join("psd_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || {
-        cached_thumbnail(&cache_dir, &path, size, true, || {
-            let bytes = std::fs::read(&path)?;
+        let resolved_path =
+            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        cached_thumbnail(&cache_dir, &resolved_path_str, size, true, || {
+            let bytes = std::fs::read(&resolved_path)?;
             let psd = psd::Psd::from_bytes(&bytes)
                 .map_err(|e| AppError::ImageProcessing(format!("PSD 파싱 실패: {}", e)))?;
 
@@ -500,7 +591,12 @@ pub async fn get_psd_thumbnail(app: tauri::AppHandle, path: String, size: u32) -
 }
 
 // 픽셀레이트 헬퍼: 이미지를 축소 후 재확대하여 픽셀 블록 효과 생성
-fn apply_pixelate(img: &image::DynamicImage, pixel_size: u32, output_size: u32, max_colors: u32) -> image::DynamicImage {
+fn apply_pixelate(
+    img: &image::DynamicImage,
+    pixel_size: u32,
+    output_size: u32,
+    max_colors: u32,
+) -> image::DynamicImage {
     let (w, h) = (img.width(), img.height());
     // pixel_size 기준으로 축소 (블록 평균색 생성)
     let small_w = (w / pixel_size).max(1);
@@ -519,7 +615,11 @@ fn apply_pixelate(img: &image::DynamicImage, pixel_size: u32, output_size: u32, 
 
     // 최종 출력 크기 조정 (output_size > 0 이고 원본보다 작을 때만)
     if output_size > 0 && output_size < w.max(h) {
-        pixelated.resize(output_size, output_size, image::imageops::FilterType::Nearest)
+        pixelated.resize(
+            output_size,
+            output_size,
+            image::imageops::FilterType::Nearest,
+        )
     } else {
         pixelated
     }
@@ -528,20 +628,26 @@ fn apply_pixelate(img: &image::DynamicImage, pixel_size: u32, output_size: u32, 
 // Median-cut 컬러 양자화: 이미지 색상을 max_colors개로 축소
 fn quantize_colors(img: &mut image::RgbaImage, max_colors: usize) {
     // 불투명 픽셀의 RGB 수집
-    let pixels: Vec<[u8; 3]> = img.pixels()
+    let pixels: Vec<[u8; 3]> = img
+        .pixels()
         .filter(|p| p.0[3] > 0)
         .map(|p| [p.0[0], p.0[1], p.0[2]])
         .collect();
-    if pixels.is_empty() { return; }
+    if pixels.is_empty() {
+        return;
+    }
 
     // Median-cut으로 팔레트 생성
     let palette = median_cut(pixels, max_colors);
 
     // 각 픽셀을 가장 가까운 팔레트 색상으로 매핑
     for pixel in img.pixels_mut() {
-        if pixel.0[3] == 0 { continue; }
+        if pixel.0[3] == 0 {
+            continue;
+        }
         let rgb = [pixel.0[0], pixel.0[1], pixel.0[2]];
-        let nearest = palette.iter()
+        let nearest = palette
+            .iter()
             .min_by_key(|c| {
                 let dr = rgb[0] as i32 - c[0] as i32;
                 let dg = rgb[1] as i32 - c[1] as i32;
@@ -561,7 +667,9 @@ fn median_cut(pixels: Vec<[u8; 3]>, max_colors: usize) -> Vec<[u8; 3]> {
 
     while buckets.len() < max_colors {
         // 가장 큰 버킷 선택
-        let idx = buckets.iter().enumerate()
+        let idx = buckets
+            .iter()
+            .enumerate()
             .filter(|(_, b)| b.len() > 1)
             .max_by_key(|(_, b)| b.len())
             .map(|(i, _)| i);
@@ -580,9 +688,13 @@ fn median_cut(pixels: Vec<[u8; 3]>, max_colors: usize) -> Vec<[u8; 3]> {
             let max = bucket.iter().map(|p| p[ch]).max().unwrap();
             ranges[ch] = max - min;
         }
-        let split_ch = if ranges[0] >= ranges[1] && ranges[0] >= ranges[2] { 0 }
-            else if ranges[1] >= ranges[2] { 1 }
-            else { 2 };
+        let split_ch = if ranges[0] >= ranges[1] && ranges[0] >= ranges[2] {
+            0
+        } else if ranges[1] >= ranges[2] {
+            1
+        } else {
+            2
+        };
 
         let mut sorted = bucket;
         sorted.sort_by_key(|p| p[split_ch]);
@@ -594,18 +706,26 @@ fn median_cut(pixels: Vec<[u8; 3]>, max_colors: usize) -> Vec<[u8; 3]> {
     }
 
     // 각 버킷의 평균색을 팔레트로 반환
-    buckets.iter().map(|bucket| {
-        let len = bucket.len() as u32;
-        let r = bucket.iter().map(|p| p[0] as u32).sum::<u32>() / len;
-        let g = bucket.iter().map(|p| p[1] as u32).sum::<u32>() / len;
-        let b = bucket.iter().map(|p| p[2] as u32).sum::<u32>() / len;
-        [r as u8, g as u8, b as u8]
-    }).collect()
+    buckets
+        .iter()
+        .map(|bucket| {
+            let len = bucket.len() as u32;
+            let r = bucket.iter().map(|p| p[0] as u32).sum::<u32>() / len;
+            let g = bucket.iter().map(|p| p[1] as u32).sum::<u32>() / len;
+            let b = bucket.iter().map(|p| p[2] as u32).sum::<u32>() / len;
+            [r as u8, g as u8, b as u8]
+        })
+        .collect()
 }
 
 // 픽셀레이트 미리보기: 빠른 응답을 위해 300px 제한 후 픽셀화, base64 PNG 반환
 #[tauri::command]
-pub async fn pixelate_preview(input: String, pixel_size: u32, scale: u32, max_colors: u32) -> Result<String> {
+pub async fn pixelate_preview(
+    input: String,
+    pixel_size: u32,
+    scale: u32,
+    max_colors: u32,
+) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || {
         // 원본 이미지 열기
         let img = image::open(&input)?;
@@ -626,8 +746,7 @@ pub async fn pixelate_preview(input: String, pixel_size: u32, scale: u32, max_co
 
         // PNG로 인코딩 후 base64 문자열 반환 (data:image 접두사 없음)
         let mut buf = vec![];
-        pixelated
-            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
+        pixelated.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
 
         use base64::Engine;
         Ok(base64::engine::general_purpose::STANDARD.encode(&buf))
@@ -638,7 +757,12 @@ pub async fn pixelate_preview(input: String, pixel_size: u32, scale: u32, max_co
 
 // 픽셀레이트 저장: 원본 해상도로 픽셀화 후 {stem}_pixel.png 파일로 저장, 경로 반환
 #[tauri::command]
-pub async fn pixelate_image(input: String, pixel_size: u32, scale: u32, max_colors: u32) -> Result<String> {
+pub async fn pixelate_image(
+    input: String,
+    pixel_size: u32,
+    scale: u32,
+    max_colors: u32,
+) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || {
         // 원본 해상도로 이미지 열기
         let img = image::open(&input)?;
@@ -692,9 +816,21 @@ pub fn get_font_info(path: String) -> Result<FontInfo> {
         // name_id 4 = Full Name, 1 = Family, 2 = Style
         if let Some(s) = record.to_string() {
             match record.name_id {
-                ttf_parser::name_id::FULL_NAME => if name.is_empty() { name = s; },
-                ttf_parser::name_id::FAMILY => if family.is_empty() { family = s; },
-                ttf_parser::name_id::SUBFAMILY => if style.is_empty() { style = s; },
+                ttf_parser::name_id::FULL_NAME => {
+                    if name.is_empty() {
+                        name = s;
+                    }
+                }
+                ttf_parser::name_id::FAMILY => {
+                    if family.is_empty() {
+                        family = s;
+                    }
+                }
+                ttf_parser::name_id::SUBFAMILY => {
+                    if style.is_empty() {
+                        style = s;
+                    }
+                }
                 _ => {}
             }
         }
@@ -708,8 +844,12 @@ pub fn get_font_info(path: String) -> Result<FontInfo> {
             .unwrap_or("Unknown")
             .to_string();
     }
-    if family.is_empty() { family = name.clone(); }
-    if style.is_empty() { style = "Regular".to_string(); }
+    if family.is_empty() {
+        family = name.clone();
+    }
+    if style.is_empty() {
+        style = "Regular".to_string();
+    }
 
     Ok(FontInfo {
         name,
@@ -804,7 +944,10 @@ pub async fn save_annotated_image(original_path: String, image_data: String) -> 
 
 // ─── 이미지 압축/리사이즈 ───────────────────────────────────────────
 
-fn encode_compressed_image(path: &str, quality: &str) -> Result<(Vec<u8>, &'static str, &'static str)> {
+fn encode_compressed_image(
+    path: &str,
+    quality: &str,
+) -> Result<(Vec<u8>, &'static str, &'static str)> {
     use image::codecs::jpeg::JpegEncoder;
     use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 
@@ -814,7 +957,11 @@ fn encode_compressed_image(path: &str, quality: &str) -> Result<(Vec<u8>, &'stat
         .and_then(|s| s.to_str())
         .unwrap_or("png")
         .to_lowercase();
-    let out_ext = if ext == "jpg" || ext == "jpeg" { "jpg" } else { "png" };
+    let out_ext = if ext == "jpg" || ext == "jpeg" {
+        "jpg"
+    } else {
+        "png"
+    };
     let mut bytes = Vec::new();
 
     if out_ext == "jpg" {
@@ -866,7 +1013,10 @@ pub async fn compress_image(path: String, quality: String) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || {
         let input_path = std::path::Path::new(&path);
         let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
-        let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        let stem = input_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("image");
         let (bytes, _, out_ext) = encode_compressed_image(&path, &quality)?;
         let output_path = find_unique_path(parent, stem, "_compressed", &format!(".{}", out_ext));
         std::fs::write(&output_path, bytes)?;
@@ -884,21 +1034,35 @@ pub async fn compress_image(path: String, quality: String) -> Result<String> {
 pub async fn resize_image(path: String, width: u32, height: u32) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || {
         if width == 0 || height == 0 {
-            return Err(AppError::InvalidInput("너비/높이는 1px 이상이어야 합니다.".to_string()));
+            return Err(AppError::InvalidInput(
+                "너비/높이는 1px 이상이어야 합니다.".to_string(),
+            ));
         }
         let img = image::open(&path)?;
         let resized = img.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
 
         let input_path = std::path::Path::new(&path);
         let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
-        let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        let stem = input_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("image");
         let ext = input_path
             .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("png")
             .to_lowercase();
-        let out_ext = if ext == "jpg" || ext == "jpeg" { "jpg" } else { &ext };
-        let output_path = find_unique_path(parent, stem, &format!("_{}x{}", width, height), &format!(".{}", out_ext));
+        let out_ext = if ext == "jpg" || ext == "jpeg" {
+            "jpg"
+        } else {
+            &ext
+        };
+        let output_path = find_unique_path(
+            parent,
+            stem,
+            &format!("_{}x{}", width, height),
+            &format!(".{}", out_ext),
+        );
         resized.save(&output_path)?;
 
         output_path
@@ -926,7 +1090,13 @@ fn color_dist(r: u8, g: u8, b: u8, tr: u8, tg: u8, tb: u8) -> f64 {
 /// threshold: 0-100, feather: 0-50
 /// seeds: 사용자 지정 시드 포인트. 비어있으면 가장자리 기반.
 /// bg_color: 제거할 배경 색상 [R, G, B]
-fn remove_bg(img: &image::DynamicImage, threshold: u8, feather: u8, seeds: &[[u32; 2]], bg_color: [u8; 3]) -> image::RgbaImage {
+fn remove_bg(
+    img: &image::DynamicImage,
+    threshold: u8,
+    feather: u8,
+    seeds: &[[u32; 2]],
+    bg_color: [u8; 3],
+) -> image::RgbaImage {
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
     let [bg_r, bg_g, bg_b] = bg_color;
@@ -969,10 +1139,18 @@ fn remove_bg(img: &image::DynamicImage, threshold: u8, feather: u8, seeds: &[[u3
 
         if a == 0 {
             mask[idx] = 1;
-            if x > 0 { queue.push_back((x - 1, y)); }
-            if x + 1 < w { queue.push_back((x + 1, y)); }
-            if y > 0 { queue.push_back((x, y - 1)); }
-            if y + 1 < h { queue.push_back((x, y + 1)); }
+            if x > 0 {
+                queue.push_back((x - 1, y));
+            }
+            if x + 1 < w {
+                queue.push_back((x + 1, y));
+            }
+            if y > 0 {
+                queue.push_back((x, y - 1));
+            }
+            if y + 1 < h {
+                queue.push_back((x, y + 1));
+            }
             continue;
         }
 
@@ -980,10 +1158,18 @@ fn remove_bg(img: &image::DynamicImage, threshold: u8, feather: u8, seeds: &[[u3
 
         if dist <= t_dist {
             mask[idx] = 1;
-            if x > 0 { queue.push_back((x - 1, y)); }
-            if x + 1 < w { queue.push_back((x + 1, y)); }
-            if y > 0 { queue.push_back((x, y - 1)); }
-            if y + 1 < h { queue.push_back((x, y + 1)); }
+            if x > 0 {
+                queue.push_back((x - 1, y));
+            }
+            if x + 1 < w {
+                queue.push_back((x + 1, y));
+            }
+            if y > 0 {
+                queue.push_back((x, y - 1));
+            }
+            if y + 1 < h {
+                queue.push_back((x, y + 1));
+            }
         } else if dist < outer {
             mask[idx] = 2;
         }
@@ -1007,7 +1193,11 @@ fn remove_bg(img: &image::DynamicImage, threshold: u8, feather: u8, seeds: &[[u3
                 let [r, g, b, a] = px.0;
                 let dist = color_dist(r, g, b, bg_r, bg_g, bg_b);
 
-                let t = if f_dist > 0.0 { (dist - t_dist) / f_dist } else { 1.0 };
+                let t = if f_dist > 0.0 {
+                    (dist - t_dist) / f_dist
+                } else {
+                    1.0
+                };
                 let new_alpha = (t * a as f64).round().clamp(0.0, 255.0) as u8;
 
                 if new_alpha == 0 {
@@ -1019,9 +1209,16 @@ fn remove_bg(img: &image::DynamicImage, threshold: u8, feather: u8, seeds: &[[u3
                         let v = (c as f64 - bg as f64 * (1.0 - af)) / af;
                         v.round().clamp(0.0, 255.0) as u8
                     };
-                    out.put_pixel(x, y, image::Rgba([
-                        decontam(r, bg_r), decontam(g, bg_g), decontam(b, bg_b), new_alpha,
-                    ]));
+                    out.put_pixel(
+                        x,
+                        y,
+                        image::Rgba([
+                            decontam(r, bg_r),
+                            decontam(g, bg_g),
+                            decontam(b, bg_b),
+                            new_alpha,
+                        ]),
+                    );
                 }
             }
         }
@@ -1031,7 +1228,12 @@ fn remove_bg(img: &image::DynamicImage, threshold: u8, feather: u8, seeds: &[[u3
 
 // 배경 제거 미리보기
 #[tauri::command]
-pub async fn remove_white_bg_preview(input: String, threshold: u8, feather: u8, seeds: Vec<[u32; 2]>) -> Result<String> {
+pub async fn remove_white_bg_preview(
+    input: String,
+    threshold: u8,
+    feather: u8,
+    seeds: Vec<[u32; 2]>,
+) -> Result<String> {
     tauri::async_runtime::spawn_blocking(move || {
         let img = image::open(&input)?;
 
@@ -1040,17 +1242,27 @@ pub async fn remove_white_bg_preview(input: String, threshold: u8, feather: u8, 
             let max_side = img.width().max(img.height());
             if max_side > 600 {
                 let s = 600.0 / max_side as f64;
-                (img.resize(600, 600, image::imageops::FilterType::Lanczos3), s)
+                (
+                    img.resize(600, 600, image::imageops::FilterType::Lanczos3),
+                    s,
+                )
             } else {
                 (img, 1.0)
             }
         };
 
-        let scaled_seeds: Vec<[u32; 2]> = seeds.iter().map(|s| {
-            [(s[0] as f64 * scale) as u32, (s[1] as f64 * scale) as u32]
-        }).collect();
+        let scaled_seeds: Vec<[u32; 2]> = seeds
+            .iter()
+            .map(|s| [(s[0] as f64 * scale) as u32, (s[1] as f64 * scale) as u32])
+            .collect();
 
-        let result = remove_bg(&preview_img, threshold, feather, &scaled_seeds, [255, 255, 255]);
+        let result = remove_bg(
+            &preview_img,
+            threshold,
+            feather,
+            &scaled_seeds,
+            [255, 255, 255],
+        );
 
         let mut buf = vec![];
         image::DynamicImage::ImageRgba8(result)
@@ -1065,17 +1277,27 @@ pub async fn remove_white_bg_preview(input: String, threshold: u8, feather: u8, 
 
 // 배경 제거 저장 (다중 파일)
 #[tauri::command]
-pub async fn remove_white_bg_save(inputs: Vec<String>, threshold: u8, feather: u8, seeds: Vec<[u32; 2]>, trim: bool) -> Result<Vec<String>> {
+pub async fn remove_white_bg_save(
+    inputs: Vec<String>,
+    threshold: u8,
+    feather: u8,
+    seeds: Vec<[u32; 2]>,
+    trim: bool,
+) -> Result<Vec<String>> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut outputs = Vec::new();
         for input in &inputs {
-            let img = image::open(input)
-                .map_err(|e| AppError::ImageProcessing(format!("이미지 열기 실패 ({}): {}", input, e)))?;
+            let img = image::open(input).map_err(|e| {
+                AppError::ImageProcessing(format!("이미지 열기 실패 ({}): {}", input, e))
+            })?;
             let result = remove_bg(&img, threshold, feather, &seeds, [255, 255, 255]);
 
             let input_path = std::path::Path::new(input);
             let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
-            let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+            let stem = input_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("image");
             let output_path = find_unique_path(parent, stem, "_nobg", ".png");
 
             // Trim: 투명 픽셀 여백 제거
@@ -1096,7 +1318,13 @@ pub async fn remove_white_bg_save(inputs: Vec<String>, threshold: u8, feather: u
                     }
                 }
                 if max_x >= min_x && max_y >= min_y {
-                    let cropped = image::imageops::crop_imm(&result, min_x, min_y, max_x - min_x + 1, max_y - min_y + 1);
+                    let cropped = image::imageops::crop_imm(
+                        &result,
+                        min_x,
+                        min_y,
+                        max_x - min_x + 1,
+                        max_y - min_y + 1,
+                    );
                     image::DynamicImage::ImageRgba8(cropped.to_image())
                 } else {
                     image::DynamicImage::ImageRgba8(result)
@@ -1108,8 +1336,10 @@ pub async fn remove_white_bg_save(inputs: Vec<String>, threshold: u8, feather: u
             final_img.save_with_format(&output_path, image::ImageFormat::Png)?;
 
             outputs.push(
-                output_path.to_str().map(|s| s.to_string())
-                    .ok_or_else(|| AppError::Internal("출력 경로 변환 실패".to_string()))?
+                output_path
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| AppError::Internal("출력 경로 변환 실패".to_string()))?,
             );
         }
         Ok(outputs)
@@ -1145,8 +1375,7 @@ pub async fn sprite_sheet_preview(
         };
 
         let mut buf = std::io::Cursor::new(Vec::new());
-        image::DynamicImage::ImageRgba8(preview)
-            .write_to(&mut buf, image::ImageFormat::Png)?;
+        image::DynamicImage::ImageRgba8(preview).write_to(&mut buf, image::ImageFormat::Png)?;
 
         use base64::Engine;
         Ok(base64::engine::general_purpose::STANDARD.encode(buf.into_inner()))
@@ -1219,7 +1448,9 @@ pub async fn split_sprite_sheet(
 
                 cropped
                     .save_with_format(&output_path, image::ImageFormat::Png)
-                    .map_err(|e| AppError::ImageProcessing(format!("파일 저장 실패 ({}): {}", file_name, e)))?;
+                    .map_err(|e| {
+                        AppError::ImageProcessing(format!("파일 저장 실패 ({}): {}", file_name, e))
+                    })?;
 
                 saved_paths.push(
                     output_path
@@ -1253,10 +1484,13 @@ pub async fn convert_to_ico(path: String) -> Result<String> {
             let resized = img.resize_exact(sz, sz, image::imageops::FilterType::Lanczos3);
             let rgba = resized.to_rgba8();
             let icon_image = ico::IconImage::from_rgba_data(sz, sz, rgba.into_raw());
-            icon_dir.add_entry(ico::IconDirEntry::encode(&icon_image)
-                .map_err(|e| AppError::ImageProcessing(format!("ICO 인코딩 실패: {}", e)))?);
+            icon_dir.add_entry(
+                ico::IconDirEntry::encode(&icon_image)
+                    .map_err(|e| AppError::ImageProcessing(format!("ICO 인코딩 실패: {}", e)))?,
+            );
         }
-        icon_dir.write(file)
+        icon_dir
+            .write(file)
             .map_err(|e| AppError::ImageProcessing(format!("ICO 저장 실패: {}", e)))?;
         Ok(out_path.to_string_lossy().into_owned())
     })
@@ -1279,18 +1513,23 @@ pub async fn convert_to_icns(path: String) -> Result<String> {
         // 256x256 (ic08)
         let resized_256 = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
         let rgba_256 = resized_256.to_rgba8();
-        let icns_img_256 = icns::Image::from_data(icns::PixelFormat::RGBA, 256, 256, rgba_256.into_raw())
-            .map_err(|e| AppError::ImageProcessing(format!("ICNS 이미지 생성 실패: {}", e)))?;
-        icon_family.add_icon_with_type(&icns_img_256, icns::IconType::RGBA32_256x256)
+        let icns_img_256 =
+            icns::Image::from_data(icns::PixelFormat::RGBA, 256, 256, rgba_256.into_raw())
+                .map_err(|e| AppError::ImageProcessing(format!("ICNS 이미지 생성 실패: {}", e)))?;
+        icon_family
+            .add_icon_with_type(&icns_img_256, icns::IconType::RGBA32_256x256)
             .map_err(|e| AppError::ImageProcessing(format!("ICNS 아이콘 추가 실패: {}", e)))?;
         // 512x512
         let resized_512 = img.resize_exact(512, 512, image::imageops::FilterType::Lanczos3);
         let rgba_512 = resized_512.to_rgba8();
-        let icns_img_512 = icns::Image::from_data(icns::PixelFormat::RGBA, 512, 512, rgba_512.into_raw())
-            .map_err(|e| AppError::ImageProcessing(format!("ICNS 이미지 생성 실패: {}", e)))?;
-        icon_family.add_icon_with_type(&icns_img_512, icns::IconType::RGBA32_512x512)
+        let icns_img_512 =
+            icns::Image::from_data(icns::PixelFormat::RGBA, 512, 512, rgba_512.into_raw())
+                .map_err(|e| AppError::ImageProcessing(format!("ICNS 이미지 생성 실패: {}", e)))?;
+        icon_family
+            .add_icon_with_type(&icns_img_512, icns::IconType::RGBA32_512x512)
             .map_err(|e| AppError::ImageProcessing(format!("ICNS 아이콘 추가 실패: {}", e)))?;
-        icon_family.write(file)
+        icon_family
+            .write(file)
             .map_err(|e| AppError::ImageProcessing(format!("ICNS 저장 실패: {}", e)))?;
         Ok(out_path.to_string_lossy().into_owned())
     })
@@ -1299,7 +1538,7 @@ pub async fn convert_to_icns(path: String) -> Result<String> {
 }
 
 // --- 동시성 제한 (이미지 처리 메모리 폭주 방지) ---
-use std::sync::{OnceLock, Mutex, Condvar};
+use std::sync::{Condvar, Mutex, OnceLock};
 
 fn heavy_op_guard() -> &'static (Mutex<usize>, Condvar) {
     static GUARD: OnceLock<(Mutex<usize>, Condvar)> = OnceLock::new();

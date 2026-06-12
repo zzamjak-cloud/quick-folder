@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars } from './types';
-import { getPathSeparator } from '../../utils/pathUtils';
+import { buildArchiveBrowsePath, splitArchiveVirtualPath, getPathSeparator } from '../../utils/pathUtils';
 
 interface NavigationBarProps {
   currentPath: string;
@@ -143,6 +143,40 @@ export default memo(function NavigationBar({
     if (currentPath === '__system_root__') {
       const isMac = navigator.platform.startsWith('Mac');
       return [{ name: isMac ? 'Macintosh HD' : '내 PC', path: '__system_root__' }];
+    }
+
+    const archiveInfo = splitArchiveVirtualPath(currentPath);
+    if (archiveInfo) {
+      const sep = archiveInfo.separator;
+      const archiveSegments = archiveInfo.archivePath
+        .replace(/[/\\]+$/, '')
+        .split(sep)
+        .filter(Boolean);
+
+      const archiveBase = currentPath.match(/^[A-Za-z]:/) && archiveSegments.length > 0
+        ? archiveSegments.map((part, idx, arr) => ({
+          name: part,
+          path: idx === 0
+            ? `${part}${sep}`
+            : idx === arr.length - 1
+              ? buildArchiveBrowsePath(arr[0] + sep + arr.slice(1).join(sep))
+              : `${arr[0]}${sep}${arr.slice(1, idx + 1).join(sep)}`,
+        }))
+        : archiveSegments.map((part, idx) => ({
+          name: part,
+          path: idx === archiveSegments.length - 1
+            ? buildArchiveBrowsePath(archiveInfo.archivePath)
+            : `${sep}${archiveSegments.slice(0, idx + 1).join(sep)}`,
+        }));
+
+      const innerSegments = archiveInfo.innerPath
+        ? archiveInfo.innerPath.split('/').filter(Boolean).map((part, idx, arr) => ({
+          name: part,
+          path: `${buildArchiveBrowsePath(archiveInfo.archivePath)}${arr.slice(0, idx + 1).join(sep)}`,
+        }))
+        : [];
+
+      return [...archiveBase, ...innerSegments];
     }
     const sep = getPathSeparator(currentPath);
     const parts = currentPath.replace(/[/\\]+$/, '').split(sep).filter(Boolean);

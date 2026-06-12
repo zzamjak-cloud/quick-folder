@@ -17,6 +17,15 @@ pub const MAX_RECENT_FILES: usize = 100;
 /// 파일 검색 최대 깊이 (재귀 폴더 탐색)
 pub const SEARCH_MAX_DEPTH: usize = 10;
 
+/// 중복 파일 탐색 최대 깊이 (재귀 폴더 탐색)
+pub const DUPLICATE_SCAN_MAX_DEPTH: usize = 20;
+
+/// 중복 파일 탐색 최대 파일 수
+pub const MAX_DUPLICATE_SCAN_FILES: usize = 100_000;
+
+/// 중복 그룹 최대 반환 수
+pub const MAX_DUPLICATE_GROUPS: usize = 500;
+
 /// 최근 파일 조회 기간 (일)
 pub const RECENT_FILES_DEFAULT_DAYS: u32 = 7;
 

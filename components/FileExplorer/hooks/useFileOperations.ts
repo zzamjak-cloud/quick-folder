@@ -2,7 +2,14 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
 import { useUndoStack } from './useUndoStack';
-import { getFileName, getBaseName, getExtension, getPathSeparator, getParentDir } from '../../../utils/pathUtils';
+import {
+  getFileName,
+  getBaseName,
+  getExtension,
+  getPathSeparator,
+  getParentDir,
+  isArchiveVirtualPath,
+} from '../../../utils/pathUtils';
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
 import { formatSize } from '../fileUtils';
@@ -98,6 +105,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
   // 폴더 해제 확인 다이얼로그
   const [ungroupConfirm, setUngroupConfirm] = useState<{ path: string } | null>(null);
+  const archiveReadonlyMessage = '압축 내부는 읽기 전용입니다. 파일을 밖으로 꺼내서 사용하세요.';
 
   // 토스트 표시 헬퍼
   const showCopyToast = useCallback((msg: string, duration = 1500) => {
@@ -110,9 +118,23 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     setFolderSizeDialog(null);
   }, []);
 
+  const ensureWritableContext = useCallback((paths: string[] = []) => {
+    const blocked = (currentPath != null && isArchiveVirtualPath(currentPath))
+      || paths.some((path) => isArchiveVirtualPath(path));
+
+    if (!blocked) {
+      return true;
+    }
+
+    showCopyToast(archiveReadonlyMessage, 2200);
+    setError(archiveReadonlyMessage);
+    return false;
+  }, [archiveReadonlyMessage, currentPath, setError, showCopyToast]);
+
   // --- 삭제 ---
   const handleDelete = useCallback(async (paths: string[], permanent = false) => {
     if (paths.length === 0) return;
+    if (!ensureWritableContext(paths)) return;
     if (permanent) {
       // 영구삭제는 확인 다이얼로그 표시
       setPermanentDeleteConfirm({ paths: [...paths] });
@@ -143,12 +165,16 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         setError(`삭제 실패: ${e}`);
       }
     }
-  }, [currentPath, loadDirectory, undoStack, setSelectedPaths, setError]);
+  }, [currentPath, ensureWritableContext, loadDirectory, undoStack, setSelectedPaths, setError]);
 
   // --- 영구삭제 확인 후 실행 ---
   const executePermanentDelete = useCallback(async () => {
     if (!permanentDeleteConfirm) return;
     const { paths } = permanentDeleteConfirm;
+    if (!ensureWritableContext(paths)) {
+      setPermanentDeleteConfirm(null);
+      return;
+    }
     setPermanentDeleteConfirm(null);
     try {
       setOperationProgress({
@@ -172,12 +198,16 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         setError(`영구삭제 실패: ${e}`);
       }
     }
-  }, [permanentDeleteConfirm, currentPath, loadDirectory, setSelectedPaths, setError]);
+  }, [permanentDeleteConfirm, ensureWritableContext, currentPath, loadDirectory, setSelectedPaths, setError]);
 
   // --- 관리자 권한 삭제 실행 (Windows) ---
   const executeElevatedDelete = useCallback(async () => {
     if (!elevatedDeleteConfirm) return;
     const { paths } = elevatedDeleteConfirm;
+    if (!ensureWritableContext(paths)) {
+      setElevatedDeleteConfirm(null);
+      return;
+    }
     setElevatedDeleteConfirm(null);
     try {
       await invoke('delete_items_elevated', { paths });
@@ -188,11 +218,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       console.error('관리자 권한 삭제 실패:', e);
       setError(`관리자 권한 삭제 실패: ${e}`);
     }
-  }, [elevatedDeleteConfirm, currentPath, loadDirectory, setSelectedPaths, setError]);
+  }, [elevatedDeleteConfirm, ensureWritableContext, currentPath, loadDirectory, setSelectedPaths, setError]);
 
   // --- 복제 ---
   const handleDuplicate = useCallback(async () => {
     if (selectedPaths.length === 0 || !currentPath) return;
+    if (!ensureWritableContext(selectedPaths)) return;
     try {
       setOperationProgress({
         type: '복제',
@@ -211,11 +242,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       pendingDuplicateSelectRef.current = [];
       console.error('복제 실패:', e);
     }
-  }, [selectedPaths, currentPath, loadDirectory]);
+  }, [selectedPaths, currentPath, ensureWritableContext, loadDirectory]);
 
   // --- 폴더 생성 ---
   const handleCreateDirectory = useCallback(async () => {
     if (!currentPath) return;
+    if (!ensureWritableContext()) return;
     const sep = getPathSeparator(currentPath);
     // 중복 방지: "새 폴더", "새 폴더 2", "새 폴더 3"...
     let base = '새 폴더';
@@ -235,11 +267,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       console.error('폴더 생성 실패:', e);
     }
-  }, [currentPath, loadDirectory, entries, setRenamingPath, setSelectedPaths]);
+  }, [currentPath, ensureWritableContext, loadDirectory, entries, setRenamingPath, setSelectedPaths]);
 
   // --- 마크다운 파일 생성 ---
   const handleCreateMarkdown = useCallback(async () => {
     if (!currentPath) return;
+    if (!ensureWritableContext()) return;
     const sep = getPathSeparator(currentPath);
     let base = '새 문서';
     let candidate = `${base}.md`;
@@ -259,11 +292,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       console.error('마크다운 파일 생성 실패:', e);
     }
-  }, [currentPath, loadDirectory, entries, undoStack, setRenamingPath, setSelectedPaths]);
+  }, [currentPath, ensureWritableContext, loadDirectory, entries, undoStack, setRenamingPath, setSelectedPaths]);
 
   // --- 클립보드 이미지 PNG 저장 ---
   const handlePasteImageFromClipboard = useCallback(async () => {
     if (!currentPath) return;
+    if (!ensureWritableContext()) return;
     try {
       const savedPath = await invoke<string | null>('paste_image_from_clipboard', { destDir: currentPath });
       if (savedPath) {
@@ -277,7 +311,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       console.error('클립보드 이미지 저장 실패:', e);
       setError(`클립보드 이미지 저장 실패: ${e}`);
     }
-  }, [currentPath, loadDirectory, setSelectedPaths, showCopyToast, setError]);
+  }, [currentPath, ensureWritableContext, loadDirectory, setSelectedPaths, showCopyToast, setError]);
 
   // --- 폰트 병합 완료 처리 ---
   const handleMergeFontsComplete = useCallback(async (outputPath: string) => {
@@ -296,12 +330,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
   // --- 일괄 이름변경 모달 열기 ---
   const handleBulkRename = useCallback((paths: string[]) => {
+    if (!ensureWritableContext(paths)) return;
     setBulkRenamePaths(paths);
     setContextMenu(null);
-  }, [setBulkRenamePaths, setContextMenu]);
+  }, [ensureWritableContext, setBulkRenamePaths, setContextMenu]);
 
   // --- 일괄 이름변경 적용 ---
   const handleBulkRenameApply = useCallback(async (renames: { oldPath: string; newPath: string }[]) => {
+    if (!ensureWritableContext(renames.flatMap(({ oldPath, newPath }) => [oldPath, newPath]))) return;
     for (const { oldPath, newPath } of renames) {
       await invoke('rename_item', { oldPath, newPath });
     }
@@ -311,13 +347,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
     setSelectedPaths([]);
     window.dispatchEvent(new Event('qf-files-changed'));
-  }, [currentPath, sortBy, sortDir, sortEntries, setEntries, setSelectedPaths]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, setEntries, setSelectedPaths]);
 
   // --- 파일명 명명 규칙 변환 (PascalCase / camelCase / snake_case) ---
   // 선택된 파일/폴더의 베이스명만 변환하고 확장자는 유지.
   // 같은 디렉토리에서 충돌이 발생하면 해당 항목은 건너뛴다 (임시 리네임 없이 안전하게 처리).
   const handleConvertCase = useCallback(async (paths: string[], target: NamingCase) => {
     if (!paths.length) return;
+    if (!ensureWritableContext(paths)) return;
 
     type Plan = { oldPath: string; newPath: string; displayName: string };
     const plans: Plan[] = [];
@@ -413,11 +450,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       showCopyToast(msg);
     }
     setContextMenu(null);
-  }, [currentPath, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu]);
 
   // --- URL 인코딩 파일명 복구 ---
   const handleRecoverFileNames = useCallback(async (paths: string[]) => {
     if (!paths.length) return;
+    if (!ensureWritableContext(paths)) return;
 
     const decodeFileName = (name: string): string | null => {
       if (!/%[0-9a-f]{2}/i.test(name)) return null;
@@ -481,7 +519,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       : '복구할 파일명이 없습니다';
     showCopyToast(msg);
     setContextMenu(null);
-  }, [currentPath, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast]);
 
   // --- 이름변경 커밋 ---
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
@@ -498,6 +536,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const batchPaths = selectedPaths.length > 1
       ? selectedPaths.filter(p => getBaseName(p) === oldBase)
       : [oldPath];
+
+    if (!ensureWritableContext(batchPaths)) return;
 
     try {
       const renamedPaths: string[] = [];
@@ -545,11 +585,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         setEntries(sortEntries(result, sortBy, sortDir));
       }
     }
-  }, [currentPath, selectedPaths, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex]);
+  }, [currentPath, selectedPaths, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex]);
 
   // --- 선택된 파일들을 새 폴더로 그룹화 (Ctrl+G) ---
   const handleGroupIntoFolder = useCallback(async () => {
     if (!currentPath || selectedPaths.length === 0) return;
+    if (!ensureWritableContext(selectedPaths)) return;
     const sep = getPathSeparator(currentPath);
     // 중복 방지: "새 폴더", "새 폴더 2"...
     let base = '새 폴더';
@@ -576,7 +617,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       showCopyToast(`그룹화 실패: ${e}`);
     }
-  }, [currentPath, selectedPaths, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath]);
+  }, [currentPath, selectedPaths, ensureWritableContext, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath]);
 
   // --- 폴더 해제 요청 (확인 다이얼로그 표시) ---
   const handleUngroupFolder = useCallback((path: string) => {
@@ -587,6 +628,10 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const executeUngroupFolder = useCallback(async () => {
     if (!ungroupConfirm || !currentPath) return;
     const { path: folderPath } = ungroupConfirm;
+    if (!ensureWritableContext([folderPath])) {
+      setUngroupConfirm(null);
+      return;
+    }
     setUngroupConfirm(null);
     try {
       // 폴더 내부 파일 목록 조회
@@ -604,11 +649,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       console.error('폴더 해제 실패:', e);
       setError(`폴더 해제 실패: ${e}`);
     }
-  }, [ungroupConfirm, currentPath, loadDirectory, showCopyToast, setError]);
+  }, [ungroupConfirm, ensureWritableContext, currentPath, loadDirectory, showCopyToast, setError]);
 
   // --- ZIP 압축 ---
   const handleCompressZip = useCallback(async (paths: string[]) => {
     if (paths.length === 0 || !currentPath) return;
+    if (!ensureWritableContext(paths)) return;
     const sep = getPathSeparator(currentPath);
     const firstName = getFileName(paths[0]);
     const base = paths.length === 1 ? firstName.replace(/\.[^.]+$/, '') : (getFileName(currentPath) || 'archive');
@@ -619,11 +665,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       console.error('압축 실패:', e);
     }
-  }, [currentPath, loadDirectory]);
+  }, [currentPath, ensureWritableContext, loadDirectory]);
 
   // --- ZIP 압축 풀기 ---
   const handleExtractZip = useCallback(async (paths: string[]) => {
     if (paths.length === 0 || !currentPath) return;
+    if (!ensureWritableContext(paths)) return;
     const sep = getPathSeparator(currentPath);
     setExtractingZipPaths(prev => {
       const next = new Set(prev);
@@ -689,7 +736,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         return changed ? next : prev;
       });
     }
-  }, [currentPath, entries, loadDirectory, showCopyToast, setError]);
+  }, [currentPath, entries, ensureWritableContext, loadDirectory, showCopyToast, setError]);
 
   // --- Map Maker (Laigter 스타일 맵)보내기 ---
   const handleLaigterMapsExport = useCallback(async (
@@ -697,6 +744,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     params: LaigterParamsUI,
     options: { saveNormal: boolean; saveParallax: boolean; saveSpecular: boolean; saveOcclusion: boolean },
   ) => {
+    if (!ensureWritableContext([inputPath])) return;
     const outputs = await invoke<string[]>('laigter_maps_export', {
       input: inputPath,
       params,
@@ -710,20 +758,22 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     showCopyToast(`맵 저장 완료: ${outputs.length}개 파일`);
-  }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries, undoStack]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, undoStack]);
 
   // --- 픽셀화 적용 ---
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
+    if (!ensureWritableContext([path])) return;
     const output = await invoke<string>('pixelate_image', { input: path, pixelSize, scale, maxColors });
     if (currentPath) {
       const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     showCopyToast(`픽셀화 완료: ${getFileName(output)}`);
-  }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
 
   // --- 흰색 배경 제거 적용 ---
   const handleRemoveWhiteBgApply = useCallback(async (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => {
+    if (!ensureWritableContext(paths)) return;
     const outputs = await invoke<string[]>('remove_white_bg_save', { inputs: paths, threshold, feather, seeds, trim });
     if (currentPath) {
       const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
@@ -734,10 +784,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } else {
       showCopyToast(`배경 제거 완료: ${outputs.length}개 파일`);
     }
-  }, [currentPath, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
 
   // --- 스프라이트 시트 패킹 ---
   const handleSpritePack = useCallback(async (paths: string[]) => {
+    if (!ensureWritableContext(paths)) return;
     if (paths.length === 1) {
       // 폴더: 폴더 내 이미지 목록 조회
       const result = await invoke<FileEntry[]>('list_directory', { path: paths[0] });
@@ -748,7 +799,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } else {
       setSheetPackPaths(paths);
     }
-  }, [showCopyToast, setSheetPackPaths]);
+  }, [ensureWritableContext, showCopyToast, setSheetPackPaths]);
 
   // 시트 패킹 기본 파일명
   const sheetPackDefaultName = useMemo(() => {
@@ -773,6 +824,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleCompressVideo = useCallback(async (targetPaths: string | string[], quality: 'low' | 'medium' | 'high' = 'medium') => {
     const paths = Array.isArray(targetPaths) ? targetPaths : [targetPaths];
     if (paths.length === 0) return;
+    if (!ensureWritableContext(paths)) return;
     try {
       // 1. ffmpeg 설치 확인
       const installed = await invoke<boolean>('check_ffmpeg');
@@ -816,11 +868,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setVideoCompression(null);
       showCopyToast(`압축 실패: ${e}`);
     }
-  }, [currentPath, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
 
   // --- GIF → MP4 변환 ---
   const handleGifToMp4 = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return;
+    if (!ensureWritableContext(paths)) return;
     try {
       const installed = await invoke<boolean>('check_ffmpeg');
       if (!installed) {
@@ -842,10 +895,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setOperationProgress(null);
       showCopyToast(`GIF → MP4 실패: ${e}`);
     }
-  }, [currentPath, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
 
   // --- PDF 압축 ---
   const handleCompressPdf = useCallback(async (path: string) => {
+    if (!ensureWritableContext([path])) return;
     const fileName = getFileName(path);
     try {
       // Ghostscript 설치 확인
@@ -869,10 +923,15 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       showCopyToast(`PDF 압축 실패: ${e}`);
     }
-  }, [currentPath, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
 
   // --- 폴더 용량 확인 ---
   const handleInspectFolderSize = useCallback(async (path: string) => {
+    if (isArchiveVirtualPath(path)) {
+      showCopyToast(archiveReadonlyMessage, 2200);
+      setError(archiveReadonlyMessage);
+      return;
+    }
     const folderName = getFileName(path) || path;
     setFolderSizeDialog({ status: 'loading', path, folderName });
     try {
@@ -899,7 +958,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         error: String(e),
       });
     }
-  }, []);
+  }, [archiveReadonlyMessage, setError, showCopyToast]);
 
   // --- 경로 복사 ---
   const handleCopyPath = useCallback(async (path: string) => {

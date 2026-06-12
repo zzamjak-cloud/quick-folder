@@ -77,6 +77,8 @@ const EDGE_TRAY_LABEL = 'edge-tray';
 const WINDOW_STATE_KEY = 'quickfolder_window_state';
 const TEMP_TRAY_STORAGE_KEY = 'qf_temp_file_tray_paths';
 const TEMP_TRAY_WINDOW_RESTORE_KEY = 'qf_temp_file_tray_restore_window';
+const SECONDARY_TABS_KEY = 'qf_explorer_tabs_pane-1';
+const SECONDARY_ACTIVE_TAB_KEY = 'qf_explorer_active_tab_pane-1';
 const TEMP_TRAY_WINDOW_WIDTH = 360;
 const TEMP_TRAY_WINDOW_MIN_HEIGHT = 520;
 const TEMP_TRAY_WINDOW_MAX_HEIGHT = 720;
@@ -210,6 +212,33 @@ export default function App() {
       return [];
     }
   });
+
+  useEffect(() => {
+    const handleOpenArchivePane = (event: Event) => {
+      const { path, sourceInstanceId } = (event as CustomEvent<{ path?: string; sourceInstanceId?: string }>).detail ?? {};
+      if (!path) return;
+
+      if (splitMode === 'single') {
+        localStorage.removeItem(SECONDARY_TABS_KEY);
+        localStorage.removeItem(SECONDARY_ACTIVE_TAB_KEY);
+        setExplorerPath2(path);
+        setFocusedPane(1);
+        setSplitMode('horizontal');
+        return;
+      }
+
+      const targetInstanceId = sourceInstanceId === 'pane-1' ? 'default' : 'pane-1';
+      window.dispatchEvent(new CustomEvent('qf-open-new-tab', {
+        detail: { path, targetInstanceId },
+      }));
+      setFocusedPane(targetInstanceId === 'pane-1' ? 1 : 0);
+    };
+
+    window.addEventListener('qf-open-archive-pane', handleOpenArchivePane as EventListener);
+    return () => {
+      window.removeEventListener('qf-open-archive-pane', handleOpenArchivePane as EventListener);
+    };
+  }, [setExplorerPath2, splitMode]);
   const tempTrayWindowAppliedRef = useRef(false);
   // 트레이 종료 시 창 뎁스: 닫기/취소는 전면, OS 드래그로 비우면 배경
   const trayRestoreDepthRef = useRef<'foreground' | 'background'>('foreground');

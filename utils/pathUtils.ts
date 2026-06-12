@@ -34,6 +34,79 @@ export function normalizeFsPath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
+const BROWSABLE_ARCHIVE_SUFFIXES = [
+  '.zip',
+  '.rar',
+  '.7z',
+  '.tar',
+  '.tgz',
+  '.tar.gz',
+  '.tbz2',
+  '.tar.bz2',
+  '.txz',
+  '.tar.xz',
+] as const;
+
+export interface ArchiveVirtualInfo {
+  archivePath: string;
+  innerPath: string;
+  separator: string;
+}
+
+export function isBrowsableArchiveFilePath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return BROWSABLE_ARCHIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
+
+export function buildArchiveBrowsePath(path: string): string {
+  const sep = getPathSeparator(path);
+  return path.endsWith(sep) ? path : `${path}${sep}`;
+}
+
+export function splitArchiveVirtualPath(path: string): ArchiveVirtualInfo | null {
+  for (let index = 0; index < path.length; index += 1) {
+    const ch = path[index];
+    if (ch !== '/' && ch !== '\\') continue;
+    const archivePath = path.slice(0, index);
+    if (!isBrowsableArchiveFilePath(archivePath)) continue;
+    const innerPath = path.slice(index + 1).replace(/^[\\/]+|[\\/]+$/g, '').replace(/\\/g, '/');
+    return {
+      archivePath,
+      innerPath,
+      separator: path.includes('\\') ? '\\' : '/',
+    };
+  }
+  return null;
+}
+
+export function isArchiveVirtualPath(path: string): boolean {
+  return splitArchiveVirtualPath(path) !== null;
+}
+
+export function isArchiveBrowseRoot(path: string): boolean {
+  const info = splitArchiveVirtualPath(path);
+  return !!info && info.innerPath.length === 0;
+}
+
+export function shouldOpenArchiveInCurrentPane(currentPath: string, archivePath: string): boolean {
+  return isArchiveVirtualPath(currentPath) && isArchiveVirtualPath(archivePath);
+}
+
+export function getArchiveVirtualParent(path: string): string | null {
+  const info = splitArchiveVirtualPath(path);
+  if (!info) return null;
+  if (!info.innerPath) {
+    return getParentDir(info.archivePath);
+  }
+
+  const parts = info.innerPath.split('/').filter(Boolean);
+  if (parts.length <= 1) {
+    return buildArchiveBrowsePath(info.archivePath);
+  }
+
+  return `${buildArchiveBrowsePath(info.archivePath)}${parts.slice(0, -1).join(info.separator)}`;
+}
+
 const GOOGLE_DRIVE_VIRTUAL_ROOTS = [
   'my drive',
   '내 드라이브',

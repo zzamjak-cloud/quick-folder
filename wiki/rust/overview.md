@@ -15,6 +15,7 @@ src-tauri/src/
     ├── types.rs        ← Rust 타입 (FileEntry, FileType 등)
     ├── constants.rs    ← 상수
     ├── error.rs        ← 에러 처리
+    ├── archive_ops.rs  ← 압축 탐색·중첩 압축·materialize
     ├── file_ops.rs     ← 파일 CRUD
     ├── image_ops.rs    ← 이미지 처리
     ├── hwp_ops.rs      ← HWP 파일
@@ -50,6 +51,11 @@ import { invoke } from '@tauri-apps/api/core'
 await invoke('command_name', { arg1: value1, arg2: value2 })
 ```
 
+## 압축 탐색 메모
+- `file_ops.rs::list_directory`는 archive virtual path를 감지하면 `archive_ops.rs`로 라우팅한다.
+- ZIP은 Rust `zip` crate로 직접 읽고, `.rar`/`.7z`/`.tar` 계열은 `tar` 출력 기반으로 목록을 구성한다.
+- 압축 내부 파일을 OS로 넘겨야 할 때는 `materialize_archive_paths` 또는 `materialize_archive_path_in_cache`를 사용해 임시 실파일을 만든다.
+
 ## 주요 Cargo.toml 의존성
 | 크레이트 | 용도 |
 |---------|------|
@@ -57,7 +63,8 @@ await invoke('command_name', { arg1: value1, arg2: value2 })
 | `image` 0.25 | 이미지 처리 (jpg, png, gif, webp, bmp, ico) |
 | `psd` 0.3 | Photoshop 파일 |
 | `ffmpeg-sidecar` 2.0 | 비디오 처리 |
-| `zip` 2.0 | ZIP 압축·해제 |
+| `zip` 2.0 | ZIP 압축·해제·내부 목록 읽기 |
+| `encoding_rs` 0.8 | ZIP/TAR 이름 디코딩 fallback (CP949/EUC-KR) |
 | `trash` 5.0 | 휴지통 이동 |
 | `walkdir` 2.0 | 디렉토리 순회 |
 | `arboard` 3.0 | 클립보드 |

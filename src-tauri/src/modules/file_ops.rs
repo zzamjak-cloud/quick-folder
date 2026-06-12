@@ -1,10 +1,14 @@
 //! 파일 및 디렉토리 조작 모듈
 //! list_directory, rename, copy, move, delete, zip 등 17개 Tauri command 포함
 
-use crate::helpers::*;
-use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
-use super::types::{FileEntry, FileType, classify_file};
 use super::error::{AppError, Result};
+use super::types::{classify_file, FileEntry, FileType};
+use crate::helpers::*;
+use crate::modules::archive_ops::{
+    list_archive_directory, materialize_archive_path_in_cache,
+    resolve_archive_virtual_path_with_app,
+};
+use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
 
 fn virtual_dir_entry(name: String, path: String) -> FileEntry {
     FileEntry {
@@ -21,9 +25,13 @@ fn virtual_dir_entry(name: String, path: String) -> FileEntry {
 
 // 디렉토리 목록 조회
 #[tauri::command]
-pub async fn list_directory(path: String) -> Result<Vec<FileEntry>> {
+pub async fn list_directory(app: tauri::AppHandle, path: String) -> Result<Vec<FileEntry>> {
     // spawn_blocking: 네트워크 파일시스템(Google Drive 등) I/O가 tokio 워커를 차단하지 않도록 분리
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>> {
+        if resolve_archive_virtual_path_with_app(&app, &path)?.is_some() {
+            return list_archive_directory(&app, &path);
+        }
+
         let entries = std::fs::read_dir(&path)?;
         let mut result = vec![];
         for entry in entries.flatten() {
@@ -54,7 +62,10 @@ pub async fn list_directory(path: String) -> Result<Vec<FileEntry>> {
             }
             // Windows 시스템 파일 이름으로 필터링 (대소문자 무관)
             let name_lower = name.to_lowercase();
-            if name_lower == "desktop.ini" || name_lower == "thumbs.db" || name_lower == "ntuser.dat" {
+            if name_lower == "desktop.ini"
+                || name_lower == "thumbs.db"
+                || name_lower == "ntuser.dat"
+            {
                 continue;
             }
 
@@ -96,7 +107,10 @@ fn legacy_dir_listing_cache_key(path: &str) -> String {
     format!("{:x}", hasher.finish())
 }
 
-fn dir_listing_cache_files(app: &tauri::AppHandle, path: &str) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
+fn dir_listing_cache_files(
+    app: &tauri::AppHandle,
+    path: &str,
+) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
     let dir = thumbnail_cache_root(app)?.join("dir_listings");
     std::fs::create_dir_all(&dir).ok();
     let stable_key = stable_cache_key(&[b"dir-listing-v2", path.as_bytes()]);
@@ -121,7 +135,10 @@ fn read_cached_listing_file(file: &std::path::Path, path: &str) -> Result<Option
 
 // 디스크에 저장된 디렉토리 목록 조회 (없으면 None). 빠른 로컬 읽기.
 #[tauri::command]
-pub async fn read_cached_listing(app: tauri::AppHandle, path: String) -> Result<Option<Vec<FileEntry>>> {
+pub async fn read_cached_listing(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Option<Vec<FileEntry>>> {
     let (file, legacy_file) = dir_listing_cache_files(&app, &path)?;
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<Vec<FileEntry>>> {
         if let Some(entries) = read_cached_listing_file(&file, &path)? {
@@ -129,7 +146,10 @@ pub async fn read_cached_listing(app: tauri::AppHandle, path: String) -> Result<
         }
 
         if let Some(entries) = read_cached_listing_file(&legacy_file, &path)? {
-            let cached = CachedListing { path: path.clone(), entries: entries.clone() };
+            let cached = CachedListing {
+                path: path.clone(),
+                entries: entries.clone(),
+            };
             if let Ok(data) = serde_json::to_vec(&cached) {
                 std::fs::write(&file, data).ok();
             }
@@ -144,7 +164,11 @@ pub async fn read_cached_listing(app: tauri::AppHandle, path: String) -> Result<
 
 // 디렉토리 목록을 디스크 캐시에 저장 (fire-and-forget).
 #[tauri::command]
-pub async fn write_cached_listing(app: tauri::AppHandle, path: String, entries: Vec<FileEntry>) -> Result<()> {
+pub async fn write_cached_listing(
+    app: tauri::AppHandle,
+    path: String,
+    entries: Vec<FileEntry>,
+) -> Result<()> {
     let (file, _) = dir_listing_cache_files(&app, &path)?;
     tauri::async_runtime::spawn_blocking(move || -> Result<()> {
         let cached = CachedListing { path, entries };
@@ -294,17 +318,18 @@ pub async fn create_directory(path: String) -> Result<()> {
 pub async fn create_text_file(path: String) -> Result<()> {
     let p = std::path::Path::new(&path);
     if p.exists() {
-        return Err(AppError::AlreadyExists("이미 존재하는 파일입니다".to_string()));
+        return Err(AppError::AlreadyExists(
+            "이미 존재하는 파일입니다".to_string(),
+        ));
     }
     std::fs::write(&path, "")?;
     Ok(())
 }
 
 // 텍스트 파일 읽기 (미리보기용, 최대 바이트 제한)
-#[tauri::command]
-pub fn read_text_file(path: String, max_bytes: usize) -> Result<String> {
+fn read_text_file_impl(path: &std::path::Path, max_bytes: usize) -> Result<String> {
     use std::io::Read;
-    let mut file = std::fs::File::open(&path)?;
+    let mut file = std::fs::File::open(path)?;
     let meta = file.metadata()?;
     let read_size = (meta.len() as usize).min(max_bytes);
     let mut buf = vec![0u8; read_size];
@@ -315,6 +340,13 @@ pub fn read_text_file(path: String, max_bytes: usize) -> Result<String> {
 
 // 텍스트 파일에 내용 쓰기
 #[tauri::command]
+pub fn read_text_file(app: tauri::AppHandle, path: String, max_bytes: usize) -> Result<String> {
+    let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+        .unwrap_or_else(|| std::path::PathBuf::from(&path));
+    read_text_file_impl(&resolved_path, max_bytes)
+}
+
+#[tauri::command]
 pub async fn write_text_file(path: String, content: String) -> Result<()> {
     std::fs::write(&path, content)?;
     Ok(())
@@ -322,10 +354,18 @@ pub async fn write_text_file(path: String, content: String) -> Result<()> {
 
 // ===== 이름 변경 =====
 
-async fn rename_item_impl(old_path: String, new_path: String, app_cache: Option<&std::path::Path>) -> Result<()> {
-    if old_path == new_path { return Ok(()); }
+async fn rename_item_impl(
+    old_path: String,
+    new_path: String,
+    app_cache: Option<&std::path::Path>,
+) -> Result<()> {
+    if old_path == new_path {
+        return Ok(());
+    }
     if std::path::Path::new(&new_path).exists() {
-        return Err(AppError::AlreadyExists("동일한 이름의 파일이 존재합니다.".to_string()));
+        return Err(AppError::AlreadyExists(
+            "동일한 이름의 파일이 존재합니다.".to_string(),
+        ));
     }
     if let Some(app_cache) = app_cache {
         invalidate_thumbnail_cache_paths_in_root(app_cache, std::slice::from_ref(&old_path));
@@ -373,7 +413,11 @@ fn collect_copy_jobs(
         let mut dest_path = dest.join(file_name);
 
         if dest_path.exists() && dest_path.canonicalize().ok() == src_path.canonicalize().ok() {
-            let stem = src_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let stem = src_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let ext = src_path
                 .extension()
                 .map(|e| format!(".{}", e.to_string_lossy()))
@@ -382,7 +426,10 @@ fn collect_copy_jobs(
             dest_path = get_copy_destination(dest, &stem, &ext, is_dir);
         } else if dest_path.exists() && overwrite {
             if let Some(app_cache) = app_cache {
-                invalidate_thumbnail_cache_paths_in_root(app_cache, &[dest_path.to_string_lossy().to_string()]);
+                invalidate_thumbnail_cache_paths_in_root(
+                    app_cache,
+                    &[dest_path.to_string_lossy().to_string()],
+                );
             }
             if dest_path.is_dir() {
                 std::fs::remove_dir_all(&dest_path)?;
@@ -434,7 +481,13 @@ fn copy_dir_recursive_with_progress(
     for entry in std::fs::read_dir(src)?.flatten() {
         let dest_child = dest.join(entry.file_name());
         if entry.path().is_dir() {
-            copy_dir_recursive_with_progress(&entry.path(), &dest_child, total_files, done, on_progress)?;
+            copy_dir_recursive_with_progress(
+                &entry.path(),
+                &dest_child,
+                total_files,
+                done,
+                on_progress,
+            )?;
         } else {
             std::fs::copy(entry.path(), &dest_child)?;
             *done += 1;
@@ -494,14 +547,24 @@ async fn copy_items_impl(
 
         // 같은 경로 충돌 시 "(복사)", "(복사 2)" 접미사 추가
         if dest_path.exists() && dest_path.canonicalize().ok() == src_path.canonicalize().ok() {
-            let stem = src_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            let ext = src_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+            let stem = src_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let ext = src_path
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
             let is_dir = src_path.is_dir();
             dest_path = get_copy_destination(std::path::Path::new(&dest), &stem, &ext, is_dir);
         } else if dest_path.exists() && overwrite {
             // 덮어쓰기: 기존 파일/폴더 삭제 후 복사
             if let Some(app_cache) = app_cache {
-                invalidate_thumbnail_cache_paths_in_root(app_cache, &[dest_path.to_string_lossy().to_string()]);
+                invalidate_thumbnail_cache_paths_in_root(
+                    app_cache,
+                    &[dest_path.to_string_lossy().to_string()],
+                );
             }
             if dest_path.is_dir() {
                 std::fs::remove_dir_all(&dest_path)?;
@@ -524,7 +587,12 @@ async fn copy_items_impl(
 
 // 파일/폴더 복사 (재귀 지원, overwrite=true면 기존 파일 덮어쓰기)
 #[tauri::command]
-pub async fn copy_items(app: tauri::AppHandle, sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<()> {
+pub async fn copy_items(
+    app: tauri::AppHandle,
+    sources: Vec<String>,
+    dest: String,
+    overwrite: Option<bool>,
+) -> Result<()> {
     let app_cache = thumbnail_cache_root(&app)?;
     copy_items_impl(sources, dest, overwrite, Some(&app_cache)).await
 }
@@ -560,7 +628,13 @@ pub async fn copy_items_with_progress(
         let mut done = 0u64;
         for (src, dest_one) in jobs {
             if src.is_dir() {
-                copy_dir_recursive_with_progress(&src, &dest_one, total_files, &mut done, &on_progress)?;
+                copy_dir_recursive_with_progress(
+                    &src,
+                    &dest_one,
+                    total_files,
+                    &mut done,
+                    &on_progress,
+                )?;
             } else {
                 std::fs::copy(&src, &dest_one)?;
                 done += 1;
@@ -603,9 +677,18 @@ pub async fn duplicate_items(paths: Vec<String>) -> Result<Vec<String>> {
     let mut new_paths = vec![];
     for source in &paths {
         let src = std::path::Path::new(source);
-        let parent = src.parent().ok_or_else(|| AppError::InvalidInput(format!("상위 디렉토리 없음: {}", source)))?;
-        let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
-        let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let parent = src
+            .parent()
+            .ok_or_else(|| AppError::InvalidInput(format!("상위 디렉토리 없음: {}", source)))?;
+        let stem = src
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let ext = src
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
         let is_dir = src.is_dir();
 
         // 충돌 방지: " (복사)", " (복사 2)", " (복사 3)" ...
@@ -642,7 +725,10 @@ async fn move_items_impl(
         if dest_path.exists() && dest_path.canonicalize().ok() != src_path.canonicalize().ok() {
             if overwrite {
                 if let Some(app_cache) = app_cache {
-                    invalidate_thumbnail_cache_paths_in_root(app_cache, &[dest_path.to_string_lossy().to_string()]);
+                    invalidate_thumbnail_cache_paths_in_root(
+                        app_cache,
+                        &[dest_path.to_string_lossy().to_string()],
+                    );
                 }
                 if dest_path.is_dir() {
                     std::fs::remove_dir_all(&dest_path)?;
@@ -674,7 +760,12 @@ async fn move_items_impl(
 
 // 파일/폴더 이동 (overwrite=true면 기존 파일 덮어쓰기)
 #[tauri::command]
-pub async fn move_items(app: tauri::AppHandle, sources: Vec<String>, dest: String, overwrite: Option<bool>) -> Result<()> {
+pub async fn move_items(
+    app: tauri::AppHandle,
+    sources: Vec<String>,
+    dest: String,
+    overwrite: Option<bool>,
+) -> Result<()> {
     let app_cache = thumbnail_cache_root(&app)?;
     move_items_impl(sources, dest, overwrite, Some(&app_cache)).await
 }
@@ -714,7 +805,9 @@ fn is_windows_google_drive_virtual(norm: &str) -> bool {
         return false;
     }
     let after = &norm[colon + 2..];
-    ROOTS.iter().any(|root| after == *root || after.starts_with(&format!("{}/", root)))
+    ROOTS
+        .iter()
+        .any(|root| after == *root || after.starts_with(&format!("{}/", root)))
 }
 
 /// 경로에 따라 직접 삭제 수행 (디렉토리/파일 구분)
@@ -730,7 +823,11 @@ fn remove_directly(p: &std::path::Path, _path: &str) -> Result<()> {
 // 파일/폴더 삭제 (use_trash=true면 휴지통, 클라우드 경로는 직접 삭제)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 // macOS: NsFileManager 사용 (Finder AppleScript 대비 빠르고 권한 문제 없음)
-async fn delete_items_impl(paths: Vec<String>, use_trash: bool, app_cache: Option<std::path::PathBuf>) -> Result<()> {
+async fn delete_items_impl(
+    paths: Vec<String>,
+    use_trash: bool,
+    app_cache: Option<std::path::PathBuf>,
+) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || -> Result<()> {
         if let Some(app_cache) = app_cache {
             invalidate_thumbnail_cache_paths_in_root(&app_cache, &paths);
@@ -749,17 +846,24 @@ async fn delete_items_impl(paths: Vec<String>, use_trash: bool, app_cache: Optio
         for path in &paths {
             let p = std::path::Path::new(path.as_str());
             if use_trash && !is_cloud_path(path) {
-                ctx.delete(p).map_err(|e| AppError::Io(format!("휴지통 이동 실패 {}: {}", path, e)))?;
+                ctx.delete(p)
+                    .map_err(|e| AppError::Io(format!("휴지통 이동 실패 {}: {}", path, e)))?;
             } else {
                 remove_directly(p, path)?;
             }
         }
         Ok(())
-    }).await.map_err(|e| AppError::Internal(format!("삭제 작업 실패: {}", e)))?
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("삭제 작업 실패: {}", e)))?
 }
 
 #[tauri::command]
-pub async fn delete_items(app: tauri::AppHandle, paths: Vec<String>, use_trash: bool) -> Result<()> {
+pub async fn delete_items(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    use_trash: bool,
+) -> Result<()> {
     let app_cache = thumbnail_cache_root(&app)?;
     delete_items_impl(paths, use_trash, Some(app_cache)).await
 }
@@ -775,10 +879,16 @@ pub async fn delete_items_elevated(app: tauri::AppHandle, paths: Vec<String>) ->
         let temp_dir = std::env::temp_dir();
         let script_path = temp_dir.join(format!("qf_elevated_delete_{}.ps1", std::process::id()));
 
-        let ps_commands: Vec<String> = paths.iter().map(|p| {
-            let escaped = p.replace("'", "''");
-            format!("Remove-Item -LiteralPath '{}' -Recurse -Force -ErrorAction Stop", escaped)
-        }).collect();
+        let ps_commands: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                let escaped = p.replace("'", "''");
+                format!(
+                    "Remove-Item -LiteralPath '{}' -Recurse -Force -ErrorAction Stop",
+                    escaped
+                )
+            })
+            .collect();
         let script_content = ps_commands.join("\n");
 
         std::fs::write(&script_path, &script_content)?;
@@ -802,14 +912,20 @@ pub async fn delete_items_elevated(app: tauri::AppHandle, paths: Vec<String>) ->
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if !stderr.trim().is_empty() {
-                return Err(AppError::Permission(format!("관리자 권한 삭제 실패: {}", stderr)));
+                return Err(AppError::Permission(format!(
+                    "관리자 권한 삭제 실패: {}",
+                    stderr
+                )));
             }
         }
 
         // 실제 삭제 확인: 파일이 여전히 존재하면 실패
         for path in &paths {
             if std::path::Path::new(path).exists() {
-                return Err(AppError::Internal(format!("관리자 권한 삭제 후에도 파일이 존재합니다: {}", path)));
+                return Err(AppError::Internal(format!(
+                    "관리자 권한 삭제 후에도 파일이 존재합니다: {}",
+                    path
+                )));
             }
         }
 
@@ -819,7 +935,9 @@ pub async fn delete_items_elevated(app: tauri::AppHandle, paths: Vec<String>) ->
     {
         let _ = app;
         let _ = paths;
-        Err(AppError::UnsupportedPlatform("관리자 권한 삭제는 Windows에서만 지원됩니다".to_string()))
+        Err(AppError::UnsupportedPlatform(
+            "관리자 권한 삭제는 Windows에서만 지원됩니다".to_string(),
+        ))
     }
 }
 
@@ -833,15 +951,19 @@ pub async fn restore_trash_items(original_paths: Vec<String>) -> Result<()> {
             restore_single_item(orig_path)?;
         }
         Ok(())
-    }).await.map_err(|e| AppError::Internal(format!("복원 작업 실패: {}", e)))?
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("복원 작업 실패: {}", e)))?
 }
 
 #[cfg(target_os = "macos")]
 fn restore_single_item(orig_path: &str) -> Result<()> {
-    let home = std::env::var("HOME").map_err(|_| AppError::Internal("HOME 환경변수 없음".to_string()))?;
+    let home =
+        std::env::var("HOME").map_err(|_| AppError::Internal("HOME 환경변수 없음".to_string()))?;
     let trash_dir = std::path::Path::new(&home).join(".Trash");
     let orig = std::path::Path::new(orig_path);
-    let name = orig.file_name()
+    let name = orig
+        .file_name()
         .ok_or_else(|| AppError::InvalidInput(format!("잘못된 경로: {}", orig_path)))?
         .to_string_lossy();
 
@@ -861,14 +983,22 @@ fn restore_single_item(orig_path: &str) -> Result<()> {
         .filter(|entry| {
             let ename = entry.file_name().to_string_lossy().to_string();
             ename.starts_with(&*stem)
-                && ext.as_ref().map_or(true, |e| ename.ends_with(&format!(".{}", e)))
+                && ext
+                    .as_ref()
+                    .map_or(true, |e| ename.ends_with(&format!(".{}", e)))
         })
         .collect();
 
     // 가장 최근 수정된 항목 선택
     candidates.sort_by(|a, b| {
-        let ma = a.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
-        let mb = b.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+        let ma = a
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        let mb = b
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
         mb.cmp(&ma)
     });
 
@@ -876,20 +1006,24 @@ fn restore_single_item(orig_path: &str) -> Result<()> {
         std::fs::rename(found.path(), orig)?;
         Ok(())
     } else {
-        Err(AppError::NotFound(format!("휴지통에서 파일을 찾을 수 없습니다: {}", orig_path)))
+        Err(AppError::NotFound(format!(
+            "휴지통에서 파일을 찾을 수 없습니다: {}",
+            orig_path
+        )))
     }
 }
 
 #[cfg(target_os = "windows")]
 fn restore_single_item(orig_path: &str) -> Result<()> {
-    let items = trash::os_limited::list()
-        .map_err(|e| AppError::Io(format!("휴지통 조회 실패: {}", e)))?;
+    let items =
+        trash::os_limited::list().map_err(|e| AppError::Io(format!("휴지통 조회 실패: {}", e)))?;
     let orig = std::path::Path::new(orig_path);
     let target_name = orig.file_name().unwrap_or_default();
     let target_parent = orig.parent().unwrap_or(std::path::Path::new(""));
 
     // 원래 경로와 일치하는 항목 찾기 (가장 최근 것)
-    let mut matching: Vec<_> = items.into_iter()
+    let mut matching: Vec<_> = items
+        .into_iter()
         .filter(|item| item.original_parent == target_parent && item.name == target_name)
         .collect();
     matching.sort_by(|a, b| b.time_deleted.cmp(&a.time_deleted));
@@ -898,13 +1032,19 @@ fn restore_single_item(orig_path: &str) -> Result<()> {
         trash::os_limited::restore_all(std::iter::once(item))
             .map_err(|e| AppError::Io(format!("복원 실패 {}: {}", orig_path, e)))
     } else {
-        Err(AppError::NotFound(format!("휴지통에서 파일을 찾을 수 없습니다: {}", orig_path)))
+        Err(AppError::NotFound(format!(
+            "휴지통에서 파일을 찾을 수 없습니다: {}",
+            orig_path
+        )))
     }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn restore_single_item(orig_path: &str) -> Result<()> {
-    Err(AppError::UnsupportedPlatform(format!("이 플랫폼에서는 휴지통 복원이 지원되지 않습니다: {}", orig_path)))
+    Err(AppError::UnsupportedPlatform(format!(
+        "이 플랫폼에서는 휴지통 복원이 지원되지 않습니다: {}",
+        orig_path
+    )))
 }
 
 // ===== ZIP 압축 =====
@@ -919,7 +1059,11 @@ pub async fn compress_to_zip(paths: Vec<String>, dest: String) -> Result<String>
 
     for source in &paths {
         let src = std::path::Path::new(source);
-        let base_name = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let base_name = src
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
 
         if src.is_dir() {
             add_directory_to_zip(&mut zip, src, &base_name, options)?;
@@ -958,7 +1102,9 @@ fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
 // ZIP 압축 풀기
 // zip_path: 압축 파일 경로, dest_dir: 출력 디렉토리 경로
 fn zip_entry_output_path(entry: &zip::read::ZipFile<'_>) -> std::path::PathBuf {
-    let raw_path = entry.enclosed_name().unwrap_or_else(|| entry.mangled_name());
+    let raw_path = entry
+        .enclosed_name()
+        .unwrap_or_else(|| entry.mangled_name());
     let mut output_path = std::path::PathBuf::new();
 
     for component in raw_path.components() {
@@ -992,7 +1138,11 @@ fn sanitize_zip_entry_component(component: &str) -> String {
     // (os error 3)가 발생한다. 미리 잘라 양쪽을 일치시킨다. (예: Notion 내보내기에서
     // 페이지 제목이 공백으로 끝나는 폴더)
     let trimmed = safe.trim_end_matches([' ', '.']);
-    let mut result = if trimmed.is_empty() { safe.clone() } else { trimmed.to_string() };
+    let mut result = if trimmed.is_empty() {
+        safe.clone()
+    } else {
+        trimmed.to_string()
+    };
 
     // Windows 예약 장치 이름(CON, PRN, NUL, COM1~9, LPT1~9 등) 회피
     if is_windows_reserved_name(&result) {
@@ -1011,46 +1161,29 @@ fn is_windows_reserved_name(name: &str) -> bool {
     let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
     matches!(
         stem.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL"
-            | "COM1" | "COM2" | "COM3" | "COM4" | "COM5" | "COM6" | "COM7" | "COM8" | "COM9"
-            | "LPT1" | "LPT2" | "LPT3" | "LPT4" | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9"
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
     )
-}
-
-fn percent_decode_utf8(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut changed = false;
-    let mut i = 0;
-
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(high), Some(low)) = (hex_value(bytes[i + 1]), hex_value(bytes[i + 2])) {
-                decoded.push((high << 4) | low);
-                changed = true;
-                i += 3;
-                continue;
-            }
-        }
-
-        decoded.push(bytes[i]);
-        i += 1;
-    }
-
-    if changed {
-        String::from_utf8(decoded).unwrap_or_else(|_| input.to_string())
-    } else {
-        input.to_string()
-    }
-}
-
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 // 개별 항목 압축 해제 실패 정보 (프론트엔드에 부분 실패를 알리기 위함)
@@ -1065,8 +1198,8 @@ pub struct ExtractFailure {
 #[serde(rename_all = "camelCase")]
 pub struct ExtractResult {
     pub dest_dir: String,
-    pub total: usize,       // 시도한 파일 수 (디렉토리 제외)
-    pub extracted: usize,   // 성공한 파일 수
+    pub total: usize,     // 시도한 파일 수 (디렉토리 제외)
+    pub extracted: usize, // 성공한 파일 수
     pub failed: Vec<ExtractFailure>,
 }
 
@@ -1174,8 +1307,14 @@ mod tests {
 
     #[test]
     fn test_is_cloud_path() {
-        assert_eq!(is_cloud_path("/Users/test/Library/CloudStorage/GoogleDrive/file.txt"), true);
-        assert_eq!(is_cloud_path("/Users/test/Library/Mobile Documents/com~apple~CloudDocs/file.txt"), true);
+        assert_eq!(
+            is_cloud_path("/Users/test/Library/CloudStorage/GoogleDrive/file.txt"),
+            true
+        );
+        assert_eq!(
+            is_cloud_path("/Users/test/Library/Mobile Documents/com~apple~CloudDocs/file.txt"),
+            true
+        );
         assert_eq!(is_cloud_path("/Users/test/Google Drive/file.txt"), true);
         assert_eq!(is_cloud_path("/Users/test/OneDrive/file.txt"), true);
         assert_eq!(is_cloud_path("/Users/test/Dropbox/file.txt"), true);
@@ -1226,12 +1365,12 @@ mod tests {
         fs::write(&file_path, content).unwrap();
 
         // 전체 읽기
-        let result = read_text_file(file_path.to_string_lossy().to_string(), 1000);
+        let result = read_text_file_impl(&file_path, 1000);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), content);
 
         // 부분 읽기 (최대 10바이트)
-        let result2 = read_text_file(file_path.to_string_lossy().to_string(), 10);
+        let result2 = read_text_file_impl(&file_path, 10);
         assert!(result2.is_ok());
         assert_eq!(result2.unwrap().len(), 10);
 
@@ -1245,7 +1384,8 @@ mod tests {
         let content = "Test content\nLine 2\n한글 테스트";
 
         tauri::async_runtime::block_on(async {
-            let result = write_text_file(file_path.to_string_lossy().to_string(), content.to_string()).await;
+            let result =
+                write_text_file(file_path.to_string_lossy().to_string(), content.to_string()).await;
             assert!(result.is_ok());
 
             let read_content = fs::read_to_string(&file_path).unwrap();
@@ -1268,7 +1408,8 @@ mod tests {
                 old_path.to_string_lossy().to_string(),
                 new_path.to_string_lossy().to_string(),
                 None,
-            ).await;
+            )
+            .await;
             assert!(result.is_ok());
             assert!(!old_path.exists());
             assert!(new_path.exists());
@@ -1280,7 +1421,8 @@ mod tests {
                 another.to_string_lossy().to_string(),
                 new_path.to_string_lossy().to_string(),
                 None,
-            ).await;
+            )
+            .await;
             assert!(result2.is_err());
             assert!(matches!(result2.unwrap_err(), AppError::AlreadyExists(_)));
         });
@@ -1360,7 +1502,8 @@ mod tests {
                 dest.to_string_lossy().to_string(),
                 None,
                 None,
-            ).await;
+            )
+            .await;
             assert!(result.is_ok());
             assert!(dest.join("file1.txt").exists());
         });
@@ -1386,7 +1529,8 @@ mod tests {
                 dest.to_string_lossy().to_string(),
                 None,
                 None,
-            ).await;
+            )
+            .await;
             assert!(result.is_ok());
             assert!(!file1.exists()); // 원본 삭제됨
             assert!(dest.join("file1.txt").exists());
@@ -1411,7 +1555,8 @@ mod tests {
             let result = check_duplicate_items(
                 vec![file1.to_string_lossy().to_string()],
                 dest.to_string_lossy().to_string(),
-            ).await;
+            )
+            .await;
             assert!(result.is_ok());
             let duplicates = result.unwrap();
             assert_eq!(duplicates.len(), 1);
@@ -1438,7 +1583,8 @@ mod tests {
             let result = compress_to_zip(
                 vec![src_dir.to_string_lossy().to_string()],
                 zip_path.to_string_lossy().to_string(),
-            ).await;
+            )
+            .await;
             assert!(result.is_ok());
             assert!(zip_path.exists());
 
@@ -1446,7 +1592,8 @@ mod tests {
             let result2 = extract_zip(
                 zip_path.to_string_lossy().to_string(),
                 extract_dir.to_string_lossy().to_string(),
-            ).await;
+            )
+            .await;
             assert!(result2.is_ok());
             assert!(extract_dir.join("source/file1.txt").exists());
             assert!(extract_dir.join("source/subdir/file2.txt").exists());
@@ -1466,7 +1613,8 @@ mod tests {
             .collect::<Vec<_>>()
             .join("/");
         let entry_name = format!("{}/document.txt", nested_path);
-        let expected_path = extract_dir.join(entry_name.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let expected_path =
+            extract_dir.join(entry_name.replace('/', std::path::MAIN_SEPARATOR_STR));
         assert!(
             expected_path.to_string_lossy().chars().count() > 260,
             "테스트 경로가 Windows 기본 한계보다 길어야 합니다: {}",
@@ -1487,10 +1635,14 @@ mod tests {
             let result = extract_zip(
                 zip_path.to_string_lossy().to_string(),
                 extract_dir.to_string_lossy().to_string(),
-            ).await;
+            )
+            .await;
             assert!(result.is_ok(), "긴 경로 ZIP 해제 실패: {:?}", result.err());
             assert!(expected_path.exists());
-            assert_eq!(fs::read_to_string(expected_path).unwrap(), "long path content");
+            assert_eq!(
+                fs::read_to_string(expected_path).unwrap(),
+                "long path content"
+            );
         });
 
         cleanup_test_dir(&test_dir);
@@ -1501,7 +1653,8 @@ mod tests {
         let test_dir = setup_test_dir("zip_percent_encoded");
         let zip_path = test_dir.join("percent_encoded.zip");
         let extract_dir = test_dir.join("extracted");
-        let encoded_name = "%EB%A8%B8%EC%A7%80%EB%A8%B8%EC%A7%80_%ED%83%80%EC%9D%B4%ED%8B%80_en_black.png";
+        let encoded_name =
+            "%EB%A8%B8%EC%A7%80%EB%A8%B8%EC%A7%80_%ED%83%80%EC%9D%B4%ED%8B%80_en_black.png";
         let decoded_name = "머지머지_타이틀_en_black.png";
 
         {
@@ -1509,7 +1662,8 @@ mod tests {
             let mut zip = zip::ZipWriter::new(file);
             let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated);
-            zip.start_file(format!("assets/{}", encoded_name), options).unwrap();
+            zip.start_file(format!("assets/{}", encoded_name), options)
+                .unwrap();
             std::io::Write::write_all(&mut zip, b"image bytes").unwrap();
             zip.finish().unwrap();
         }
@@ -1518,8 +1672,13 @@ mod tests {
             let result = extract_zip(
                 zip_path.to_string_lossy().to_string(),
                 extract_dir.to_string_lossy().to_string(),
-            ).await;
-            assert!(result.is_ok(), "percent-encoded 파일명 ZIP 해제 실패: {:?}", result.err());
+            )
+            .await;
+            assert!(
+                result.is_ok(),
+                "percent-encoded 파일명 ZIP 해제 실패: {:?}",
+                result.err()
+            );
             assert!(extract_dir.join("assets").join(decoded_name).exists());
             assert!(!extract_dir.join("assets").join(encoded_name).exists());
         });
@@ -1570,8 +1729,14 @@ mod tests {
             );
             assert_eq!(result.extracted, 3);
             // 끝 공백이 제거된 폴더명으로 파일이 존재해야 함
-            assert!(extract_dir.join("How to calculate LTV for").join("a.png").exists());
-            assert!(extract_dir.join("How to calculate LTV for").join("b.png").exists());
+            assert!(extract_dir
+                .join("How to calculate LTV for")
+                .join("a.png")
+                .exists());
+            assert!(extract_dir
+                .join("How to calculate LTV for")
+                .join("b.png")
+                .exists());
             assert!(extract_dir.join("report section").join("c.txt").exists());
         });
 
@@ -1621,7 +1786,8 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             // 직접 삭제 (use_trash = false)
-            let result = delete_items_impl(vec![file1.to_string_lossy().to_string()], false, None).await;
+            let result =
+                delete_items_impl(vec![file1.to_string_lossy().to_string()], false, None).await;
             assert!(result.is_ok());
             assert!(!file1.exists());
         });

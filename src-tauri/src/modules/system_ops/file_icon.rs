@@ -1,6 +1,8 @@
 //! 파일 아이콘 추출 모듈
 //! OS 네이티브 아이콘 캐시 및 플랫폼별 추출 로직
 
+use crate::modules::archive_ops::materialize_archive_path_in_cache;
+
 #[cfg(target_os = "windows")]
 use super::super::constants::windows::*;
 
@@ -8,17 +10,13 @@ use super::super::constants::windows::*;
 
 // OS 네이티브 파일 아이콘 캐시 (확장자별)
 fn icon_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
-    use std::sync::{OnceLock, Mutex};
     use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
     static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn crop_transparent_rgba(
-    pixels: Vec<u8>,
-    width: u32,
-    height: u32,
-) -> Option<(Vec<u8>, u32, u32)> {
+fn crop_transparent_rgba(pixels: Vec<u8>, width: u32, height: u32) -> Option<(Vec<u8>, u32, u32)> {
     if width == 0 || height == 0 || pixels.len() != (width * height * 4) as usize {
         return None;
     }
@@ -73,8 +71,15 @@ fn crop_transparent_rgba(
     Some((cropped, cropped_width, cropped_height))
 }
 
-fn should_use_doc_assoc_icon(is_dir: bool, icon_index: i32, doc_no_assoc_index: Option<i32>) -> bool {
-    !is_dir && doc_no_assoc_index.map(|index| index == icon_index).unwrap_or(false)
+fn should_use_doc_assoc_icon(
+    is_dir: bool,
+    icon_index: i32,
+    doc_no_assoc_index: Option<i32>,
+) -> bool {
+    !is_dir
+        && doc_no_assoc_index
+            .map(|index| index == icon_index)
+            .unwrap_or(false)
 }
 
 fn file_extension(path: &str) -> String {
@@ -92,8 +97,7 @@ fn should_use_text_document_icon(is_dir: bool, ext: &str) -> bool {
     // Shell이 빈 문서로 돌려주는 텍스트 기반 문서는 Windows의 .txt 문서 아이콘으로 맞춘다.
     matches!(
         ext,
-        "md"
-            | "markdown"
+        "md" | "markdown"
             | "json"
             | "jsonc"
             | "yaml"
@@ -114,14 +118,23 @@ fn should_use_text_document_icon(is_dir: bool, ext: &str) -> bool {
 
 // OS 네이티브 파일 아이콘 가져오기 (확장자별 캐시)
 #[tauri::command]
-pub fn get_file_icon(path: String, size: u32) -> Result<Option<String>, String> {
+pub fn get_file_icon(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>, String> {
     use base64::Engine;
 
-    let p = std::path::Path::new(&path);
+    let resolved_path = materialize_archive_path_in_cache(&app, &path)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| std::path::PathBuf::from(&path));
+    let resolved_path_str = resolved_path.to_string_lossy().to_string();
+    let p = std::path::Path::new(&resolved_path_str);
     let cache_key = if p.is_dir() {
         format!("__folder___{}", size)
     } else {
-        let ext = p.extension()
+        let ext = p
+            .extension()
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default();
         format!("{}_{}", ext, size)
@@ -137,7 +150,9 @@ pub fn get_file_icon(path: String, size: u32) -> Result<Option<String>, String> 
 
     // 플랫폼별 아이콘 추출 (패닉 방지)
     // 아이콘은 확장자별 캐시로 재사용되어 실질적으로 한 번만 호출 → 세마포어 불필요
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_native_icon_bytes(&path, size))) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        get_native_icon_bytes(&resolved_path_str, size)
+    })) {
         Ok(Some(bytes)) => {
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             let mut cache = icon_cache().lock().map_err(|e| e.to_string())?;
@@ -155,12 +170,17 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
     use std::ffi::CString;
 
     #[repr(C)]
-    struct NSSize { width: f64, height: f64 }
+    struct NSSize {
+        width: f64,
+        height: f64,
+    }
 
     unsafe {
         let ws_class = Class::get("NSWorkspace")?;
         let workspace: *mut Object = msg_send![ws_class, sharedWorkspace];
-        if workspace.is_null() { return None; }
+        if workspace.is_null() {
+            return None;
+        }
 
         let str_class = Class::get("NSString")?;
         let is_dir = std::path::Path::new(path).is_dir();
@@ -170,35 +190,53 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
             // 텍스트 기반 문서는 실제 앱 연결 대신 macOS의 .txt 파일 타입 아이콘으로 맞춘다.
             let c_type = CString::new("txt").ok()?;
             let ns_type: *mut Object = msg_send![str_class, stringWithUTF8String: c_type.as_ptr()];
-            if ns_type.is_null() { return None; }
+            if ns_type.is_null() {
+                return None;
+            }
             msg_send![workspace, iconForFileType: ns_type]
         } else {
             let c_path = CString::new(path).ok()?;
             let ns_path: *mut Object = msg_send![str_class, stringWithUTF8String: c_path.as_ptr()];
-            if ns_path.is_null() { return None; }
+            if ns_path.is_null() {
+                return None;
+            }
             msg_send![workspace, iconForFile: ns_path]
         };
-        if icon.is_null() { return None; }
+        if icon.is_null() {
+            return None;
+        }
 
-        let target_size = NSSize { width: size as f64, height: size as f64 };
+        let target_size = NSSize {
+            width: size as f64,
+            height: size as f64,
+        };
         let _: () = msg_send![icon, setSize: target_size];
 
         // TIFF → NSBitmapImageRep → PNG
         let tiff_data: *mut Object = msg_send![icon, TIFFRepresentation];
-        if tiff_data.is_null() { return None; }
+        if tiff_data.is_null() {
+            return None;
+        }
 
         let rep_class = Class::get("NSBitmapImageRep")?;
         let bitmap_rep: *mut Object = msg_send![rep_class, imageRepWithData: tiff_data];
-        if bitmap_rep.is_null() { return None; }
+        if bitmap_rep.is_null() {
+            return None;
+        }
 
         let png_type: usize = 4; // NSBitmapImageFileTypePNG
         let null_dict: *const std::ffi::c_void = std::ptr::null();
-        let png_data: *mut Object = msg_send![bitmap_rep, representationUsingType: png_type properties: null_dict];
-        if png_data.is_null() { return None; }
+        let png_data: *mut Object =
+            msg_send![bitmap_rep, representationUsingType: png_type properties: null_dict];
+        if png_data.is_null() {
+            return None;
+        }
 
         let length: usize = msg_send![png_data, length];
         let bytes_ptr: *const u8 = msg_send![png_data, bytes];
-        if bytes_ptr.is_null() || length == 0 { return None; }
+        if bytes_ptr.is_null() || length == 0 {
+            return None;
+        }
 
         Some(std::slice::from_raw_parts(bytes_ptr, length).to_vec())
     }
@@ -207,7 +245,9 @@ fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
 #[cfg(target_os = "windows")]
 fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
     // GDI 패닉 방지: catch_unwind로 감싸서 앱 크래시 방지
-    std::panic::catch_unwind(|| get_native_icon_bytes_inner(path, size)).ok().flatten()
+    std::panic::catch_unwind(|| get_native_icon_bytes_inner(path, size))
+        .ok()
+        .flatten()
 }
 
 #[cfg(target_os = "windows")]
@@ -273,11 +313,11 @@ unsafe fn get_stock_icon_info(stock_id: i32, flags: u32) -> Option<SHStockIconIn
 #[cfg(target_os = "windows")]
 unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Vec<u8>> {
     use std::mem;
-    use winapi::um::winuser::{GetIconInfo, ICONINFO, GetDC, ReleaseDC};
     use winapi::um::wingdi::{
-        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject,
-        BITMAPINFOHEADER, BITMAP, BI_RGB, DIB_RGB_COLORS,
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject, BITMAP,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
     };
+    use winapi::um::winuser::{GetDC, GetIconInfo, ReleaseDC, ICONINFO};
 
     let mut icon_info: ICONINFO = mem::zeroed();
     if GetIconInfo(h_icon, &mut icon_info) == 0 {
@@ -286,7 +326,9 @@ unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Ve
 
     let hbm_color = icon_info.hbmColor;
     if hbm_color.is_null() {
-        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+        if !icon_info.hbmMask.is_null() {
+            DeleteObject(icon_info.hbmMask as _);
+        }
         return None;
     }
 
@@ -302,7 +344,9 @@ unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Ve
 
     if width == 0 || height == 0 {
         DeleteObject(icon_info.hbmColor as _);
-        if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+        if !icon_info.hbmMask.is_null() {
+            DeleteObject(icon_info.hbmMask as _);
+        }
         return None;
     }
 
@@ -335,7 +379,9 @@ unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Ve
     DeleteDC(hdc_mem);
     ReleaseDC(std::ptr::null_mut(), hdc_screen);
     DeleteObject(icon_info.hbmColor as _);
-    if !icon_info.hbmMask.is_null() { DeleteObject(icon_info.hbmMask as _); }
+    if !icon_info.hbmMask.is_null() {
+        DeleteObject(icon_info.hbmMask as _);
+    }
 
     for chunk in pixels.chunks_exact_mut(4) {
         chunk.swap(0, 2);
@@ -375,20 +421,24 @@ fn get_stock_doc_no_assoc_index() -> Option<i32> {
 #[cfg(target_os = "windows")]
 fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
     use std::mem;
+    use winapi::shared::windef::HICON;
+    use winapi::shared::winerror::S_OK;
+    use winapi::um::combaseapi::CoInitializeEx;
     use winapi::um::shellapi::{
         SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_SYSICONINDEX,
         SHGFI_USEFILEATTRIBUTES,
     };
-    use winapi::um::combaseapi::CoInitializeEx;
     use winapi::um::winuser::DestroyIcon;
-    use winapi::shared::windef::HICON;
-    use winapi::shared::winerror::S_OK;
 
     // SHGetImageList 이미지 리스트 크기 상수 및 투명 배경 플래그는 constants::windows::*에서 import
 
     #[link(name = "shell32")]
     extern "system" {
-        fn SHGetImageList(iImageList: i32, riid: *const winapi::shared::guiddef::GUID, ppvObj: *mut *mut std::ffi::c_void) -> i32;
+        fn SHGetImageList(
+            iImageList: i32,
+            riid: *const winapi::shared::guiddef::GUID,
+            ppvObj: *mut *mut std::ffi::c_void,
+        ) -> i32;
     }
 
     // IID_IImageList = {46EB5926-582E-4017-9FDF-E8998DAA0950}
@@ -416,7 +466,10 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         let use_file_attributes = file_attributes != 0;
 
         // 1. 파일의 시스템 아이콘 인덱스 가져오기
-        let wide_path: Vec<u16> = query_path.encode_utf16().chain(std::iter::once(0)).collect();
+        let wide_path: Vec<u16> = query_path
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
         let mut shfi: SHFILEINFOW = mem::zeroed();
         let mut info_flags = SHGFI_SYSICONINDEX;
         if use_file_attributes {
@@ -466,8 +519,12 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
             // IUnknown(0-2) + Add(3), ReplaceIcon(4), SetOverlayImage(5),
             // Replace(6), AddMasked(7), Draw(8), Remove(9), GetIcon(10)
             let vtable = *(image_list as *const *const usize);
-            let get_icon_fn: extern "system" fn(*mut std::ffi::c_void, i32, i32, *mut HICON) -> i32 =
-                mem::transmute(*vtable.add(10));
+            let get_icon_fn: extern "system" fn(
+                *mut std::ffi::c_void,
+                i32,
+                i32,
+                *mut HICON,
+            ) -> i32 = mem::transmute(*vtable.add(10));
             let mut icon: HICON = std::ptr::null_mut();
             let hr2 = get_icon_fn(image_list, icon_index, ILD_TRANSPARENT, &mut icon);
 

@@ -27,6 +27,12 @@ export interface FileEntry {
   file_type: FileType;
 }
 
+/** 중복 파일 탐색 결과 그룹 */
+export interface DuplicateFileGroup {
+  size: number;
+  files: FileEntry[];
+}
+
 export interface ClipboardData {
   paths: string[];
   action: 'copy' | 'cut';

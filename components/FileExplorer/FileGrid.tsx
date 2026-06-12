@@ -95,7 +95,7 @@ const ListRow = memo(function ListRow({ entry, isSelected, isFocused, isRenaming
       onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
         if (isPending) return;
-        if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) onOpenInNewTab(entry);
+        if ((e.ctrlKey || e.metaKey) && (entry.is_dir || entry.file_type === 'archive') && onOpenInNewTab) onOpenInNewTab(entry);
         else onOpen(entry);
       }}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
@@ -201,7 +201,7 @@ const DetailsRow = memo(function DetailsRow({ entry, isSelected, isFocused, isRe
       onClick={(e) => { e.stopPropagation(); if (isPending) return; onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey); }}
       onDoubleClick={(e) => {
         if (isPending) return;
-        if ((e.ctrlKey || e.metaKey) && entry.is_dir && onOpenInNewTab) onOpenInNewTab(entry);
+        if ((e.ctrlKey || e.metaKey) && (entry.is_dir || entry.file_type === 'archive') && onOpenInNewTab) onOpenInNewTab(entry);
         else onOpen(entry);
       }}
       onContextMenu={(e) => { e.stopPropagation(); onContextMenu(e, [entry.path]); }}
