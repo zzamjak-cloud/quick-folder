@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.38] - 2026-06-13
+
+### Fixed
+- 개발 빌드에서 `MetadataExt::dev()` trait import 누락으로 Rust 컴파일이 실패하던 문제 수정
+- ZIP 더블클릭 중 내부 드래그 고스트가 남는 문제 수정 — 더블클릭 시 드래그 세션을 취소하고 blur/contextmenu/visibility 변경 시 cleanup 보강
+
 ## [1.27.37] - 2026-06-10
 
 ### Fixed

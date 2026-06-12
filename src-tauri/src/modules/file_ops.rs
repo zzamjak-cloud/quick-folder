@@ -638,6 +638,8 @@ fn is_same_volume(a: &std::path::Path, b: &std::path::Path) -> bool {
     }
     #[cfg(not(windows))]
     {
+        use std::os::unix::fs::MetadataExt;
+
         let a_dev = std::fs::metadata(a).ok().map(|m| m.dev());
         let b_base = b.parent().unwrap_or(b);
         let b_dev = std::fs::metadata(b_base).ok().map(|m| m.dev());

@@ -57,6 +57,17 @@ function restoreTextSelection() {
   document.body.classList.remove('qf-internal-file-dragging');
 }
 
+function destroyFileDragGhosts() {
+  document.querySelectorAll('#qf-drag-ghost').forEach(el => el.remove());
+}
+
+let activeFileDragCleanup: (() => void) | null = null;
+
+function cancelActiveFileDrag() {
+  activeFileDragCleanup?.();
+  destroyFileDragGhosts();
+}
+
 function formatDragError(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
@@ -97,6 +108,11 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
 
   const handleMouseDown = useCallback((e: React.MouseEvent, entryPath: string) => {
     if (e.button !== 0) return;
+    if (e.detail > 1) {
+      cancelActiveFileDrag();
+      return;
+    }
+    cancelActiveFileDrag();
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
@@ -168,12 +184,18 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     function destroyGhost() {
       ghostRef.current?.remove();
       ghostRef.current = null;
+      destroyFileDragGhosts();
     }
 
     function cleanup() {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onCancelDrag);
+      window.removeEventListener('contextmenu', onCancelDrag, true);
+      window.removeEventListener('dragend', onCancelDrag);
+      window.removeEventListener('pointercancel', onCancelDrag);
       document.removeEventListener('mouseleave', onMouseLeave);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       clearPaneHighlight();
       clearCategoryHighlight();
       restoreTextSelection();
@@ -185,6 +207,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       setActiveDragPaths([]);
       setDropTargetPath(null);
       setIsTrayTargetActive(false);
+      if (activeFileDragCleanup === cleanup) activeFileDragCleanup = null;
     }
 
     function startExternalDrag() {
@@ -365,10 +388,24 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       startExternalDrag();
     }
 
+    function onCancelDrag() {
+      cleanup();
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible') cleanup();
+    }
+
     // 동기적으로 리스너 등록 (useEffect 의존 문제 회피)
+    activeFileDragCleanup = cleanup;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('blur', onCancelDrag);
+    window.addEventListener('contextmenu', onCancelDrag, true);
+    window.addEventListener('dragend', onCancelDrag);
+    window.addEventListener('pointercancel', onCancelDrag);
     document.addEventListener('mouseleave', onMouseLeave);
+    document.addEventListener('visibilitychange', onVisibilityChange);
   }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError]);
 
   /**
