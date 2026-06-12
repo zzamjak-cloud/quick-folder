@@ -13,6 +13,7 @@ export interface ContextMenuItem {
   shortcut?: string;
   submenu?: ContextMenuItem[];  // 중첩 메뉴 지원 (동영상 압축용)
   labelColor?: string;  // 라벨 텍스트 색상 (예: 파일명 규칙 변환 서브메뉴)
+  align?: 'left' | 'right';  // 라벨 정렬 (예: 하위 메뉴의 추가 액션)
 }
 
 // 컨텍스트 메뉴 섹션 (구분선으로 나뉘는 항목 그룹)

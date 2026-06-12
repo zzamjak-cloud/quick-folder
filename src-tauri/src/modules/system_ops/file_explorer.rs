@@ -2,6 +2,7 @@
 //! 폴더 열기, 앱 실행, 경로 복사, 폴더 선택 다이얼로그
 
 use super::FolderSelection;
+use std::path::Path;
 
 // ===== 파일 탐색기 연동 =====
 
@@ -15,6 +16,147 @@ pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), Stri
         .map_err(|e| format!("폴더 열기 실패: {}", e))?;
 
     Ok(())
+}
+
+fn ensure_terminal_directory(path: &str) -> Result<(), String> {
+    let terminal_path = Path::new(path);
+    if !terminal_path.exists() {
+        return Err("터미널을 열 경로가 존재하지 않습니다".to_string());
+    }
+    if !terminal_path.is_dir() {
+        return Err("터미널은 폴더 경로에서만 열 수 있습니다".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn quote_powershell_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn build_windows_powershell_run_script(path: &str, command: &str) -> String {
+    let cd = format!("Set-Location -LiteralPath {}", quote_powershell_literal(path));
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        cd
+    } else {
+        format!("{}; {}", cd, trimmed)
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn quote_posix_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(target_os = "macos")]
+fn quote_apple_script_string(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_terminal(path: &str, command: Option<&str>) -> Result<(), String> {
+    let trimmed = command.map(str::trim).filter(|value| !value.is_empty());
+
+    if let Some(command) = trimmed {
+        if std::process::Command::new("wt.exe")
+            .args(["-d", path, "powershell.exe", "-NoExit", "-NoLogo", "-Command", command])
+            .spawn()
+            .is_ok()
+        {
+            return Ok(());
+        }
+
+        let script = build_windows_powershell_run_script(path, command);
+        std::process::Command::new("powershell.exe")
+            .args(["-NoExit", "-NoLogo", "-Command", &script])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("PowerShell 실행 실패: {}", e))
+    } else {
+        if std::process::Command::new("wt.exe")
+            .args(["-d", path])
+            .spawn()
+            .is_ok()
+        {
+            return Ok(());
+        }
+
+        let script = build_windows_powershell_run_script(path, "");
+        std::process::Command::new("powershell.exe")
+            .args(["-NoExit", "-NoLogo", "-Command", &script])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("PowerShell 실행 실패: {}", e))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_terminal(path: &str, command: Option<&str>) -> Result<(), String> {
+    let trimmed = command.map(str::trim).filter(|value| !value.is_empty());
+    let shell_script = if let Some(command) = trimmed {
+        format!("cd {}; {}", quote_posix_literal(path), command)
+    } else {
+        format!("cd {}", quote_posix_literal(path))
+    };
+
+    std::process::Command::new("osascript")
+        .args([
+            "-e",
+            "tell application \"Terminal\" to activate",
+            "-e",
+            &format!(
+                "tell application \"Terminal\" to do script {}",
+                quote_apple_script_string(&shell_script)
+            ),
+        ])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Terminal 실행 실패: {}", e))
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_terminal(path: &str, command: Option<&str>) -> Result<(), String> {
+    let trimmed = command.map(str::trim).filter(|value| !value.is_empty());
+    let shell_script = if let Some(command) = trimmed {
+        format!("cd {}; {}; exec sh", quote_posix_literal(path), command)
+    } else {
+        format!("cd {}; exec sh", quote_posix_literal(path))
+    };
+
+    let attempts = [
+        ("x-terminal-emulator", vec!["-e", "sh", "-lc", shell_script.as_str()]),
+        ("gnome-terminal", vec!["--", "sh", "-lc", shell_script.as_str()]),
+        ("konsole", vec!["-e", "sh", "-lc", shell_script.as_str()]),
+        ("xfce4-terminal", vec!["-e", "sh", "-lc", shell_script.as_str()]),
+    ];
+
+    for (program, args) in attempts {
+        if std::process::Command::new(program).args(args).spawn().is_ok() {
+            return Ok(());
+        }
+    }
+
+    Err("사용 가능한 터미널 앱을 찾을 수 없습니다".to_string())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+fn spawn_terminal(path: &str, command: Option<&str>) -> Result<(), String> {
+    let _ = (path, command);
+    Err("이 플랫폼에서는 터미널 열기를 지원하지 않습니다".to_string())
+}
+
+#[tauri::command]
+pub async fn open_terminal(path: String) -> Result<(), String> {
+    ensure_terminal_directory(&path)?;
+    spawn_terminal(&path, None)
+}
+
+#[tauri::command]
+pub async fn run_terminal_command(path: String, command: String) -> Result<(), String> {
+    ensure_terminal_directory(&path)?;
+    spawn_terminal(&path, Some(&command))
 }
 
 // Windows에서 ShellExecuteW로 임의의 URI를 연다 (Windows 전용 헬퍼)
@@ -338,5 +480,29 @@ pub async fn select_folder(app: tauri::AppHandle) -> Result<Option<FolderSelecti
         }))
     } else {
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn powershell_literal_escapes_single_quotes_in_paths() {
+        let quoted = quote_powershell_literal("D:\\Work\\John's Project");
+        assert_eq!(quoted, "'D:\\Work\\John''s Project'");
+    }
+
+    #[test]
+    fn powershell_run_script_keeps_terminal_open_and_runs_in_path() {
+        let script = build_windows_powershell_run_script(
+            "D:\\0_Client\\quick-folder",
+            "npm run build",
+        );
+
+        assert_eq!(
+            script,
+            "Set-Location -LiteralPath 'D:\\0_Client\\quick-folder'; npm run build"
+        );
     }
 }

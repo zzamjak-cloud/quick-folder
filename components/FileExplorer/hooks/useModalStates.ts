@@ -37,6 +37,8 @@ export function useModalStates() {
   const [gifCompressPaths, setGifCompressPaths] = useState<string[] | null>(null);
   // 오디오 미리듣기 대상 경로
   const [audioPreviewPath, setAudioPreviewPath] = useState<string | null>(null);
+  // 터미널 프리셋 대상 폴더 경로
+  const [terminalPresetPath, setTerminalPresetPath] = useState<string | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -55,5 +57,6 @@ export function useModalStates() {
     pdfPreviewPath, setPdfPreviewPath,
     gifCompressPaths, setGifCompressPaths,
     audioPreviewPath, setAudioPreviewPath,
+    terminalPresetPath, setTerminalPresetPath,
   };
 }

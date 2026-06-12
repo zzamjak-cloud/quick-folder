@@ -6,10 +6,11 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
-  RotateCcw, HardDrive,
+  RotateCcw, HardDrive, Terminal,
 } from 'lucide-react';
 import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { NamingCase } from '../../../utils/caseConvert';
+import { getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
 
 export interface UseContextMenuBuilderConfig {
   contextMenu: { x: number; y: number; paths: string[] } | null;
@@ -49,6 +50,7 @@ export interface UseContextMenuBuilderConfig {
     setFontMergePaths: (paths: string[]) => void;
     setPdfPreviewPath: (path: string | null) => void;
     setGifCompressPaths: (paths: string[] | null) => void;
+    setTerminalPresetPath: (path: string | null) => void;
   };
   preview: {
     handlePreviewImage: (path: string) => void;
@@ -119,6 +121,57 @@ export function useContextMenuBuilder({
         onClick: () => openInOsExplorer(
           singleEntry?.is_dir ? singlePath : (singlePath.split(/[/\\]/).slice(0, -1).join('/') || singlePath)
         ),
+      });
+    }
+    if (isSingle && singleEntry?.is_dir) {
+      const terminalPresets = getTerminalPresets(singlePath);
+      openSection.items.push({
+        id: 'open-terminal',
+        icon: <Terminal size={13} />,
+        label: '터미널에서 열기',
+        onClick: () => {/* 서브메뉴 */},
+        submenu: [
+          {
+            id: 'terminal-open-project',
+            icon: undefined,
+            label: '프로젝트 경로 열기',
+            onClick: async () => {
+              try {
+                await invoke('open_terminal', { path: singlePath });
+              } catch (e) {
+                fileOps.showCopyToast(`터미널 실행 실패: ${e}`);
+              }
+            },
+          },
+          ...terminalPresets.map(preset => ({
+            id: `terminal-preset-${preset.id}`,
+            icon: undefined,
+            label: preset.name,
+            labelColor: isHighRiskTerminalCommand(preset.command) ? '#fbbf24' : undefined,
+            onClick: async () => {
+              const risky = isHighRiskTerminalCommand(preset.command);
+              const confirmed = window.confirm(
+                `${risky ? '[주의] 위험 가능 명령입니다.\n\n' : ''}` +
+                `다음 경로에서 터미널 명령을 실행할까요?\n\n` +
+                `경로: ${singlePath}\n` +
+                `명령: ${preset.command}`
+              );
+              if (!confirmed) return;
+              try {
+                await invoke('run_terminal_command', { path: singlePath, command: preset.command });
+              } catch (e) {
+                fileOps.showCopyToast(`프리셋 실행 실패: ${e}`);
+              }
+            },
+          })),
+          {
+            id: 'terminal-add-command',
+            icon: undefined,
+            label: '+ 명령어 추가',
+            align: 'right',
+            onClick: () => modals.setTerminalPresetPath(singlePath),
+          },
+        ],
       });
     }
     sections.push(openSection);
@@ -579,7 +632,7 @@ export function useContextMenuBuilder({
     handleAddTag, handleRemoveTag,
     onAddToFavorites, modals.setPixelatePath, modals.setMapMakerPath, modals.setSheetUnpackPath,
     modals.setFontPreviewPath, modals.setFontMergePaths,
-    modals.setPdfPreviewPath, modals.setGifCompressPaths,
+    modals.setPdfPreviewPath, modals.setGifCompressPaths, modals.setTerminalPresetPath,
   ]);
 
   return { contextMenuSections };

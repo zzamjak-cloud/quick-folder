@@ -1,7 +1,7 @@
 # Rust 백엔드 개요
 
 ## 진입점
-`src-tauri/src/lib.rs` — Tauri 명령 등록 (78개)  
+`src-tauri/src/lib.rs` — Tauri 명령 등록  
 `src-tauri/src/helpers.rs` — 공통 헬퍼 함수
 
 ## 모듈 구조

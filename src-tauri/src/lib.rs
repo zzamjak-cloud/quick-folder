@@ -14,6 +14,8 @@ pub fn run() {
     .plugin(tauri_plugin_drag::init())
     .invoke_handler(tauri::generate_handler![
         open_folder,
+        open_terminal,
+        run_terminal_command,
         open_sac_settings,
         open_external_url,
         copy_path,

@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { ContextMenuItem, ContextMenuSection } from './types';
 
+const MENU_MIN_WIDTH = 180;
+const MENU_MAX_WIDTH = 360;
+const SUBMENU_MIN_WIDTH = 180;
+const SUBMENU_MAX_WIDTH = 360;
+
 interface ContextMenuProps {
   x: number;
   y: number;
@@ -17,6 +22,13 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
   const handleEnter = () => { clearTimeout(timerRef.current); setOpen(true); };
   const handleLeave = () => { timerRef.current = setTimeout(() => setOpen(false), 150); };
 
+  const labelStyle: React.CSSProperties = {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  };
+
   return (
     <div
       className="relative"
@@ -27,16 +39,19 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors text-left hover:bg-[var(--qf-surface-hover)] cursor-pointer"
         style={{ color: 'var(--qf-text)' }}
       >
-        <span style={{ color: 'var(--qf-muted)' }}>{item.icon}</span>
-        <span className="flex-1">{item.label}</span>
+        <span className="flex-shrink-0" style={{ color: 'var(--qf-muted)' }}>{item.icon}</span>
+        <span className="flex-1" style={labelStyle} title={item.label}>{item.label}</span>
         <ChevronRight size={11} style={{ color: 'var(--qf-muted)' }} />
       </button>
       {open && item.submenu && (
         <div
-          className="absolute left-full top-0 rounded-lg shadow-2xl overflow-hidden min-w-[120px] z-[10000]"
+          className="absolute left-full top-0 rounded-lg shadow-2xl overflow-hidden z-[10000]"
           style={{
             backgroundColor: 'var(--qf-surface-2)',
             border: '1px solid var(--qf-border)',
+            width: 'max-content',
+            minWidth: SUBMENU_MIN_WIDTH,
+            maxWidth: `min(${SUBMENU_MAX_WIDTH}px, calc(100vw - 16px))`,
           }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
@@ -48,8 +63,14 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors text-left hover:bg-[var(--qf-surface-hover)] cursor-pointer"
                 style={{ color: sub.labelColor ?? 'var(--qf-text)', fontWeight: sub.labelColor ? 600 : undefined }}
                 onClick={() => { sub.onClick(); onClose(); }}
+                title={sub.label}
               >
-                {sub.label}
+                <span
+                  className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+                  style={{ textAlign: sub.align ?? 'left' }}
+                >
+                  {sub.label}
+                </span>
               </button>
             ))}
           </div>
@@ -112,11 +133,12 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
         style={{ color: 'var(--qf-text)' }}
         onClick={menuItem.disabled ? undefined : () => { menuItem.onClick(); onClose(); }}
         disabled={menuItem.disabled}
+        title={menuItem.label}
       >
-        <span style={{ color: 'var(--qf-muted)' }}>{menuItem.icon}</span>
-        <span className="flex-1">{menuItem.label}</span>
+        <span className="flex-shrink-0" style={{ color: 'var(--qf-muted)' }}>{menuItem.icon}</span>
+        <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{menuItem.label}</span>
         {menuItem.shortcut && (
-          <span className="text-[10px] text-[var(--qf-muted)]">{menuItem.shortcut}</span>
+          <span className="flex-shrink-0 text-[10px] text-[var(--qf-muted)]">{menuItem.shortcut}</span>
         )}
       </button>
     );
@@ -130,12 +152,15 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] rounded-lg shadow-2xl min-w-[180px]"
+      className="fixed z-[9999] rounded-lg shadow-2xl"
       style={{
         left: adjustedPos.x,
         top: adjustedPos.y,
         backgroundColor: 'var(--qf-surface-2)',
         border: '1px solid var(--qf-border)',
+        width: 'max-content',
+        minWidth: MENU_MIN_WIDTH,
+        maxWidth: `min(${MENU_MAX_WIDTH}px, calc(100vw - 16px))`,
       }}
       onContextMenu={e => e.preventDefault()}
     >

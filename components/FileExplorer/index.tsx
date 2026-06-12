@@ -24,6 +24,7 @@ import AudioPreviewModal from './AudioPreviewModal';
 import CodePreviewModal from './CodePreviewModal';
 import FbxPreviewModal from './FbxPreviewModal';
 import FontMergeModal from './FontMergeModal';
+import TerminalPresetModal from './TerminalPresetModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDrop';
@@ -1728,6 +1729,15 @@ export default function FileExplorer({
           paths={modals.bulkRenamePaths}
           onClose={() => modals.setBulkRenamePaths(null)}
           onApply={fileOps.handleBulkRenameApply}
+          themeVars={themeVars}
+        />
+      )}
+
+      {/* 터미널 프리셋 모달 */}
+      {modals.terminalPresetPath && (
+        <TerminalPresetModal
+          path={modals.terminalPresetPath}
+          onClose={() => modals.setTerminalPresetPath(null)}
           themeVars={themeVars}
         />
       )}

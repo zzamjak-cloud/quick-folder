@@ -55,6 +55,8 @@ struct ExtractResult {
 | `write_files_to_clipboard` | `paths: Vec<String>` | 파일을 OS 클립보드에 등록 |
 | `read_files_from_clipboard` | — | OS 클립보드 파일 목록 |
 | `paste_image_from_clipboard` | `dest: String` | 이미지 → PNG 저장, 경로 반환 |
+| `open_terminal` | `path: String` | 폴더 경로에서 OS 터미널 열기 |
+| `run_terminal_command` | `path, command: String` | 폴더 경로에서 명령을 새 터미널로 실행 |
 | `open_external_url` | `url: String` | 브라우저로 URL 열기 |
 | `open_sac_settings` | — | macOS 손쉬운 사용 설정 |
 | `quick_look` | `path: String` | macOS QuickLook |
