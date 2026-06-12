@@ -33,6 +33,35 @@ export interface DuplicateFileGroup {
   files: FileEntry[];
 }
 
+/** 스마트 폴더 병합 — 충돌 파일 정보 */
+export interface FolderMergeConflictFile {
+  relativePath: string;
+  sourceModified: number;
+  destModified: number;
+  sourceSize: number;
+  destSize: number;
+}
+
+/** 스마트 폴더 병합 — 분석 결과 */
+export interface FolderMergeAnalysis {
+  sourcePath: string;
+  destPath: string;
+  folderName: string;
+  conflicts: FolderMergeConflictFile[];
+  onlySource: string[];
+  onlyDest: string[];
+}
+
+/** 스마트 폴더 병합 — 충돌 처리 방식 */
+export type FolderMergeConflictMode = 'rename' | 'overwrite_newer' | 'skip';
+
+/** 스마트 폴더 병합 모달 요청 */
+export interface FolderMergeRequest {
+  sourcePath: string;
+  destParent: string;
+  action: 'copy' | 'cut' | 'move';
+}
+
 export interface ClipboardData {
   paths: string[];
   action: 'copy' | 'cut';

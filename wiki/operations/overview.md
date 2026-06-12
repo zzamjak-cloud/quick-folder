@@ -19,6 +19,7 @@
 | 폴더 용량 분석 | `calculate_folder_size` | 직계 하위 항목을 용량 내림차순으로 반환 |
 | 휴지통 복원 | `restore_trash_items` | Undo용 |
 | 중복 확인 | `check_duplicate_items` | 붙여넣기 전 |
+| 스마트 폴더 병합 | `analyze_folder_merge`, `merge_folders` | 같은 이름 폴더 충돌 시 |
 | ZIP 압축 | `compress_to_zip` | `Ctrl+Shift+Z` |
 | ZIP 해제 | `extract_zip` | `Ctrl+Shift+Alt+Z` |
 

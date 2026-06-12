@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ClipboardData, FileEntry } from '../../../types';
+import { ClipboardData, FileEntry, FolderMergeRequest } from '../../../types';
 import { getFileName, getPathSeparator, normalizeFsPath } from '../../../utils/pathUtils';
+import { detectFolderMergeScenario } from '../../../utils/folderMerge';
 import { runCopyWithProgress, type CopyProgressInfo } from './runCopyWithProgress';
 
 export interface UseClipboardConfig {
@@ -17,6 +18,8 @@ export interface UseClipboardConfig {
   setPendingCopyPaths?: React.Dispatch<React.SetStateAction<string[]>>;
   /** copy_items_with_progress 진행률 (파일 수·퍼센트) */
   onCopyProgress?: (info: CopyProgressInfo) => void;
+  /** 스마트 폴더 병합 모달 열기 */
+  onFolderMergeRequest?: (request: FolderMergeRequest) => void;
 }
 
 /**
@@ -35,6 +38,7 @@ export function useClipboard({
   entries: currentEntries,
   setPendingCopyPaths,
   onCopyProgress,
+  onFolderMergeRequest,
 }: UseClipboardConfig) {
   // 분할 뷰: 공유 클립보드 사용, 단일 뷰: 내부 상태 사용
   const [internalClipboard, setInternalClipboard] = useState<ClipboardData | null>(null);
@@ -153,6 +157,12 @@ export function useClipboard({
       // 중복 파일 체크
       const duplicates = await invoke<string[]>('check_duplicate_items', { sources: paths, dest: currentPath });
       if (duplicates.length > 0) {
+        const mergeAction = action === 'cut' ? 'cut' : 'copy';
+        const folderMerge = await detectFolderMergeScenario(paths, currentPath, duplicates, mergeAction);
+        if (folderMerge && onFolderMergeRequest) {
+          onFolderMergeRequest(folderMerge);
+          return;
+        }
         setDuplicateConfirm({ duplicates, paths, action });
         return;
       }
@@ -161,7 +171,7 @@ export function useClipboard({
     } catch (e) {
       console.error('붙여넣기 실패:', e);
     }
-  }, [clipboard, currentPath, loadDirectory, executePaste, setSelectedPaths]);
+  }, [clipboard, currentPath, loadDirectory, executePaste, setSelectedPaths, onFolderMergeRequest]);
 
   return {
     clipboard,

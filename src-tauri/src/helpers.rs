@@ -172,6 +172,36 @@ pub fn get_copy_destination(parent: &Path, stem: &str, ext: &str, is_dir: bool) 
     dest
 }
 
+/// 충돌 시 Windows 탐색기 스타일 "(1)", "(2)" 접미사 경로 결정
+pub fn get_numbered_destination(parent: &Path, stem: &str, ext: &str, is_dir: bool) -> PathBuf {
+    let stem = stem.to_string();
+    let ext = ext.to_string();
+    let (first, pattern): (String, Box<dyn Fn(u32) -> String>) = if is_dir {
+        let s = stem.clone();
+        let s2 = stem.clone();
+        (
+            format!("{} (1)", s),
+            Box::new(move |n| format!("{} ({})", s2, n)),
+        )
+    } else {
+        let s = stem.clone();
+        let e = ext.clone();
+        let s2 = stem.clone();
+        let e2 = ext.clone();
+        (
+            format!("{} (1){}", s, e),
+            Box::new(move |n| format!("{} ({}){}", s2, n, e2)),
+        )
+    };
+    let mut dest = parent.join(&first);
+    let mut counter = 2u32;
+    while dest.exists() {
+        dest = parent.join(pattern(counter));
+        counter += 1;
+    }
+    dest
+}
+
 /// 이미지 목록을 그리드로 배치한 스프라이트 시트 캔버스 생성
 ///
 /// 여러 이미지를 하나의 그리드 캔버스로 합칩니다.

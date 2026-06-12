@@ -60,6 +60,8 @@ struct FolderSizeChildInfo {
 | `delete_items_elevated` | `paths: Vec<String>` | `()` | 관리자 권한 삭제 |
 | `restore_trash_items` | `paths: Vec<String>` | `()` | 휴지통에서 복원 |
 | `check_duplicate_items` | `paths[], dest: String` | `Vec<String>` | 중복 파일 목록 반환 |
+| `analyze_folder_merge` | `source, dest_parent: String` | `FolderMergeAnalysis` | 폴더 병합 전 비교 |
+| `merge_folders` | `source, dest_parent, conflict_mode, is_move` | `()` | 스마트 폴더 병합 실행 |
 | `compress_to_zip` | `paths[], dest: String` | `String` | ZIP 압축 (dest 경로 반환) |
 | `extract_zip` | `zip_path, dest_dir: String` | `ExtractResult` | ZIP 해제 (부분 실패 보고) |
 

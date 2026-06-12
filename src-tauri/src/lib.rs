@@ -32,6 +32,8 @@ pub fn run() {
             get_psd_thumbnail,
             get_file_icon,
             check_duplicate_items,
+            analyze_folder_merge,
+            merge_folders,
             copy_items,
             copy_items_with_progress,
             duplicate_items,

@@ -24,6 +24,7 @@ import AudioPreviewModal from './AudioPreviewModal';
 import CodePreviewModal from './CodePreviewModal';
 import FbxPreviewModal from './FbxPreviewModal';
 import FontMergeModal from './FontMergeModal';
+import FolderMergeModal from './FolderMergeModal';
 import TerminalPresetModal from './TerminalPresetModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
@@ -33,6 +34,7 @@ import { useTabManagement } from './hooks/useTabManagement';
 import { PreviewModals } from './PreviewModals';
 import { cancelAllQueued, queuedInvokeLow } from './hooks/invokeQueue';
 import { runCopyWithProgress } from './hooks/runCopyWithProgress';
+import { detectFolderMergeScenario } from '../../utils/folderMerge';
 import { useColumnView } from './hooks/useColumnView';
 import ColumnView from './ColumnView';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -545,6 +547,7 @@ export default function FileExplorer({
           : item
       ));
     },
+    onFolderMergeRequest: modals.setFolderMergeRequest,
   });
 
   // --- 파일 조작 (커스텀 훅) ---
@@ -1107,6 +1110,27 @@ export default function FileExplorer({
 
   // --- 드롭 중복 확인 다이얼로그 상태 (내부 드래그 + OS 드래그 공용) ---
   const [dropConfirm, setDropConfirm] = useState<PendingDrop | null>(null);
+
+  const handleDropDuplicateDetected = useCallback(async (info: PendingDrop) => {
+    const mergeAction = info.action === 'copy' ? 'copy' : 'move';
+    const folderMerge = await detectFolderMergeScenario(info.sources, info.dest, info.duplicates, mergeAction);
+    if (folderMerge) {
+      modals.setFolderMergeRequest(folderMerge);
+    } else {
+      setDropConfirm(info);
+    }
+  }, [modals.setFolderMergeRequest]);
+
+  const handleFolderMergeComplete = useCallback(() => {
+    const req = modals.folderMergeRequest;
+    modals.setFolderMergeRequest(null);
+    if (req?.action === 'cut') {
+      clipboardHook.setClipboard(null);
+    }
+    loadDirectory(currentPath);
+    window.dispatchEvent(new Event('qf-files-changed'));
+  }, [modals.folderMergeRequest, modals.setFolderMergeRequest, clipboardHook, currentPath, loadDirectory]);
+
   // --- 내부 드래그 → 폴더 이동 / 사이드바 즐겨찾기 등록 ---
   const {
     isDragging: isInternalDragging,
@@ -1121,7 +1145,7 @@ export default function FileExplorer({
     onMoveComplete: () => loadDirectory(currentPath),
     onAddToCategory,
     onStageFilesToTray,
-    onDuplicateDetected: setDropConfirm,
+    onDuplicateDetected: handleDropDuplicateDetected,
     onError: setError,
   });
 
@@ -1172,8 +1196,19 @@ export default function FileExplorer({
         // 중복 확인
         const duplicates = await invoke<string[]>('check_duplicate_items', { sources: filtered, dest: currentPath });
         if (duplicates.length > 0) {
-          // 확인 다이얼로그에 위임 — 덮어쓰기/취소 분기
-          setDropConfirm({ sources: filtered, dest: currentPath, action: shouldCopy ? 'copy' : 'move', duplicates });
+          const dropInfo: PendingDrop = {
+            sources: filtered,
+            dest: currentPath,
+            action: shouldCopy ? 'copy' : 'move',
+            duplicates,
+          };
+          const mergeAction = shouldCopy ? 'copy' : 'move';
+          const folderMerge = await detectFolderMergeScenario(filtered, currentPath, duplicates, mergeAction);
+          if (folderMerge) {
+            modals.setFolderMergeRequest(folderMerge);
+          } else {
+            setDropConfirm(dropInfo);
+          }
           return;
         }
 
@@ -1938,6 +1973,15 @@ export default function FileExplorer({
         />
       )}
 
+      {/* 스마트 폴더 병합 */}
+      {modals.folderMergeRequest && (
+        <FolderMergeModal
+          request={modals.folderMergeRequest}
+          onClose={() => modals.setFolderMergeRequest(null)}
+          onComplete={handleFolderMergeComplete}
+          themeVars={themeVars}
+        />
+      )}
 
       {/* 중복 파일 확인 다이얼로그 */}
       {clipboardHook.duplicateConfirm && (

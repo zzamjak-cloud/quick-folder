@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { FolderMergeRequest } from '../../../types';
 
 /**
  * 파일 탐색기의 모달/다이얼로그 상태를 모아 관리하는 훅.
@@ -43,6 +44,8 @@ export function useModalStates() {
   const [audioPreviewPath, setAudioPreviewPath] = useState<string | null>(null);
   // 터미널 프리셋 대상 폴더 경로
   const [terminalPresetPath, setTerminalPresetPath] = useState<string | null>(null);
+  // 스마트 폴더 병합 요청
+  const [folderMergeRequest, setFolderMergeRequest] = useState<FolderMergeRequest | null>(null);
 
   return {
     pixelatePath, setPixelatePath,
@@ -64,5 +67,6 @@ export function useModalStates() {
     gifCompressPaths, setGifCompressPaths,
     audioPreviewPath, setAudioPreviewPath,
     terminalPresetPath, setTerminalPresetPath,
+    folderMergeRequest, setFolderMergeRequest,
   };
 }
