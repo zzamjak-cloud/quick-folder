@@ -58,20 +58,43 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
         >
           <div className="py-1">
             {item.submenu.map(sub => (
-              <button
+              <div
                 key={sub.id}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors text-left hover:bg-[var(--qf-surface-hover)] cursor-pointer"
-                style={{ color: sub.labelColor ?? 'var(--qf-text)', fontWeight: sub.labelColor ? 600 : undefined }}
-                onClick={() => { sub.onClick(); onClose(); }}
-                title={sub.label}
+                className="w-full flex items-center text-xs transition-colors hover:bg-[var(--qf-surface-hover)]"
               >
-                <span
-                  className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
-                  style={{ textAlign: sub.align ?? 'left' }}
+                <button
+                  className="min-w-0 flex-1 px-3 py-1.5 text-left cursor-pointer"
+                  style={{ color: sub.labelColor ?? 'var(--qf-text)', fontWeight: sub.labelColor ? 600 : undefined }}
+                  onClick={() => { sub.onClick(); onClose(); }}
+                  title={sub.label}
                 >
-                  {sub.label}
-                </span>
-              </button>
+                  <span
+                    className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+                    style={{ textAlign: sub.align ?? 'left' }}
+                  >
+                    {sub.label}
+                  </span>
+                </button>
+                {sub.trailingActions?.map(action => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className={`flex h-7 w-7 flex-shrink-0 items-center justify-center transition-colors ${
+                      action.disabled ? 'cursor-not-allowed opacity-30' : 'cursor-pointer hover:bg-[var(--qf-surface-hover)]'
+                    }`}
+                    style={{ color: action.labelColor ?? 'var(--qf-muted)' }}
+                    title={action.title}
+                    disabled={action.disabled}
+                    onClick={action.disabled ? undefined : (event) => {
+                      event.stopPropagation();
+                      action.onClick();
+                      onClose();
+                    }}
+                  >
+                    {action.icon}
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         </div>

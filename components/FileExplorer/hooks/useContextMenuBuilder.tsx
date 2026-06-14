@@ -8,10 +8,12 @@ import {
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
   RotateCcw, HardDrive, Terminal, Files, GitCompare,
 } from 'lucide-react';
-import { getFileName, isGoogleDrivePath } from '../../../utils/pathUtils';
+import { getFileName, isArchiveVirtualPath, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { NamingCase } from '../../../utils/caseConvert';
-import { getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
+import { deleteTerminalPreset, getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
+
+const RECENT_PATH = '__recent__';
 
 export interface UseContextMenuBuilderConfig {
   contextMenu: { x: number; y: number; paths: string[] } | null;
@@ -52,6 +54,7 @@ export interface UseContextMenuBuilderConfig {
     setPdfPreviewPath: (path: string | null) => void;
     setGifCompressPaths: (paths: string[] | null) => void;
     setTerminalPresetPath: (path: string | null) => void;
+    setTerminalPresetEditId: (presetId: string | null) => void;
     setDuplicateFinderPath: (path: string | null) => void;
     setDiffViewerPaths: (paths: [string, string] | null) => void;
   };
@@ -93,6 +96,17 @@ export function useContextMenuBuilder({
     const isSingle = paths.length === 1;
     const singlePath = paths[0] ?? '';
     const singleEntry = isSingle ? entries.find(e => e.path === singlePath) : null;
+    const singleFolderTerminalPath = isSingle && singleEntry?.is_dir && !isArchiveVirtualPath(singlePath)
+      ? singlePath
+      : null;
+    // 빈 공간 우클릭은 현재 진입한 실제 폴더를 터미널 대상 경로로 사용한다.
+    const currentFolderTerminalPath = paths.length === 0
+      && currentPath
+      && currentPath !== RECENT_PATH
+      && !isArchiveVirtualPath(currentPath)
+      ? currentPath
+      : null;
+    const terminalTargetPath = singleFolderTerminalPath ?? currentFolderTerminalPath;
     const mod = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
 
     const sections: ContextMenuSection[] = [];
@@ -126,8 +140,8 @@ export function useContextMenuBuilder({
         ),
       });
     }
-    if (isSingle && singleEntry?.is_dir) {
-      const terminalPresets = getTerminalPresets(singlePath);
+    if (terminalTargetPath) {
+      const terminalPresets = getTerminalPresets(terminalTargetPath);
       openSection.items.push({
         id: 'open-terminal',
         icon: <Terminal size={13} />,
@@ -135,12 +149,12 @@ export function useContextMenuBuilder({
         onClick: () => {/* 서브메뉴 */},
         submenu: [
           {
-            id: 'terminal-open-project',
+            id: 'terminal-open-folder',
             icon: undefined,
-            label: '프로젝트 경로 열기',
+            label: '폴더 경로 열기',
             onClick: async () => {
               try {
-                await invoke('open_terminal', { path: singlePath });
+                await invoke('open_terminal', { path: terminalTargetPath });
               } catch (e) {
                 fileOps.showCopyToast(`터미널 실행 실패: ${e}`);
               }
@@ -152,27 +166,40 @@ export function useContextMenuBuilder({
             label: preset.name,
             labelColor: isHighRiskTerminalCommand(preset.command) ? '#fbbf24' : undefined,
             onClick: async () => {
-              const risky = isHighRiskTerminalCommand(preset.command);
-              const confirmed = window.confirm(
-                `${risky ? '[주의] 위험 가능 명령입니다.\n\n' : ''}` +
-                `다음 경로에서 터미널 명령을 실행할까요?\n\n` +
-                `경로: ${singlePath}\n` +
-                `명령: ${preset.command}`
-              );
-              if (!confirmed) return;
               try {
-                await invoke('run_terminal_command', { path: singlePath, command: preset.command });
+                await invoke('run_terminal_command', { path: terminalTargetPath, command: preset.command });
               } catch (e) {
                 fileOps.showCopyToast(`프리셋 실행 실패: ${e}`);
               }
             },
+            trailingActions: [
+              {
+                id: `terminal-preset-edit-${preset.id}`,
+                icon: <Edit2 size={12} />,
+                title: '프리셋 수정',
+                onClick: () => {
+                  modals.setTerminalPresetEditId(preset.id);
+                  modals.setTerminalPresetPath(terminalTargetPath);
+                },
+              },
+              {
+                id: `terminal-preset-delete-${preset.id}`,
+                icon: <Trash2 size={12} />,
+                title: '프리셋 삭제',
+                labelColor: '#f87171',
+                onClick: () => deleteTerminalPreset(terminalTargetPath, preset.id),
+              },
+            ],
           })),
           {
             id: 'terminal-add-command',
             icon: undefined,
             label: '+ 명령어 추가',
             align: 'right',
-            onClick: () => modals.setTerminalPresetPath(singlePath),
+            onClick: () => {
+              modals.setTerminalPresetEditId(null);
+              modals.setTerminalPresetPath(terminalTargetPath);
+            },
           },
         ],
       });
@@ -647,7 +674,7 @@ export function useContextMenuBuilder({
 
     return sections;
   }, [
-    contextMenu, entries, clipboardHook.clipboard, folderTags,
+    contextMenu, entries, currentPath, clipboardHook.clipboard, folderTags,
     openEntry, openInOsExplorer, preview.handlePreviewImage,
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
     fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleConvertCase, fileOps.handleDelete,
@@ -658,6 +685,7 @@ export function useContextMenuBuilder({
     onAddToFavorites, modals.setPixelatePath, modals.setMapMakerPath, modals.setSheetUnpackPath,
     modals.setFontPreviewPath, modals.setFontMergePaths,
     modals.setPdfPreviewPath, modals.setGifCompressPaths, modals.setTerminalPresetPath,
+    modals.setTerminalPresetEditId,
     modals.setDuplicateFinderPath,
     modals.setDiffViewerPaths,
   ]);

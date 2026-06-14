@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.40] - 2026-06-14
+
+### Added
+- 빈 공간 우클릭에서도 현재 폴더 기준 터미널 열기와 터미널 프리셋 실행 지원
+- 터미널 프리셋 메뉴에 수정/삭제 아이콘 추가
+
+### Changed
+- 터미널 프리셋 실행 확인 팝업을 제거하고 클릭 즉시 실행하도록 변경
+
 ## [1.27.39] - 2026-06-14
 
 ### Fixed

@@ -196,10 +196,10 @@ export default function FolderMergeModal({
                           <tr key={c.relativePath} style={{ color: textColor, borderBottom: `1px solid ${borderColor}22` }}>
                             <td className="px-3 py-1 truncate font-mono" title={c.relativePath}>{c.relativePath}</td>
                             <td className="px-2 py-1 text-right whitespace-nowrap" style={{ color: mutedColor }}>
-                              {formatSize(c.sourceSize)}
+                              {formatSize(c.sourceSize, false)}
                             </td>
                             <td className="px-2 py-1 text-right whitespace-nowrap" style={{ color: mutedColor }}>
-                              {formatSize(c.destSize)}
+                              {formatSize(c.destSize, false)}
                             </td>
                           </tr>
                         ))}

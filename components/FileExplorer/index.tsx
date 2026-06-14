@@ -1813,7 +1813,11 @@ export default function FileExplorer({
       {modals.terminalPresetPath && (
         <TerminalPresetModal
           path={modals.terminalPresetPath}
-          onClose={() => modals.setTerminalPresetPath(null)}
+          initialEditId={modals.terminalPresetEditId}
+          onClose={() => {
+            modals.setTerminalPresetPath(null);
+            modals.setTerminalPresetEditId(null);
+          }}
           themeVars={themeVars}
         />
       )}

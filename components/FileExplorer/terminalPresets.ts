@@ -33,6 +33,18 @@ export function getTerminalPresets(path: string) {
   return loadTerminalPresetStore()[path] ?? [];
 }
 
+export function deleteTerminalPreset(path: string, presetId: string) {
+  const store = loadTerminalPresetStore();
+  const nextPresets = (store[path] ?? []).filter(preset => preset.id !== presetId);
+  const nextStore = { ...store };
+  if (nextPresets.length > 0) {
+    nextStore[path] = nextPresets;
+  } else {
+    delete nextStore[path];
+  }
+  saveTerminalPresetStore(nextStore);
+}
+
 export function normalizeTerminalPresetInput(value: string) {
   return value.trim();
 }

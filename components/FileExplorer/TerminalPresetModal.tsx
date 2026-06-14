@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AlertTriangle, Play, Plus, Save, Terminal, Trash2 } from 'lucide-react';
 import { ThemeVars } from './types';
@@ -16,17 +16,18 @@ import {
 
 interface TerminalPresetModalProps {
   path: string;
+  initialEditId?: string | null;
   themeVars: ThemeVars | null;
   onClose: () => void;
 }
 
-export default function TerminalPresetModal({ path, themeVars, onClose }: TerminalPresetModalProps) {
+export default function TerminalPresetModal({ path, initialEditId, themeVars, onClose }: TerminalPresetModalProps) {
   const [store, setStore] = useState<TerminalPresetStore>(() => loadTerminalPresetStore());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [command, setCommand] = useState('');
-  const [pendingRun, setPendingRun] = useState<TerminalPreset | null>(null);
   const [error, setError] = useState('');
+  const appliedInitialEditIdRef = useRef<string | null>(null);
 
   const presets = useMemo(() => store[path] ?? [], [store, path]);
   const selectedTitle = getFileName(path) || path;
@@ -79,9 +80,18 @@ export default function TerminalPresetModal({ path, themeVars, onClose }: Termin
     setEditingId(preset.id);
     setName(preset.name);
     setCommand(preset.command);
-    setPendingRun(null);
     setError('');
   };
+
+  useEffect(() => {
+    if (!initialEditId) return;
+    if (appliedInitialEditIdRef.current === initialEditId) return;
+    const preset = presets.find(item => item.id === initialEditId);
+    if (preset) {
+      handleEdit(preset);
+      appliedInitialEditIdRef.current = initialEditId;
+    }
+  }, [initialEditId, presets]);
 
   const handleSave = () => {
     const presetName = normalizeTerminalPresetInput(name);
@@ -120,7 +130,6 @@ export default function TerminalPresetModal({ path, themeVars, onClose }: Termin
   const handleDelete = (presetId: string) => {
     persistPresets(presets.filter(preset => preset.id !== presetId));
     if (editingId === presetId) resetForm();
-    if (pendingRun?.id === presetId) setPendingRun(null);
   };
 
   const handleOpenTerminal = async () => {
@@ -132,12 +141,10 @@ export default function TerminalPresetModal({ path, themeVars, onClose }: Termin
     }
   };
 
-  const handleRun = async () => {
-    if (!pendingRun) return;
+  const handleRun = async (preset: TerminalPreset) => {
     setError('');
     try {
-      await invoke('run_terminal_command', { path, command: pendingRun.command });
-      setPendingRun(null);
+      await invoke('run_terminal_command', { path, command: preset.command });
     } catch (e) {
       setError(`프리셋 실행 실패: ${e}`);
     }
@@ -221,7 +228,7 @@ export default function TerminalPresetModal({ path, themeVars, onClose }: Termin
                     <button
                       type="button"
                       style={{ ...iconBtnStyle, color: risky ? '#fbbf24' : themeVars?.accent ?? '#3b82f6' }}
-                      onClick={() => setPendingRun(preset)}
+                      onClick={() => handleRun(preset)}
                       title="터미널에서 실행"
                     >
                       <Play size={13} />
@@ -256,36 +263,6 @@ export default function TerminalPresetModal({ path, themeVars, onClose }: Termin
           </div>
         )}
       </div>
-
-      {pendingRun && (
-        <div
-          className="mx-4 mb-4 rounded-md px-3 py-3"
-          style={{
-            backgroundColor: isHighRiskTerminalCommand(pendingRun.command) ? 'rgba(251,191,36,0.12)' : themeVars?.surface ?? '#111827',
-            border: `1px solid ${isHighRiskTerminalCommand(pendingRun.command) ? '#fbbf24' : themeVars?.border ?? '#334155'}`,
-          }}
-        >
-          <div className="flex items-center gap-2 text-xs font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-            {isHighRiskTerminalCommand(pendingRun.command) && <AlertTriangle size={14} color="#fbbf24" />}
-            실행 확인
-          </div>
-          <div className="mt-2 rounded-md px-2 py-1.5 font-mono text-[11px]" style={{ color: themeVars?.muted ?? '#94a3b8', backgroundColor: 'rgba(0,0,0,0.18)' }}>
-            {pendingRun.command}
-          </div>
-          <div className="mt-3 flex justify-end gap-2">
-            <button type="button" style={btnStyle} onClick={() => setPendingRun(null)}>
-              취소
-            </button>
-            <button
-              type="button"
-              style={{ ...btnStyle, border: 'none', backgroundColor: themeVars?.accent ?? '#3b82f6', color: '#fff' }}
-              onClick={handleRun}
-            >
-              터미널에서 실행
-            </button>
-          </div>
-        </div>
-      )}
     </ModalShell>
   );
 }

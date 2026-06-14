@@ -44,6 +44,8 @@ export function useModalStates() {
   const [audioPreviewPath, setAudioPreviewPath] = useState<string | null>(null);
   // 터미널 프리셋 대상 폴더 경로
   const [terminalPresetPath, setTerminalPresetPath] = useState<string | null>(null);
+  // 터미널 프리셋 모달에서 바로 편집할 프리셋 ID
+  const [terminalPresetEditId, setTerminalPresetEditId] = useState<string | null>(null);
   // 스마트 폴더 병합 요청
   const [folderMergeRequest, setFolderMergeRequest] = useState<FolderMergeRequest | null>(null);
 
@@ -67,6 +69,7 @@ export function useModalStates() {
     gifCompressPaths, setGifCompressPaths,
     audioPreviewPath, setAudioPreviewPath,
     terminalPresetPath, setTerminalPresetPath,
+    terminalPresetEditId, setTerminalPresetEditId,
     folderMergeRequest, setFolderMergeRequest,
   };
 }
