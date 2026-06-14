@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.39] - 2026-06-14
+
+### Fixed
+- 빠른 파일 검색 입력 중에도 Space 미리보기 전역 단축키가 동작하도록 수정
+- 퍼지 검색에서 한글 IME 조합 중 입력값이 즉시 반영되지 않던 문제 수정
+
 ## [1.27.38] - 2026-06-13
 
 ### Fixed

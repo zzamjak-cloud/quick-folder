@@ -14,14 +14,15 @@ function shouldForwardToExplorer(key: string, query: string, e: React.KeyboardEv
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'F2'].includes(key)) {
     return true;
   }
-  if (key === ' ' && query.length === 0) return true;
+  // Space는 미리보기 전역 단축키라 검색어가 있어도 탐색기로 넘긴다.
+  if (key === ' ') return true;
   // Backspace/Delete는 탐색기로 넘기지 않음 (연타 시 파일 삭제·뒤로가기 사고 방지)
   return false;
 }
 
 /**
  * IME(한글 등) 입력용 hidden input.
- * 조합 중에는 부모 state를 갱신하지 않아 React controlled input이 IME를 깨뜨리지 않게 한다.
+ * 조합 중에도 검색 state를 갱신하되, input 값은 로컬 state로 유지해 IME 조합을 깨뜨리지 않는다.
  */
 const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilterInputProps>(
   function InlineFuzzyFilterInput({ value, enabled, onChange, onClear }, ref) {
@@ -68,9 +69,14 @@ const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilt
     const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
       const next = e.target.value;
       setInnerValue(next);
-      if (e.nativeEvent.isComposing || isComposing) return;
       onChange(next);
-    }, [isComposing, onChange]);
+    }, [onChange]);
+
+    const handleCompositionUpdate = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
+      const next = e.currentTarget.value;
+      setInnerValue(next);
+      onChange(next);
+    }, [onChange]);
 
     const handleCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement>) => {
       setIsComposing(false);
@@ -88,6 +94,7 @@ const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilt
         value={innerValue}
         onChange={handleChange}
         onCompositionStart={() => setIsComposing(true)}
+        onCompositionUpdate={handleCompositionUpdate}
         onCompositionEnd={handleCompositionEnd}
         onKeyDown={handleKeyDown}
         autoComplete="off"
