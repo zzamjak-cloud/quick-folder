@@ -1300,6 +1300,7 @@ export default function FileExplorer({
         ref={fuzzyFilterInputRef}
         value={searchFilter.searchQuery}
         enabled={fuzzyFilterInputEnabled}
+        isMac={isMac}
         onChange={searchFilter.setSearchQuery}
         onClear={handleFuzzyFilterClear}
       />

@@ -6,6 +6,7 @@ import { usePreview } from './usePreview';
 import { useColumnView } from './useColumnView';
 import { Tab } from '../types';
 import { getBaseName } from '../../../utils/pathUtils';
+import { shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -297,9 +298,15 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
 
-      // 퍼지 input·검색 중 Backspace/Delete는 탐색기 동작으로 해석하지 않음
+      // 퍼지 input·검색 중 Backspace는 탐색기 동작으로 해석하지 않는다.
+      // Delete는 Windows의 선택 항목 삭제 키이므로 inline filter 포커스가 있어도 통과시킨다.
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        if (isFuzzyFilterInput || isFiltering || isSearchActive) return;
+        if (shouldSuppressDeleteLikeExplorerShortcut({
+          key: e.key,
+          isFuzzyFilterInput,
+          isFiltering,
+          isSearchActive,
+        })) return;
 
         e.preventDefault();
         if (selectedPaths.length > 0) {

@@ -1,23 +1,12 @@
 import React, { forwardRef, memo, useCallback, useEffect, useState } from 'react';
+import { shouldForwardFuzzyFilterKeyToExplorer } from '../../utils/keyboardShortcuts';
 
 interface InlineFuzzyFilterInputProps {
   value: string;
   enabled: boolean;
+  isMac: boolean;
   onChange: (value: string) => void;
   onClear: () => void;
-}
-
-/** hidden input 포커스 중 탐색기로 넘길 키 (방향키·단축키 등) */
-function shouldForwardToExplorer(key: string, query: string, e: React.KeyboardEvent): boolean {
-  if (e.nativeEvent.isComposing) return false;
-  if (e.ctrlKey || e.metaKey || e.altKey) return true;
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'F2'].includes(key)) {
-    return true;
-  }
-  // Space는 미리보기 전역 단축키라 검색어가 있어도 탐색기로 넘긴다.
-  if (key === ' ') return true;
-  // Backspace/Delete는 탐색기로 넘기지 않음 (연타 시 파일 삭제·뒤로가기 사고 방지)
-  return false;
 }
 
 /**
@@ -25,7 +14,7 @@ function shouldForwardToExplorer(key: string, query: string, e: React.KeyboardEv
  * 조합 중에도 검색 state를 갱신하되, input 값은 로컬 state로 유지해 IME 조합을 깨뜨리지 않는다.
  */
 const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilterInputProps>(
-  function InlineFuzzyFilterInput({ value, enabled, onChange, onClear }, ref) {
+  function InlineFuzzyFilterInput({ value, enabled, isMac, onChange, onClear }, ref) {
     const [isComposing, setIsComposing] = useState(false);
     const [innerValue, setInnerValue] = useState(value);
 
@@ -41,7 +30,16 @@ const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilt
         return;
       }
 
-      if (shouldForwardToExplorer(e.key, innerValue, e)) {
+      if (shouldForwardFuzzyFilterKeyToExplorer({
+        key: e.key,
+        query: innerValue,
+        isMac,
+        isComposing: e.nativeEvent.isComposing,
+        keyCode: e.nativeEvent.keyCode,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+      })) {
         e.preventDefault();
         e.stopPropagation();
         e.currentTarget.blur();
@@ -64,7 +62,7 @@ const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilt
       if (!e.nativeEvent.isComposing) {
         e.stopPropagation();
       }
-    }, [innerValue, onClear]);
+    }, [innerValue, isMac, onClear]);
 
     const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
       const next = e.target.value;

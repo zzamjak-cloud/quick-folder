@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.41] - 2026-06-16
+
+### Fixed
+- Windows에서 파일 선택 후 `Delete` 키가 hidden 퍼지 검색 input에 의해 차단되어 삭제가 실행되지 않던 문제 수정
+
 ## [1.27.40] - 2026-06-14
 
 ### Added
