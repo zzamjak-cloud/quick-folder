@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  resolveSpaceDiffPaths,
   shouldForwardFuzzyFilterKeyToExplorer,
   shouldSuppressDeleteLikeExplorerShortcut,
 } from '../utils/keyboardShortcuts.ts';
@@ -73,4 +74,17 @@ test('명시적 검색 모드에서는 Delete도 파일 삭제로 해석하지 �
     }),
     true,
   );
+});
+
+test('Space는 비교 가능한 파일 2개를 diff 경로로 해석한다', () => {
+  const paths = resolveSpaceDiffPaths(
+    ['left.md', 'right.md'],
+    [
+      { path: 'left.md', name: 'left.md', is_dir: false },
+      { path: 'right.md', name: 'right.md', is_dir: false },
+    ],
+    name => name.endsWith('.md'),
+  );
+
+  assert.deepEqual(paths, ['left.md', 'right.md']);
 });

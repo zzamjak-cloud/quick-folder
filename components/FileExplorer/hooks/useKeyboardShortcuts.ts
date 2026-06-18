@@ -6,7 +6,8 @@ import { usePreview } from './usePreview';
 import { useColumnView } from './useColumnView';
 import { Tab } from '../types';
 import { getBaseName } from '../../../utils/pathUtils';
-import { shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
+import { isComparableTextFile } from '../../../utils/isComparableTextFile';
+import { resolveSpaceDiffPaths, shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -56,6 +57,7 @@ export interface UseKeyboardShortcutsConfig {
   openEntry: (entry: FileEntry) => void;
   previewFile: (entry: FileEntry) => void;
   preview: ReturnType<typeof usePreview>;
+  setDiffViewerPaths: (paths: [string, string] | null) => void;
   setViewMode: React.Dispatch<React.SetStateAction<ViewMode>>;
   setThumbnailSize: React.Dispatch<React.SetStateAction<ThumbnailSize>>;
   setFocusedIndex: React.Dispatch<React.SetStateAction<number>>;
@@ -100,7 +102,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handleDelete, handleCreateDirectory, handleGroupIntoFolder, handleUngroupFolder,
     handleRenameStart, handleBulkRename, handleCopyPath, handleUndo,
     selectAll, deselectAll, goBack, goForward, goUp,
-    openEntry, previewFile, preview,
+    openEntry, previewFile, preview, setDiffViewerPaths,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive,
     setIsGoToFolderOpen, setIsGlobalSearchOpen, setError,
@@ -385,6 +387,12 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         if (viewMode === 'columns') return;
         // 동영상 재생 중이면 스페이스바로 닫지 않음 (플레이/스탑 역할)
         if (preview.videoPlayerPath) return;
+        const diffPaths = resolveSpaceDiffPaths(selectedPaths, entries, isComparableTextFile);
+        if (diffPaths) {
+          if (preview.isAnyPreviewOpen) preview.closeAllPreviews();
+          setDiffViewerPaths(diffPaths);
+          return;
+        }
         // 이미지/텍스트 미리보기가 열려있으면 닫기
         if (preview.isAnyPreviewOpen) {
           preview.closeAllPreviews();
@@ -706,7 +714,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     columnView.selectInColumn, columnView.setFocusedCol, columnView.setFocusedRow, columnView.trimColumnsAfter,
     isMac, handleBulkRename,
     handleCreateMarkdown, handleCompressVideo, handleCompressZip, handleExtractZip, handleAddTag, handlePasteImageFromClipboard,
-    setFontMergePaths, setFontPreviewPath, setPdfPreviewPath, setAudioPreviewPath,
+    setDiffViewerPaths, setFontMergePaths, setFontPreviewPath, setPdfPreviewPath, setAudioPreviewPath,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
     setError, searchInputRef, gridRef, selectionAnchorRef,

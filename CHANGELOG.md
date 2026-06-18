@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.43] - 2026-06-19
+
+### Changed
+- Diff Viewer의 markdown 비교에서 formatter용 빈 줄, escaped punctuation, 목록 marker 및 spacing 차이를 canonical 표시 줄로 정규화
+- 비교 가능한 파일 2개 선택 후 `Space` 입력 시 즉시 Diff Viewer를 열도록 단축키 동작 정리
+
+### Fixed
+- markdown 파일 비교 시 실제 변경 블록 아래 대부분이 변경 배경으로 표시되던 문제 수정
+- fenced code block 내부 markdown 목록 기호는 formatter 정규화 대상에서 제외해 exact line 비교 유지
+
 ## [1.27.42] - 2026-06-18
 
 ### Added

@@ -931,6 +931,7 @@ export default function FileExplorer({
     openEntry,
     previewFile,
     preview,
+    setDiffViewerPaths: modals.setDiffViewerPaths,
     setViewMode,
     setThumbnailSize,
     setFocusedIndex,

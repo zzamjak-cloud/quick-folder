@@ -25,6 +25,10 @@ function rowBackground(kind: AlignedDiffRow['kind'], side: 'left' | 'right', isL
     : (isLight ? 'rgba(74,222,128,0.22)' : 'rgba(20,83,45,0.55)');
 }
 
+function isMarkdownPath(path: string): boolean {
+  return /\.md$/i.test(path);
+}
+
 export default function DiffViewerModal({ leftPath, rightPath, themeVars, onClose }: DiffViewerModalProps) {
   const [leftText, setLeftText] = useState<string | null>(null);
   const [rightText, setRightText] = useState<string | null>(null);
@@ -74,8 +78,9 @@ export default function DiffViewerModal({ leftPath, rightPath, themeVars, onClos
 
   const rows = useMemo(() => {
     if (leftText == null || rightText == null) return [];
-    return computeSideBySideDiff(leftText, rightText);
-  }, [leftText, rightText]);
+    const mode = isMarkdownPath(leftPath) && isMarkdownPath(rightPath) ? 'markdown' : 'text';
+    return computeSideBySideDiff(leftText, rightText, { mode });
+  }, [leftPath, leftText, rightPath, rightText]);
 
   const summary = useMemo(() => summarizeDiff(rows), [rows]);
   const leftName = getFileName(leftPath);

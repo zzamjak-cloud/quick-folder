@@ -1,5 +1,6 @@
 /** 정렬된 Diff 행 종류 */
 export type LineDiffKind = 'equal' | 'remove' | 'add' | 'change';
+export type DiffComparisonMode = 'text' | 'markdown';
 
 export interface DiffLineSide {
   lineNum: number;
@@ -13,17 +14,39 @@ export interface AlignedDiffRow {
   right: DiffLineSide | null;
 }
 
+export interface DiffComparisonOptions {
+  mode?: DiffComparisonMode;
+}
+
 type EditOp =
   | { t: 'eq'; a: number; b: number }
   | { t: 'del'; a: number }
   | { t: 'ins'; b: number };
 
+interface MarkdownFence {
+  char: '`' | '~';
+  length: number;
+}
+
+interface DiffUnit {
+  lineNum: number;
+  text: string;
+  key: string;
+}
+
 /** 두 텍스트를 줄 단위로 비교해 양쪽 패널 정렬 행 생성 */
-export function computeSideBySideDiff(leftText: string, rightText: string): AlignedDiffRow[] {
-  const leftLines = splitLines(leftText);
-  const rightLines = splitLines(rightText);
-  const script = buildEditScript(leftLines, rightLines);
-  return scriptToAlignedRows(script, leftLines, rightLines);
+export function computeSideBySideDiff(
+  leftText: string,
+  rightText: string,
+  options: DiffComparisonOptions = {},
+): AlignedDiffRow[] {
+  const leftUnits = buildDiffUnits(leftText, options.mode ?? 'text');
+  const rightUnits = buildDiffUnits(rightText, options.mode ?? 'text');
+  const script = buildEditScript(
+    leftUnits.map(unit => unit.key),
+    rightUnits.map(unit => unit.key),
+  );
+  return scriptToAlignedRows(script, leftUnits, rightUnits);
 }
 
 /** Diff 요약 통계 */
@@ -45,6 +68,67 @@ export function summarizeDiff(rows: AlignedDiffRow[]): {
 
 function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+}
+
+function buildDiffUnits(text: string, mode: DiffComparisonMode): DiffUnit[] {
+  const lines = splitLines(text);
+  if (mode !== 'markdown') {
+    return lines.map((line, index) => ({
+      lineNum: index + 1,
+      text: line,
+      key: line,
+    }));
+  }
+
+  const units: DiffUnit[] = [];
+  let activeFence: MarkdownFence | null = null;
+  lines.forEach((line, index) => {
+    const trimmed = line.trimStart();
+    const fence = getMarkdownFence(trimmed);
+    if (activeFence) {
+      units.push({ lineNum: index + 1, text: line, key: line });
+      if (fence && fence.char === activeFence.char && fence.length >= activeFence.length) {
+        activeFence = null;
+      }
+      return;
+    }
+
+    const normalized = normalizeMarkdownLine(line);
+    if (normalized) {
+      units.push({ lineNum: index + 1, text: normalized, key: normalized });
+    }
+    if (fence) activeFence = fence;
+  });
+
+  return units;
+}
+
+function getMarkdownFence(trimmedLine: string): MarkdownFence | null {
+  const match = /^(`{3,}|~{3,})/.exec(trimmedLine);
+  if (!match) return null;
+  const fence = match[1];
+  return {
+    char: fence[0] as MarkdownFence['char'],
+    length: fence.length,
+  };
+}
+
+function normalizeMarkdownLine(line: string): string {
+  const unescaped = line
+    .trim()
+    .replace(/\\([\\`*_{}\[\]()#+\-.!|>])/g, '$1');
+  if (!unescaped) return '';
+
+  const heading = /^(#{1,6})\s+(.+)$/.exec(unescaped);
+  if (heading) return `${heading[1]} ${heading[2].trim()}`;
+
+  const ordered = /^(\d+)[.)]\s+(.+)$/.exec(unescaped);
+  if (ordered) return `${ordered[1]}. ${ordered[2].trim()}`;
+
+  const unordered = /^[*+-]\s+(.+)$/.exec(unescaped);
+  if (unordered) return `- ${unordered[1].trim()}`;
+
+  return unescaped.replace(/[ \t]+/g, ' ');
 }
 
 function buildEditScript(a: string[], b: string[]): EditOp[] {
@@ -82,7 +166,7 @@ function buildEditScript(a: string[], b: string[]): EditOp[] {
   return script;
 }
 
-function scriptToAlignedRows(script: EditOp[], leftLines: string[], rightLines: string[]): AlignedDiffRow[] {
+function scriptToAlignedRows(script: EditOp[], leftUnits: DiffUnit[], rightUnits: DiffUnit[]): AlignedDiffRow[] {
   const rows: AlignedDiffRow[] = [];
   let idx = 0;
 
@@ -91,8 +175,8 @@ function scriptToAlignedRows(script: EditOp[], leftLines: string[], rightLines: 
     if (op.t === 'eq') {
       rows.push({
         kind: 'equal',
-        left: { lineNum: op.a + 1, text: leftLines[op.a] },
-        right: { lineNum: op.b + 1, text: rightLines[op.b] },
+        left: { lineNum: leftUnits[op.a].lineNum, text: leftUnits[op.a].text },
+        right: { lineNum: rightUnits[op.b].lineNum, text: rightUnits[op.b].text },
       });
       idx += 1;
       continue;
@@ -114,8 +198,8 @@ function scriptToAlignedRows(script: EditOp[], leftLines: string[], rightLines: 
       const kind: LineDiffKind = hasLeft && hasRight ? 'change' : hasLeft ? 'remove' : 'add';
       rows.push({
         kind,
-        left: hasLeft ? { lineNum: dels[k] + 1, text: leftLines[dels[k]] } : null,
-        right: hasRight ? { lineNum: ins[k] + 1, text: rightLines[ins[k]] } : null,
+        left: hasLeft ? { lineNum: leftUnits[dels[k]].lineNum, text: leftUnits[dels[k]].text } : null,
+        right: hasRight ? { lineNum: rightUnits[ins[k]].lineNum, text: rightUnits[ins[k]].text } : null,
       });
     }
   }

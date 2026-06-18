@@ -46,6 +46,12 @@ export interface DeleteLikeShortcutSuppressOptions {
   isSearchActive: boolean;
 }
 
+export interface SpaceDiffEntry {
+  path: string;
+  name: string;
+  is_dir: boolean;
+}
+
 /** 검색 입력 보호 때문에 탐색기 Backspace/Delete 처리를 막아야 하는지 판단한다. */
 export function shouldSuppressDeleteLikeExplorerShortcut({
   key,
@@ -57,4 +63,20 @@ export function shouldSuppressDeleteLikeExplorerShortcut({
   if (isSearchActive) return true;
   if (key === 'Backspace') return isFuzzyFilterInput || isFiltering;
   return false;
+}
+
+/** Space 입력 시 2개 선택 파일을 diff viewer 경로로 열 수 있는지 판단한다. */
+export function resolveSpaceDiffPaths(
+  selectedPaths: string[],
+  entries: SpaceDiffEntry[],
+  isComparableTextFile: (name: string) => boolean,
+): [string, string] | null {
+  if (selectedPaths.length !== 2) return null;
+
+  const selectedEntries = selectedPaths.map(path => entries.find(entry => entry.path === path));
+  if (selectedEntries.some(entry => !entry || entry.is_dir || !isComparableTextFile(entry.name))) {
+    return null;
+  }
+
+  return [selectedPaths[0], selectedPaths[1]];
 }
