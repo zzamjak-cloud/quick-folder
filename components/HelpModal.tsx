@@ -97,6 +97,7 @@ const SHORTCUT_SECTIONS: { title: string; items: { key: string; description: str
       { key: 'Ctrl+Alt+C', description: '선택 항목 경로 복사' },
       { key: 'Ctrl+Alt+O', description: 'Photoshop에서 열기' },
       { key: 'Ctrl+B', description: '사이드바 접기/펼치기' },
+      { key: 'Ctrl+L', description: '좌우 분할 → 상하 분할 → 분할 해제' },
     ],
   },
 ];

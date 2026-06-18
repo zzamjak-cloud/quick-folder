@@ -47,7 +47,7 @@ interface NavigationBarProps {
   hideText: boolean;
   onHideTextToggle: () => void;
   splitMode?: 'single' | 'horizontal' | 'vertical';
-  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
+  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical', options?: { closingInstanceId?: string; closedPaths?: string[] }) => void;
   themeVars: ThemeVars | null;
 }
 
@@ -581,7 +581,7 @@ export default memo(function NavigationBar({
                 color: splitMode === 'single' ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
               }}
               onClick={() => onSplitModeChange('single')}
-              title="단일 뷰 (Ctrl+\)"
+              title="단일 뷰 (Ctrl+L)"
             >
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="2" y="2" width="12" height="12" rx="1.5" />
@@ -595,7 +595,7 @@ export default memo(function NavigationBar({
                 color: splitMode === 'horizontal' ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
               }}
               onClick={() => onSplitModeChange('horizontal')}
-              title="좌우 분할 (Ctrl+\)"
+              title="좌우 분할 (Ctrl+L)"
             >
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="2" y="2" width="12" height="12" rx="1.5" />
@@ -610,7 +610,7 @@ export default memo(function NavigationBar({
                 color: splitMode === 'vertical' ? (themeVars?.accent ?? '#3b82f6') : (themeVars?.muted ?? '#94a3b8'),
               }}
               onClick={() => onSplitModeChange('vertical')}
-              title="상하 분할 (Ctrl+\)"
+              title="상하 분할 (Ctrl+L)"
             >
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="2" y="2" width="12" height="12" rx="1.5" />

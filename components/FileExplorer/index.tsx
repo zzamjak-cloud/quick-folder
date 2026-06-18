@@ -74,7 +74,7 @@ interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
   isFocused?: boolean;   // 포커스된 패널만 키보드 단축키 응답 (기본: true)
   splitMode?: 'single' | 'horizontal' | 'vertical';
-  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
+  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical', options?: { closingInstanceId?: string; closedPaths?: string[] }) => void;
   initialPath: string;
   initialPathKey?: number;  // 같은 경로를 다시 요청할 때도 반응하기 위한 키
   onPathChange: (path: string) => void;
@@ -904,6 +904,7 @@ export default function FileExplorer({
     isSearchActive: searchFilter.isSearchActive,
     isFiltering,
     isMac,
+    splitMode,
     tabs,
     activeTabId,
     activeTab,

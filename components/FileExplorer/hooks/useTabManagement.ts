@@ -9,6 +9,8 @@ const ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
 
+type SplitMode = 'single' | 'horizontal' | 'vertical';
+
 function pathTitle(path: string): string {
   if (path === RECENT_PATH) return '최근항목';
   if (path === SYSTEM_ROOT_PATH) return navigator.platform.startsWith('Mac') ? 'Macintosh HD' : '내 PC';
@@ -20,7 +22,7 @@ interface UseTabManagementOptions {
   instanceId: string;
   loadDirectory: (path: string) => void;
   onPathChange: (path: string) => void;
-  onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical') => void;
+  onSplitModeChange?: (mode: SplitMode, options?: { closingInstanceId?: string; closedPaths?: string[] }) => void;
 }
 
 export function useTabManagement({
@@ -137,10 +139,11 @@ export function useTabManagement({
         loadDirectory(nextTab.path);
       } else if (newTabs.length === 0) {
         setActiveTabId('');
+        if (onSplitModeChange) onSplitModeChange('single', { closingInstanceId: instanceId });
       }
       return newTabs;
     });
-  }, [activeTabId, loadDirectory]);
+  }, [activeTabId, instanceId, loadDirectory, onSplitModeChange]);
 
   const handleTabReorder = useCallback((fromIndex: number, toIndex: number) => {
     setTabs(prev => {
@@ -171,11 +174,11 @@ export function useTabManagement({
         loadDirectory(nextTab.path);
       } else if (newTabs.length === 0) {
         setActiveTabId('');
-        if (onSplitModeChange) onSplitModeChange('single');
+        if (onSplitModeChange) onSplitModeChange('single', { closingInstanceId: instanceId });
       }
       return newTabs;
     });
-  }, [activeTabId, loadDirectory, onSplitModeChange]);
+  }, [activeTabId, instanceId, loadDirectory, onSplitModeChange]);
 
   // 현재 탭 복제 (Ctrl+T)
   const duplicateTab = useCallback(() => {
@@ -218,19 +221,28 @@ export function useTabManagement({
   // setTabs를 ref로 감싸서 이벤트 핸들러에서 최신 상태 접근
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
   useEffect(() => {
     // 폴더 이름 변경 이벤트: { oldPath, newPath }
     const handleRename = (e: Event) => {
       const { oldPath, newPath } = (e as CustomEvent).detail;
+      const isRenamedPath = (path: string) =>
+        path === oldPath || path.startsWith(oldPath + '/') || path.startsWith(oldPath + '\\');
+      const applyRenamedPath = (path: string) =>
+        path === oldPath ? newPath : newPath + path.slice(oldPath.length);
+      const activeBefore = tabsRef.current.find(tab => tab.id === activeTabIdRef.current);
+      const nextActivePath = activeBefore && isRenamedPath(activeBefore.path)
+        ? applyRenamedPath(activeBefore.path)
+        : null;
+
       setTabs(prev => {
         let changed = false;
         const updated = prev.map(tab => {
-          if (tab.path === oldPath || tab.path.startsWith(oldPath + '/') || tab.path.startsWith(oldPath + '\\')) {
+          if (isRenamedPath(tab.path)) {
             changed = true;
-            const updatedPath = tab.path === oldPath
-              ? newPath
-              : newPath + tab.path.slice(oldPath.length);
+            const updatedPath = applyRenamedPath(tab.path);
             const updatedHistory = tab.history.map(h => {
               if (h === oldPath) return newPath;
               if (h.startsWith(oldPath + '/') || h.startsWith(oldPath + '\\')) {
@@ -244,11 +256,16 @@ export function useTabManagement({
         });
         return changed ? updated : prev;
       });
+      if (nextActivePath) {
+        onPathChange(nextActivePath);
+        loadDirectory(nextActivePath);
+      }
     };
 
     // 폴더 삭제 이벤트: { paths }
     const handleDelete = (e: Event) => {
       const { paths: deletedPaths } = (e as CustomEvent).detail;
+      const activeId = activeTabIdRef.current;
       setTabs(prev => {
         const shouldRemove = (tab: Tab) =>
           deletedPaths.some((dp: string) =>
@@ -256,12 +273,15 @@ export function useTabManagement({
           );
         const remaining = prev.filter(t => !shouldRemove(t));
         if (remaining.length === prev.length) return prev;
-        if (!remaining.find(t => t.id === activeTabIdRef.current) && remaining.length > 0) {
-          const nextTab = remaining[0];
+        if (!remaining.find(t => t.id === activeId) && remaining.length > 0) {
+          const removedIndex = prev.findIndex(t => t.id === activeId);
+          const nextTab = remaining[Math.min(Math.max(removedIndex, 0), remaining.length - 1)];
           setActiveTabId(nextTab.id);
+          onPathChange(nextTab.path);
           loadDirectory(nextTab.path);
         } else if (remaining.length === 0) {
           setActiveTabId('');
+          if (onSplitModeChange) onSplitModeChange('single', { closingInstanceId: instanceId, closedPaths: deletedPaths });
         }
         return remaining;
       });
@@ -291,7 +311,7 @@ export function useTabManagement({
       window.removeEventListener('qf-tab-delete', handleDelete);
       window.removeEventListener('qf-open-new-tab', handleOpenNewTab);
     };
-  }, [instanceId, loadDirectory]);
+  }, [instanceId, loadDirectory, onPathChange, onSplitModeChange]);
 
   return {
     tabs, activeTabId, activeTab, currentPath,

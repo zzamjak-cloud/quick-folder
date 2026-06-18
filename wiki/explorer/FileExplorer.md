@@ -4,15 +4,15 @@
 파일 탐색기 메인 컨트롤러. 탐색 히스토리, 파일 목록 로딩, 선택, 탭, 컨텍스트 메뉴 등 모든 탐색기 상태를 통합 관리한다.
 
 ## 위치
-`components/FileExplorer/index.tsx` (1,977줄)
+`components/FileExplorer/index.tsx`
 
 ## Props
 | 필드 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `instanceId` | `string` | `'default'` | 패인 식별자 (`'default'` \| `'pane1'`) |
+| `instanceId` | `string` | `'default'` | 패인 식별자 (`'default'` \| `'pane-1'`) |
 | `isFocused` | `boolean` | `true` | 활성 패인 여부 |
 | `splitMode` | `string` | — | 분할 모드 |
-| `onSplitModeChange` | `fn` | — | 분할 모드 변경 콜백 |
+| `onSplitModeChange` | `fn` | — | 분할 모드 변경 콜백. 마지막 탭 닫기 시 닫힌 패널 ID를 함께 전달 |
 | `initialPath` | `string` | — | 초기 경로 |
 | `onPathChange` | `fn` | — | 경로 변경 콜백 |
 | `onAddToFavorites` | `fn` | — | 즐겨찾기 추가 콜백 |
@@ -76,6 +76,9 @@
 - **`cancelAllQueued()`**: 폴더 이동 시 반드시 호출해 대기 중인 썸네일 요청 취소.
 - **압축 루트 경로 규칙**: 압축 루트는 `sample.zip\` 같이 separator가 붙은 가상 경로로 다뤄야 한다.
 - **분할 패널 규칙**: 일반 압축은 반대편 패널에 열고, 중첩 압축은 현재 패널에 유지한다.
+- **분할 전환 규칙**: `Ctrl+L`은 좌우 → 상하 → 해제를 순환한다. 단일 화면에서 분할 진입 시 현재 탭을 보조 패널에 복제한다.
+- **마지막 탭 닫기 규칙**: 분할 화면에서 패널의 마지막 탭을 닫으면 빈 패널을 남기지 않고 분할 화면을 해제한다.
+- **탭 동기화 규칙**: 열린 폴더가 rename/delete 되면 탭 경로와 제목을 갱신하거나 해당 탭을 닫는다.
 - **압축 내부 쓰기 금지**: 삭제/이름변경/새 폴더 생성 같은 조작은 `useFileOperations`에서 차단된다.
 
 ## 관련 위키

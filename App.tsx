@@ -53,6 +53,8 @@ import { isTauri } from './utils/isTauri';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ZoomModal } from './components/ZoomModal';
+import ContextMenu from './components/FileExplorer/ContextMenu';
+import type { ContextMenuSection, Tab } from './components/FileExplorer/types';
 
 // 커스텀 훅
 import {
@@ -80,10 +82,14 @@ const TEMP_TRAY_STORAGE_KEY = 'qf_temp_file_tray_paths';
 const TEMP_TRAY_WINDOW_RESTORE_KEY = 'qf_temp_file_tray_restore_window';
 const SECONDARY_TABS_KEY = 'qf_explorer_tabs_pane-1';
 const SECONDARY_ACTIVE_TAB_KEY = 'qf_explorer_active_tab_pane-1';
+const DEFAULT_TABS_KEY = 'qf_explorer_tabs';
+const DEFAULT_ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
 const TEMP_TRAY_WINDOW_WIDTH = 360;
 const TEMP_TRAY_WINDOW_MIN_HEIGHT = 520;
 const TEMP_TRAY_WINDOW_MAX_HEIGHT = 720;
 const TEMP_TRAY_WINDOW_MARGIN = 16;
+
+type SplitMode = 'single' | 'horizontal' | 'vertical';
 
 interface WindowFrame {
   width: number;
@@ -98,6 +104,37 @@ function mergeUniquePaths(prev: string[], next: string[]) {
     if (!merged.includes(path)) merged.push(path);
   }
   return merged;
+}
+
+function readStoredTabs(tabsKey: string): Tab[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(tabsKey) ?? '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredActiveTab(tabsKey: string, activeTabKey: string): Tab | null {
+  const tabs = readStoredTabs(tabsKey);
+  const activeTabId = localStorage.getItem(activeTabKey);
+  return tabs.find(tab => tab.id === activeTabId) ?? tabs[0] ?? null;
+}
+
+function pathTitle(path: string): string {
+  if (path === RECENT_PATH) return '최근항목';
+  if (path === SYSTEM_ROOT_PATH) return navigator.platform.startsWith('Mac') ? 'Macintosh HD' : '내 PC';
+  return path.replace(/[/\\]+$/, '').split(/[/\\]/).filter(Boolean).pop() ?? path;
+}
+
+function createTabSnapshot(path: string): Tab {
+  return {
+    id: uuidv4(),
+    path,
+    history: [path],
+    historyIndex: 0,
+    title: pathTitle(path),
+  };
 }
 
 export default function App() {
@@ -131,6 +168,7 @@ export default function App() {
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [collapsedSessionMenu, setCollapsedSessionMenu] = useState<{ categoryId: string; x: number; y: number } | null>(null);
 
   // 좌측 패널 너비
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
@@ -145,6 +183,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('qf_sidebar_collapsed', String(sidebarCollapsed));
+    if (!sidebarCollapsed) setCollapsedSessionMenu(null);
   }, [sidebarCollapsed]);
 
   // explorerPath: { path, key } 구조로 같은 경로를 다시 설정해도 useEffect가 반응하도록 함
@@ -153,23 +192,29 @@ export default function App() {
   // (같은 경로 재진입은 어차피 index.tsx:585 가드가 막으므로 관측상 동작 변화 없음)
   const [explorerRequest, setExplorerRequest] = useState<{ path: string; key: number }>({ path: '', key: 0 });
   const lastExplorerPathRef = useRef('');
-  const setExplorerPath = useCallback((path: string) => {
-    if (path === lastExplorerPathRef.current) return;
+  const requestExplorerPath = useCallback((path: string, force = false) => {
+    if (!force && path === lastExplorerPathRef.current) return;
     lastExplorerPathRef.current = path;
     setExplorerRequest(prev => ({ path, key: prev.key + 1 }));
   }, []);
+  const setExplorerPath = useCallback((path: string) => {
+    requestExplorerPath(path);
+  }, [requestExplorerPath]);
 
   // --- 분할 뷰 상태 ---
-  const [splitMode, setSplitMode] = useState<'single' | 'horizontal' | 'vertical'>(() => {
-    return (localStorage.getItem('qf_split_mode') as 'single' | 'horizontal' | 'vertical') || 'single';
+  const [splitMode, setSplitMode] = useState<SplitMode>(() => {
+    return (localStorage.getItem('qf_split_mode') as SplitMode) || 'single';
   });
   const [explorerRequest2, setExplorerRequest2] = useState<{ path: string; key: number }>({ path: '', key: 0 });
   const lastExplorerPath2Ref = useRef('');
-  const setExplorerPath2 = useCallback((path: string) => {
-    if (path === lastExplorerPath2Ref.current) return;
+  const requestExplorerPath2 = useCallback((path: string, force = false) => {
+    if (!force && path === lastExplorerPath2Ref.current) return;
     lastExplorerPath2Ref.current = path;
     setExplorerRequest2(prev => ({ path, key: prev.key + 1 }));
   }, []);
+  const setExplorerPath2 = useCallback((path: string) => {
+    requestExplorerPath2(path);
+  }, [requestExplorerPath2]);
   const [focusedPane, setFocusedPane] = useState<0 | 1>(0);
   // 분할 뷰에서 두 패널이 클립보드를 공유
   const [sharedClipboard, setSharedClipboard] = useState<ClipboardData | null>(null);
@@ -213,6 +258,67 @@ export default function App() {
       return [];
     }
   });
+
+  const getPaneActivePath = useCallback((pane: 0 | 1) => {
+    if (pane === 1) {
+      return explorerRequest2.path || readStoredActiveTab(SECONDARY_TABS_KEY, SECONDARY_ACTIVE_TAB_KEY)?.path || '';
+    }
+    return explorerRequest.path || readStoredActiveTab(DEFAULT_TABS_KEY, DEFAULT_ACTIVE_TAB_KEY)?.path || '';
+  }, [explorerRequest.path, explorerRequest2.path]);
+
+  const seedSecondaryPaneFromPath = useCallback((path: string) => {
+    if (!path) return;
+    const sourceTab = readStoredActiveTab(DEFAULT_TABS_KEY, DEFAULT_ACTIVE_TAB_KEY);
+    const clonedTab: Tab = sourceTab && sourceTab.path === path
+      ? { ...sourceTab, id: uuidv4(), pinned: false }
+      : createTabSnapshot(path);
+
+    localStorage.setItem(SECONDARY_TABS_KEY, JSON.stringify([clonedTab]));
+    localStorage.setItem(SECONDARY_ACTIVE_TAB_KEY, clonedTab.id);
+    requestExplorerPath2(path, true);
+  }, [requestExplorerPath2]);
+
+  const handleSplitModeChange = useCallback((nextMode: SplitMode, options?: { closingInstanceId?: string; closedPaths?: string[] }) => {
+    if (nextMode === splitMode) return;
+
+    if (splitMode === 'single' && nextMode !== 'single') {
+      const sourcePath = getPaneActivePath(0);
+      seedSecondaryPaneFromPath(sourcePath);
+      setFocusedPane(0);
+      setSplitMode(nextMode);
+      return;
+    }
+
+    if (splitMode !== 'single' && nextMode === 'single') {
+      const sourcePane: 0 | 1 = options?.closingInstanceId === 'default'
+        ? 1
+        : options?.closingInstanceId === 'pane-1'
+          ? 0
+          : focusedPane;
+      const sourcePath = getPaneActivePath(sourcePane);
+      const sourcePathWasClosed = options?.closedPaths?.some(closedPath =>
+        sourcePath === closedPath || sourcePath.startsWith(closedPath + '/') || sourcePath.startsWith(closedPath + '\\')
+      );
+      requestExplorerPath(sourcePath && !sourcePathWasClosed ? sourcePath : SYSTEM_ROOT_PATH, true);
+      setFocusedPane(0);
+      setSplitMode('single');
+      return;
+    }
+
+    setSplitMode(nextMode);
+  }, [focusedPane, getPaneActivePath, requestExplorerPath, seedSecondaryPaneFromPath, splitMode]);
+
+  const cycleSplitMode = useCallback(() => {
+    if (splitMode === 'single') {
+      handleSplitModeChange('horizontal');
+      return;
+    }
+    if (splitMode === 'horizontal') {
+      handleSplitModeChange('vertical');
+      return;
+    }
+    handleSplitModeChange('single');
+  }, [handleSplitModeChange, splitMode]);
 
   useEffect(() => {
     const handleOpenArchivePane = (event: Event) => {
@@ -415,19 +521,15 @@ export default function App() {
     localStorage.setItem('qf_split_ratio', String(splitRatio));
   }, [splitRatio]);
 
-  // --- 글로벌 키보드 단축키 (Ctrl+\: 분할 뷰, Ctrl+B: 사이드바 토글) ---
+  // --- 글로벌 키보드 단축키 (Ctrl+L: 분할 뷰, Ctrl+B: 사이드바 토글) ---
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // 마크다운 편집기가 열려있으면 글로벌 단축키 무시
       if (document.querySelector('[data-markdown-editor]')) return;
 
-      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyL') {
         e.preventDefault();
-        setSplitMode(prev => {
-          if (prev === 'single') return 'horizontal';
-          if (prev === 'horizontal') return 'vertical';
-          return 'single';
-        });
+        cycleSplitMode();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
@@ -437,7 +539,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+  }, [cycleSplitMode]);
 
   // --- 창 도킹 단축키: Ctrl(Cmd) + Alt(Opt) + Shift + 화살표 ---
   // capture 단계에서 처리하여 다른 핸들러보다 먼저 실행
@@ -629,6 +731,56 @@ export default function App() {
       setExplorerPath2(path);
     }
   }, [splitMode, focusedPane]);
+
+  const collapsedSessionBadges = useMemo(() => {
+    const firstLetters = categories.map(category => Array.from(category.title.trim())[0]?.toUpperCase() || '?');
+    const firstLetterCounts = firstLetters.reduce((acc, letter) => {
+      acc.set(letter, (acc.get(letter) ?? 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+
+    return categories.map(category => {
+      const letters = Array.from(category.title.trim());
+      const firstLetter = letters[0]?.toUpperCase() || '?';
+      const label = (firstLetterCounts.get(firstLetter) ?? 0) > 1
+        ? letters.slice(0, 2).join('').toUpperCase() || firstLetter
+        : firstLetter;
+      const rawColor = category.color?.startsWith('#')
+        ? category.color
+        : (category.color &&
+            (LEGACY_TEXT_CLASS_TO_HEX[category.color] ||
+              LEGACY_BG_CLASS_TO_HEX[category.color])) ||
+          undefined;
+      return {
+        category,
+        label,
+        color: rawColor ? adjustColorForTheme(rawColor, theme.isDark) : undefined,
+      };
+    });
+  }, [categories, theme.isDark]);
+
+  const collapsedSessionMenuSections = useMemo<ContextMenuSection[]>(() => {
+    if (!collapsedSessionMenu) return [];
+    const category = categories.find(cat => cat.id === collapsedSessionMenu.categoryId);
+    if (!category) return [];
+    return [{
+      id: 'session-folders',
+      items: category.shortcuts.length > 0
+        ? category.shortcuts.map(shortcut => ({
+            id: shortcut.id,
+            icon: <Folder size={13} />,
+            label: shortcut.name,
+            onClick: () => handleOpenInExplorer(shortcut.path),
+          }))
+        : [{
+            id: 'empty',
+            icon: <Folder size={13} />,
+            label: '등록된 폴더 없음',
+            disabled: true,
+            onClick: () => {},
+          }],
+    }];
+  }, [categories, collapsedSessionMenu, handleOpenInExplorer]);
 
   const handleAddFavoriteFromExplorer = useCallback((path: string, name: string) => {
     if (categories.length === 0) {
@@ -975,8 +1127,79 @@ export default function App() {
             )}
           </div>
 
-          {/* 사이드바 콘텐츠 (접힌 상태에서 숨김) */}
-          {!sidebarCollapsed && (
+          {/* 사이드바 콘텐츠 */}
+          {sidebarCollapsed ? (
+            <div className="flex-1 overflow-y-auto px-1 py-2">
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleOpenRecent}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
+                  title="최근항목"
+                  aria-label="최근항목"
+                >
+                  <Clock size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenSystemRoot}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
+                  title={isMac ? 'Macintosh HD' : '내 PC'}
+                  aria-label={isMac ? 'Macintosh HD' : '내 PC'}
+                >
+                  <HardDrive size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenDesktop}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)] disabled:cursor-not-allowed disabled:opacity-35"
+                  title="데스크탑"
+                  aria-label="데스크탑"
+                  disabled={!desktopPath}
+                >
+                  <Monitor size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenDownloads}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)] disabled:cursor-not-allowed disabled:opacity-35"
+                  title="다운로드"
+                  aria-label="다운로드"
+                  disabled={!downloadPath}
+                >
+                  <Download size={15} />
+                </button>
+              </div>
+
+              {collapsedSessionBadges.length > 0 && (
+                <>
+                  <div className="mx-auto my-2 h-px w-5 bg-[var(--qf-border)]" />
+                  <div className="flex flex-col items-center gap-1">
+                    {collapsedSessionBadges.map(({ category, label, color }) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setCollapsedSessionMenu({ categoryId: category.id, x: rect.right + 6, y: rect.top });
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
+                        style={{
+                          borderColor: color ?? 'var(--qf-border)',
+                          color: color ?? 'var(--qf-text)',
+                          backgroundColor: 'var(--qf-surface)',
+                        }}
+                        title={category.title}
+                        aria-label={category.title}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
             <>
               {/* 고정 영역: 최근항목/데스크탑/다운로드/시스템 루트 */}
               <div className="shrink-0 px-4 pt-4 pb-1">
@@ -1168,7 +1391,7 @@ export default function App() {
               instanceId="default"
               isFocused={splitMode === 'single' || focusedPane === 0}
               splitMode={splitMode}
-              onSplitModeChange={setSplitMode}
+              onSplitModeChange={handleSplitModeChange}
               initialPath={explorerRequest.path}
               initialPathKey={explorerRequest.key}
               onPathChange={setExplorerPath}
@@ -1209,7 +1432,7 @@ export default function App() {
                   instanceId="pane-1"
                   isFocused={focusedPane === 1}
                   splitMode={splitMode}
-                  onSplitModeChange={setSplitMode}
+                  onSplitModeChange={handleSplitModeChange}
                   initialPath={explorerRequest2.path}
                   initialPathKey={explorerRequest2.key}
                   onPathChange={setExplorerPath2}
@@ -1227,6 +1450,15 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {collapsedSessionMenu && (
+        <ContextMenu
+          x={collapsedSessionMenu.x}
+          y={collapsedSessionMenu.y}
+          sections={collapsedSessionMenuSections}
+          onClose={() => setCollapsedSessionMenu(null)}
+        />
+      )}
 
       {/* --- Modals --- */}
 

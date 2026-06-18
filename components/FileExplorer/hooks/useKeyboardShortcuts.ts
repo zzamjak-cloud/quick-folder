@@ -28,6 +28,7 @@ export interface UseKeyboardShortcutsConfig {
   isSearchActive: boolean;
   isFiltering: boolean;
   isMac: boolean;
+  splitMode?: 'single' | 'horizontal' | 'vertical';
   tabs: Tab[];
   activeTabId: string | null;
   activeTab: Tab | null | undefined;
@@ -93,7 +94,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
   const {
     isFocused, renamingPath, currentPath, viewMode,
     entries, selectedPaths, focusedIndex, clipboard, isSearchActive, isFiltering,
-    isMac, tabs, activeTabId, activeTab, thumbnailSize,
+    isMac, splitMode, tabs, activeTabId, activeTab, thumbnailSize,
     gridRef, selectionAnchorRef,
     handleCopy, handleCut, handlePaste, handleDuplicate,
     handleDelete, handleCreateDirectory, handleGroupIntoFolder, handleUngroupFolder,
@@ -153,7 +154,10 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       // Ctrl+W (Cmd+W): 현재 탭 닫기 (고정 탭은 닫히지 않음)
       if (ctrl && !e.altKey && !e.shiftKey && e.code === 'KeyW') {
         e.preventDefault();
-        if (tabs.length > 1 && activeTabId && !activeTab?.pinned) handleTabClose(activeTabId);
+        const canCloseLastSplitTab = splitMode !== undefined && splitMode !== 'single';
+        if ((tabs.length > 1 || canCloseLastSplitTab) && activeTabId && !activeTab?.pinned) {
+          handleTabClose(activeTabId);
+        }
         return;
       }
       // Ctrl+Alt+W (Cmd+Alt+W): 현재 탭만 남기고 나머지 모두 닫기
@@ -695,7 +699,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     handleCreateDirectory, handleGroupIntoFolder, handleUngroupFolder, handleRenameStart, handleDelete, handleCopyPath,
     goBack, goForward, goUp, selectedPaths, entries, openEntry, currentPath,
     thumbnailSize, focusedIndex, clipboard, isSearchActive, isFiltering,
-    tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
+    splitMode, tabs, activeTabId, activeTab, handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     previewFile, preview.isAnyPreviewOpen, preview.closeAllPreviews,
     preview.previewImagePath, preview.handlePreviewImage, preview.previewJsonPath, preview.handlePreviewJson,
     viewMode, columnView.columns, columnView.focusedCol, columnView.focusedRow,
