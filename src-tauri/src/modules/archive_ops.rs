@@ -343,7 +343,10 @@ fn extract_zip_patterns_to_dir(
     }
 }
 
-fn archive_cache_root(app: &tauri::AppHandle, archive_path: &Path) -> Result<PathBuf> {
+fn archive_cache_root<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    archive_path: &Path,
+) -> Result<PathBuf> {
     use tauri::Manager;
 
     let meta = std::fs::metadata(archive_path)?;
@@ -422,8 +425,8 @@ pub fn resolve_archive_virtual_path(path: &str) -> Option<ArchiveVirtualPath> {
         .flatten()
 }
 
-pub fn resolve_archive_virtual_path_with_app(
-    app: &tauri::AppHandle,
+pub fn resolve_archive_virtual_path_with_app<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     path: &str,
 ) -> Result<Option<ArchiveVirtualPath>> {
     resolve_archive_virtual_path_with_loader(path, |prefix| {
@@ -499,15 +502,18 @@ fn list_archive_directory_resolved(resolved: &ArchiveVirtualPath) -> Result<Vec<
         .collect())
 }
 
-pub fn list_archive_directory(app: &tauri::AppHandle, path: &str) -> Result<Vec<FileEntry>> {
+pub fn list_archive_directory<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &str,
+) -> Result<Vec<FileEntry>> {
     let resolved = resolve_archive_virtual_path_with_app(app, path)?.ok_or_else(|| {
         AppError::InvalidInput(format!("압축 가상 경로가 올바르지 않습니다: {}", path))
     })?;
     list_archive_directory_resolved(&resolved)
 }
 
-pub fn materialize_archive_path_in_cache(
-    app: &tauri::AppHandle,
+pub fn materialize_archive_path_in_cache<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     virtual_path: &str,
 ) -> Result<Option<PathBuf>> {
     let resolved = match resolve_archive_virtual_path_with_app(app, virtual_path)? {

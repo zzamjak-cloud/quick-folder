@@ -102,7 +102,9 @@ pub async fn get_image_dimensions(
     .map_err(|e| AppError::Internal(format!("이미지 규격 조회 실패: {}", e)))?
 }
 
-pub(crate) fn thumbnail_cache_root(app: &tauri::AppHandle) -> Result<PathBuf> {
+pub(crate) fn thumbnail_cache_root<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<PathBuf> {
     use tauri::Manager;
     app.path()
         .app_cache_dir()
@@ -203,8 +205,8 @@ pub(crate) fn invalidate_thumbnail_cache_paths_in_root(app_cache: &Path, paths: 
     }
 }
 
-pub(crate) fn invalidate_thumbnail_cache_paths(
-    app: &tauri::AppHandle,
+pub(crate) fn invalidate_thumbnail_cache_paths<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     paths: &[String],
 ) -> Result<()> {
     let app_cache = thumbnail_cache_root(app)?;

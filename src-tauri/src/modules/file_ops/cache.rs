@@ -21,8 +21,8 @@ fn legacy_dir_listing_cache_key(path: &str) -> String {
     format!("{:x}", hasher.finish())
 }
 
-fn dir_listing_cache_files(
-    app: &tauri::AppHandle,
+fn dir_listing_cache_files<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     path: &str,
 ) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
     let dir = thumbnail_cache_root(app)?.join("dir_listings");
@@ -49,8 +49,8 @@ fn read_cached_listing_file(file: &std::path::Path, path: &str) -> Result<Option
 
 // 디스크에 저장된 디렉토리 목록 조회 (없으면 None). 빠른 로컬 읽기.
 #[tauri::command]
-pub async fn read_cached_listing(
-    app: tauri::AppHandle,
+pub async fn read_cached_listing<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Option<Vec<FileEntry>>> {
     let (file, legacy_file) = dir_listing_cache_files(&app, &path)?;
@@ -78,8 +78,8 @@ pub async fn read_cached_listing(
 
 // 디렉토리 목록을 디스크 캐시에 저장 (fire-and-forget).
 #[tauri::command]
-pub async fn write_cached_listing(
-    app: tauri::AppHandle,
+pub async fn write_cached_listing<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
     entries: Vec<FileEntry>,
 ) -> Result<()> {

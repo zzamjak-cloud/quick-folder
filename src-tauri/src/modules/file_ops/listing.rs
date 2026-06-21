@@ -17,7 +17,10 @@ fn virtual_dir_entry(name: String, path: String) -> FileEntry {
 
 // 디렉토리 목록 조회
 #[tauri::command]
-pub async fn list_directory(app: tauri::AppHandle, path: String) -> Result<Vec<FileEntry>> {
+pub async fn list_directory<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+) -> Result<Vec<FileEntry>> {
     // spawn_blocking: 네트워크 파일시스템(Google Drive 등) I/O가 tokio 워커를 차단하지 않도록 분리
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>> {
         if resolve_archive_virtual_path_with_app(&app, &path)?.is_some() {

@@ -38,7 +38,11 @@ pub(super) fn read_text_file_impl(path: &std::path::Path, max_bytes: usize) -> R
 
 // 텍스트 파일에 내용 쓰기
 #[tauri::command]
-pub fn read_text_file(app: tauri::AppHandle, path: String, max_bytes: usize) -> Result<String> {
+pub fn read_text_file<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+    max_bytes: usize,
+) -> Result<String> {
     let resolved_path = materialize_archive_path_in_cache(&app, &path)?
         .unwrap_or_else(|| std::path::PathBuf::from(&path));
     read_text_file_impl(&resolved_path, max_bytes)
@@ -74,7 +78,11 @@ pub(super) async fn rename_item_impl(
 
 // 이름 바꾸기 (대상 경로에 동일 이름 파일 존재 시 에러)
 #[tauri::command]
-pub async fn rename_item(app: tauri::AppHandle, old_path: String, new_path: String) -> Result<()> {
+pub async fn rename_item<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    old_path: String,
+    new_path: String,
+) -> Result<()> {
     let app_cache = thumbnail_cache_root(&app)?;
     rename_item_impl(old_path, new_path, Some(&app_cache)).await
 }
@@ -168,8 +176,8 @@ pub(super) async fn delete_items_impl(
 }
 
 #[tauri::command]
-pub async fn delete_items(
-    app: tauri::AppHandle,
+pub async fn delete_items<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     paths: Vec<String>,
     use_trash: bool,
 ) -> Result<()> {
