@@ -10,7 +10,7 @@ import {
   queuedInvoke,
   queuedInvokeLow,
 } from '../utils/tauriInvoke.ts';
-import { tauriCommands } from '../utils/tauriCommands.ts';
+import { fileCommands, systemCommands, tauriCommands } from '../utils/tauriCommands.ts';
 
 type InvokeArgs = Record<string, unknown>;
 type TauriInvokeMock = Parameters<typeof __setTauriInvokeForTest>[0];
@@ -108,13 +108,16 @@ test('direct Tauri command의 문자열 reject는 Error로 정규화된다', asy
   );
 });
 
-test('tauriCommands는 Rust command 이름과 인자를 한 경계로 매핑한다', async () => {
+test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 매핑한다', async () => {
   const calls: { cmd: string; args: InvokeArgs }[] = [];
   __setTauriInvokeForTest(createResolvedInvoke(calls) as TauriInvokeMock);
 
+  assert.equal(tauriCommands.copyPath, systemCommands.copyPath);
+  assert.equal(tauriCommands.checkDuplicateItems, fileCommands.checkDuplicateItems);
+
   await tauriCommands.copyPath('/tmp/a.txt');
-  await tauriCommands.checkDuplicateItems(['/tmp/a.txt'], '/tmp');
-  await tauriCommands.writeCachedListing('/tmp', []);
+  await fileCommands.checkDuplicateItems(['/tmp/a.txt'], '/tmp');
+  await fileCommands.writeCachedListing('/tmp', []);
 
   assert.deepEqual(calls, [
     { cmd: 'copy_path', args: { path: '/tmp/a.txt' } },
