@@ -12,52 +12,11 @@ import {
 } from '../../../utils/pathUtils';
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
-import { formatSize } from '../fileUtils';
 import { tauriCommands } from '../../../utils/tauriCommands';
-
-type FolderSizeResponse = {
-  bytes: string;
-  file_count?: number;
-  fileCount?: number;
-  folder_count?: number;
-  folderCount?: number;
-  children?: FolderSizeChildResponse[];
-};
-
-type FolderSizeChildResponse = {
-  name: string;
-  path: string;
-  is_dir?: boolean;
-  isDir?: boolean;
-  bytes: string;
-  file_count?: number;
-  fileCount?: number;
-  folder_count?: number;
-  folderCount?: number;
-};
-
-export type FolderSizeChildInfo = {
-  name: string;
-  path: string;
-  isDir: boolean;
-  bytes: number;
-  bytesText: string;
-  fileCount: number;
-  folderCount: number;
-  percent: number;
-};
-
-export type FolderSizeDialogState = {
-  status: 'loading' | 'ready' | 'error';
-  path: string;
-  folderName: string;
-  sizeText?: string;
-  bytes?: string;
-  fileCount?: number;
-  folderCount?: number;
-  children?: FolderSizeChildInfo[];
-  error?: string;
-};
+import { useArchiveOperations } from './useArchiveOperations';
+import { useDeleteOperations } from './useDeleteOperations';
+import { useFolderSizeOperations } from './useFolderSizeOperations';
+export type { FolderSizeDialogState } from './useFolderSizeOperations';
 
 export interface UseFileOperationsConfig {
   currentPath: string | null;
@@ -99,7 +58,6 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // 복사 피드백 토스트
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const [folderSizeDialog, setFolderSizeDialog] = useState<FolderSizeDialogState | null>(null);
 
   // 동영상 압축 진행률
   const [videoCompression, setVideoCompression] = useState<{
@@ -115,19 +73,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
   // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
   const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number; itemLabel?: string } | null>(null);
-  const [extractingZipPaths, setExtractingZipPaths] = useState<Set<string>>(() => new Set());
 
   /** 복제 후 목록 갱신 시 선택·스크롤 (loadDirectory가 선택을 비울 수 있어 ref로 이어줌) */
   const pendingDuplicateSelectRef = useRef<string[]>([]);
-
-  /** 압축 해제 후 새 폴더로 선택·스크롤하기 위한 경로 ref */
-  const pendingExtractSelectRef = useRef<string[]>([]);
-
-  // 영구삭제 확인 다이얼로그
-  const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
-
-  // 관리자 권한 삭제 확인 다이얼로그 (Windows)
-  const [elevatedDeleteConfirm, setElevatedDeleteConfirm] = useState<{ paths: string[] } | null>(null);
 
   // 폴더 해제 확인 다이얼로그
   const [ungroupConfirm, setUngroupConfirm] = useState<{ path: string } | null>(null);
@@ -138,10 +86,6 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
     setCopyToast(msg);
     copyToastTimerRef.current = setTimeout(() => setCopyToast(null), duration);
-  }, []);
-
-  const closeFolderSizeDialog = useCallback(() => {
-    setFolderSizeDialog(null);
   }, []);
 
   const ensureWritableContext = useCallback((paths: string[] = []) => {
@@ -157,94 +101,23 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     return false;
   }, [archiveReadonlyMessage, currentPath, setError, showCopyToast]);
 
-  // --- 삭제 ---
-  const handleDelete = useCallback(async (paths: string[], permanent = false) => {
-    if (paths.length === 0) return;
-    if (!ensureWritableContext(paths)) return;
-    if (permanent) {
-      // 영구삭제는 확인 다이얼로그 표시
-      setPermanentDeleteConfirm({ paths: [...paths] });
-      return;
-    }
-    try {
-      setOperationProgress({
-        type: '삭제',
-        current: 0,
-        total: paths.length,
-        itemLabel: paths.length === 1 ? getFileName(paths[0]) : `${getFileName(paths[0])} 외 ${paths.length - 1}개`,
-      });
-      await tauriCommands.deleteItems(paths, true);
-      setOperationProgress(null);
-      undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath ?? '', useTrash: true });
-      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
-      // 삭제된 폴더를 열고 있는 탭 제거 (커스텀 이벤트)
-      window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
-      if (currentPath) loadDirectory(currentPath);
-    } catch (e) {
-      setOperationProgress(null);
-      const errMsg = String(e);
-      // Windows 권한 에러 감지 → 관리자 권한 삭제 제안
-      if (errMsg.includes('Access is denied') || errMsg.includes('액세스가 거부') || errMsg.includes('Permission denied')) {
-        setElevatedDeleteConfirm({ paths: [...paths] });
-      } else {
-        console.error('삭제 실패:', e);
-        setError(`삭제 실패: ${e}`);
-      }
-    }
-  }, [currentPath, ensureWritableContext, loadDirectory, undoStack, setSelectedPaths, setError]);
-
-  // --- 영구삭제 확인 후 실행 ---
-  const executePermanentDelete = useCallback(async () => {
-    if (!permanentDeleteConfirm) return;
-    const { paths } = permanentDeleteConfirm;
-    if (!ensureWritableContext(paths)) {
-      setPermanentDeleteConfirm(null);
-      return;
-    }
-    setPermanentDeleteConfirm(null);
-    try {
-      setOperationProgress({
-        type: '영구삭제',
-        current: 0,
-        total: paths.length,
-        itemLabel: paths.length === 1 ? getFileName(paths[0]) : `${getFileName(paths[0])} 외 ${paths.length - 1}개`,
-      });
-      await tauriCommands.deleteItems(paths, false);
-      setOperationProgress(null);
-      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
-      window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
-      if (currentPath) loadDirectory(currentPath);
-    } catch (e) {
-      setOperationProgress(null);
-      const errMsg = String(e);
-      if (errMsg.includes('Access is denied') || errMsg.includes('액세스가 거부') || errMsg.includes('Permission denied')) {
-        setElevatedDeleteConfirm({ paths: [...paths] });
-      } else {
-        console.error('영구삭제 실패:', e);
-        setError(`영구삭제 실패: ${e}`);
-      }
-    }
-  }, [permanentDeleteConfirm, ensureWritableContext, currentPath, loadDirectory, setSelectedPaths, setError]);
-
-  // --- 관리자 권한 삭제 실행 (Windows) ---
-  const executeElevatedDelete = useCallback(async () => {
-    if (!elevatedDeleteConfirm) return;
-    const { paths } = elevatedDeleteConfirm;
-    if (!ensureWritableContext(paths)) {
-      setElevatedDeleteConfirm(null);
-      return;
-    }
-    setElevatedDeleteConfirm(null);
-    try {
-      await tauriCommands.deleteItemsElevated(paths);
-      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
-      window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
-      if (currentPath) loadDirectory(currentPath);
-    } catch (e) {
-      console.error('관리자 권한 삭제 실패:', e);
-      setError(`관리자 권한 삭제 실패: ${e}`);
-    }
-  }, [elevatedDeleteConfirm, ensureWritableContext, currentPath, loadDirectory, setSelectedPaths, setError]);
+  const {
+    handleDelete,
+    permanentDeleteConfirm,
+    setPermanentDeleteConfirm,
+    executePermanentDelete,
+    elevatedDeleteConfirm,
+    setElevatedDeleteConfirm,
+    executeElevatedDelete,
+  } = useDeleteOperations({
+    currentPath,
+    ensureWritableContext,
+    loadDirectory,
+    undoStack,
+    setSelectedPaths,
+    setOperationProgress,
+    setError,
+  });
 
   // --- 복제 ---
   const handleDuplicate = useCallback(async () => {
@@ -677,87 +550,19 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [ungroupConfirm, ensureWritableContext, currentPath, loadDirectory, showCopyToast, setError]);
 
-  // --- ZIP 압축 ---
-  const handleCompressZip = useCallback(async (paths: string[]) => {
-    if (paths.length === 0 || !currentPath) return;
-    if (!ensureWritableContext(paths)) return;
-    const sep = getPathSeparator(currentPath);
-    const firstName = getFileName(paths[0]);
-    const base = paths.length === 1 ? firstName.replace(/\.[^.]+$/, '') : (getFileName(currentPath) || 'archive');
-    const zipPath = `${currentPath}${sep}${base}.zip`;
-    try {
-      await tauriCommands.compressToZip(paths, zipPath);
-      loadDirectory(currentPath);
-    } catch (e) {
-      console.error('압축 실패:', e);
-    }
-  }, [currentPath, ensureWritableContext, loadDirectory]);
-
-  // --- ZIP 압축 풀기 ---
-  const handleExtractZip = useCallback(async (paths: string[]) => {
-    if (paths.length === 0 || !currentPath) return;
-    if (!ensureWritableContext(paths)) return;
-    const sep = getPathSeparator(currentPath);
-    setExtractingZipPaths(prev => {
-      const next = new Set(prev);
-      paths.forEach(path => next.add(path));
-      return next;
-    });
-    showCopyToast(paths.length === 1 ? `압축 해제 중: ${getFileName(paths[0])}` : `압축 해제 중: ${paths.length}개`, 3000);
-    try {
-      const createdDirs: string[] = [];
-      // 해제마다 누적 사용 중인 폴더명 (이전 해제 결과 + 기존 entries)
-      const existingNames = new Set(entries.map(e => e.name));
-      let totalFailed = 0; // 부분 실패 누적 (개별 파일 단위)
-      for (const zipPath of paths) {
-        const fileName = getFileName(zipPath);
-        const baseName = fileName.replace(/\.zip$/i, '');
-        // 동일 이름 폴더가 있으면 번호 붙이기
-        let counter = 2;
-        let folderName = baseName;
-        while (existingNames.has(folderName)) {
-          folderName = `${baseName} (${counter})`;
-          counter++;
-        }
-        existingNames.add(folderName);
-        const destDir = `${currentPath}${sep}${folderName}`;
-        const result = await tauriCommands.extractZip(zipPath, destDir);
-        createdDirs.push(result.destDir || destDir);
-        if (result.failed.length > 0) {
-          totalFailed += result.failed.length;
-          // 어떤 항목이 왜 실패했는지 콘솔에 상세 기록
-          console.warn(`압축 해제 일부 실패 (${fileName}):`, result.failed);
-        }
-        setExtractingZipPaths(prev => {
-          const next = new Set(prev);
-          next.delete(zipPath);
-          return next;
-        });
-      }
-      // 해제된 폴더로 선택·스크롤 이동 (entries 갱신 후 effect가 처리)
-      pendingExtractSelectRef.current = createdDirs;
-      await loadDirectory(currentPath);
-      // 일부 항목이 실패했어도 나머지는 해제되었으므로 폴더 이동은 유지하고 경고만 표시
-      if (totalFailed > 0) {
-        showCopyToast(`압축 풀기 완료 — ${totalFailed}개 항목 실패`);
-      } else {
-        showCopyToast('압축 풀기 완료');
-      }
-    } catch (e) {
-      pendingExtractSelectRef.current = [];
-      console.error('압축 풀기 실패:', e);
-      setError(`압축 풀기 실패: ${e}`);
-    } finally {
-      setExtractingZipPaths(prev => {
-        const next = new Set(prev);
-        let changed = false;
-        paths.forEach(path => {
-          if (next.delete(path)) changed = true;
-        });
-        return changed ? next : prev;
-      });
-    }
-  }, [currentPath, entries, ensureWritableContext, loadDirectory, showCopyToast, setError]);
+  const {
+    handleCompressZip,
+    handleExtractZip,
+    extractingZipPaths,
+    pendingExtractSelectRef,
+  } = useArchiveOperations({
+    currentPath,
+    entries,
+    ensureWritableContext,
+    loadDirectory,
+    showCopyToast,
+    setError,
+  });
 
   // --- Map Maker (Laigter 스타일 맵)보내기 ---
   const handleLaigterMapsExport = useCallback(async (
@@ -942,57 +747,15 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
 
-  // --- 폴더 용량 확인 ---
-  const handleInspectFolderSize = useCallback(async (path: string) => {
-    if (isArchiveVirtualPath(path)) {
-      showCopyToast(archiveReadonlyMessage, 2200);
-      setError(archiveReadonlyMessage);
-      return;
-    }
-    const folderName = getFileName(path) || path;
-    setFolderSizeDialog({ status: 'loading', path, folderName });
-    try {
-      const info = await tauriCommands.calculateFolderSize<FolderSizeResponse>(path);
-      const bytes = Number(info.bytes);
-      const sizeText = Number.isFinite(bytes) ? formatSize(bytes, false) : `${info.bytes} bytes`;
-      const fileCount = info.file_count ?? info.fileCount ?? 0;
-      const folderCount = info.folder_count ?? info.folderCount ?? 0;
-      const children = (info.children ?? [])
-        .map((child): FolderSizeChildInfo => {
-          const childBytes = Number(child.bytes);
-          const normalizedBytes = Number.isFinite(childBytes) ? childBytes : 0;
-          return {
-            name: child.name,
-            path: child.path,
-            isDir: child.is_dir ?? child.isDir ?? false,
-            bytes: normalizedBytes,
-            bytesText: formatSize(normalizedBytes, false),
-            fileCount: child.file_count ?? child.fileCount ?? 0,
-            folderCount: child.folder_count ?? child.folderCount ?? 0,
-            percent: Number.isFinite(bytes) && bytes > 0 ? Math.min(100, (normalizedBytes / bytes) * 100) : 0,
-          };
-        })
-        .sort((a, b) => b.bytes - a.bytes || a.name.localeCompare(b.name));
-      setFolderSizeDialog({
-        status: 'ready',
-        path,
-        folderName,
-        sizeText,
-        bytes: info.bytes,
-        fileCount,
-        folderCount,
-        children,
-      });
-    } catch (e) {
-      console.error('폴더 용량 확인 실패:', e);
-      setFolderSizeDialog({
-        status: 'error',
-        path,
-        folderName,
-        error: String(e),
-      });
-    }
-  }, [archiveReadonlyMessage, setError, showCopyToast]);
+  const {
+    folderSizeDialog,
+    closeFolderSizeDialog,
+    handleInspectFolderSize,
+  } = useFolderSizeOperations({
+    archiveReadonlyMessage,
+    showCopyToast,
+    setError,
+  });
 
   // --- 경로 복사 ---
   const handleCopyPath = useCallback(async (path: string) => {
