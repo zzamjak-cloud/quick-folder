@@ -5,7 +5,7 @@
 //! # 사용 예제
 //!
 //! ```rust
-//! use crate::modules::error::{AppError, Result};
+//! use app_lib::modules::error::{AppError, Result};
 //!
 //! // Tauri 커맨드에서 Result<T> 반환 (AppError 자동 변환)
 //! #[tauri::command]
@@ -201,7 +201,7 @@ impl std::error::Error for AppError {}
 /// # 예제
 ///
 /// ```rust
-/// use crate::modules::error::{AppError, Result};
+/// use app_lib::modules::error::{AppError, Result};
 ///
 /// fn read_file(path: &str) -> Result<String> {
 ///     // io::Error는 자동으로 AppError로 변환됨
@@ -228,7 +228,7 @@ impl From<std::io::Error> for AppError {
 /// # 예제
 ///
 /// ```rust
-/// use crate::modules::error::Result;
+/// use app_lib::modules::error::Result;
 ///
 /// fn load_image(path: &str) -> Result<image::RgbaImage> {
 ///     // ImageError는 자동으로 AppError::ImageProcessing으로 변환됨
@@ -261,7 +261,7 @@ impl From<zip::result::ZipError> for AppError {
 /// # 예제
 ///
 /// ```rust
-/// use crate::modules::error::Result;
+/// use app_lib::modules::error::Result;
 ///
 /// #[tauri::command]
 /// pub async fn my_command(path: String) -> Result<Vec<String>> {

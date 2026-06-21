@@ -103,7 +103,7 @@ fn hex_value(byte: u8) -> Option<u8> {
 ///
 /// ```rust
 /// use std::path::Path;
-/// use crate::helpers::find_unique_path;
+/// use app_lib::find_unique_path;
 ///
 /// let parent = Path::new("/tmp");
 /// let path = find_unique_path(parent, "output", "_compressed", ".mp4");
@@ -137,7 +137,7 @@ pub fn find_unique_path(parent: &Path, stem: &str, suffix: &str, ext: &str) -> P
 ///
 /// ```rust
 /// use std::path::Path;
-/// use crate::helpers::get_copy_destination;
+/// use app_lib::get_copy_destination;
 ///
 /// let parent = Path::new("/tmp");
 ///
@@ -227,8 +227,9 @@ pub fn get_numbered_destination(parent: &Path, stem: &str, ext: &str, is_dir: bo
 ///
 /// # 예제
 ///
-/// ```rust
-/// use crate::helpers::create_sprite_canvas;
+/// ```rust,no_run
+/// use app_lib::create_sprite_canvas;
+/// # fn main() -> app_lib::modules::error::Result<()> {
 ///
 /// let images = vec![
 ///     "icon1.png".to_string(),
@@ -239,6 +240,8 @@ pub fn get_numbered_destination(parent: &Path, stem: &str, ext: &str, is_dir: bo
 /// // 3x1 그리드, 각 셀 64x64 픽셀
 /// let canvas = create_sprite_canvas(&images, 64, 64, 3, 1)?;
 /// // 결과: 192x64 픽셀 캔버스
+/// # Ok(())
+/// # }
 /// ```
 pub fn create_sprite_canvas(
     images: &[String],
@@ -284,7 +287,7 @@ pub fn create_sprite_canvas(
 /// # 예제
 ///
 /// ```rust
-/// use crate::helpers::is_hidden_file;
+/// use app_lib::is_hidden_file;
 ///
 /// assert_eq!(is_hidden_file(".DS_Store"), true);
 /// assert_eq!(is_hidden_file("normal.txt"), false);
@@ -314,7 +317,7 @@ pub fn is_system_file(meta: &std::fs::Metadata) -> bool {
 /// # 예제
 ///
 /// ```rust
-/// use crate::helpers::is_system_filename;
+/// use app_lib::is_system_filename;
 ///
 /// assert_eq!(is_system_filename("desktop.ini"), true);
 /// assert_eq!(is_system_filename("~$document.docx"), true);
