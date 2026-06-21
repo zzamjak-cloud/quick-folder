@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars, ContextMenuSection } from './types';
@@ -10,7 +10,7 @@ import {
 import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
-import BulkRenameModal from './BulkRenameModal';
+import FileExplorerModalLayer from './FileExplorerModalLayer';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDrop';
@@ -37,7 +37,6 @@ import {
 } from '../../utils/pathUtils';
 import { naturalCompare } from '../../utils/naturalCompare';
 import { isTauri } from '../../utils/isTauri';
-import GoToFolderModal from './GoToFolderModal';
 import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
 import { useSearchFilter } from './hooks/useSearchFilter';
@@ -52,26 +51,6 @@ import { useEscapeKey } from './hooks/useEscapeKey';
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
-
-const PreviewModals = lazy(() => import('./PreviewModals').then(module => ({ default: module.PreviewModals })));
-const PixelateModal = lazy(() => import('./PixelateModal'));
-const MapMakerModal = lazy(() => import('./MapMakerModal'));
-const RemoveWhiteBgModal = lazy(() => import('./RemoveWhiteBgModal'));
-const SheetPackerModal = lazy(() => import('./SheetPackerModal'));
-const SheetUnpackModal = lazy(() => import('./SheetUnpackModal'));
-const MarkdownEditor = lazy(() => import('./MarkdownEditor'));
-const FontPreviewModal = lazy(() => import('./FontPreviewModal'));
-const GifCompressModal = lazy(() => import('./GifCompressModal'));
-const PdfPreviewModal = lazy(() => import('./PdfPreviewModal'));
-const AudioPreviewModal = lazy(() => import('./AudioPreviewModal'));
-const CodePreviewModal = lazy(() => import('./CodePreviewModal'));
-const FbxPreviewModal = lazy(() => import('./FbxPreviewModal'));
-const FontMergeModal = lazy(() => import('./FontMergeModal'));
-const FolderMergeModal = lazy(() => import('./FolderMergeModal'));
-const TerminalPresetModal = lazy(() => import('./TerminalPresetModal'));
-const GlobalSearchModal = lazy(() => import('./GlobalSearchModal'));
-const DuplicateFilesModal = lazy(() => import('./DuplicateFilesModal'));
-const DiffViewerModal = lazy(() => import('./DiffViewerModal'));
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
@@ -1264,14 +1243,15 @@ export default function FileExplorer({
     closeContextMenu();
   }, [closeContextMenu]);
 
-  const shouldRenderPreviewModals = Boolean(
-    preview.previewImagePath ||
-    preview.videoPlayerPath ||
-    preview.previewTextPath ||
-    preview.previewJsonPath ||
-    preview.previewMdPath ||
-    preview.hwpPreviewPath
-  );
+  const reloadCurrentPath = useCallback(() => {
+    if (currentPath) loadDirectory(currentPath);
+  }, [currentPath, loadDirectory]);
+
+  const handlePreviewCropSave = useCallback((outputPath: string) => {
+    fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
+    pendingSelectRef.current = outputPath;
+    reloadCurrentPath();
+  }, [fileOps.showCopyToast, reloadCurrentPath]);
 
   return (
     <div
@@ -1679,33 +1659,27 @@ export default function FileExplorer({
         </div>
       )}
 
-      {shouldRenderPreviewModals && (
-        <Suspense fallback={null}>
-          <PreviewModals
-            preview={preview}
-            themeVars={themeVars}
-            previewEntry={entries.find((e) => e.path === preview.previewImagePath) ?? null}
-            onCropSave={(outputPath) => {
-              fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
-              pendingSelectRef.current = outputPath;
-              if (currentPath) {
-                loadDirectory(currentPath);
-              }
-            }}
-            onRemoveBg={(path) => {
-              modals.setRemoveWhiteBgPaths([path]);
-            }}
-            onOpenGifCompress={(paths) => modals.setGifCompressPaths(paths)}
-            onGifToMp4={fileOps.handleGifToMp4}
-            onOpenImageCompress={() => {}}
-            onOpenImageResize={() => {}}
-            onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
-            onFileChanged={() => {
-              if (currentPath) loadDirectory(currentPath);
-            }}
-          />
-        </Suspense>
-      )}
+      <FileExplorerModalLayer
+        modals={modals}
+        preview={preview}
+        entries={entries}
+        currentPath={currentPath}
+        themeVars={themeVars}
+        sheetPackDefaultName={fileOps.sheetPackDefaultName}
+        recentPath={RECENT_PATH}
+        onReloadCurrentPath={reloadCurrentPath}
+        onPreviewCropSave={handlePreviewCropSave}
+        onGifToMp4={fileOps.handleGifToMp4}
+        onPixelateApply={fileOps.handlePixelateApply}
+        onMapMakerExport={fileOps.handleLaigterMapsExport}
+        onRemoveWhiteBgApply={fileOps.handleRemoveWhiteBgApply}
+        onBulkRenameApply={fileOps.handleBulkRenameApply}
+        onNavigate={handleNavigateTo}
+        onGlobalSearchSelect={handleGlobalSearchSelect}
+        onDuplicateFileDelete={handleDuplicateFileDelete}
+        onMergeFontsComplete={fileOps.handleMergeFontsComplete}
+        onFolderMergeComplete={handleFolderMergeComplete}
+      />
 
       {/* 컨텍스트 메뉴 */}
       {contextMenu && (
@@ -1729,218 +1703,6 @@ export default function FileExplorer({
           onCancel={() => modals.setTagPrompt(null)}
         />
       )}
-
-      <Suspense fallback={null}>
-      {/* 픽셀화 모달 */}
-      {modals.pixelatePath && (
-        <PixelateModal
-          path={modals.pixelatePath}
-          onClose={() => modals.setPixelatePath(null)}
-          onApply={fileOps.handlePixelateApply}
-          themeVars={themeVars}
-        />
-      )}
-
-      {modals.mapMakerPath && (
-        <MapMakerModal
-          path={modals.mapMakerPath}
-          onClose={() => modals.setMapMakerPath(null)}
-          onExport={fileOps.handleLaigterMapsExport}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 배경 제거 모달 */}
-      {modals.removeWhiteBgPaths && (
-        <RemoveWhiteBgModal
-          paths={modals.removeWhiteBgPaths}
-          onClose={() => modals.setRemoveWhiteBgPaths(null)}
-          onApply={fileOps.handleRemoveWhiteBgApply}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* GIF 압축 모달 */}
-      {modals.gifCompressPaths && (
-        <GifCompressModal
-          filePaths={modals.gifCompressPaths}
-          onClose={() => modals.setGifCompressPaths(null)}
-          onSuccess={() => {
-            if (currentPath) loadDirectory(currentPath);
-          }}
-          onError={(err) => console.error('GIF 압축 실패:', err)}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 시트 패킹 모달 */}
-      {modals.sheetPackPaths && (
-        <SheetPackerModal
-          imagePaths={modals.sheetPackPaths}
-          defaultName={fileOps.sheetPackDefaultName}
-          currentPath={currentPath!}
-          onClose={() => { modals.setSheetPackPaths(null); if (currentPath) loadDirectory(currentPath); }}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 시트 언패킹 모달 */}
-      {modals.sheetUnpackPath && (
-        <SheetUnpackModal
-          path={modals.sheetUnpackPath}
-          currentPath={currentPath!}
-          onClose={() => { modals.setSheetUnpackPath(null); if (currentPath) loadDirectory(currentPath); }}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 일괄 이름변경 모달 */}
-      {modals.bulkRenamePaths && (
-        <BulkRenameModal
-          paths={modals.bulkRenamePaths}
-          onClose={() => modals.setBulkRenamePaths(null)}
-          onApply={fileOps.handleBulkRenameApply}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 터미널 프리셋 모달 */}
-      {modals.terminalPresetPath && (
-        <TerminalPresetModal
-          path={modals.terminalPresetPath}
-          initialEditId={modals.terminalPresetEditId}
-          onClose={() => {
-            modals.setTerminalPresetPath(null);
-            modals.setTerminalPresetEditId(null);
-          }}
-          themeVars={themeVars}
-        />
-      )}
-      </Suspense>
-
-      {/* 폴더로 이동 모달 */}
-      <GoToFolderModal
-        isOpen={modals.isGoToFolderOpen}
-        onClose={() => modals.setIsGoToFolderOpen(false)}
-        onNavigate={handleNavigateTo}
-        themeVars={themeVars}
-      />
-
-      <Suspense fallback={null}>
-      {/* 글로벌 검색 모달 */}
-      {modals.isGlobalSearchOpen && currentPath && currentPath !== RECENT_PATH && (
-        <GlobalSearchModal
-          isOpen={modals.isGlobalSearchOpen}
-          onClose={() => modals.setIsGlobalSearchOpen(false)}
-          currentPath={currentPath}
-          onSelect={handleGlobalSearchSelect}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 중복 파일 찾기 모달 */}
-      {modals.duplicateFinderPath && (
-        <DuplicateFilesModal
-          rootPath={modals.duplicateFinderPath}
-          onClose={() => modals.setDuplicateFinderPath(null)}
-          onSelect={handleGlobalSearchSelect}
-          onDelete={handleDuplicateFileDelete}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* Diff Viewer */}
-      {modals.diffViewerPaths && (
-        <DiffViewerModal
-          leftPath={modals.diffViewerPaths[0]}
-          rightPath={modals.diffViewerPaths[1]}
-          themeVars={themeVars}
-          onClose={() => modals.setDiffViewerPaths(null)}
-        />
-      )}
-
-      {/* 마크다운 편집기 */}
-      {modals.markdownEditorPath && (
-        <MarkdownEditor
-          path={modals.markdownEditorPath}
-          themeVars={themeVars}
-          onClose={() => {
-            modals.setMarkdownEditorPath(null);
-            if (currentPath) loadDirectory(currentPath);
-          }}
-        />
-      )}
-
-      {/* 폰트 미리보기 */}
-      {modals.fontPreviewPath && (
-        <FontPreviewModal
-          path={modals.fontPreviewPath}
-          onClose={() => modals.setFontPreviewPath(null)}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* PDF 미리보기 */}
-      {modals.pdfPreviewPath && (
-        <PdfPreviewModal
-          path={modals.pdfPreviewPath}
-          onClose={() => modals.setPdfPreviewPath(null)}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 오디오 미리듣기 */}
-      {modals.audioPreviewPath && (
-        <AudioPreviewModal
-          path={modals.audioPreviewPath}
-          entries={entries}
-          onClose={() => modals.setAudioPreviewPath(null)}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 코드 미리보기 */}
-      {preview.codePreviewPath && (
-        <CodePreviewModal
-          path={preview.codePreviewPath}
-          onClose={() => preview.setCodePreviewPath(null)}
-          themeVars={themeVars}
-          editRequestToken={preview.codePreviewEditRequest}
-        />
-      )}
-
-      {/* FBX 3D 미리보기 */}
-      {preview.fbxPreviewPath && (
-        <FbxPreviewModal
-          path={preview.fbxPreviewPath}
-          onClose={() => preview.setFbxPreviewPath(null)}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 폰트 병합 */}
-      {modals.fontMergePaths && modals.fontMergePaths.length === 2 && (
-        <FontMergeModal
-          paths={modals.fontMergePaths}
-          onClose={() => modals.setFontMergePaths(null)}
-          onApply={(outputPath) => {
-            modals.setFontMergePaths(null);
-            fileOps.handleMergeFontsComplete(outputPath);
-          }}
-          themeVars={themeVars}
-        />
-      )}
-
-      {/* 스마트 폴더 병합 */}
-      {modals.folderMergeRequest && (
-        <FolderMergeModal
-          request={modals.folderMergeRequest}
-          onClose={() => modals.setFolderMergeRequest(null)}
-          onComplete={handleFolderMergeComplete}
-          themeVars={themeVars}
-        />
-      )}
-      </Suspense>
 
       {/* 중복 파일 확인 다이얼로그 */}
       {clipboardHook.duplicateConfirm && (
