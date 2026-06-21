@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
 import { useUndoStack } from './useUndoStack';
 import {
@@ -13,6 +13,7 @@ import {
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
 import { formatSize } from '../fileUtils';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 type FolderSizeResponse = {
   bytes: string;
@@ -172,7 +173,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         total: paths.length,
         itemLabel: paths.length === 1 ? getFileName(paths[0]) : `${getFileName(paths[0])} 외 ${paths.length - 1}개`,
       });
-      await invoke('delete_items', { paths, useTrash: true });
+      await tauriCommands.deleteItems(paths, true);
       setOperationProgress(null);
       undoStack.push({ type: 'delete', paths: [...paths], directory: currentPath ?? '', useTrash: true });
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
@@ -208,7 +209,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         total: paths.length,
         itemLabel: paths.length === 1 ? getFileName(paths[0]) : `${getFileName(paths[0])} 외 ${paths.length - 1}개`,
       });
-      await invoke('delete_items', { paths, useTrash: false });
+      await tauriCommands.deleteItems(paths, false);
       setOperationProgress(null);
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
@@ -235,7 +236,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
     setElevatedDeleteConfirm(null);
     try {
-      await invoke('delete_items_elevated', { paths });
+      await tauriCommands.deleteItemsElevated(paths);
       setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
       window.dispatchEvent(new CustomEvent('qf-tab-delete', { detail: { paths } }));
       if (currentPath) loadDirectory(currentPath);
@@ -258,7 +259,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
           ? getFileName(selectedPaths[0])
           : `${getFileName(selectedPaths[0])} 외 ${selectedPaths.length - 1}개`,
       });
-      const newPaths = await invoke<string[]>('duplicate_items', { paths: selectedPaths });
+      const newPaths = await tauriCommands.duplicateItems(selectedPaths);
       setOperationProgress(null);
       pendingDuplicateSelectRef.current = newPaths;
       await loadDirectory(currentPath);
@@ -284,7 +285,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
     const newPath = `${currentPath}${sep}${candidate}`;
     try {
-      await invoke('create_directory', { path: newPath });
+      await tauriCommands.createDirectory(newPath);
       await loadDirectory(currentPath);
       // 생성 후 바로 인라인 이름변경 시작
       setRenamingPath(newPath);
@@ -308,7 +309,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
     const newPath = `${currentPath}${sep}${candidate}`;
     try {
-      await invoke('create_text_file', { path: newPath });
+      await tauriCommands.createTextFile(newPath);
       undoStack.push({ type: 'create_file', path: newPath });
       await loadDirectory(currentPath);
       // 생성 후 바로 인라인 이름변경 시작
@@ -324,7 +325,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (!currentPath) return;
     if (!ensureWritableContext()) return;
     try {
-      const savedPath = await invoke<string | null>('paste_image_from_clipboard', { destDir: currentPath });
+      const savedPath = await tauriCommands.pasteImageFromClipboard(currentPath);
       if (savedPath) {
         await loadDirectory(currentPath);
         setSelectedPaths([savedPath]);
@@ -364,10 +365,10 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleBulkRenameApply = useCallback(async (renames: { oldPath: string; newPath: string }[]) => {
     if (!ensureWritableContext(renames.flatMap(({ oldPath, newPath }) => [oldPath, newPath]))) return;
     for (const { oldPath, newPath } of renames) {
-      await invoke('rename_item', { oldPath, newPath });
+      await tauriCommands.renameItem(oldPath, newPath);
     }
     if (currentPath) {
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      const result = await tauriCommands.listDirectory(currentPath);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     setSelectedPaths([]);
@@ -436,11 +437,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         const dir = getParentDir(pl.oldPath);
         const sep = getPathSeparator(pl.oldPath);
         const tempPath = dir + sep + tempName;
-        await invoke('rename_item', { oldPath: pl.oldPath, newPath: tempPath });
+        await tauriCommands.renameItem(pl.oldPath, tempPath);
         tempPaths.push({ tempPath, finalPath: pl.newPath });
       }
       for (const t of tempPaths) {
-        await invoke('rename_item', { oldPath: t.tempPath, newPath: t.finalPath });
+        await tauriCommands.renameItem(t.tempPath, t.finalPath);
       }
       for (const pl of finalPlans) {
         renamed.push({ oldPath: pl.oldPath, newPath: pl.newPath });
@@ -462,7 +463,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       window.dispatchEvent(new Event('qf-files-changed'));
 
       if (currentPath) {
-        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+        const result = await tauriCommands.listDirectory(currentPath);
         const sorted = sortEntries(result, sortBy, sortDir);
         setEntries(sorted);
         const newPaths = renamed.map(r => r.newPath);
@@ -515,7 +516,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         continue;
       }
       try {
-        await invoke('rename_item', { oldPath, newPath });
+        await tauriCommands.renameItem(oldPath, newPath);
         renamed.push({ oldPath, newPath });
       } catch (e) {
         console.error('파일명 복구 실패:', e);
@@ -533,7 +534,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       window.dispatchEvent(new Event('qf-files-changed'));
 
       if (currentPath) {
-        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+        const result = await tauriCommands.listDirectory(currentPath);
         setEntries(sortEntries(result, sortBy, sortDir));
         setSelectedPaths(renamed.map(r => r.newPath));
       }
@@ -574,7 +575,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         const targetName = newBase + ext;
         const targetPath = dir + sep + targetName;
         if (targetPath !== p) {
-          await invoke('rename_item', { oldPath: p, newPath: targetPath });
+          await tauriCommands.renameItem(p, targetPath);
           undoRenames.push({ oldPath: p, newPath: targetPath });
         }
         renamedPaths.push(targetPath);
@@ -591,7 +592,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       window.dispatchEvent(new Event('qf-files-changed'));
 
       // 이름 변경 후 디렉토리 재로드
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      const result = await tauriCommands.listDirectory(currentPath);
       const sorted = sortEntries(result, sortBy, sortDir);
       setEntries(sorted);
       setSelectedPaths(renamedPaths);
@@ -606,7 +607,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       }
       // 실패 시 디렉토리 재로드하여 원래 이름 복원
       if (currentPath) {
-        const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+        const result = await tauriCommands.listDirectory(currentPath);
         setEntries(sortEntries(result, sortBy, sortDir));
       }
     }
@@ -628,8 +629,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const newPath = `${currentPath}${sep}${candidate}`;
     try {
       const sourcePaths = [...selectedPaths];
-      await invoke('create_directory', { path: newPath });
-      await invoke('move_items', { sources: selectedPaths, dest: newPath });
+      await tauriCommands.createDirectory(newPath);
+      await tauriCommands.moveItems(selectedPaths, newPath);
       undoStack.push({
         type: 'move_group',
         sources: sourcePaths,
@@ -660,14 +661,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     setUngroupConfirm(null);
     try {
       // 폴더 내부 파일 목록 조회
-      const contents = await invoke<FileEntry[]>('list_directory', { path: folderPath });
+      const contents = await tauriCommands.listDirectory(folderPath);
       if (contents.length > 0) {
         // 내용물을 부모 폴더로 이동
         const sources = contents.map(e => e.path);
-        await invoke('move_items', { sources, dest: currentPath });
+        await tauriCommands.moveItems(sources, currentPath);
       }
       // 빈 폴더 삭제
-      await invoke('delete_items', { paths: [folderPath], useTrash: true });
+      await tauriCommands.deleteItems([folderPath], true);
       await loadDirectory(currentPath);
       showCopyToast(`폴더 해제 완료: ${getFileName(folderPath)}`);
     } catch (e) {
@@ -685,7 +686,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const base = paths.length === 1 ? firstName.replace(/\.[^.]+$/, '') : (getFileName(currentPath) || 'archive');
     const zipPath = `${currentPath}${sep}${base}.zip`;
     try {
-      await invoke('compress_to_zip', { paths, dest: zipPath });
+      await tauriCommands.compressToZip(paths, zipPath);
       loadDirectory(currentPath);
     } catch (e) {
       console.error('압축 실패:', e);
@@ -720,12 +721,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         }
         existingNames.add(folderName);
         const destDir = `${currentPath}${sep}${folderName}`;
-        const result = await invoke<{
-          destDir: string;
-          total: number;
-          extracted: number;
-          failed: { name: string; reason: string }[];
-        }>('extract_zip', { zipPath, destDir });
+        const result = await tauriCommands.extractZip(zipPath, destDir);
         createdDirs.push(result.destDir || destDir);
         if (result.failed.length > 0) {
           totalFailed += result.failed.length;
@@ -770,16 +766,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     options: { saveNormal: boolean; saveParallax: boolean; saveSpecular: boolean; saveOcclusion: boolean },
   ) => {
     if (!ensureWritableContext([inputPath])) return;
-    const outputs = await invoke<string[]>('laigter_maps_export', {
-      input: inputPath,
-      params,
-      options,
-    });
+    const outputs = await tauriCommands.exportLaigterMaps(inputPath, params, options);
     if (outputs.length > 0) {
       undoStack.push({ type: 'export_maps', paths: outputs });
     }
     if (currentPath) {
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      const result = await tauriCommands.listDirectory(currentPath);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     showCopyToast(`맵 저장 완료: ${outputs.length}개 파일`);
@@ -788,9 +780,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // --- 픽셀화 적용 ---
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
     if (!ensureWritableContext([path])) return;
-    const output = await invoke<string>('pixelate_image', { input: path, pixelSize, scale, maxColors });
+    const output = await tauriCommands.pixelateImage(path, pixelSize, scale, maxColors);
     if (currentPath) {
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      const result = await tauriCommands.listDirectory(currentPath);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     showCopyToast(`픽셀화 완료: ${getFileName(output)}`);
@@ -799,9 +791,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // --- 흰색 배경 제거 적용 ---
   const handleRemoveWhiteBgApply = useCallback(async (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => {
     if (!ensureWritableContext(paths)) return;
-    const outputs = await invoke<string[]>('remove_white_bg_save', { inputs: paths, threshold, feather, seeds, trim });
+    const outputs = await tauriCommands.removeWhiteBgSave(paths, threshold, feather, seeds, trim);
     if (currentPath) {
-      const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+      const result = await tauriCommands.listDirectory(currentPath);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     if (outputs.length === 1) {
@@ -816,7 +808,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (!ensureWritableContext(paths)) return;
     if (paths.length === 1) {
       // 폴더: 폴더 내 이미지 목록 조회
-      const result = await invoke<FileEntry[]>('list_directory', { path: paths[0] });
+      const result = await tauriCommands.listDirectory(paths[0]);
       const imageExts = /\.(png|jpe?g|gif|webp|bmp)$/i;
       const imgs = result.filter(e => !e.is_dir && imageExts.test(e.name)).map(e => e.path);
       if (imgs.length === 0) { showCopyToast('이미지 파일이 없습니다'); return; }
@@ -852,7 +844,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (!ensureWritableContext(paths)) return;
     try {
       // 1. ffmpeg 설치 확인
-      const installed = await invoke<boolean>('check_ffmpeg');
+      const installed = await tauriCommands.checkFfmpeg();
       if (!installed) {
         showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
         return;
@@ -882,7 +874,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         };
 
         setVideoCompression({ fileName, percent: 0, speed: '준비 중...', current, total: paths.length });
-        await invoke<string>('compress_video', { input: path, quality, onProgress });
+        await tauriCommands.compressVideo(path, quality, onProgress);
         successCount += 1;
       }
 
@@ -900,7 +892,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (paths.length === 0) return;
     if (!ensureWritableContext(paths)) return;
     try {
-      const installed = await invoke<boolean>('check_ffmpeg');
+      const installed = await tauriCommands.checkFfmpeg();
       if (!installed) {
         showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
         return;
@@ -909,7 +901,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       let successCount = 0;
       for (let i = 0; i < paths.length; i += 1) {
         setOperationProgress({ type: 'GIF → MP4 변환', current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
-        await invoke<string>('gif_to_mp4', { path: paths[i] });
+        await tauriCommands.gifToMp4(paths[i]);
         successCount += 1;
       }
 
@@ -928,11 +920,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const fileName = getFileName(path);
     try {
       // Ghostscript 설치 확인
-      const gsInstalled = await invoke<boolean>('check_gs');
+      const gsInstalled = await tauriCommands.checkGhostscript();
       if (!gsInstalled) {
         setGsSetup({ fileName });
         try {
-          await invoke('download_gs');
+          await tauriCommands.downloadGhostscript();
           showCopyToast('Ghostscript 설치 완료');
         } catch (installErr) {
           showCopyToast(`Ghostscript 설치 실패: ${installErr}`);
@@ -942,7 +934,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         }
       }
       showCopyToast(`PDF 압축 중: ${fileName}`);
-      const output = await invoke<string>('compress_pdf', { input: path });
+      const output = await tauriCommands.compressPdf(path);
       if (currentPath) loadDirectory(currentPath);
       showCopyToast(`PDF 압축 완료: ${getFileName(output)}`);
     } catch (e) {
@@ -960,7 +952,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     const folderName = getFileName(path) || path;
     setFolderSizeDialog({ status: 'loading', path, folderName });
     try {
-      const info = await invoke<FolderSizeResponse>('calculate_folder_size', { path });
+      const info = await tauriCommands.calculateFolderSize<FolderSizeResponse>(path);
       const bytes = Number(info.bytes);
       const sizeText = Number.isFinite(bytes) ? formatSize(bytes, false) : `${info.bytes} bytes`;
       const fileCount = info.file_count ?? info.fileCount ?? 0;
@@ -1005,7 +997,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // --- 경로 복사 ---
   const handleCopyPath = useCallback(async (path: string) => {
     try {
-      await invoke('copy_path', { path });
+      await tauriCommands.copyPath(path);
       showCopyToast('경로가 복사되었습니다');
     } catch (e) {
       console.error('경로 복사 실패:', e);
@@ -1019,26 +1011,26 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
     try {
       if (action.type === 'delete') {
-        await invoke('restore_trash_items', { originalPaths: action.paths });
+        await tauriCommands.restoreTrashItems(action.paths);
         showCopyToast('삭제 취소됨');
       } else if (action.type === 'rename') {
-        await invoke('rename_item', { oldPath: action.oldPath, newPath: action.newPath });
+        await tauriCommands.renameItem(action.oldPath, action.newPath);
         showCopyToast('이름 변경 취소됨');
       } else if (action.type === 'move_group') {
         // 새 폴더 안의 파일들을 원래 디렉토리로 이동
-        const innerFiles = await invoke<FileEntry[]>('list_directory', { path: action.createdDir });
+        const innerFiles = await tauriCommands.listDirectory(action.createdDir);
         const innerPaths = innerFiles.map((f: FileEntry) => f.path);
         if (innerPaths.length > 0) {
-          await invoke('move_items', { sources: innerPaths, dest: action.parentDir });
+          await tauriCommands.moveItems(innerPaths, action.parentDir);
         }
         // 빈 폴더 삭제
-        await invoke('delete_items', { paths: [action.createdDir], useTrash: false });
+        await tauriCommands.deleteItems([action.createdDir], false);
         showCopyToast('그룹화 취소됨');
       } else if (action.type === 'create_file') {
-        await invoke('delete_items', { paths: [action.path], useTrash: true });
+        await tauriCommands.deleteItems([action.path], true);
         showCopyToast('파일 생성 취소됨');
       } else if (action.type === 'export_maps' && action.paths.length > 0) {
-        await invoke('delete_items', { paths: action.paths, useTrash: true });
+        await tauriCommands.deleteItems(action.paths, true);
         showCopyToast('맵보내기 취소됨');
       }
       if (currentPath) {
