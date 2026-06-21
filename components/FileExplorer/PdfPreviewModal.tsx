@@ -1,15 +1,27 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
-// @ts-ignore — Vite ?url 임포트, TS 타입 정의 없음
-import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { useEscapeKey } from './hooks/useEscapeKey';
 
-// PDF.js Worker 경로 설정 (Vite ?url 임포트)
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+type PdfJsLib = typeof import('pdfjs-dist');
+type PDFDocumentProxy = import('pdfjs-dist').PDFDocumentProxy;
+type PDFRenderTask = import('pdfjs-dist').RenderTask;
+
+let pdfJsPromise: Promise<PdfJsLib> | null = null;
+
+async function loadPdfJs(): Promise<PdfJsLib> {
+  if (!pdfJsPromise) {
+    pdfJsPromise = Promise.all([
+      import('pdfjs-dist'),
+      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    ]).then(([pdfjsLib, workerModule]) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+      return pdfjsLib;
+    });
+  }
+  return pdfJsPromise;
+}
 
 /** 맞춤 모드 타입 */
 type FitMode = 'width' | 'page' | 'none';
@@ -46,32 +58,44 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 현재 진행 중인 렌더 태스크 ref (중복 렌더 방지)
-  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
+  const renderTaskRef = useRef<PDFRenderTask | null>(null);
 
   useEscapeKey(onClose);
 
   // PDF 문서 로드
   useEffect(() => {
     setLoading(true);
-    const url = convertFileSrc(path);
-    const loadingTask = pdfjsLib.getDocument(url);
-
+    let cancelled = false;
+    let loadingTask: ReturnType<PdfJsLib['getDocument']> | null = null;
     let loadedDoc: PDFDocumentProxy | null = null;
 
-    loadingTask.promise.then((doc) => {
-      loadedDoc = doc;
-      setPdfDoc(doc);
-      setTotalPages(doc.numPages);
-      setCurrentPage(1);
-      setPageInput('1');
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
+    (async () => {
+      try {
+        const pdfjsLib = await loadPdfJs();
+        if (cancelled) return;
+        const url = convertFileSrc(path);
+        loadingTask = pdfjsLib.getDocument(url);
+        const doc = await loadingTask.promise;
+        if (cancelled) {
+          await doc.destroy();
+          return;
+        }
+        loadedDoc = doc;
+        setPdfDoc(doc);
+        setTotalPages(doc.numPages);
+        setCurrentPage(1);
+        setPageInput('1');
+      } catch {
+        // 로딩 오류는 기존 UI와 동일하게 로딩 상태만 해제한다.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
     return () => {
       // 컴포넌트 언마운트 또는 path 변경 시 로딩 취소 및 문서 해제
-      loadingTask.destroy();
+      cancelled = true;
+      loadingTask?.destroy();
       loadedDoc?.destroy();
     };
   }, [path]);

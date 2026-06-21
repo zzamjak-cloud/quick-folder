@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import * as THREE from 'three';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { useEscapeKey } from './hooks/useEscapeKey';
+
+type ThreeLib = typeof import('three');
+type ThreeGroup = import('three').Group;
+type ThreeRenderer = import('three').WebGLRenderer;
+type ThreeScene = import('three').Scene;
+type ThreeCamera = import('three').PerspectiveCamera;
+type ThreeVector3 = import('three').Vector3;
+type OrbitControlsInstance = import('three/examples/jsm/controls/OrbitControls.js').OrbitControls;
 
 interface FbxPreviewModalProps {
   path: string;
@@ -25,16 +30,17 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Three.js 핵심 객체 ref (렌더 루프에서 직접 접근하므로 ref 사용)
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
+  const threeRef = useRef<ThreeLib | null>(null);
+  const rendererRef = useRef<ThreeRenderer | null>(null);
+  const sceneRef = useRef<ThreeScene | null>(null);
+  const cameraRef = useRef<ThreeCamera | null>(null);
+  const controlsRef = useRef<OrbitControlsInstance | null>(null);
   const animFrameRef = useRef<number | null>(null);
-  const modelRef = useRef<THREE.Group | null>(null);
+  const modelRef = useRef<ThreeGroup | null>(null);
 
   // 카메라 초기 상태 저장 (리셋용)
-  const initialCameraPos = useRef<THREE.Vector3>(new THREE.Vector3());
-  const initialTargetPos = useRef<THREE.Vector3>(new THREE.Vector3());
+  const initialCameraPos = useRef<ThreeVector3 | null>(null);
+  const initialTargetPos = useRef<ThreeVector3 | null>(null);
 
   // UI 상태
   const [loading, setLoading] = useState(true);
@@ -65,8 +71,9 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
    * 씬 내 모든 Mesh의 material을 순회하여 wireframe 속성을 변경한다.
    */
   const toggleWireframe = useCallback(() => {
+    const THREE = threeRef.current;
     const scene = sceneRef.current;
-    if (!scene) return;
+    if (!THREE || !scene) return;
     const next = !wireframe;
     scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
@@ -80,7 +87,7 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
             }
           });
         } else {
-          const mat = obj.material as THREE.Material & { wireframe?: boolean };
+          const mat = obj.material as import('three').Material & { wireframe?: boolean };
           if ('wireframe' in mat) mat.wireframe = next;
         }
       }
@@ -94,7 +101,7 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
   const resetCamera = useCallback(() => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
-    if (!camera || !controls) return;
+    if (!camera || !controls || !initialCameraPos.current || !initialTargetPos.current) return;
 
     camera.position.copy(initialCameraPos.current);
     controls.target.copy(initialTargetPos.current);
@@ -108,6 +115,21 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    let disposed = false;
+    let cleanupScene: (() => void) | null = null;
+
+    (async () => {
+      try {
+      const [THREE, { FBXLoader }, { OrbitControls }] = await Promise.all([
+        import('three'),
+        import('three/examples/jsm/loaders/FBXLoader.js'),
+        import('three/examples/jsm/controls/OrbitControls.js'),
+      ]);
+      if (disposed) return;
+      threeRef.current = THREE;
+      initialCameraPos.current = new THREE.Vector3();
+      initialTargetPos.current = new THREE.Vector3();
 
     // ── 씬 생성 ──────────────────────────────────────────────
     const scene = new THREE.Scene();
@@ -177,7 +199,7 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
     loader.load(
       fileUrl,
       // onLoad: 모델 로드 완료
-      (fbx: THREE.Group) => {
+      (fbx: ThreeGroup) => {
         modelRef.current = fbx;
 
         // 바운딩박스 계산으로 모델 크기 파악
@@ -247,7 +269,7 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
     window.addEventListener('resize', handleResize);
 
     // ── 정리 (cleanup) ────────────────────────────────────────
-    return () => {
+    cleanupScene = () => {
       window.removeEventListener('resize', handleResize);
 
       // 렌더 루프 중지
@@ -266,7 +288,7 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
           if (Array.isArray(obj.material)) {
             obj.material.forEach((mat) => mat.dispose());
           } else {
-            (obj.material as THREE.Material)?.dispose();
+            (obj.material as import('three').Material)?.dispose();
           }
         }
       });
@@ -276,6 +298,26 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
+      threeRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      rendererRef.current = null;
+      modelRef.current = null;
+      initialCameraPos.current = null;
+      initialTargetPos.current = null;
+    };
+      } catch (err) {
+        if (disposed) return;
+        console.error('FBX 뷰어 초기화 오류:', err);
+        setError('FBX 뷰어를 초기화하지 못했습니다.');
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      cleanupScene?.();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
