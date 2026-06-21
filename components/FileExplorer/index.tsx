@@ -15,7 +15,7 @@ import TabBar from './TabBar';
 import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDrop';
 import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
-import { cancelAllQueued, queuedInvokeLow } from './hooks/invokeQueue';
+import { cancelAllQueued } from './hooks/invokeQueue';
 import { runTransferWithProgress } from './hooks/runTransferWithProgress';
 import { detectFolderMergeScenario } from '../../utils/folderMerge';
 import { useColumnView } from './hooks/useColumnView';
@@ -34,7 +34,6 @@ import {
   sameVolume,
   shouldOpenArchiveInCurrentPane,
 } from '../../utils/pathUtils';
-import { naturalCompare } from '../../utils/naturalCompare';
 import { isTauri } from '../../utils/isTauri';
 import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
@@ -46,7 +45,12 @@ import { useFileOperations, type FolderSizeDialogState } from './hooks/useFileOp
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 import { useEscapeKey } from './hooks/useEscapeKey';
+import { useDirectoryLoader } from './hooks/useDirectoryLoader';
+import { useExplorerSelection } from './hooks/useExplorerSelection';
+import { usePreviewAutoRefresh, usePreviewRouting } from './hooks/usePreviewRouting';
 import { tauriCommands } from '../../utils/tauriCommands';
+import { RECENT_PATH, SYSTEM_ROOT_PATH } from './constants';
+import { sortEntries } from './entrySorting';
 import {
   readJsonStorage,
   readNumberStorage,
@@ -56,10 +60,6 @@ import {
   writeNumberStorage,
   writeStorage,
 } from '../../utils/storage';
-
-// 최근항목 특수 경로 상수
-const RECENT_PATH = '__recent__';
-const SYSTEM_ROOT_PATH = '__system_root__';
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 저장소 키 분리용 (기본: 'default')
@@ -105,14 +105,6 @@ export default function FileExplorer({
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
 
-  // 분할 뷰: 포커스가 빠지면 선택 + 포커스 인덱스 해제
-  useEffect(() => {
-    if (!isFocused && splitMode !== 'single') {
-      setSelectedPaths([]);
-      setFocusedIndex(-1);
-    }
-  }, [isFocused, splitMode]);
-
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>(() => {
     const saved = readStorage(storageKeys.explorerSortBy(instanceId));
     return (saved as 'name' | 'size' | 'modified' | 'type') || 'modified';
@@ -133,7 +125,6 @@ export default function FileExplorer({
     return (['grid', 'columns', 'list', 'details'].includes(saved ?? '') ? saved : 'grid') as ViewMode;
   });
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  const selectionAnchorRef = useRef<number>(-1); // Shift 선택 시작점
 
   // --- 컬럼 뷰 상태 ---
   const columnView = useColumnView();
@@ -162,244 +153,24 @@ export default function FileExplorer({
   const preview = usePreview();
   const isMac = navigator.platform.startsWith('Mac');
 
-  // 텍스트 미리보기 대상 확장자
-  const TEXT_PREVIEW_EXTS = useMemo(() => new Set([
-    'txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go',
-    'java', 'c', 'cpp', 'h', 'yaml', 'yml', 'toml', 'xml', 'csv', 'log',
-    'cs', 'shader', 'glsl', 'hlsl', 'lua', 'rb', 'php', 'swift', 'kt', 'sh', 'bat',
-    'ps1', 'r', 'sql', 'scala', 'dart', 'zig',
-  ]), []);
-
-  // 코드 구문 강조 대상 확장자 (CodePreviewModal 사용)
-  const CODE_PREVIEW_EXTS = useMemo(() => new Set([
-    'js', 'ts', 'tsx', 'jsx', 'css', 'html', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h',
-    'yaml', 'yml', 'toml', 'xml', 'cs', 'shader', 'glsl', 'hlsl', 'lua', 'rb', 'php',
-    'swift', 'kt', 'sh', 'bat', 'ps1', 'r', 'sql', 'scala', 'dart', 'zig',
-  ]), []);
-
-  // 파일 미리보기 실행 (Space키 + 화살표 이동 시 공용)
-  const previewFile = useCallback((entry: FileEntry) => {
-    // 폴더는 미리보기 대상이 아님
-    if (entry.is_dir) return;
-
-    const isVideo = entry.file_type === 'video';
-    const isImage = entry.file_type === 'image' || /\.psd$/i.test(entry.name);
-    const isPsb = /\.psb$/i.test(entry.name);
-    const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
-    const isJson = ext === 'json';
-    const isMd = ext === 'md';
-    // 확장자 없는 알려진 텍스트 파일 감지
-    const KNOWN_TEXT_FILES = new Set([
-      'license', 'licence', 'readme', 'makefile', 'dockerfile',
-      'gemfile', 'rakefile', 'procfile', 'vagrantfile',
-      '.gitignore', '.gitattributes', '.editorconfig', '.env',
-      '.npmrc', '.prettierrc', '.eslintrc', '.dockerignore',
-    ]);
-    const hasNoExt = !entry.name.includes('.') || entry.name.startsWith('.');
-    const isKnownText = hasNoExt && KNOWN_TEXT_FILES.has(entry.name.toLowerCase());
-    const isText = (TEXT_PREVIEW_EXTS.has(ext) && !isJson && !isMd) || isKnownText; // JSON/MD는 전용 뷰어 사용
-
-    // 같은 타입이면 closeAll 없이 직접 교체 (깜빡임 방지)
-    if (isVideo) {
-      if (!preview.videoPlayerPath) preview.closeAllPreviews();
-      preview.setVideoPlayerPath(entry.path);
-    } else if (isImage) {
-      if (!preview.previewImagePath) preview.closeAllPreviews();
-      preview.handlePreviewImage(entry.path);
-    } else if (isPsb) {
-      preview.closeAllPreviews();
-      if (isMac) {
-        tauriCommands.quickLook(entry.path).catch(console.error);
-      } else {
-        preview.handlePreviewImage(entry.path);
-      }
-    } else if (isJson) {
-      if (!preview.previewJsonPath) preview.closeAllPreviews();
-      preview.handlePreviewJson(entry.path);
-    } else if (isMd) {
-      if (!preview.previewMdPath) preview.closeAllPreviews();
-      preview.handlePreviewMd(entry.path);
-    } else if (/\.fbx$/i.test(entry.name)) {
-      // FBX 3D 파일 미리보기
-      preview.closeAllPreviews();
-      preview.setFbxPreviewPath(entry.path);
-    } else if (/\.(hwp|hwpx)$/i.test(entry.name)) {
-      // 한글 파일(.hwp/.hwpx) 미리보기
-      if (!preview.hwpPreviewPath) preview.closeAllPreviews();
-      preview.setHwpPreviewPath(entry.path);
-    } else if (CODE_PREVIEW_EXTS.has(ext)) {
-      // 코드 파일 → 구문 강조 뷰어
-      preview.closeAllPreviews();
-      preview.setCodePreviewPath(entry.path);
-    } else if (isText) {
-      if (!preview.previewTextPath) preview.closeAllPreviews();
-      preview.handlePreviewText(entry.path);
-    } else if (isMac && !entry.is_dir) {
-      preview.closeAllPreviews();
-      tauriCommands.quickLook(entry.path).catch(console.error);
-    }
-  }, [isMac, TEXT_PREVIEW_EXTS, preview]);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const fuzzyFilterInputRef = useRef<HTMLInputElement>(null);
-  const currentPathRef = useRef<string | null>(null); // loadDirectory에서 스크롤 저장용
-  // 뒤로/위로 이동 시 이전 폴더를 자동 선택하기 위한 ref
-  const lastVisitedChildRef = useRef<string | null>(null);
-
-  // --- 디렉토리 로딩 ---
-  const loadRequestRef = useRef(0); // 동시 요청 시 마지막 요청만 반영
-  const entriesCacheRef = useRef<Map<string, FileEntry[]>>(new Map()); // 방문 폴더 entries 캐시
-  const prefetchInFlightRef = useRef<Set<string>>(new Set()); // 프리페치 중복 방지
-
-  // 디렉토리 캐시 LRU 갱신 (상한 50폴더 — stale은 계속 표시하되 메모리 무한 증가 방지)
-  const cacheEntries = useCallback((p: string, list: FileEntry[]) => {
-    const m = entriesCacheRef.current;
-    if (m.has(p)) m.delete(p);
-    m.set(p, list);
-    if (m.size > 50) {
-      const oldest = m.keys().next().value;
-      if (oldest !== undefined) m.delete(oldest);
-    }
-  }, []);
-
-  // 현재 썸네일 크기를 ref로 보관 (프리워밍이 loadDirectory 의존성을 늘리지 않도록)
-  const thumbnailSizeRef = useRef(thumbnailSize);
-  thumbnailSizeRef.current = thumbnailSize;
-
-  // 백그라운드 프리워밍 (#B): 진입 직후 보이는 범위+α 썸네일을 저우선순위로 미리 디스크 캐시에 생성
-  // → 스크롤 시점엔 이미 준비됨. 화면에 보이는 카드(고우선순위 큐)를 방해하지 않음.
-  const prewarmThumbnails = useCallback((list: FileEntry[]) => {
-    const size = thumbnailSizeRef.current;
-    const run = () => {
-      let count = 0;
-      for (const e of list) {
-        if (count >= 120) break;
-        if (e.is_dir) continue;
-        const lower = e.name.toLowerCase();
-        if (lower.endsWith('.psd') || lower.endsWith('.psb')) continue; // 그리드 미표시
-        let cmd = '';
-        if (e.file_type === 'image') cmd = 'get_file_thumbnail_path';
-        else if (e.file_type === 'video') cmd = 'get_video_thumbnail_path';
-        else continue;
-        count++;
-        queuedInvokeLow(cmd, { path: e.path, size }).promise.catch(() => {});
-      }
-    };
-    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
-    if (typeof ric === 'function') ric(run, { timeout: 1500 });
-    else setTimeout(run, 300);
-  }, []);
-
-  const loadDirectory = useCallback(async (path: string) => {
-    if (!path) return;
-    // 현재 경로의 스크롤 위치 저장
-    if (gridRef.current && currentPathRef.current) {
-      scrollPositionRef.current.set(`${viewModeRef.current}:${currentPathRef.current}`, gridRef.current.scrollTop);
-    }
-    currentPathRef.current = path;
-    cancelAllQueued(); // 이전 디렉토리의 대기 중인 썸네일 요청 모두 취소
-    setError(null);
-
-    // 최근항목 특수 경로 처리
-    const isRecent = path === RECENT_PATH;
-    const isSystemRoot = path === SYSTEM_ROOT_PATH;
-
-    // 캐시에 있으면 즉시 표시 (탭 전환 시 대기 없음) — 최근항목은 캐시 안 함
-    const cached = (isRecent || isSystemRoot) ? null : entriesCacheRef.current.get(path);
-    if (cached) {
-      setEntries(sortEntries(cached, sortBy, sortDir));
-      setSelectedPaths([]);
-      setFocusedIndex(-1);
-    }
-
-    // 캐시 히트와 무관하게 항상 백그라운드에서 최신 데이터 요청
-    setLoading(true);
-    const requestId = ++loadRequestRef.current;
-    let freshArrived = false;
-
-    // 메모리 캐시 미스 시 디스크 영속 캐시로 stale 즉시 표시
-    // (구글 드라이브 등: 앱 재시작 후에도 한번 본 폴더는 즉시 뜨고 백그라운드에서 갱신)
-    if (!cached && !isRecent && !isSystemRoot) {
-      tauriCommands.readCachedListing(path)
-        .then(diskCached => {
-          // 신선한 결과가 이미 도착했거나 다른 폴더로 이동했으면 무시
-          if (requestId !== loadRequestRef.current || freshArrived) return;
-          if (!diskCached || diskCached.length === 0) return;
-          setEntries(sortEntries(diskCached, sortBy, sortDir));
-        })
-        .catch(() => {});
-    }
-
-    try {
-      const result = isRecent
-        ? await tauriCommands.getRecentFiles(recentRoots, 7)
-        : isSystemRoot
-        ? await tauriCommands.listSystemRoots()
-        : await tauriCommands.listDirectory(path);
-      // 이미 다른 디렉토리로 이동한 경우 무시
-      if (requestId !== loadRequestRef.current) return;
-      freshArrived = true;
-      if (!isRecent && !isSystemRoot) {
-        cacheEntries(path, result); // 메모리 캐시 갱신 (LRU)
-        tauriCommands.writeCachedListing(path, result).catch(() => {}); // 디스크 영속 캐시 갱신
-      }
-      // 최근항목은 이미 서버에서 수정시간 내림차순 정렬된 상태
-      const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(result, sortBy, sortDir);
-      setEntries(sortedResult);
-      if (!isRecent && !isSystemRoot) prewarmThumbnails(sortedResult); // 백그라운드 프리워밍
-      // 캐시 히트가 없었던 경우에만 선택 초기화 (첫 진입)
-      if (!cached) {
-        setSelectedPaths([]);
-        setFocusedIndex(-1);
-      }
-      // 뒤로/위로 이동 시 이전에 있던 폴더를 자동 선택
-      if (lastVisitedChildRef.current) {
-        const prevPath = lastVisitedChildRef.current;
-        lastVisitedChildRef.current = null;
-        const idx = sortedResult.findIndex(e => e.path === prevPath);
-        if (idx >= 0) {
-          setSelectedPaths([sortedResult[idx].path]);
-          setFocusedIndex(idx);
-        }
-      }
-      // 저장된 스크롤 위치 복원 (렌더링 후 실행)
-      const savedScroll = scrollPositionRef.current.get(`${viewModeRef.current}:${path}`);
-      if (savedScroll != null && gridRef.current) {
-        requestAnimationFrame(() => {
-          if (gridRef.current) gridRef.current.scrollTop = savedScroll;
-        });
-      }
-    } catch (e) {
-      if (requestId !== loadRequestRef.current) return;
-      setError(String(e));
-      setEntries([]);
-    } finally {
-      if (requestId === loadRequestRef.current) setLoading(false);
-    }
-  }, [sortBy, sortDir, recentRoots, cacheEntries, prewarmThumbnails]);
-
-  // 인접 폴더 프리페치 (#6): 폴더 hover 시 유휴 시점에 저우선순위로 목록 선반입
-  // 썸네일 큐를 방해하지 않고, 진입 시점에는 이미 캐시되어 즉시 표시됨
-  const prefetchDirectory = useCallback((path: string) => {
-    if (!path) return;
-    if (entriesCacheRef.current.has(path)) return; // 이미 캐시됨
-    if (prefetchInFlightRef.current.has(path)) return; // 중복 방지
-    prefetchInFlightRef.current.add(path);
-    const run = () => {
-      const { promise } = queuedInvokeLow<FileEntry[]>('list_directory', { path });
-      promise
-        .then(result => {
-          cacheEntries(path, result);
-          tauriCommands.writeCachedListing(path, result).catch(() => {});
-        })
-        .catch(() => {})
-        .finally(() => { prefetchInFlightRef.current.delete(path); });
-    };
-    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
-    if (typeof ric === 'function') ric(run, { timeout: 1000 });
-    else setTimeout(run, 200);
-  }, [cacheEntries]);
+  const { loadDirectory, prefetchDirectory, lastVisitedChildRef } = useDirectoryLoader({
+    gridRef,
+    scrollPositionRef,
+    viewModeRef,
+    thumbnailSize,
+    sortBy,
+    sortDir,
+    recentRoots,
+    sortEntries,
+    setEntries,
+    setSelectedPaths,
+    setFocusedIndex,
+    setLoading,
+    setError,
+  });
 
   // --- 탭 관리 ---
   const {
@@ -410,29 +181,6 @@ export default function FileExplorer({
     handleTabReceive, handleTabRemove,
     duplicateTab, closeOtherTabs, togglePinTab,
   } = useTabManagement({ instanceId, loadDirectory, onPathChange, onSplitModeChange });
-
-  // --- 정렬 ---
-  function sortEntries(list: FileEntry[], by: string, dir: string): FileEntry[] {
-    return [...list].sort((a, b) => {
-      if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-      let cmp = 0;
-      switch (by) {
-        case 'name': cmp = naturalCompare(a.name, b.name); break;
-        case 'size': cmp = a.size - b.size; break;
-        case 'modified': cmp = a.modified - b.modified; break;
-        case 'type': {
-          // 확장자별 1차 그룹화 (psd, png, jpg 등 별도 그룹)
-          const extA = a.name.includes('.') ? a.name.slice(a.name.lastIndexOf('.') + 1).toLowerCase() : '';
-          const extB = b.name.includes('.') ? b.name.slice(b.name.lastIndexOf('.') + 1).toLowerCase() : '';
-          cmp = extA.localeCompare(extB);
-          if (cmp === 0) cmp = naturalCompare(a.name, b.name);
-          break;
-        }
-        default: cmp = naturalCompare(a.name, b.name);
-      }
-      return dir === 'asc' ? cmp : -cmp;
-    });
-  }
 
   // 정렬 변경 시 재정렬 + 저장소 반영
   useEffect(() => {
@@ -458,7 +206,21 @@ export default function FileExplorer({
   // --- 검색/필터 (커스텀 훅) ---
   const searchFilter = useSearchFilter({ entries, currentPath });
   const { displayEntries, fuzzyMatchIndices, fuzzyBestPath, fuzzyMatchCount, isFiltering } = searchFilter;
-  const displayPathSet = useMemo(() => new Set(displayEntries.map(entry => entry.path)), [displayEntries]);
+  const {
+    selectionAnchorRef,
+    selectEntry,
+    selectAll,
+    deselectAll,
+    handleSelectPaths,
+  } = useExplorerSelection({
+    isFocused,
+    splitMode,
+    displayEntries,
+    selectedPaths,
+    setSelectedPaths,
+    focusedIndex,
+    setFocusedIndex,
+  });
 
   // 복사/이동 진행 중인 대상 경로 (ghost 항목 pending 표시용)
   const [pendingCopyPaths, setPendingCopyPaths] = useState<string[]>([]);
@@ -531,24 +293,6 @@ export default function FileExplorer({
       columnView.updateFirstColumn(displayEntries);
     }
   }, [displayEntries, currentPath, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 필터로 숨겨진 항목은 선택과 포커스에서도 제외한다.
-  useEffect(() => {
-    const nextSelectedPaths = selectedPaths.filter(path => displayPathSet.has(path));
-    if (nextSelectedPaths.length !== selectedPaths.length) {
-      setSelectedPaths(nextSelectedPaths);
-    }
-
-    const nextFocusedIndex = nextSelectedPaths.length > 0
-      ? displayEntries.findIndex(entry => entry.path === nextSelectedPaths[nextSelectedPaths.length - 1])
-      : -1;
-
-    if (focusedIndex !== nextFocusedIndex) {
-      setFocusedIndex(nextFocusedIndex);
-    }
-
-    selectionAnchorRef.current = -1;
-  }, [displayEntries, displayPathSet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- initialPath 변경 시 현재 탭 경로 변경 (탭이 없으면 새 탭 생성) ---
   useEffect(() => {
@@ -684,39 +428,12 @@ export default function FileExplorer({
     }));
   }, [currentPath, handleNavigateTo, instanceId]);
 
-  // --- 파일/폴더 열기 ---
-  const openEntry = useCallback(async (entry: FileEntry) => {
-    if (entry.is_dir) {
-      handleNavigateTo(entry.path);
-      return;
-    }
-
-    if (entry.file_type === 'archive' && isBrowsableArchiveFilePath(entry.path)) {
-      openArchiveEntry(entry.path);
-      return;
-    }
-
-    const isVirtualArchiveEntry = isArchiveVirtualPath(entry.path);
-    if (entry.file_type === 'video' && !isVirtualArchiveEntry) {
-      // 동영상은 내장 플레이어로 재생
-      preview.setVideoPlayerPath(entry.path);
-      return;
-    }
-
-    // JSON 파일: JSON 뷰어로 미리보기
-    const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
-    if (ext === 'json') {
-      preview.handlePreviewJson(entry.path);
-      return;
-    }
-
-    // 그 외 파일: OS 기본 앱으로 열기
-    try {
-      await tauriCommands.openFolder(entry.path);
-    } catch (e) {
-      console.error('파일 열기 실패:', e);
-    }
-  }, [handleNavigateTo, openArchiveEntry, preview]);
+  const { previewFile, openEntry } = usePreviewRouting({
+    preview,
+    isMac,
+    onNavigateTo: handleNavigateTo,
+    onOpenArchiveEntry: openArchiveEntry,
+  });
 
   // Ctrl+더블클릭 → 폴더를 새 탭으로 열기
   const openEntryInNewTab = useCallback((entry: FileEntry) => {
@@ -736,51 +453,6 @@ export default function FileExplorer({
       console.error('탐색기 열기 실패:', e);
     }
   }, []);
-
-  // --- 선택 ---
-  const selectEntry = useCallback((path: string, multi: boolean, range: boolean) => {
-    // 마우스 클릭 시 focusedIndex도 동기화 (키보드 이동 기준점 갱신)
-    const clickedIdx = displayEntries.findIndex(e => e.path === path);
-    if (clickedIdx >= 0) setFocusedIndex(clickedIdx);
-
-    if (multi) {
-      setSelectedPaths(prev =>
-        prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
-      );
-    } else if (range) {
-      const paths = displayEntries.map(e => e.path);
-      const lastSelected = selectedPaths[selectedPaths.length - 1];
-      const lastIdx = paths.indexOf(lastSelected);
-      const curIdx = paths.indexOf(path);
-      if (lastIdx === -1 || curIdx === -1) {
-        setSelectedPaths([path]);
-      } else {
-        const start = Math.min(lastIdx, curIdx);
-        const end = Math.max(lastIdx, curIdx);
-        setSelectedPaths(paths.slice(start, end + 1));
-      }
-    } else {
-      setSelectedPaths([path]);
-    }
-  }, [displayEntries, selectedPaths]);
-
-  const selectAll = useCallback(() => {
-    setSelectedPaths(displayEntries.map(e => e.path));
-  }, [displayEntries]);
-
-  const deselectAll = useCallback(() => {
-    setSelectedPaths([]);
-    setFocusedIndex(-1);
-  }, []);
-
-  // 박스 드래그 선택용 다중 경로 설정
-  const handleSelectPaths = useCallback((paths: string[]) => {
-    const nextPaths = paths.filter(path => displayPathSet.has(path));
-    setSelectedPaths(nextPaths);
-    setFocusedIndex(nextPaths.length > 0
-      ? displayEntries.findIndex(entry => entry.path === nextPaths[nextPaths.length - 1])
-      : -1);
-  }, [displayEntries, displayPathSet]);
 
   // 폴더 태그 추가 (모달 상태 기반)
   const handleAddTag = useCallback((path: string) => {
@@ -960,20 +632,7 @@ export default function FileExplorer({
     currentPath,
   });
 
-  // --- 미리보기 열려있을 때 선택 변경 시 자동 갱신 ---
-  useEffect(() => {
-    if (!preview.isAnyPreviewOpen || selectedPaths.length !== 1) return;
-    // 동영상 재생 중이면 자동 갱신하지 않음 (시청 중 의도치 않은 전환 방지)
-    if (preview.videoPlayerPath) return;
-    const entry = entries.find(e => e.path === selectedPaths[0]);
-    if (!entry) return;
-    // 폴더 선택 시 미리보기 닫기
-    if (entry.is_dir) {
-      preview.closeAllPreviews();
-      return;
-    }
-    previewFile(entry);
-  }, [selectedPaths, preview.isAnyPreviewOpen, preview.videoPlayerPath, entries, previewFile, preview]);
+  usePreviewAutoRefresh({ preview, selectedPaths, entries, previewFile });
 
   // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
   useEffect(() => {
