@@ -16,6 +16,7 @@ fn icon_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, S
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+#[cfg(target_os = "windows")]
 fn crop_transparent_rgba(pixels: Vec<u8>, width: u32, height: u32) -> Option<(Vec<u8>, u32, u32)> {
     if width == 0 || height == 0 || pixels.len() != (width * height * 4) as usize {
         return None;
@@ -71,6 +72,7 @@ fn crop_transparent_rgba(pixels: Vec<u8>, width: u32, height: u32) -> Option<(Ve
     Some((cropped, cropped_width, cropped_height))
 }
 
+#[cfg(target_os = "windows")]
 fn should_use_doc_assoc_icon(
     is_dir: bool,
     icon_index: i32,

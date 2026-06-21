@@ -6,13 +6,11 @@
 //!
 //! - 경로 중복 회피 (`find_unique_path`, `get_copy_destination`)
 //! - 이미지 처리 (`create_sprite_canvas`)
-//! - 파일 시스템 유틸리티 (`create_file_entry`, `is_hidden_file`, `is_system_file`)
+//! - 파일 시스템 유틸리티 (`is_hidden_file`, `is_system_filename`)
 
-use std::path::{Path, PathBuf};
 use image::{imageops, RgbaImage};
+use std::path::{Path, PathBuf};
 
-// modules::types import (FileEntry, FileType, classify_file)
-use crate::modules::types::{FileEntry, FileType, classify_file};
 use crate::modules::error::{AppError, Result};
 
 /// 클라우드 스토리지 경로 감지 (구글드라이브 / iCloud / OneDrive / Dropbox)
@@ -20,12 +18,22 @@ use crate::modules::error::{AppError, Result};
 /// utils/pathUtils.ts 의 isCloudPath()와 동일한 판정 규칙.
 pub fn is_cloud_path(path: &str) -> bool {
     let lower = path.to_lowercase();
-    if lower.contains("/library/cloudstorage/") { return true; }     // macOS 구글드라이브/Dropbox 등
-    if lower.contains("/library/mobile documents/") { return true; } // macOS iCloud
-    if lower.contains("google drive") || lower.contains("googledrive") { return true; }
+    if lower.contains("/library/cloudstorage/") {
+        return true;
+    } // macOS 구글드라이브/Dropbox 등
+    if lower.contains("/library/mobile documents/") {
+        return true;
+    } // macOS iCloud
+    if lower.contains("google drive") || lower.contains("googledrive") {
+        return true;
+    }
     let norm = lower.replace('\\', "/");
-    if norm.contains("/onedrive") { return true; }
-    if norm.contains("/dropbox") { return true; }
+    if norm.contains("/onedrive") {
+        return true;
+    }
+    if norm.contains("/dropbox") {
+        return true;
+    }
     false
 }
 
@@ -249,8 +257,9 @@ pub fn create_sprite_canvas(
             break;
         }
 
-        let img = image::open(path)
-            .map_err(|e| AppError::ImageProcessing(format!("이미지 열기 실패 ({}): {}", path, e)))?;
+        let img = image::open(path).map_err(|e| {
+            AppError::ImageProcessing(format!("이미지 열기 실패 ({}): {}", path, e))
+        })?;
         let resized = image::imageops::resize(
             &img,
             cell_width,
@@ -267,67 +276,6 @@ pub fn create_sprite_canvas(
 }
 
 // ===== 파일 시스템 유틸리티 =====
-
-/// FileEntry 생성 헬퍼
-///
-/// 파일/디렉토리의 메타데이터를 읽어서 `FileEntry` 구조체로 변환합니다.
-/// `list_directory` 등에서 중복 코드를 제거하기 위해 추출한 함수입니다.
-///
-/// # 에러
-///
-/// - 메타데이터를 읽을 수 없는 경우 io::Error → AppError 변환
-///
-/// # 예제
-///
-/// ```rust
-/// use std::path::Path;
-/// use crate::helpers::create_file_entry;
-///
-/// let path = Path::new("/tmp/test.txt");
-/// let entry = create_file_entry(path)?;
-/// println!("파일명: {}, 크기: {}", entry.name, entry.size);
-/// ```
-pub fn create_file_entry(path: &Path) -> Result<FileEntry> {
-    let meta = std::fs::metadata(path)?;
-
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    let modified = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-
-    let is_dir = meta.is_dir();
-    let file_type = if is_dir {
-        FileType::Directory
-    } else {
-        classify_file(&name)
-    };
-
-    Ok(FileEntry {
-        path: path.to_string_lossy().to_string(),
-        is_dir,
-        size: if is_dir { 0 } else { meta.len() },
-        modified,
-        file_type,
-        name,
-    })
-}
-
-/// 경로 정규화 (심볼릭 링크 해석)
-///
-/// 심볼릭 링크를 실제 경로로 변환합니다.
-/// canonicalize 실패 시 원본 경로를 그대로 반환합니다.
-pub fn normalize_path(path: &str) -> PathBuf {
-    PathBuf::from(path)
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(path))
-}
 
 /// 숨김 파일 여부 확인
 ///
@@ -353,14 +301,6 @@ pub fn is_system_file(meta: &std::fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_HIDDEN_SYSTEM: u32 = 0x6; // HIDDEN (0x2) | SYSTEM (0x4)
     meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN_SYSTEM != 0
-}
-
-/// 시스템 파일 여부 확인 (플랫폼 독립적 폴백)
-///
-/// Windows 이외의 플랫폼에서는 항상 `false`를 반환합니다.
-#[cfg(not(target_os = "windows"))]
-pub fn is_system_file(_meta: &std::fs::Metadata) -> bool {
-    false
 }
 
 /// 시스템/임시 파일명 패턴 확인
@@ -419,7 +359,6 @@ mod tests {
     #[test]
     fn test_find_unique_path() {
         use std::fs;
-        use std::path::PathBuf;
 
         let temp = std::env::temp_dir();
         let test_base = temp.join("test_find_unique_path");

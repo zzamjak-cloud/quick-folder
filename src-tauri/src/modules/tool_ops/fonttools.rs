@@ -55,6 +55,7 @@ fn fonttools_embed_root() -> std::path::PathBuf {
 
 // ─── ZIP/TAR 압축 해제 헬퍼 ────────────────────────────────────────────
 
+#[cfg(target_os = "windows")]
 fn extract_zip_to_dir(zip_path: &std::path::Path, dest: &std::path::Path) -> Result<()> {
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
@@ -473,11 +474,6 @@ fn ensure_windows_fonttools_embed() -> Result<()> {
             reason: "fonttools 패키지 로드 실패 — 포터블 패키지가 손상됐을 수 있습니다.".to_string()
         });
     }
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn ensure_windows_fonttools_embed() -> Result<()> {
     Ok(())
 }
 

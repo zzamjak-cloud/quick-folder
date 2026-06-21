@@ -43,7 +43,6 @@ use std::fmt;
 #[serde(tag = "type", content = "message")]
 pub enum AppError {
     // ===== 파일 시스템 에러 =====
-
     /// I/O 오류 (파일 읽기/쓰기 실패 등)
     ///
     /// `std::io::Error`에서 자동 변환됩니다 (ErrorKind가 특정 타입이 아닌 경우).
@@ -70,7 +69,6 @@ pub enum AppError {
     AlreadyExists(String),
 
     // ===== 외부 도구 에러 =====
-
     /// 외부 도구(FFmpeg, Ghostscript 등)를 찾을 수 없음
     ///
     /// 사용자에게 도구 설치 안내 메시지를 표시해야 합니다.
@@ -96,7 +94,6 @@ pub enum AppError {
     ToolInstallation { tool: String, reason: String },
 
     // ===== 미디어 처리 에러 =====
-
     /// 이미지 처리 실패 (리사이징, 썸네일 생성 등)
     ///
     /// `image::ImageError`에서 자동 변환됩니다.
@@ -109,12 +106,6 @@ pub enum AppError {
     /// FFmpeg 실행 실패, 지원되지 않는 코덱 등에서 발생합니다.
     #[serde(rename = "video_processing_failed")]
     VideoProcessing(String),
-
-    /// 오디오 처리 실패
-    ///
-    /// 현재 사용되지 않음 (향후 오디오 기능 추가 시 사용).
-    #[serde(rename = "audio_processing_failed")]
-    AudioProcessing(String),
 
     /// PDF 처리 실패 (압축, 변환 등)
     ///
@@ -129,7 +120,6 @@ pub enum AppError {
     FontProcessing(String),
 
     // ===== 플랫폼 에러 =====
-
     /// 지원되지 않는 플랫폼
     ///
     /// 특정 OS에서만 작동하는 기능(예: Windows 관리자 권한 삭제)을
@@ -137,14 +127,7 @@ pub enum AppError {
     #[serde(rename = "unsupported_platform")]
     UnsupportedPlatform(String),
 
-    /// 클립보드 작업 실패
-    ///
-    /// 현재 사용되지 않음 (clipboard-manager 플러그인 사용).
-    #[serde(rename = "clipboard_error")]
-    Clipboard(String),
-
     // ===== 일반 에러 =====
-
     /// 잘못된 입력값 (파라미터 검증 실패)
     ///
     /// 사용자 입력이 유효하지 않거나, 경로가 잘못되었거나,
@@ -189,13 +172,11 @@ impl fmt::Display for AppError {
             // 미디어 처리
             Self::ImageProcessing(msg) => write!(f, "이미지 처리 실패: {}", msg),
             Self::VideoProcessing(msg) => write!(f, "동영상 처리 실패: {}", msg),
-            Self::AudioProcessing(msg) => write!(f, "오디오 처리 실패: {}", msg),
             Self::PdfProcessing(msg) => write!(f, "PDF 처리 실패: {}", msg),
             Self::FontProcessing(msg) => write!(f, "폰트 처리 실패: {}", msg),
 
             // 플랫폼
             Self::UnsupportedPlatform(msg) => write!(f, "지원되지 않는 플랫폼: {}", msg),
-            Self::Clipboard(msg) => write!(f, "클립보드 오류: {}", msg),
 
             // 일반
             Self::InvalidInput(msg) => write!(f, "잘못된 입력: {}", msg),
@@ -289,10 +270,3 @@ impl From<zip::result::ZipError> for AppError {
 /// }
 /// ```
 pub type Result<T> = std::result::Result<T, AppError>;
-
-// ===== 헬퍼 함수 =====
-
-/// String 에러를 AppError로 변환하는 헬퍼
-pub fn str_to_error(msg: impl Into<String>) -> AppError {
-    AppError::Internal(msg.into())
-}

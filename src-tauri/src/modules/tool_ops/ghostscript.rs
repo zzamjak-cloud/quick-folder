@@ -273,6 +273,7 @@ fn windows_choco_available() -> bool {
 }
 
 /// ZIP 압축 해제 헬퍼 함수
+#[cfg(target_os = "windows")]
 fn extract_zip_to_dir(zip_path: &std::path::Path, dest: &std::path::Path) -> Result<()> {
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;

@@ -415,6 +415,7 @@ where
     Ok(resolved)
 }
 
+#[cfg(test)]
 pub fn resolve_archive_virtual_path(path: &str) -> Option<ArchiveVirtualPath> {
     resolve_archive_virtual_path_with_loader(path, |_| Ok(None))
         .ok()
