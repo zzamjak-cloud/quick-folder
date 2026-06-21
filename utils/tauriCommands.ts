@@ -1,5 +1,5 @@
 import type { FileEntry } from '../types';
-import { invokeTauriCommand } from './tauriInvoke';
+import { invokeTauriCommand } from './tauriInvoke.ts';
 
 export interface ExtractZipResult {
   destDir: string;

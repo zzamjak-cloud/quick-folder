@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export type TauriCommandPriority = 'direct' | 'normal' | 'low';
+type TauriInvoke = typeof invoke;
 
 export interface QueuedTauriCommand<T> {
   promise: Promise<T>;
@@ -22,6 +23,7 @@ const MAX_LOW_QUEUE_SIZE = 256;
 let running = 0;
 const queue: QueueItem[] = [];
 const lowQueue: QueueItem[] = [];
+let invokeImpl: TauriInvoke = invoke;
 
 function normalizeTauriError(error: unknown): Error {
   if (error instanceof Error) return error;
@@ -46,7 +48,7 @@ function processNext() {
     }
 
     running++;
-    invoke(item.cmd, item.args)
+    invokeImpl(item.cmd, item.args)
       .then(result => {
         if (!item.cancelled) item.resolve(result);
         else item.reject(cancelledError());
@@ -122,7 +124,7 @@ export function invokeTauriCommand<T>(
   const priority = options.priority ?? 'direct';
   if (priority === 'normal') return queuedInvoke<T>(cmd, args).promise;
   if (priority === 'low') return queuedInvokeLow<T>(cmd, args).promise;
-  return invoke<T>(cmd, args).catch(error => {
+  return invokeImpl<T>(cmd, args).catch(error => {
     throw normalizeTauriError(error);
   });
 }
@@ -142,3 +144,19 @@ export function cancelQueuedTauriCommands(): void {
 }
 
 export const cancelAllQueued = cancelQueuedTauriCommands;
+
+export function __setTauriInvokeForTest(nextInvoke: TauriInvoke): () => void {
+  const previousInvoke = invokeImpl;
+  invokeImpl = nextInvoke;
+  return () => {
+    invokeImpl = previousInvoke;
+  };
+}
+
+export function __resetTauriInvokeForTest(): void {
+  cancelQueuedTauriCommands();
+  running = 0;
+  queue.length = 0;
+  lowQueue.length = 0;
+  invokeImpl = invoke;
+}
