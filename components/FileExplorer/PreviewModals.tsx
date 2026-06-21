@@ -1,13 +1,15 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import VideoPlayer from './VideoPlayer';
 import ImageCropOverlay from './ImageCropOverlay';
 import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
 import PreviewToolbar from './PreviewToolbar';
-import JsonViewerModal from './JsonViewerModal';
-import MarkdownPreviewModal from './MarkdownPreviewModal';
-import HwpPreviewModal from './HwpPreviewModal';
+import { PreviewIconActionButton } from './PreviewIconActionButton';
+import { VideoPreviewModal } from './VideoPreviewModal';
+import { TextPreviewModal } from './TextPreviewModal';
+import { JsonPreviewModalHost } from './JsonPreviewModalHost';
+import { MarkdownPreviewModalHost } from './MarkdownPreviewModalHost';
+import { HwpPreviewModalHost } from './HwpPreviewModalHost';
 import { ThemeVars } from './types';
 import { DrawingTool } from '../../types';
 import { PreviewState } from './hooks/usePreview';
@@ -27,45 +29,6 @@ interface PreviewModalsProps {
   onOpenImageResize?: (path: string) => void;
   onOpenMdEditor: (path: string) => void;
   onFileChanged?: () => void;
-}
-
-interface PreviewIconActionButtonProps {
-  label: string;
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-  buttonStyle: React.CSSProperties;
-  icon: React.ReactNode;
-  className?: string;
-}
-
-function PreviewIconActionButton({
-  label,
-  onClick,
-  buttonStyle,
-  icon,
-  className = 'hover:opacity-85',
-}: PreviewIconActionButtonProps) {
-  return (
-    <div className="relative flex items-center group/qf-preview-tooltip">
-      <button
-        className={className}
-        style={buttonStyle}
-        onClick={onClick}
-        aria-label={label}
-      >
-        {icon}
-      </button>
-      <div
-        className="pointer-events-none absolute right-0 top-full z-20 mt-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] opacity-0 translate-y-1 transition-all duration-150 group-hover/qf-preview-tooltip:translate-y-0 group-hover/qf-preview-tooltip:opacity-100"
-        style={{
-          backgroundColor: 'rgba(15, 23, 42, 0.96)',
-          color: '#f8fafc',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.24)',
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
 }
 
 export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, onRemoveBg, onOpenGifCompress, onGifToMp4, onOpenImageCompress, onOpenImageResize, onOpenMdEditor, onFileChanged }: PreviewModalsProps) {
@@ -341,15 +304,12 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
 
   return (
     <>
-      {/* 비디오 플레이어 모달 */}
-      {preview.videoPlayerPath && (
-        <VideoPlayer
-          path={preview.videoPlayerPath}
-          onClose={() => preview.setVideoPlayerPath(null)}
-          onFileChanged={onFileChanged}
-          themeVars={themeVars}
-        />
-      )}
+      <VideoPreviewModal
+        path={preview.videoPlayerPath}
+        onClose={() => preview.setVideoPlayerPath(null)}
+        onFileChanged={onFileChanged}
+        themeVars={themeVars}
+      />
 
       {/* 이미지/PSD 미리보기 모달 */}
       {preview.previewImagePath && (
@@ -775,80 +735,36 @@ export function PreviewModals({ preview, themeVars, previewEntry, onCropSave, on
         </div>
       )}
 
-      {/* 텍스트 미리보기 모달 */}
-      {preview.previewTextPath && (
-        <div
-          className="fixed inset-0 z-[9998] flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
-          onClick={preview.closeTextPreview}
-        >
-          <div
-            className="relative flex flex-col rounded-lg overflow-hidden shadow-2xl"
-            style={{
-              backgroundColor: themeVars?.surface2 ?? '#1e293b',
-              width: '70vw', maxWidth: 800, maxHeight: '85vh',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* 헤더 */}
-            <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
-              <span className="text-sm font-medium" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-                {getFileName(preview.previewTextPath)}
-              </span>
-              <button
-                className="text-lg px-2 hover:opacity-70"
-                style={{ color: themeVars?.muted ?? '#94a3b8' }}
-                onClick={preview.closeTextPreview}
-              >
-                ✕
-              </button>
-            </div>
-            {/* 텍스트 내용 */}
-            <pre
-              className="flex-1 overflow-auto p-4 text-xs leading-relaxed whitespace-pre-wrap"
-              style={{ color: themeVars?.text ?? '#e5e7eb', maxHeight: '75vh' }}
-            >
-              {preview.previewTextContent ?? '로딩 중...'}
-            </pre>
-          </div>
-        </div>
-      )}
-
-      {/* JSON 뷰어 모달 */}
-      {preview.previewJsonPath && preview.previewJsonData && (
-        <JsonViewerModal
-          path={preview.previewJsonPath}
-          data={preview.previewJsonData}
-          onClose={preview.closeJsonPreview}
-          themeVars={themeVars}
-          editRequestToken={preview.previewJsonEditRequest}
-        />
-      )}
-
-      {/* 마크다운 미리보기 모달 */}
-      {preview.previewMdPath && (
-        <MarkdownPreviewModal
-          path={preview.previewMdPath}
-          content={preview.previewMdContent}
-          error={preview.previewMdError}
-          loading={preview.previewMdLoading}
-          themeVars={themeVars}
-          onClose={preview.closeMdPreview}
-          onEdit={() => {
-            preview.closeMdPreview();
-            onOpenMdEditor(preview.previewMdPath);
-          }}
-        />
-      )}
-
-      {/* 한글 파일(.hwp/.hwpx) 미리보기 모달 */}
-      {preview.hwpPreviewPath && (
-        <HwpPreviewModal
-          path={preview.hwpPreviewPath}
-          themeVars={themeVars}
-          onClose={() => preview.setHwpPreviewPath(null)}
-        />
-      )}
+      <TextPreviewModal
+        path={preview.previewTextPath}
+        content={preview.previewTextContent}
+        themeVars={themeVars}
+        onClose={preview.closeTextPreview}
+      />
+      <JsonPreviewModalHost
+        path={preview.previewJsonPath}
+        data={preview.previewJsonData}
+        editRequestToken={preview.previewJsonEditRequest}
+        themeVars={themeVars}
+        onClose={preview.closeJsonPreview}
+      />
+      <MarkdownPreviewModalHost
+        path={preview.previewMdPath}
+        content={preview.previewMdContent}
+        error={preview.previewMdError}
+        loading={preview.previewMdLoading}
+        themeVars={themeVars}
+        onClose={preview.closeMdPreview}
+        onEdit={(path) => {
+          preview.closeMdPreview();
+          onOpenMdEditor(path);
+        }}
+      />
+      <HwpPreviewModalHost
+        path={preview.hwpPreviewPath}
+        themeVars={themeVars}
+        onClose={() => preview.setHwpPreviewPath(null)}
+      />
     </>
   );
 }
