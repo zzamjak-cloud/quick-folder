@@ -13,9 +13,6 @@ pub mod types;
 
 // Re-export: lib.rs에서 use modules::*; 로 사용 가능하도록
 pub use archive_ops::*;
-pub use constants::*;
-pub use error::AppError;
-pub use types::*;
 // Note: error::Result는 std::result::Result와 충돌하므로 명시적으로 사용 (modules::error::Result)
 pub use file_ops::*;
 pub use hwp_ops::*;
