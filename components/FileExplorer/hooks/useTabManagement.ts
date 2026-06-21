@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tab } from '../types';
 import { getFileName } from '../../../utils/pathUtils';
-
-// localStorage 키
-const TABS_KEY = 'qf_explorer_tabs';
-const ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
+import {
+  readExplorerActiveTabId,
+  readExplorerTabs,
+  writeExplorerActiveTabId,
+  writeExplorerTabs,
+} from '../../../utils/storage';
 
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
@@ -31,15 +33,11 @@ export function useTabManagement({
   onPathChange,
   onSplitModeChange,
 }: UseTabManagementOptions) {
-  const tabsKey = instanceId === 'default' ? TABS_KEY : `${TABS_KEY}_${instanceId}`;
-  const activeTabKey = instanceId === 'default' ? ACTIVE_TAB_KEY : `${ACTIVE_TAB_KEY}_${instanceId}`;
-
   const [tabs, setTabs] = useState<Tab[]>(() => {
-    try { return JSON.parse(localStorage.getItem(tabsKey) ?? '[]'); }
-    catch { return []; }
+    return readExplorerTabs(instanceId);
   });
   const [activeTabId, setActiveTabId] = useState<string>(() => {
-    return localStorage.getItem(activeTabKey) ?? '';
+    return readExplorerActiveTabId(instanceId);
   });
 
   // 파생 값
@@ -48,14 +46,14 @@ export function useTabManagement({
   const canGoBack = !!(activeTab && activeTab.historyIndex > 0);
   const canGoForward = !!(activeTab && activeTab.historyIndex < activeTab.history.length - 1);
 
-  // localStorage 동기화
+  // 저장소 동기화
   useEffect(() => {
-    localStorage.setItem(tabsKey, JSON.stringify(tabs));
-  }, [tabs, tabsKey]);
+    writeExplorerTabs(instanceId, tabs);
+  }, [tabs, instanceId]);
 
   useEffect(() => {
-    localStorage.setItem(activeTabKey, activeTabId);
-  }, [activeTabId, activeTabKey]);
+    writeExplorerActiveTabId(instanceId, activeTabId);
+  }, [activeTabId, instanceId]);
 
   // --- 탭 생성/전환 ---
   const openTab = useCallback((path: string) => {

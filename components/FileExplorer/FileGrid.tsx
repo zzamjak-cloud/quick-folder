@@ -10,6 +10,7 @@ import InlineFuzzyFilterBar from './InlineFuzzyFilterBar';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
+import { readJsonStorage, storageKeys, writeJsonStorage } from '../../utils/storage';
 
 interface FileGridProps {
   entries: FileEntry[];
@@ -307,16 +308,12 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
   fuzzyMatchIndices?: Map<string, number[]>;
   isFuzzyNonMatch?: (path: string) => boolean;
 }) {
-  const storageKey = `qf_details_cols_${instanceId ?? 'default'}`;
+  const storageKey = storageKeys.detailsColumns(instanceId ?? 'default');
 
-  // 컬럼 너비 상태 — localStorage에서 복원
+  // 컬럼 너비 상태 — 저장소에서 복원
   const [colWidths, setColWidths] = useState<{ name: number; modified: number; size: number; type: number }>(() => {
     const defaults = { name: 0, modified: 140, size: 80, type: 70 }; // name=0: auto
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return { ...defaults, ...JSON.parse(saved) };
-    } catch { /* 무시 */ }
-    return defaults;
+    return { ...defaults, ...readJsonStorage(storageKey, {}) };
   });
   const resizingRef = useRef<{ col: keyof typeof colWidths; startX: number; startW: number } | null>(null);
   // 사용자가 이름 컬럼 너비를 수동 조정했는지 여부
@@ -336,9 +333,9 @@ function DetailsTable({ entries, selectedPaths, focusedIndex, renamingPath, sort
     const onUp = () => {
       if (resizingRef.current) {
         resizingRef.current = null;
-        // 리사이즈 완료 시 localStorage 저장
+        // 리사이즈 완료 시 저장소 반영
         setColWidths(prev => {
-          localStorage.setItem(storageKey, JSON.stringify(prev));
+          writeJsonStorage(storageKey, prev);
           return prev;
         });
       }

@@ -5,6 +5,7 @@ import 'highlight.js/styles/vs2015.css';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
 import { getMarkdownSyntaxColors } from './markdownTheme';
+import { readStorage, writeStorage } from '../../utils/storage';
 
 // 마크다운 언어 로딩 가드 (중복 등록 방지)
 let mdLangRegistered = false;
@@ -32,10 +33,8 @@ type ViewMode = 'preview' | 'source';
 const VIEW_MODE_KEY = 'qf_md_preview_view_mode';
 
 function loadInitialMode(): ViewMode {
-  try {
-    const saved = localStorage.getItem(VIEW_MODE_KEY);
-    if (saved === 'preview' || saved === 'source') return saved;
-  } catch {/* ignore */}
+  const saved = readStorage(VIEW_MODE_KEY);
+  if (saved === 'preview' || saved === 'source') return saved;
   return 'preview';
 }
 
@@ -45,9 +44,9 @@ export default function MarkdownPreviewModal({
   const [mode, setMode] = useState<ViewMode>(loadInitialMode);
   const [copyFeedback, setCopyFeedback] = useState(false);
 
-  // 모드 변경 시 localStorage 저장
+  // 모드 변경 시 저장소 반영
   useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch {/* ignore */}
+    writeStorage(VIEW_MODE_KEY, mode);
   }, [mode]);
 
   // ESC / Space 키로 닫기 + E 키로 편집기 진입

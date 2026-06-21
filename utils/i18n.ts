@@ -2,6 +2,7 @@ import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS } from './i18n/languageOptions';
 import type { AppLanguage } from './i18n/languageOptions';
 import { LANGUAGE_PACKS } from './i18n/packs';
 import type { TranslationKey } from './i18n/packs';
+import { readStorage } from './storage';
 
 export { LANGUAGE_OPTIONS } from './i18n/languageOptions';
 export type { AppLanguage } from './i18n/languageOptions';
@@ -54,9 +55,7 @@ export function detectOsLanguage(): AppLanguage {
 }
 
 export function getInitialLanguage(): AppLanguage {
-  if (typeof localStorage === 'undefined') return detectOsLanguage();
-
-  const storedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  const storedLanguage = readStorage(LANGUAGE_STORAGE_KEY);
   return isSupportedLanguage(storedLanguage) ? storedLanguage : detectOsLanguage();
 }
 

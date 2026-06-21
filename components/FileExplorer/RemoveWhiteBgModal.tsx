@@ -5,8 +5,9 @@ import ModalShell from './ui/ModalShell';
 import { Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Wand2 } from 'lucide-react';
+import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 
-// localStorage 키
+// 저장소 키
 const LS_KEY = 'qf_remove_bg_settings';
 
 interface SavedSettings {
@@ -17,15 +18,11 @@ interface SavedSettings {
 }
 
 function loadSettings(): SavedSettings {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* 무시 */ }
-  return { threshold: 60, feather: 30, previewBg: 'checker', trim: true };
+  return readJsonStorage(LS_KEY, { threshold: 60, feather: 30, previewBg: 'checker', trim: true });
 }
 
 function saveSettings(s: SavedSettings) {
-  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  writeJsonStorage(LS_KEY, s);
 }
 
 // 어두운 체커보드 스타일 (투명 영역 표시용)
@@ -116,7 +113,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
     ? darkCheckerboardStyle
     : { backgroundColor: previewBg };
 
-  // 설정 변경 시 localStorage 저장
+  // 설정 변경 시 저장소에 반영
   useEffect(() => {
     saveSettings({ threshold, feather, previewBg, trim });
   }, [threshold, feather, previewBg, trim]);

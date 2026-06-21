@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { Category, FolderShortcut } from '../types';
+import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { normalizeHexColor } from './useThemeManagement';
 
 const STORAGE_KEY = 'quickfolder_widget_data';
@@ -74,10 +75,9 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
 
   // 데이터 로드 + 마이그레이션
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    const parsed = readJsonStorage<unknown | null>(STORAGE_KEY, null);
+    if (parsed) {
       try {
-        const parsed = JSON.parse(saved);
         const migrateCategoryColor = (c: Record<string, unknown>) => {
           const col = c?.color;
           if (typeof col === 'string') {
@@ -126,7 +126,7 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
   // 데이터 저장
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
+      writeJsonStorage(STORAGE_KEY, categories);
     }
   }, [categories, isLoaded]);
 

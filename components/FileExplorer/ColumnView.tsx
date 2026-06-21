@@ -6,6 +6,7 @@ import { ColumnData, ColumnPreviewData } from './hooks/useColumnView';
 import ColumnPanel from './ColumnPanel';
 import ColumnPreviewPanel from './ColumnPreviewPanel';
 import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
+import { readNumberStorage, storageKeys, writeNumberStorage } from '../../utils/storage';
 
 interface ColumnViewProps {
   columns: ColumnData[];
@@ -45,7 +46,7 @@ export default memo(function ColumnView({
   currentPath,
 }: ColumnViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const storageKey = `qf_colview_width_${instanceId ?? 'default'}`;
+  const storageKey = storageKeys.columnViewWidth(instanceId ?? 'default');
   const horizontalScrollKey = currentPath
     ? createScrollStorageKey('column-view', instanceId ?? 'default', 'horizontal', currentPath)
     : null;
@@ -54,18 +55,14 @@ export default memo(function ColumnView({
     preview?.entry.path ?? '',
   ]);
 
-  // 컬럼 너비 — 모든 컬럼에 동일하게 적용 (단일 값, localStorage 영속화)
+  // 컬럼 너비 — 모든 컬럼에 동일하게 적용 (단일 값, 저장소 영속화)
   const [columnWidth, setColumnWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return Math.max(150, Number(saved));
-    } catch { /* 무시 */ }
-    return 220;
+    return Math.max(150, readNumberStorage(storageKey, 220));
   });
   const handleColumnResize = useCallback((_colIdx: number, delta: number) => {
     setColumnWidth(prev => {
       const next = Math.max(150, prev + delta);
-      localStorage.setItem(storageKey, String(next));
+      writeNumberStorage(storageKey, next);
       return next;
     });
   }, [storageKey]);

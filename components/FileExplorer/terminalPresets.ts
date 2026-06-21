@@ -1,3 +1,5 @@
+import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
+
 export interface TerminalPreset {
   id: string;
   name: string;
@@ -15,18 +17,12 @@ export function createTerminalPresetId() {
 }
 
 export function loadTerminalPresetStore(): TerminalPresetStore {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed ? parsed : {};
-  } catch {
-    return {};
-  }
+  const parsed = readJsonStorage<unknown>(STORAGE_KEY, {});
+  return typeof parsed === 'object' && parsed ? parsed as TerminalPresetStore : {};
 }
 
 export function saveTerminalPresetStore(store: TerminalPresetStore) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  writeJsonStorage(STORAGE_KEY, store);
 }
 
 export function getTerminalPresets(path: string) {

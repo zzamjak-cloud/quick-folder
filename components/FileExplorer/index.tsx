@@ -47,13 +47,22 @@ import { useFileOperations, type FolderSizeDialogState } from './hooks/useFileOp
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 import { useEscapeKey } from './hooks/useEscapeKey';
+import {
+  readJsonStorage,
+  readNumberStorage,
+  readStorage,
+  storageKeys,
+  writeJsonStorage,
+  writeNumberStorage,
+  writeStorage,
+} from '../../utils/storage';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
 
 interface FileExplorerProps {
-  instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
+  instanceId?: string;   // 분할 뷰 시 저장소 키 분리용 (기본: 'default')
   isFocused?: boolean;   // 포커스된 패널만 키보드 단축키 응답 (기본: true)
   splitMode?: 'single' | 'horizontal' | 'vertical';
   onSplitModeChange?: (mode: 'single' | 'horizontal' | 'vertical', options?: { closingInstanceId?: string; closedPaths?: string[] }) => void;
@@ -105,23 +114,22 @@ export default function FileExplorer({
   }, [isFocused, splitMode]);
 
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'modified' | 'type'>(() => {
-    const saved = localStorage.getItem(`qf_sort_by_${instanceId}`);
+    const saved = readStorage(storageKeys.explorerSortBy(instanceId));
     return (saved as 'name' | 'size' | 'modified' | 'type') || 'modified';
   });
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => {
-    const saved = localStorage.getItem(`qf_sort_dir_${instanceId}`);
+    const saved = readStorage(storageKeys.explorerSortDir(instanceId));
     return (saved as 'asc' | 'desc') || 'desc';
   });
   const [thumbnailSize, setThumbnailSize] = useState<ThumbnailSize>(() => {
-    const saved = localStorage.getItem(`qf_thumb_size_${instanceId}`);
-    const parsed = saved ? Number(saved) : 120;
+    const parsed = readNumberStorage(storageKeys.explorerThumbnailSize(instanceId), 120);
     return ([40, 60, 80, 100, 120, 160, 200, 240, 280, 320].includes(parsed) ? parsed : 120) as ThumbnailSize;
   });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const saved = localStorage.getItem(`qf_view_mode_${instanceId}`);
+    const saved = readStorage(storageKeys.explorerViewMode(instanceId));
     return (['grid', 'columns', 'list', 'details'].includes(saved ?? '') ? saved : 'grid') as ViewMode;
   });
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -138,8 +146,7 @@ export default function FileExplorer({
 
   // --- 폴더 태그 (프로젝트명) ---
   const [folderTags, setFolderTags] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('qf_folder_tags') ?? '{}'); }
-    catch { return {}; }
+    return readJsonStorage<Record<string, string>>(storageKeys.folderTags, {});
   });
 
   // --- 스크롤 위치 복원용 ---
@@ -427,25 +434,25 @@ export default function FileExplorer({
     });
   }
 
-  // 정렬 변경 시 재정렬 + localStorage 저장
+  // 정렬 변경 시 재정렬 + 저장소 반영
   useEffect(() => {
     setEntries(prev => sortEntries(prev, sortBy, sortDir));
-    localStorage.setItem(`qf_sort_by_${instanceId}`, sortBy);
-    localStorage.setItem(`qf_sort_dir_${instanceId}`, sortDir);
+    writeStorage(storageKeys.explorerSortBy(instanceId), sortBy);
+    writeStorage(storageKeys.explorerSortDir(instanceId), sortDir);
   }, [sortBy, sortDir, instanceId]);
 
-  // 썸네일 크기·뷰 모드 변경 시 localStorage 저장
+  // 썸네일 크기·뷰 모드 변경 시 저장소 반영
   useEffect(() => {
-    localStorage.setItem(`qf_thumb_size_${instanceId}`, String(thumbnailSize));
+    writeNumberStorage(storageKeys.explorerThumbnailSize(instanceId), thumbnailSize);
   }, [thumbnailSize, instanceId]);
 
   useEffect(() => {
-    localStorage.setItem(`qf_view_mode_${instanceId}`, viewMode);
+    writeStorage(storageKeys.explorerViewMode(instanceId), viewMode);
   }, [viewMode, instanceId]);
 
-  // 폴더 태그 변경 시 localStorage 저장
+  // 폴더 태그 변경 시 저장소 반영
   useEffect(() => {
-    localStorage.setItem('qf_folder_tags', JSON.stringify(folderTags));
+    writeJsonStorage(storageKeys.folderTags, folderTags);
   }, [folderTags]);
 
   // --- 검색/필터 (커스텀 훅) ---

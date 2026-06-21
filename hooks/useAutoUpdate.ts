@@ -4,6 +4,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauri } from '../utils/isTauri';
+import { readJsonStorage, removeStorage, writeJsonStorage } from '../utils/storage';
 
 const PENDING_UPDATE_KEY = 'qf_pending_update';
 const PENDING_UPDATE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -51,23 +52,17 @@ async function fetchChangelogNotes(newVer: string): Promise<string> {
 }
 
 function readPendingMarker(): PendingUpdateMarker | null {
-  try {
-    const raw = localStorage.getItem(PENDING_UPDATE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PendingUpdateMarker;
-    if (!parsed.fromVersion || !parsed.toVersion || !parsed.timestamp) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  const parsed = readJsonStorage<PendingUpdateMarker | null>(PENDING_UPDATE_KEY, null);
+  if (!parsed?.fromVersion || !parsed.toVersion || !parsed.timestamp) return null;
+  return parsed;
 }
 
 function clearPendingMarker() {
-  try { localStorage.removeItem(PENDING_UPDATE_KEY); } catch {}
+  removeStorage(PENDING_UPDATE_KEY);
 }
 
 function writePendingMarker(marker: PendingUpdateMarker) {
-  try { localStorage.setItem(PENDING_UPDATE_KEY, JSON.stringify(marker)); } catch {}
+  writeJsonStorage(PENDING_UPDATE_KEY, marker);
 }
 
 export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' | 'info') => void) {

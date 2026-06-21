@@ -5,6 +5,7 @@ import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import LaigterLitPreview, { LaigterLitPreviewTextures, PreviewDisplayMode } from './LaigterLitPreview';
+import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 
 export interface LaigterParamsUI {
   bumpStrength: number;
@@ -92,28 +93,19 @@ const DEFAULT_SETTINGS: MapMakerSettings = {
 const MAPMAKER_SETTINGS_KEY = 'quickfolder_mapmaker_settings';
 
 function loadMapMakerSettings(): MapMakerSettings {
-  try {
-    const raw = localStorage.getItem(MAPMAKER_SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<MapMakerSettings>;
-    return {
-      ...DEFAULT_SETTINGS,
-      ...parsed,
-      params: { ...DEFAULT_SETTINGS.params, ...(parsed.params ?? {}) },
-      l0: { ...DEFAULT_SETTINGS.l0, ...(parsed.l0 ?? {}) },
-      l1: { ...DEFAULT_SETTINGS.l1, ...(parsed.l1 ?? {}) },
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+  const parsed = readJsonStorage<Partial<MapMakerSettings> | null>(MAPMAKER_SETTINGS_KEY, null);
+  if (!parsed) return DEFAULT_SETTINGS;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...parsed,
+    params: { ...DEFAULT_SETTINGS.params, ...(parsed.params ?? {}) },
+    l0: { ...DEFAULT_SETTINGS.l0, ...(parsed.l0 ?? {}) },
+    l1: { ...DEFAULT_SETTINGS.l1, ...(parsed.l1 ?? {}) },
+  };
 }
 
 function saveMapMakerSettings(s: MapMakerSettings): void {
-  try {
-    localStorage.setItem(MAPMAKER_SETTINGS_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore quota / private mode */
-  }
+  writeJsonStorage(MAPMAKER_SETTINGS_KEY, s);
 }
 
 interface MapMakerModalProps {
@@ -298,7 +290,7 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
   const [l0, setL0] = useState<LightState>(initial.l0);
   const [l1, setL1] = useState<LightState>(initial.l1);
 
-  /** 옵션 변경 시 localStorage에 영구 저장 */
+  /** 옵션 변경 시 저장소에 영구 반영 */
   useEffect(() => {
     saveMapMakerSettings({
       params,

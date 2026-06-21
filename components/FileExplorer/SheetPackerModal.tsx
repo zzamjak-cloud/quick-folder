@@ -5,6 +5,7 @@ import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, getInputStyle, Spinner } from './ui/modalStyles';
 import { getFileName, getPathSeparator } from '../../utils/pathUtils';
+import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 
 // 기본 프리셋
 const DEFAULT_PRESETS = [
@@ -65,12 +66,7 @@ export default function SheetPackerModal({
 
   // 커스텀 프리셋
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
+    return readJsonStorage<CustomPreset[]>(STORAGE_KEY, []);
   });
 
   const allPresets = useMemo(
@@ -238,7 +234,7 @@ export default function SheetPackerModal({
     if (allPresets.some(p => p.w === cellWidth && p.h === cellHeight)) return;
     const next = [...customPresets, { label, w: cellWidth, h: cellHeight }];
     setCustomPresets(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    writeJsonStorage(STORAGE_KEY, next);
   };
 
   // 공통 스타일

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ThemeVars } from '../types';
+import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 
 // --- 타입 ---
 export type Theme = {
@@ -217,29 +218,24 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
 
   // 저장된 설정 복원
   useEffect(() => {
-    const savedSettings = localStorage.getItem(SETTINGS_KEY);
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        const savedThemeId = typeof parsed?.themeId === 'string' ? parsed.themeId : THEME_PRESETS[0].id;
-        const bg = typeof parsed?.customBg === 'string' ? parsed.customBg : '#0f172a';
-        const accent = typeof parsed?.customAccent === 'string' ? parsed.customAccent : '#3b82f6';
-        const z = typeof parsed?.zoomPercent === 'number' ? parsed.zoomPercent : 100;
-        setThemeId(savedThemeId);
-        setCustomBg(bg);
-        setCustomAccent(accent);
-        setBgInputValue(bg);
-        setAccentInputValue(accent);
-        setZoomPercent(Math.min(150, Math.max(50, Math.round(z / 10) * 10)));
-      } catch (e) {
-        console.error("Failed to parse saved settings", e);
-      }
-    }
+    const parsed = readJsonStorage<Record<string, unknown> | null>(SETTINGS_KEY, null);
+    if (!parsed) return;
+
+    const savedThemeId = typeof parsed?.themeId === 'string' ? parsed.themeId : THEME_PRESETS[0].id;
+    const bg = typeof parsed?.customBg === 'string' ? parsed.customBg : '#0f172a';
+    const accent = typeof parsed?.customAccent === 'string' ? parsed.customAccent : '#3b82f6';
+    const z = typeof parsed?.zoomPercent === 'number' ? parsed.zoomPercent : 100;
+    setThemeId(savedThemeId);
+    setCustomBg(bg);
+    setCustomAccent(accent);
+    setBgInputValue(bg);
+    setAccentInputValue(accent);
+    setZoomPercent(Math.min(150, Math.max(50, Math.round(z / 10) * 10)));
   }, []);
 
   // 설정 저장
   useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ themeId, customBg, customAccent, zoomPercent }));
+    writeJsonStorage(SETTINGS_KEY, { themeId, customBg, customAccent, zoomPercent });
   }, [themeId, customBg, customAccent, zoomPercent]);
 
   // 테마 변수 계산

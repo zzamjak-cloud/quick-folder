@@ -1,8 +1,14 @@
 import { useEffect } from 'react';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 import { isTauri } from '../utils/isTauri';
+import { readJsonStorage, storageKeys, writeJsonStorage } from '../utils/storage';
 
-const WINDOW_STATE_KEY = 'quickfolder_window_state';
+interface StoredWindowState {
+  width?: number;
+  height?: number;
+  x?: number;
+  y?: number;
+}
 
 export function useWindowState() {
   useEffect(() => {
@@ -29,7 +35,7 @@ export function useWindowState() {
             x: Math.round(position.x / scaleFactor),
             y: Math.round(position.y / scaleFactor),
           };
-          localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify(state));
+          writeJsonStorage(storageKeys.windowState, state);
         } catch (e) {
           console.error('Failed to save window state', e);
         }
@@ -70,10 +76,10 @@ export function useWindowState() {
       await new Promise(resolve => setTimeout(resolve, 100));
       if (!isMounted) return;
 
-      const savedState = localStorage.getItem(WINDOW_STATE_KEY);
+      const savedState = readJsonStorage<StoredWindowState | null>(storageKeys.windowState, null);
       if (savedState) {
         try {
-          const { width, height, x, y } = JSON.parse(savedState);
+          const { width, height, x, y } = savedState;
 
           const validWidth = width && width >= 400 ? width : 800;
           const validHeight = height && height >= 300 ? height : 600;

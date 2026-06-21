@@ -64,6 +64,22 @@ import {
   installDomLocalization,
   translate,
 } from './utils/i18n';
+import {
+  readBooleanStorage,
+  readExplorerActiveTabId,
+  readExplorerTabs,
+  readJsonStorage,
+  readNumberStorage,
+  readStorage,
+  removeStorage,
+  storageKeys,
+  writeBooleanStorage,
+  writeExplorerActiveTabId,
+  writeExplorerTabs,
+  writeJsonStorage,
+  writeNumberStorage,
+  writeStorage,
+} from './utils/storage';
 
 // 커스텀 훅
 import {
@@ -86,13 +102,6 @@ import {
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
 const EDGE_TRAY_LABEL = 'edge-tray';
-const WINDOW_STATE_KEY = 'quickfolder_window_state';
-const TEMP_TRAY_STORAGE_KEY = 'qf_temp_file_tray_paths';
-const TEMP_TRAY_WINDOW_RESTORE_KEY = 'qf_temp_file_tray_restore_window';
-const SECONDARY_TABS_KEY = 'qf_explorer_tabs_pane-1';
-const SECONDARY_ACTIVE_TAB_KEY = 'qf_explorer_active_tab_pane-1';
-const DEFAULT_TABS_KEY = 'qf_explorer_tabs';
-const DEFAULT_ACTIVE_TAB_KEY = 'qf_explorer_active_tab';
 const TEMP_TRAY_WINDOW_WIDTH = 360;
 const TEMP_TRAY_WINDOW_MIN_HEIGHT = 520;
 const TEMP_TRAY_WINDOW_MAX_HEIGHT = 720;
@@ -116,18 +125,9 @@ function mergeUniquePaths(prev: string[], next: string[]) {
   return merged;
 }
 
-function readStoredTabs(tabsKey: string): Tab[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(tabsKey) ?? '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function readStoredActiveTab(tabsKey: string, activeTabKey: string): Tab | null {
-  const tabs = readStoredTabs(tabsKey);
-  const activeTabId = localStorage.getItem(activeTabKey);
+function readStoredActiveTab(instanceId = 'default'): Tab | null {
+  const tabs = readExplorerTabs(instanceId);
+  const activeTabId = readExplorerActiveTabId(instanceId);
   return tabs.find(tab => tab.id === activeTabId) ?? tabs[0] ?? null;
 }
 
@@ -187,17 +187,16 @@ export default function App() {
 
   // 좌측 패널 너비
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    const saved = localStorage.getItem('qf_left_panel_width');
-    return saved ? JSON.parse(saved) : 280;
+    return readJsonStorage(storageKeys.leftPanelWidth, 280);
   });
 
   // 좌측 사이드바 접기/펼치기
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('qf_sidebar_collapsed') === 'true';
+    return readBooleanStorage(storageKeys.sidebarCollapsed);
   });
 
   useEffect(() => {
-    localStorage.setItem('qf_sidebar_collapsed', String(sidebarCollapsed));
+    writeBooleanStorage(storageKeys.sidebarCollapsed, sidebarCollapsed);
     if (!sidebarCollapsed) setCollapsedSessionMenu(null);
     setSettingsMenu(null);
   }, [sidebarCollapsed]);
@@ -224,7 +223,7 @@ export default function App() {
 
   // --- 분할 뷰 상태 ---
   const [splitMode, setSplitMode] = useState<SplitMode>(() => {
-    return (localStorage.getItem('qf_split_mode') as SplitMode) || 'single';
+    return (readStorage(storageKeys.splitMode) as SplitMode) || 'single';
   });
   const [explorerRequest2, setExplorerRequest2] = useState<{ path: string; key: number }>({ path: '', key: 0 });
   const lastExplorerPath2Ref = useRef('');
@@ -240,8 +239,7 @@ export default function App() {
   // 분할 뷰에서 두 패널이 클립보드를 공유
   const [sharedClipboard, setSharedClipboard] = useState<ClipboardData | null>(null);
   const [splitRatio, setSplitRatio] = useState(() => {
-    const saved = localStorage.getItem('qf_split_ratio');
-    return saved ? Number(saved) : 0.5;
+    return readNumberStorage(storageKeys.splitRatio, 0.5);
   });
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [trayDragStates, setTrayDragStates] = useState<Record<string, { dragging: boolean; trayActive: boolean }>>({});
@@ -271,31 +269,26 @@ export default function App() {
     [trayDragStates],
   );
   const [tempTrayPaths, setTempTrayPaths] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(TEMP_TRAY_STORAGE_KEY);
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
-    } catch {
-      return [];
-    }
+    const parsed = readJsonStorage<unknown>(storageKeys.tempTrayPaths, []);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
   });
 
   const getPaneActivePath = useCallback((pane: 0 | 1) => {
     if (pane === 1) {
-      return explorerRequest2.path || readStoredActiveTab(SECONDARY_TABS_KEY, SECONDARY_ACTIVE_TAB_KEY)?.path || '';
+      return explorerRequest2.path || readStoredActiveTab('pane-1')?.path || '';
     }
-    return explorerRequest.path || readStoredActiveTab(DEFAULT_TABS_KEY, DEFAULT_ACTIVE_TAB_KEY)?.path || '';
+    return explorerRequest.path || readStoredActiveTab()?.path || '';
   }, [explorerRequest.path, explorerRequest2.path]);
 
   const seedSecondaryPaneFromPath = useCallback((path: string) => {
     if (!path) return;
-    const sourceTab = readStoredActiveTab(DEFAULT_TABS_KEY, DEFAULT_ACTIVE_TAB_KEY);
+    const sourceTab = readStoredActiveTab();
     const clonedTab: Tab = sourceTab && sourceTab.path === path
       ? { ...sourceTab, id: uuidv4(), pinned: false }
       : createTabSnapshot(path);
 
-    localStorage.setItem(SECONDARY_TABS_KEY, JSON.stringify([clonedTab]));
-    localStorage.setItem(SECONDARY_ACTIVE_TAB_KEY, clonedTab.id);
+    writeExplorerTabs('pane-1', [clonedTab]);
+    writeExplorerActiveTabId('pane-1', clonedTab.id);
     requestExplorerPath2(path, true);
   }, [requestExplorerPath2]);
 
@@ -347,8 +340,8 @@ export default function App() {
       if (!path) return;
 
       if (splitMode === 'single') {
-        localStorage.removeItem(SECONDARY_TABS_KEY);
-        localStorage.removeItem(SECONDARY_ACTIVE_TAB_KEY);
+        removeStorage(storageKeys.explorerTabs('pane-1'));
+        removeStorage(storageKeys.explorerActiveTab('pane-1'));
         setExplorerPath2(path);
         setFocusedPane(1);
         setSplitMode('horizontal');
@@ -372,7 +365,7 @@ export default function App() {
   const trayRestoreDepthRef = useRef<'foreground' | 'background'>('foreground');
 
   useEffect(() => {
-    localStorage.setItem(TEMP_TRAY_STORAGE_KEY, JSON.stringify(tempTrayPaths));
+    writeJsonStorage(storageKeys.tempTrayPaths, tempTrayPaths);
   }, [tempTrayPaths]);
 
   const handleStageFilesToTray = useCallback((paths: string[]) => {
@@ -446,8 +439,8 @@ export default function App() {
     };
 
     const alignTrayWindow = async () => {
-      if (!localStorage.getItem(TEMP_TRAY_WINDOW_RESTORE_KEY)) {
-        localStorage.setItem(TEMP_TRAY_WINDOW_RESTORE_KEY, JSON.stringify(await getWindowFrame()));
+      if (!readStorage(storageKeys.tempTrayWindowRestore)) {
+        writeJsonStorage(storageKeys.tempTrayWindowRestore, await getWindowFrame());
       }
       tempTrayWindowAppliedRef.current = true;
       await appWindow.setAlwaysOnTop(true);
@@ -474,22 +467,21 @@ export default function App() {
       trayRestoreDepthRef.current = 'foreground';
 
       await appWindow.setAlwaysOnTop(false);
-      const saved = localStorage.getItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
-      if (!saved) return;
+      const frame = readJsonStorage<WindowFrame | null>(storageKeys.tempTrayWindowRestore, null);
+      if (!frame) return;
 
       if (!tempTrayWindowAppliedRef.current) {
-        localStorage.removeItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
+        removeStorage(storageKeys.tempTrayWindowRestore);
         return;
       }
 
-      const frame = JSON.parse(saved) as WindowFrame;
-      localStorage.removeItem(TEMP_TRAY_WINDOW_RESTORE_KEY);
+      removeStorage(storageKeys.tempTrayWindowRestore);
       tempTrayWindowAppliedRef.current = false;
 
       if (cancelled) return;
       await appWindow.setSize(new LogicalSize(frame.width, frame.height));
       await appWindow.setPosition(new LogicalPosition(frame.x, frame.y));
-      localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify(frame));
+      writeJsonStorage(storageKeys.windowState, frame);
 
       try {
         if (depth === 'foreground') {
@@ -533,13 +525,13 @@ export default function App() {
     void closeEdgeTray();
   }, []);
 
-  // --- 분할 뷰 localStorage 동기화 ---
+  // --- 분할 뷰 저장소 동기화 ---
   useEffect(() => {
-    localStorage.setItem('qf_split_mode', splitMode);
+    writeStorage(storageKeys.splitMode, splitMode);
   }, [splitMode]);
 
   useEffect(() => {
-    localStorage.setItem('qf_split_ratio', String(splitRatio));
+    writeNumberStorage(storageKeys.splitRatio, splitRatio);
   }, [splitRatio]);
 
   // --- 글로벌 키보드 단축키 (Ctrl+L: 분할 뷰, Ctrl+B: 사이드바 토글) ---
@@ -816,7 +808,7 @@ export default function App() {
   }, []);
 
   const handleLanguageChange = useCallback((nextLanguage: AppLanguage) => {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    writeStorage(LANGUAGE_STORAGE_KEY, nextLanguage);
     if (nextLanguage === language) return;
     window.location.reload();
   }, [language]);
@@ -874,7 +866,7 @@ export default function App() {
     const handleMouseUp = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      localStorage.setItem('qf_left_panel_width', JSON.stringify(currentWidth));
+      writeJsonStorage(storageKeys.leftPanelWidth, currentWidth);
     };
 
     window.addEventListener('mousemove', handleMouseMove);

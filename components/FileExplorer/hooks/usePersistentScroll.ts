@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { DependencyList, RefObject } from 'react';
+import { readJsonStorage, writeJsonStorage } from '../../../utils/storage';
 
 interface ScrollPosition {
   top: number;
@@ -12,26 +13,17 @@ export function createScrollStorageKey(scope: string, instanceId: string, mode: 
 
 function readScrollPosition(storageKey: string | null): ScrollPosition | null {
   if (!storageKey) return null;
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ScrollPosition>;
-    return {
-      top: Number.isFinite(parsed.top) ? Number(parsed.top) : 0,
-      left: Number.isFinite(parsed.left) ? Number(parsed.left) : 0,
-    };
-  } catch {
-    return null;
-  }
+  const parsed = readJsonStorage<Partial<ScrollPosition> | null>(storageKey, null);
+  if (!parsed) return null;
+  return {
+    top: Number.isFinite(parsed.top) ? Number(parsed.top) : 0,
+    left: Number.isFinite(parsed.left) ? Number(parsed.left) : 0,
+  };
 }
 
 function writeScrollPosition(storageKey: string | null, position: ScrollPosition) {
   if (!storageKey) return;
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(position));
-  } catch {
-    // localStorage가 가득 찼거나 비활성화된 환경에서는 스크롤 저장만 포기한다.
-  }
+  writeJsonStorage(storageKey, position);
 }
 
 export function usePersistentScroll<T extends HTMLElement>(
