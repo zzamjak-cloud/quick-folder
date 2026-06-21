@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getFolderSizeChildNavigationTarget, shouldOpenArchiveInCurrentPane } from '../utils/pathUtils';
+import { getFolderSizeChildNavigationTarget, shouldOpenArchiveInCurrentPane } from '../utils/pathUtils.ts';
 
 test('중첩 압축 파일은 현재 압축 pane 안에서 열린다', () => {
   assert.equal(

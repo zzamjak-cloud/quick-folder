@@ -26,8 +26,8 @@
 - **목록에서 항목을 숨기지 않음** — 비일치 항목은 흐리게, 매칭 글자는 accent 색으로 강조
 - 최고 점수 항목으로 자동 선택·스크롤
 - `Backspace` 한 글자 삭제, `ESC` 필터 취소
-- **회귀 방지**: 검색 중 파일 자동 선택 없음. 인라인 퍼지 필터에서 `Backspace`는 탐색기(삭제·뒤로가기)로 넘기지 않는다. Windows `Delete`는 선택 항목 삭제 shortcut으로 넘기되, `Ctrl+F` 명시적 검색 모드에서는 파일 삭제로 해석하지 않는다.
-- 네비게이션 바 검색(`Ctrl+F`)과 동일한 `searchQuery` state 공유
+- **회귀 방지**: 검색 중 파일 자동 선택 없음. 인라인 퍼지 필터에서 `Backspace`는 탐색기(삭제·뒤로가기)로 넘기지 않는다. Windows `Delete`는 선택 항목 삭제 shortcut으로 넘기되, 명시적 로컬 검색 모드에서는 파일 삭제로 해석하지 않는다.
+- 네비게이션 바 검색 버튼은 로컬 `searchQuery` state를 사용한다. `Ctrl+F`/`Ctrl+Shift+F`는 전역 재귀 검색 모달을 연다.
 
 ## displayEntries 파생 흐름
 ```
@@ -41,7 +41,7 @@ entries (원본)
 | 단축키 | 기능 |
 |--------|------|
 | (타이핑) | 인라인 퍼지 필터 시작 |
-| `Ctrl+F` | 현재 폴더 검색창 토글 |
+| `Ctrl+F` | 전역 검색 모달 (`GlobalSearchModal`) |
 | `Ctrl+Shift+F` | 전역 검색 모달 (`GlobalSearchModal`) |
 | `Ctrl+Shift+G` | 폴더 경로로 이동 (`GoToFolderModal`) |
 | `ESC` | 인라인/로컬 검색 취소 |

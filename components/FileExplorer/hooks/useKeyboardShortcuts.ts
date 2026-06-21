@@ -68,7 +68,6 @@ export interface UseKeyboardShortcutsConfig {
   setIsGoToFolderOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsGlobalSearchOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
-  searchInputRef: React.RefObject<HTMLInputElement | null>;
   handleTabSelect: (id: string) => void;
   handleTabClose: (id: string) => void;
   duplicateTab: () => void;
@@ -106,7 +105,6 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive,
     setIsGoToFolderOpen, setIsGlobalSearchOpen, setError,
-    searchInputRef,
     handleTabSelect, handleTabClose, duplicateTab, closeOtherTabs,
     columnView,
     setMarkdownEditorPath,
@@ -253,8 +251,8 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
 
-      // Ctrl+Shift+F: 글로벌 검색 (하위 폴더 재귀)
-      if (ctrl && e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f')) {
+      // Ctrl+F / Ctrl+Shift+F: 글로벌 검색 (하위 폴더 재귀)
+      if (ctrl && !e.altKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault();
         if (currentPath && currentPath !== RECENT_PATH) {
           setSearchQuery('');
@@ -270,22 +268,6 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         const fontPaths = selectedPaths.filter(p => /\.(ttf|otf|woff|woff2|ttc)$/i.test(p));
         if (fontPaths.length === 2) {
           setFontMergePaths(fontPaths);
-        }
-        return;
-      }
-
-      // Ctrl+F: 현재 폴더 검색창 토글
-      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f')) {
-        e.preventDefault();
-        if (currentPath && currentPath !== RECENT_PATH) {
-          setIsSearchActive(prev => {
-            if (prev) {
-              setSearchQuery('');
-              return false;
-            }
-            setTimeout(() => searchInputRef.current?.focus(), 0);
-            return true;
-          });
         }
         return;
       }
@@ -717,7 +699,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
     setDiffViewerPaths, setFontMergePaths, setFontPreviewPath, setPdfPreviewPath, setAudioPreviewPath,
     setViewMode, setThumbnailSize, setFocusedIndex, setSelectedPaths,
     setClipboard, setSearchQuery, setIsSearchActive, setIsGoToFolderOpen, setIsGlobalSearchOpen,
-    setError, searchInputRef, gridRef, selectionAnchorRef,
+    setError, gridRef, selectionAnchorRef,
   ]);
 
   // --- 마우스 측면 버튼(뒤로/앞으로) 내비게이션 ---

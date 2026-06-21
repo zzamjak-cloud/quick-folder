@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars, ContextMenuSection } from './types';
@@ -11,27 +11,11 @@ import NavigationBar from './NavigationBar';
 import FileGrid from './FileGrid';
 import ContextMenu from './ContextMenu';
 import BulkRenameModal from './BulkRenameModal';
-import PixelateModal from './PixelateModal';
-import MapMakerModal from './MapMakerModal';
-import RemoveWhiteBgModal from './RemoveWhiteBgModal';
-import SheetPackerModal from './SheetPackerModal';
-import SheetUnpackModal from './SheetUnpackModal';
-import MarkdownEditor from './MarkdownEditor';
-import FontPreviewModal from './FontPreviewModal';
-import GifCompressModal from './GifCompressModal';
-import PdfPreviewModal from './PdfPreviewModal';
-import AudioPreviewModal from './AudioPreviewModal';
-import CodePreviewModal from './CodePreviewModal';
-import FbxPreviewModal from './FbxPreviewModal';
-import FontMergeModal from './FontMergeModal';
-import FolderMergeModal from './FolderMergeModal';
-import TerminalPresetModal from './TerminalPresetModal';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
 import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDrop';
 import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
-import { PreviewModals } from './PreviewModals';
 import { cancelAllQueued, queuedInvokeLow } from './hooks/invokeQueue';
 import { runTransferWithProgress } from './hooks/runTransferWithProgress';
 import { detectFolderMergeScenario } from '../../utils/folderMerge';
@@ -51,11 +35,9 @@ import {
   sameVolume,
   shouldOpenArchiveInCurrentPane,
 } from '../../utils/pathUtils';
+import { naturalCompare } from '../../utils/naturalCompare';
 import { isTauri } from '../../utils/isTauri';
 import GoToFolderModal from './GoToFolderModal';
-import GlobalSearchModal from './GlobalSearchModal';
-import DuplicateFilesModal from './DuplicateFilesModal';
-import DiffViewerModal from './DiffViewerModal';
 import { useUndoStack } from './hooks/useUndoStack';
 import { useModalStates } from './hooks/useModalStates';
 import { useSearchFilter } from './hooks/useSearchFilter';
@@ -65,10 +47,31 @@ import { useClipboard } from './hooks/useClipboard';
 import { useFileOperations, type FolderSizeDialogState } from './hooks/useFileOperations';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
+import { useEscapeKey } from './hooks/useEscapeKey';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
 const SYSTEM_ROOT_PATH = '__system_root__';
+
+const PreviewModals = lazy(() => import('./PreviewModals').then(module => ({ default: module.PreviewModals })));
+const PixelateModal = lazy(() => import('./PixelateModal'));
+const MapMakerModal = lazy(() => import('./MapMakerModal'));
+const RemoveWhiteBgModal = lazy(() => import('./RemoveWhiteBgModal'));
+const SheetPackerModal = lazy(() => import('./SheetPackerModal'));
+const SheetUnpackModal = lazy(() => import('./SheetUnpackModal'));
+const MarkdownEditor = lazy(() => import('./MarkdownEditor'));
+const FontPreviewModal = lazy(() => import('./FontPreviewModal'));
+const GifCompressModal = lazy(() => import('./GifCompressModal'));
+const PdfPreviewModal = lazy(() => import('./PdfPreviewModal'));
+const AudioPreviewModal = lazy(() => import('./AudioPreviewModal'));
+const CodePreviewModal = lazy(() => import('./CodePreviewModal'));
+const FbxPreviewModal = lazy(() => import('./FbxPreviewModal'));
+const FontMergeModal = lazy(() => import('./FontMergeModal'));
+const FolderMergeModal = lazy(() => import('./FolderMergeModal'));
+const TerminalPresetModal = lazy(() => import('./TerminalPresetModal'));
+const GlobalSearchModal = lazy(() => import('./GlobalSearchModal'));
+const DuplicateFilesModal = lazy(() => import('./DuplicateFilesModal'));
+const DiffViewerModal = lazy(() => import('./DiffViewerModal'));
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 localStorage 키 분리용 (기본: 'default')
@@ -423,30 +426,6 @@ export default function FileExplorer({
   } = useTabManagement({ instanceId, loadDirectory, onPathChange, onSplitModeChange });
 
   // --- 정렬 ---
-  // 자연 정렬: 텍스트/숫자 청크 분리 비교 (9 < 11 < 011 < 111)
-  function naturalCompare(a: string, b: string): number {
-    const re = /(\d+)|(\D+)/g;
-    const aParts = a.match(re) || [];
-    const bParts = b.match(re) || [];
-    const len = Math.min(aParts.length, bParts.length);
-    for (let i = 0; i < len; i++) {
-      const aIsNum = /^\d/.test(aParts[i]);
-      const bIsNum = /^\d/.test(bParts[i]);
-      if (aIsNum && bIsNum) {
-        // 숫자 비교: 정수값 우선, 같으면 선행0 적은(문자열 짧은) 쪽이 앞
-        const diff = parseInt(aParts[i], 10) - parseInt(bParts[i], 10);
-        if (diff !== 0) return diff;
-        if (aParts[i].length !== bParts[i].length) return aParts[i].length - bParts[i].length;
-      } else if (aIsNum !== bIsNum) {
-        return aIsNum ? -1 : 1;
-      } else {
-        const cmp = aParts[i].localeCompare(bParts[i], 'ko');
-        if (cmp !== 0) return cmp;
-      }
-    }
-    return aParts.length - bParts.length;
-  }
-
   function sortEntries(list: FileEntry[], by: string, dir: string): FileEntry[] {
     return [...list].sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
@@ -942,7 +921,6 @@ export default function FileExplorer({
     setIsGoToFolderOpen: modals.setIsGoToFolderOpen,
     setIsGlobalSearchOpen: modals.setIsGlobalSearchOpen,
     setError,
-    searchInputRef: searchFilter.searchInputRef,
     handleTabSelect,
     handleTabClose,
     duplicateTab,
@@ -1285,6 +1263,15 @@ export default function FileExplorer({
     }
     closeContextMenu();
   }, [closeContextMenu]);
+
+  const shouldRenderPreviewModals = Boolean(
+    preview.previewImagePath ||
+    preview.videoPlayerPath ||
+    preview.previewTextPath ||
+    preview.previewJsonPath ||
+    preview.previewMdPath ||
+    preview.hwpPreviewPath
+  );
 
   return (
     <div
@@ -1692,29 +1679,33 @@ export default function FileExplorer({
         </div>
       )}
 
-      <PreviewModals
-        preview={preview}
-        themeVars={themeVars}
-        previewEntry={entries.find((e) => e.path === preview.previewImagePath) ?? null}
-        onCropSave={(outputPath) => {
-          fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
-          pendingSelectRef.current = outputPath;
-          if (currentPath) {
-            loadDirectory(currentPath);
-          }
-        }}
-        onRemoveBg={(path) => {
-          modals.setRemoveWhiteBgPaths([path]);
-        }}
-        onOpenGifCompress={(paths) => modals.setGifCompressPaths(paths)}
-        onGifToMp4={fileOps.handleGifToMp4}
-        onOpenImageCompress={() => {}}
-        onOpenImageResize={() => {}}
-        onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
-        onFileChanged={() => {
-          if (currentPath) loadDirectory(currentPath);
-        }}
-      />
+      {shouldRenderPreviewModals && (
+        <Suspense fallback={null}>
+          <PreviewModals
+            preview={preview}
+            themeVars={themeVars}
+            previewEntry={entries.find((e) => e.path === preview.previewImagePath) ?? null}
+            onCropSave={(outputPath) => {
+              fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
+              pendingSelectRef.current = outputPath;
+              if (currentPath) {
+                loadDirectory(currentPath);
+              }
+            }}
+            onRemoveBg={(path) => {
+              modals.setRemoveWhiteBgPaths([path]);
+            }}
+            onOpenGifCompress={(paths) => modals.setGifCompressPaths(paths)}
+            onGifToMp4={fileOps.handleGifToMp4}
+            onOpenImageCompress={() => {}}
+            onOpenImageResize={() => {}}
+            onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
+            onFileChanged={() => {
+              if (currentPath) loadDirectory(currentPath);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* 컨텍스트 메뉴 */}
       {contextMenu && (
@@ -1739,6 +1730,7 @@ export default function FileExplorer({
         />
       )}
 
+      <Suspense fallback={null}>
       {/* 픽셀화 모달 */}
       {modals.pixelatePath && (
         <PixelateModal
@@ -1824,6 +1816,7 @@ export default function FileExplorer({
           themeVars={themeVars}
         />
       )}
+      </Suspense>
 
       {/* 폴더로 이동 모달 */}
       <GoToFolderModal
@@ -1833,8 +1826,9 @@ export default function FileExplorer({
         themeVars={themeVars}
       />
 
+      <Suspense fallback={null}>
       {/* 글로벌 검색 모달 */}
-      {currentPath && currentPath !== RECENT_PATH && (
+      {modals.isGlobalSearchOpen && currentPath && currentPath !== RECENT_PATH && (
         <GlobalSearchModal
           isOpen={modals.isGlobalSearchOpen}
           onClose={() => modals.setIsGlobalSearchOpen(false)}
@@ -1946,6 +1940,7 @@ export default function FileExplorer({
           themeVars={themeVars}
         />
       )}
+      </Suspense>
 
       {/* 중복 파일 확인 다이얼로그 */}
       {clipboardHook.duplicateConfirm && (
@@ -2083,13 +2078,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
   onChildOpen: (child: NonNullable<FolderSizeDialogState['children']>[number]) => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const mutedColor = themeVars?.muted ?? '#94a3b8';
   const textColor = themeVars?.text ?? '#e5e7eb';

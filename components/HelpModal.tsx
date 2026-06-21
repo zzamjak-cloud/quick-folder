@@ -73,7 +73,7 @@ const SHORTCUT_SECTIONS: { title: string; items: { key: string; description: str
     title: '선택 & 검색',
     items: [
       { key: 'Ctrl+A', description: '전체 선택' },
-      { key: 'Ctrl+F', description: '검색 (현재 폴더)' },
+      { key: 'Ctrl+F', description: '글로벌 검색 (하위 폴더 재귀)' },
       { key: 'Ctrl+Shift+F', description: '글로벌 검색 (하위 폴더 재귀)' },
       { key: 'ESC', description: '검색 닫기 / 선택 해제' },
       { key: '방향키', description: '포커스 이동 (Shift 범위 선택)' },

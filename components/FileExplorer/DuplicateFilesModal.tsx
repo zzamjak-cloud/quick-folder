@@ -8,6 +8,7 @@ import { FileTypeIcon } from './fileUtils';
 import { thumbKey, getThumb, setThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
 import ContextMenu from './ContextMenu';
 import { ContextMenuSection } from './types';
+import { useEscapeKey } from './hooks/useEscapeKey';
 
 interface DuplicateFilesModalProps {
   rootPath: string;
@@ -154,13 +155,7 @@ export default function DuplicateFilesModal({
     }
   }, [rootPath]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   useEffect(() => {
     scanDuplicates();

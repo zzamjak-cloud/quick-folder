@@ -15,6 +15,7 @@ import {
   Monitor,
   HardDrive,
   HelpCircle,
+  Languages,
 } from 'lucide-react';
 import {
   DndContext,
@@ -53,8 +54,16 @@ import { isTauri } from './utils/isTauri';
 import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
 import { ZoomModal } from './components/ZoomModal';
+import { LanguageSettingsModal } from './components/LanguageSettingsModal';
 import ContextMenu from './components/FileExplorer/ContextMenu';
 import type { ContextMenuSection, Tab } from './components/FileExplorer/types';
+import type { AppLanguage, TranslationKey } from './utils/i18n';
+import {
+  LANGUAGE_STORAGE_KEY,
+  getInitialLanguage,
+  installDomLocalization,
+  translate,
+} from './utils/i18n';
 
 // 커스텀 훅
 import {
@@ -88,6 +97,7 @@ const TEMP_TRAY_WINDOW_WIDTH = 360;
 const TEMP_TRAY_WINDOW_MIN_HEIGHT = 520;
 const TEMP_TRAY_WINDOW_MAX_HEIGHT = 720;
 const TEMP_TRAY_WINDOW_MARGIN = 16;
+const SETTINGS_MENU_WIDTH = 180;
 
 type SplitMode = 'single' | 'horizontal' | 'vertical';
 
@@ -155,6 +165,9 @@ export default function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const [language, setLanguage] = useState<AppLanguage>(() => getInitialLanguage());
+  const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
+
   // --- 커스텀 훅 ---
   const theme = useThemeManagement(addToast);
   const catMgmt = useCategoryManagement(addToast);
@@ -168,6 +181,8 @@ export default function App() {
   const [isBgModalOpen, setIsBgModalOpen] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+  const [settingsMenu, setSettingsMenu] = useState<{ x: number; y: number } | null>(null);
   const [collapsedSessionMenu, setCollapsedSessionMenu] = useState<{ categoryId: string; x: number; y: number } | null>(null);
 
   // 좌측 패널 너비
@@ -184,7 +199,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('qf_sidebar_collapsed', String(sidebarCollapsed));
     if (!sidebarCollapsed) setCollapsedSessionMenu(null);
+    setSettingsMenu(null);
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    return installDomLocalization(language);
+  }, [language]);
 
   // explorerPath: { path, key } 구조로 같은 경로를 다시 설정해도 useEffect가 반응하도록 함
   // 단, 동일 경로 재요청(=FileExplorer→onPathChange 에코)에서는 key를 올리지 않아
@@ -782,6 +803,54 @@ export default function App() {
     }];
   }, [categories, collapsedSessionMenu, handleOpenInExplorer]);
 
+  const handleOpenSettingsMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCollapsedSessionMenu(null);
+    setSettingsMenu(prev => prev
+      ? null
+      : {
+          x: Math.max(8, rect.right - SETTINGS_MENU_WIDTH),
+          y: rect.bottom + 4,
+        }
+    );
+  }, []);
+
+  const handleLanguageChange = useCallback((nextLanguage: AppLanguage) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    if (nextLanguage === language) return;
+    window.location.reload();
+  }, [language]);
+
+  const settingsMenuSections = useMemo<ContextMenuSection[]>(() => [{
+    id: 'app-settings',
+    items: [
+      {
+        id: 'help',
+        icon: <HelpCircle size={13} />,
+        label: t('settings.help'),
+        onClick: () => setIsHelpModalOpen(true),
+      },
+      {
+        id: 'sidebar-zoom',
+        icon: <ZoomIn size={13} />,
+        label: t('settings.sidebarZoom'),
+        onClick: () => setIsZoomModalOpen(true),
+      },
+      {
+        id: 'theme-color',
+        icon: <Palette size={13} />,
+        label: t('settings.themeColor'),
+        onClick: () => setIsBgModalOpen(true),
+      },
+      {
+        id: 'language',
+        icon: <Languages size={13} />,
+        label: t('settings.language'),
+        onClick: () => setIsLanguageModalOpen(true),
+      },
+    ],
+  }], [t]);
+
   const handleAddFavoriteFromExplorer = useCallback((path: string, name: string) => {
     if (categories.length === 0) {
       addToast('즐겨찾기에 추가하려면 먼저 카테고리를 만들어 주세요.', 'error');
@@ -1075,7 +1144,7 @@ export default function App() {
                 <button
                   onClick={() => setSidebarCollapsed(prev => !prev)}
                   className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title="사이드바 펼치기 (Ctrl+B)"
+                  title={t('sidebar.expand')}
                 >
                   <PanelLeftOpen size={14} />
                 </button>
@@ -1086,40 +1155,25 @@ export default function App() {
                 <button
                   onClick={() => setSidebarCollapsed(prev => !prev)}
                   className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title="사이드바 접기 (Ctrl+B)"
+                  title={t('sidebar.collapse')}
                 >
                   <PanelLeftClose size={14} />
                 </button>
                 <div className="flex-1" />
                 <button
                   type="button"
-                  onClick={() => setIsHelpModalOpen(true)}
+                  onClick={handleOpenSettingsMenu}
                   className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                  title="도움말"
+                  title={t('settings.title')}
+                  aria-label={t('settings.title')}
                 >
-                  <HelpCircle size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsZoomModalOpen(true)}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                  title="확대/축소"
-                >
-                  <ZoomIn size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsBgModalOpen(true)}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                  title="테마 설정"
-                >
-                  <Palette size={14} />
+                  <Settings size={14} />
                 </button>
                 <button
                   type="button"
                   onClick={catMgmt.openAddCategoryModal}
                   className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                  title="카테고리 추가"
+                  title={t('sidebar.addSection')}
                 >
                   <Plus size={14} />
                 </button>
@@ -1460,10 +1514,26 @@ export default function App() {
         />
       )}
 
+      {settingsMenu && (
+        <ContextMenu
+          x={settingsMenu.x}
+          y={settingsMenu.y}
+          sections={settingsMenuSections}
+          onClose={() => setSettingsMenu(null)}
+        />
+      )}
+
       {/* --- Modals --- */}
 
       <ThemeSettingsModal isOpen={isBgModalOpen} onClose={() => setIsBgModalOpen(false)} theme={theme} />
       <ZoomModal isOpen={isZoomModalOpen} onClose={() => setIsZoomModalOpen(false)} zoomPercent={theme.zoomPercent} setZoomPercent={theme.setZoomPercent} />
+      <LanguageSettingsModal
+        isOpen={isLanguageModalOpen}
+        language={language}
+        onLanguageChange={handleLanguageChange}
+        onClose={() => setIsLanguageModalOpen(false)}
+        t={t}
+      />
 
       {/* Category Modal */}
       <Modal

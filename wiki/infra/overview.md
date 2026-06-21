@@ -60,3 +60,4 @@ npm run preview       # 웹 미리보기
 
 ## 관련 위키
 - [release.md](release.md)
+- [../i18n/overview.md](../i18n/overview.md)

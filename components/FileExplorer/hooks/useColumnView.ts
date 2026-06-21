@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
+import { naturalCompare } from '../../../utils/naturalCompare';
 import { queuedInvoke } from './invokeQueue';
 
 // 컬럼 데이터 구조
@@ -156,25 +157,7 @@ export function useColumnView() {
   const sortEntries = useCallback((list: FileEntry[]): FileEntry[] => {
     return [...list].sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-      const re = /(\d+)|(\D+)/g;
-      const aParts = a.name.match(re) || [];
-      const bParts = b.name.match(re) || [];
-      const len = Math.min(aParts.length, bParts.length);
-      for (let i = 0; i < len; i++) {
-        const aIsNum = /^\d/.test(aParts[i]);
-        const bIsNum = /^\d/.test(bParts[i]);
-        if (aIsNum && bIsNum) {
-          const diff = parseInt(aParts[i], 10) - parseInt(bParts[i], 10);
-          if (diff !== 0) return diff;
-          if (aParts[i].length !== bParts[i].length) return aParts[i].length - bParts[i].length;
-        } else if (aIsNum !== bIsNum) {
-          return aIsNum ? -1 : 1;
-        } else {
-          const cmp = aParts[i].localeCompare(bParts[i], 'ko');
-          if (cmp !== 0) return cmp;
-        }
-      }
-      return aParts.length - bParts.length;
+      return naturalCompare(a.name, b.name);
     });
   }, []);
 

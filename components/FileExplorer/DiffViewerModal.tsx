@@ -5,6 +5,7 @@ import { getFileName } from '../../utils/pathUtils';
 import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../utils/readTextFileWithTimeout';
 import { computeSideBySideDiff, summarizeDiff, type AlignedDiffRow } from '../../utils/lineDiff';
 import { isDarkHexColor } from '../../hooks/useThemeManagement';
+import { useEscapeKey } from './hooks/useEscapeKey';
 
 const MAX_BYTES = 1048576;
 
@@ -68,13 +69,7 @@ export default function DiffViewerModal({ leftPath, rightPath, themeVars, onClos
     return () => { cancelled = true; };
   }, [leftPath, rightPath]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const rows = useMemo(() => {
     if (leftText == null || rightText == null) return [];

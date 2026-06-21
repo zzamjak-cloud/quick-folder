@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
+import { useEscapeKey } from './hooks/useEscapeKey';
 
 interface FbxPreviewModalProps {
   path: string;
@@ -279,14 +280,7 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
-  // ── ESC 키로 모달 닫기 ───────────────────────────────────
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div

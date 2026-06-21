@@ -375,7 +375,7 @@ export default memo(function NavigationBar({
         <button
           className={btnCls(false)}
           onClick={onSearchToggle}
-          title="검색 (Ctrl+F)"
+          title="현재 폴더 필터"
         >
           <Search size={15} />
         </button>

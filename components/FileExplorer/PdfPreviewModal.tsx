@@ -6,6 +6,7 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
+import { useEscapeKey } from './hooks/useEscapeKey';
 
 // PDF.js Worker 경로 설정 (Vite ?url 임포트)
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
@@ -47,14 +48,7 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
   // 현재 진행 중인 렌더 태스크 ref (중복 렌더 방지)
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
 
-  // ESC 키로 모달 닫기
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   // PDF 문서 로드
   useEffect(() => {
