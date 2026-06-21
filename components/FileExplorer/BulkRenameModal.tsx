@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
+import { getModalButtonStyle, getModalInputBaseStyle, getModalSectionBorderStyle } from './ui/modalStyles';
 import { getPathSeparator, getBaseName, getExtension } from '../../utils/pathUtils';
 
 interface BulkRenameModalProps {
@@ -119,16 +120,9 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
     setReplaceName('');
   };
 
-  // BulkRenameModal 고유 액션 버튼 스타일 (다른 모달보다 약간 작은 패딩)
-  const btnStyle: React.CSSProperties = {
-    padding: '4px 10px',
-    fontSize: 12,
-    borderRadius: 6,
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    cursor: 'pointer',
-  };
+  const btnStyle = getModalButtonStyle(themeVars, { padding: '4px 10px' });
+  const inputStyle = getModalInputBaseStyle(themeVars);
+  const sectionBorderStyle = getModalSectionBorderStyle(themeVars);
 
   return (
     <ModalShell
@@ -145,18 +139,14 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
       themeVars={themeVars}
     >
       {/* 입력 영역 */}
-      <div className="px-4 py-3 flex flex-col gap-2" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+      <div className="px-4 py-3 flex flex-col gap-2" style={sectionBorderStyle}>
         <div className="flex items-center gap-2">
           <label className="text-xs w-20 flex-shrink-0" style={{ color: themeVars?.muted }}>변경할 이름</label>
           <input
             value={inputName}
             onChange={e => setInputName(e.target.value)}
             className="flex-1 px-2 py-1 text-xs rounded-md outline-none"
-            style={{
-              backgroundColor: themeVars?.surface ?? '#111827',
-              color: themeVars?.text ?? '#e5e7eb',
-              border: `1px solid ${themeVars?.border ?? '#334155'}`,
-            }}
+            style={inputStyle}
             placeholder="입력..."
           />
         </div>
@@ -166,11 +156,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
             value={replaceName}
             onChange={e => setReplaceName(e.target.value)}
             className="flex-1 px-2 py-1 text-xs rounded-md outline-none"
-            style={{
-              backgroundColor: themeVars?.surface ?? '#111827',
-              color: themeVars?.text ?? '#e5e7eb',
-              border: `1px solid ${themeVars?.border ?? '#334155'}`,
-            }}
+            style={inputStyle}
             placeholder="Replace 시 사용..."
           />
         </div>
@@ -192,11 +178,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
               value={numberDigits}
               onChange={e => setNumberDigits(Math.max(1, Math.min(6, Number(e.target.value))))}
               className="w-10 px-1 py-0.5 text-xs rounded-md outline-none text-center"
-              style={{
-                backgroundColor: themeVars?.surface ?? '#111827',
-                color: themeVars?.text ?? '#e5e7eb',
-                border: `1px solid ${themeVars?.border ?? '#334155'}`,
-              }}
+              style={inputStyle}
             />
           </div>
           <button

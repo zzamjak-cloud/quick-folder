@@ -14,28 +14,77 @@ export const checkerboardStyle: React.CSSProperties = {
 
 /** 공통 버튼 기본 스타일 */
 export function getBtnBase(themeVars: ThemeVars | null): React.CSSProperties {
+  return getModalButtonStyle(themeVars, { padding: '5px 14px' });
+}
+
+export function getModalButtonStyle(
+  themeVars: ThemeVars | null,
+  overrides: React.CSSProperties = {},
+): React.CSSProperties {
   return {
-    padding: '5px 14px',
+    padding: '5px 10px',
     fontSize: 12,
     borderRadius: 6,
     border: `1px solid ${themeVars?.border ?? '#334155'}`,
     backgroundColor: themeVars?.surface ?? '#111827',
     color: themeVars?.text ?? '#e5e7eb',
     cursor: 'pointer',
+    ...overrides,
+  };
+}
+
+export function getModalIconButtonStyle(
+  themeVars: ThemeVars | null,
+  overrides: React.CSSProperties = {},
+): React.CSSProperties {
+  return getModalButtonStyle(themeVars, {
+    width: 28,
+    height: 28,
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...overrides,
+  });
+}
+
+export function getModalInputBaseStyle(
+  themeVars: ThemeVars | null,
+  overrides: React.CSSProperties = {},
+): React.CSSProperties {
+  return {
+    backgroundColor: themeVars?.surface ?? '#111827',
+    color: themeVars?.text ?? '#e5e7eb',
+    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+    ...overrides,
   };
 }
 
 /** 공통 입력 필드 스타일 */
 export function getInputStyle(themeVars: ThemeVars | null): React.CSSProperties {
-  return {
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+  return getModalInputBaseStyle(themeVars, {
     padding: '4px 8px',
     fontSize: 12,
     borderRadius: 4,
     outline: 'none',
     width: 60,
+  });
+}
+
+export function getModalSectionBorderStyle(themeVars: ThemeVars | null): React.CSSProperties {
+  return {
+    borderBottom: `1px solid ${themeVars?.border ?? '#334155'}`,
+  };
+}
+
+export function getModalPanelStyle(
+  themeVars: ThemeVars | null,
+  overrides: React.CSSProperties = {},
+): React.CSSProperties {
+  return {
+    backgroundColor: themeVars?.surface ?? '#111827',
+    border: `1px solid ${themeVars?.border ?? '#334155'}`,
+    ...overrides,
   };
 }
 

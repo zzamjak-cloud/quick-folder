@@ -3,6 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { AlertTriangle, Play, Plus, Save, Terminal, Trash2 } from 'lucide-react';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
+import {
+  getModalButtonStyle,
+  getModalIconButtonStyle,
+  getModalInputBaseStyle,
+  getModalPanelStyle,
+  getModalSectionBorderStyle,
+} from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import {
   createTerminalPresetId,
@@ -33,34 +40,15 @@ export default function TerminalPresetModal({ path, initialEditId, themeVars, on
   const selectedTitle = getFileName(path) || path;
   const editingPreset = editingId ? presets.find(preset => preset.id === editingId) : null;
 
-  const btnStyle: React.CSSProperties = {
-    padding: '5px 10px',
-    fontSize: 12,
-    borderRadius: 6,
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    cursor: 'pointer',
-  };
-
-  const iconBtnStyle: React.CSSProperties = {
-    width: 28,
-    height: 28,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 6,
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    cursor: 'pointer',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    backgroundColor: themeVars?.surface ?? '#111827',
-    color: themeVars?.text ?? '#e5e7eb',
-    border: `1px solid ${themeVars?.border ?? '#334155'}`,
-  };
+  const btnStyle = getModalButtonStyle(themeVars);
+  const iconBtnStyle = getModalIconButtonStyle(themeVars);
+  const inputStyle = getModalInputBaseStyle(themeVars);
+  const sectionBorderStyle = getModalSectionBorderStyle(themeVars);
+  const presetCardStyle = getModalPanelStyle(themeVars);
+  const emptyPresetStyle = getModalPanelStyle(themeVars, {
+    color: themeVars?.muted ?? '#94a3b8',
+    borderStyle: 'dashed',
+  });
 
   const persistPresets = (nextPresets: TerminalPreset[]) => {
     const nextStore = { ...store, [path]: nextPresets };
@@ -162,7 +150,7 @@ export default function TerminalPresetModal({ path, initialEditId, themeVars, on
       onSave={handleSave}
       themeVars={themeVars}
     >
-      <div className="flex flex-col gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${themeVars?.border ?? '#334155'}` }}>
+      <div className="flex flex-col gap-3 px-4 py-3" style={sectionBorderStyle}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -211,7 +199,7 @@ export default function TerminalPresetModal({ path, initialEditId, themeVars, on
 
       <div className="flex-1 overflow-y-auto px-4 py-3" style={{ maxHeight: 340 }}>
         {presets.length === 0 ? (
-          <div className="rounded-md px-3 py-8 text-center text-xs" style={{ color: themeVars?.muted ?? '#94a3b8', border: `1px dashed ${themeVars?.border ?? '#334155'}` }}>
+          <div className="rounded-md px-3 py-8 text-center text-xs" style={emptyPresetStyle}>
             이 폴더에 저장된 터미널 프리셋이 없습니다.
           </div>
         ) : (
@@ -222,7 +210,7 @@ export default function TerminalPresetModal({ path, initialEditId, themeVars, on
                 <div
                   key={preset.id}
                   className="rounded-md px-3 py-2"
-                  style={{ backgroundColor: themeVars?.surface ?? '#111827', border: `1px solid ${themeVars?.border ?? '#334155'}` }}
+                  style={presetCardStyle}
                 >
                   <div className="flex items-start gap-2">
                     <button
