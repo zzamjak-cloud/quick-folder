@@ -46,7 +46,6 @@ import { UpdateFailedModal } from './components/UpdateFailedModal';
 import { HelpModal } from './components/HelpModal';
 import FileExplorer from './components/FileExplorer';
 import TempFileTray from './components/TempFileTray';
-import { invoke } from '@tauri-apps/api/core';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -80,6 +79,7 @@ import {
   writeNumberStorage,
   writeStorage,
 } from './utils/storage';
+import { tauriCommands } from './utils/tauriCommands';
 
 // 커스텀 훅
 import {
@@ -618,7 +618,7 @@ export default function App() {
   // --- 클립보드/탐색기 핸들러 ---
   const handleCopyPath = useCallback(async (path: string) => {
     try {
-      await invoke('copy_path', { path });
+      await tauriCommands.copyPath(path);
       addToast("경로가 클립보드에 복사되었습니다!", "success");
     } catch (error) {
       console.error(error);
@@ -628,7 +628,7 @@ export default function App() {
 
   const handleOpenFolder = useCallback(async (path: string) => {
     try {
-      await invoke('open_folder', { path });
+      await tauriCommands.openFolder(path);
     } catch (error) {
       console.error(error);
       addToast("폴더를 열 수 없습니다.", "error");

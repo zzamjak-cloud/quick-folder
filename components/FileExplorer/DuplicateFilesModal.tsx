@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, DuplicateFileGroup } from '../../types';
 import { ThemeVars } from './types';
 import { Files, Loader2, Trash2, X } from 'lucide-react';
 import { formatSize } from './fileUtils';
 import { FileTypeIcon } from './fileUtils';
 import { thumbKey, getThumb, setThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 import ContextMenu from './ContextMenu';
 import { ContextMenuSection } from './types';
 import { useEscapeKey } from './hooks/useEscapeKey';

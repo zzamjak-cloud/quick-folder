@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { X } from 'lucide-react';
 import { ThemeVars } from './types';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface GifCompressModalProps {
   filePaths: string[];

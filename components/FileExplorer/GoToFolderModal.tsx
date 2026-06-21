@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
 import { Folder } from 'lucide-react';
 import { getPathSeparator } from '../../utils/pathUtils';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface GoToFolderModalProps {
   isOpen: boolean;

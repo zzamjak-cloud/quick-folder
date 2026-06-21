@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 // 확장자별 네이티브 아이콘 캐시 (모듈 레벨, 모든 인스턴스 공유)
 // 항상 고정 해상도(ICON_FETCH_SIZE)로 요청하여 확대해도 선명하게 표시
@@ -55,7 +55,7 @@ export function useNativeIcon(
     // 아이콘은 확장자별 캐시가 있어 실질적으로 한 번만 Rust 호출 → 큐 불필요
     // 항상 고정 해상도로 요청 → 확대해도 선명
     let cancelled = false;
-    invoke<string | null>('get_file_icon', { path: entry.path, size: ICON_FETCH_SIZE })
+    tauriCommands.getFileIcon(entry.path, ICON_FETCH_SIZE)
       .then(b64 => {
         if (cancelled) return;
         if (b64) {
@@ -88,7 +88,7 @@ export function useFolderIcon(path: string, _size?: number): string | null {
     }
     setIcon(null);
     let cancelled = false;
-    invoke<string | null>('get_file_icon', { path, size: ICON_FETCH_SIZE })
+    tauriCommands.getFileIcon(path, ICON_FETCH_SIZE)
       .then(b64 => {
         if (cancelled) return;
         if (b64) {

@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
-import { invoke } from '@tauri-apps/api/core';
 import { isTauri } from '../utils/isTauri';
 import { readJsonStorage, removeStorage, writeJsonStorage } from '../utils/storage';
+import { tauriCommands } from '../utils/tauriCommands';
 
 const PENDING_UPDATE_KEY = 'qf_pending_update';
 const PENDING_UPDATE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -197,7 +197,7 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
       return;
     }
     try {
-      await invoke('open_sac_settings');
+      await tauriCommands.openSacSettings();
       addToast('설정에서 검색창에 [스마트 앱 제어]를 입력한 뒤 끄기로 변경해 주세요.', 'info');
     } catch (error) {
       console.error('SAC 설정 열기 실패:', error);

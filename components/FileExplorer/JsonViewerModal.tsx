@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { X, ChevronDown, ChevronRight, Search, Maximize2, Minimize2, Edit3, Save, Plus, Trash2 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getBaseName } from '../../utils/pathUtils';
+import { tauriCommands } from '../../utils/tauriCommands';
 
 interface JsonViewerModalProps {
   path: string;
@@ -52,7 +52,7 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
         const after = JSON.stringify(editedDataRef.current);
         if (before !== after) {
           const jsonString = JSON.stringify(editedDataRef.current, null, 2);
-          await invoke('write_text_file', { path, content: jsonString });
+          await tauriCommands.writeTextFile(path, jsonString);
         }
       }
     } catch (e) {
@@ -119,7 +119,7 @@ export default function JsonViewerModal({ path, data, onClose, themeVars, editRe
     setSaving(true);
     try {
       const jsonString = JSON.stringify(editedData, null, 2);
-      await invoke('write_text_file', { path, content: jsonString });
+      await tauriCommands.writeTextFile(path, jsonString);
       setEditMode(false);
       setSaving(false);
     } catch (e) {

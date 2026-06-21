@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, getInputStyle } from './ui/modalStyles';
 import { getFileName, getBaseName } from '../../utils/pathUtils';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface SheetUnpackModalProps {
   path: string;

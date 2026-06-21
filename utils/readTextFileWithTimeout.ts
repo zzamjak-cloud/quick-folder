@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { tauriCommands } from './tauriCommands';
 
 /** 구글 드라이브 등 동기화 지연 시 무한 대기 방지 */
 export const DEFAULT_READ_TEXT_TIMEOUT_MS = 4000;
@@ -13,7 +13,7 @@ export async function readTextFileWithTimeout(
   timeoutMs: number = DEFAULT_READ_TEXT_TIMEOUT_MS,
 ): Promise<string> {
   return await Promise.race([
-    invoke<string>('read_text_file', { path, maxBytes }),
+    tauriCommands.readTextFile(path, maxBytes),
     new Promise<string>((_, reject) =>
       setTimeout(
         () =>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Wand2 } from 'lucide-react';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 // 저장소 키
 const LS_KEY = 'qf_remove_bg_settings';

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, Search, ChevronDown, ChevronRight, Maximize2, Minimize2, Edit3, Save } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getBaseName, getExtension } from '../../utils/pathUtils';
 import { isDarkHexColor } from '../../hooks/useThemeManagement';
+import { tauriCommands } from '../../utils/tauriCommands';
 
 // highlight.js 코어만 임포트 (전체 번들 제외)
 import hljs from 'highlight.js/lib/core';
@@ -239,7 +239,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
 
       try {
         // 파일 내용 읽기 (최대 1MB)
-        const content = await invoke<string>('read_text_file', { path, maxBytes: 1048576 });
+        const content = await tauriCommands.readTextFile(path, 1048576);
         if (cancelled) return;
 
         const lines = content.split('\n');
@@ -385,7 +385,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
     if (saving) return;
     setSaving(true);
     try {
-      await invoke('write_text_file', { path, content: editedContent });
+      await tauriCommands.writeTextFile(path, editedContent);
       setIsDirty(false);
       // rawLines도 새로 갱신하여 read 모드로 돌아왔을 때 일관성 유지
       const newLines = editedContent.split('\n');

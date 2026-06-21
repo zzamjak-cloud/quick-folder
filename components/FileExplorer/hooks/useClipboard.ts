@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ClipboardData, FileEntry, FolderMergeRequest } from '../../../types';
 import { getFileName, getPathSeparator, normalizeFsPath } from '../../../utils/pathUtils';
 import { detectFolderMergeScenario } from '../../../utils/folderMerge';
 import { runTransferWithProgress } from './runTransferWithProgress';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 export interface UseClipboardConfig {
   selectedPaths: string[];
@@ -54,14 +54,14 @@ export function useClipboard({
     if (selectedPaths.length === 0) return;
     setClipboard({ paths: selectedPaths, action: 'copy' });
     // OS 클립보드에도 파일 경로 등록 (외부 앱에서 Ctrl+V 가능)
-    try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
+    try { await tauriCommands.writeFilesToClipboard(selectedPaths); } catch { /* 무시 */ }
   }, [selectedPaths, setClipboard]);
 
   const handleCut = useCallback(async () => {
     if (selectedPaths.length === 0) return;
     setClipboard({ paths: selectedPaths, action: 'cut' });
     // OS 클립보드에도 파일 경로 등록
-    try { await invoke('write_files_to_clipboard', { paths: selectedPaths }); } catch { /* 무시 */ }
+    try { await tauriCommands.writeFilesToClipboard(selectedPaths); } catch { /* 무시 */ }
   }, [selectedPaths, setClipboard]);
 
   const executePaste = useCallback(async (paths: string[], action: 'copy' | 'cut', overwrite: boolean) => {
@@ -134,13 +134,13 @@ export function useClipboard({
         paths = clipboard.paths;
         action = clipboard.action;
       } else {
-        const osPaths = await invoke<string[]>('read_files_from_clipboard');
+        const osPaths = await tauriCommands.readFilesFromClipboard();
         if (osPaths && osPaths.length > 0) {
           paths = osPaths;
           action = 'copy'; // 외부에서 복사한 파일은 항상 copy
         } else {
           // 파일 경로 없으면 이미지 데이터 붙여넣기 시도
-          const savedPath = await invoke<string | null>('paste_image_from_clipboard', { destDir: currentPath });
+          const savedPath = await tauriCommands.pasteImageFromClipboard(currentPath);
           if (savedPath) {
             loadDirectory(currentPath);
             setSelectedPaths([savedPath]);
@@ -150,7 +150,7 @@ export function useClipboard({
       }
 
       // 중복 파일 체크
-      const duplicates = await invoke<string[]>('check_duplicate_items', { sources: paths, dest: currentPath });
+      const duplicates = await tauriCommands.checkDuplicateItems(paths, currentPath);
       if (duplicates.length > 0) {
         const mergeAction = action === 'cut' ? 'cut' : 'copy';
         const folderMerge = await detectFolderMergeScenario(paths, currentPath, duplicates, mergeAction);

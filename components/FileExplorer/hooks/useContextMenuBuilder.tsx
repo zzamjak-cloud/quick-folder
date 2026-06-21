@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
 import { ContextMenuSection } from '../types';
 import {
@@ -12,6 +11,7 @@ import { getFileName, isArchiveVirtualPath, isGoogleDrivePath } from '../../../u
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { NamingCase } from '../../../utils/caseConvert';
 import { deleteTerminalPreset, getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 const RECENT_PATH = '__recent__';
 
@@ -154,7 +154,7 @@ export function useContextMenuBuilder({
             label: '폴더 경로 열기',
             onClick: async () => {
               try {
-                await invoke('open_terminal', { path: terminalTargetPath });
+                await tauriCommands.openTerminal(terminalTargetPath);
               } catch (e) {
                 fileOps.showCopyToast(`터미널 실행 실패: ${e}`);
               }
@@ -167,7 +167,7 @@ export function useContextMenuBuilder({
             labelColor: isHighRiskTerminalCommand(preset.command) ? '#fbbf24' : undefined,
             onClick: async () => {
               try {
-                await invoke('run_terminal_command', { path: terminalTargetPath, command: preset.command });
+                await tauriCommands.runTerminalCommand(terminalTargetPath, preset.command);
               } catch (e) {
                 fileOps.showCopyToast(`프리셋 실행 실패: ${e}`);
               }
@@ -404,7 +404,7 @@ export function useContextMenuBuilder({
         label: '.ico 변환',
         onClick: async () => {
           try {
-            await invoke('convert_to_ico', { path: singlePath });
+            await tauriCommands.convertToIco(singlePath);
             loadDirectory(currentPath!);
           } catch (e) { console.error('ICO 변환 실패:', e); }
         },
@@ -415,7 +415,7 @@ export function useContextMenuBuilder({
         label: '.icns 변환',
         onClick: async () => {
           try {
-            await invoke('convert_to_icns', { path: singlePath });
+            await tauriCommands.convertToIcns(singlePath);
             loadDirectory(currentPath!);
           } catch (e) { console.error('ICNS 변환 실패:', e); }
         },
@@ -504,7 +504,7 @@ export function useContextMenuBuilder({
           try {
             let names: string[] = [];
             if (isSingle && singleEntry?.is_dir) {
-              const entries: FileEntry[] = await invoke('list_directory', { path: singlePath });
+              const entries = await tauriCommands.listDirectory(singlePath);
               names = entries.map(e => {
                 const dot = e.name.lastIndexOf('.');
                 return dot > 0 && !e.is_dir ? e.name.slice(0, dot) : e.name;
@@ -520,7 +520,7 @@ export function useContextMenuBuilder({
             // CRLF 구분 — 구글 시트에서 각 행에 하나씩 붙여넣기
             const text = names.join('\r\n');
             // Tauri 클립보드 플러그인 사용 (navigator.clipboard는 웹뷰에서 실패 가능)
-            await invoke('copy_path', { path: text });
+            await tauriCommands.copyPath(text);
             fileOps.showCopyToast(`${names.length}개 파일명 복사됨`);
           } catch (e) { console.error('엔트리 복제 실패:', e); }
         },
@@ -574,9 +574,9 @@ export function useContextMenuBuilder({
             // 부모 폴더의 ID를 가져와서 Google Drive 웹에서 해당 폴더로 이동
             const sep = singlePath.includes('\\') ? '\\' : '/';
             const parentDir = singlePath.substring(0, singlePath.lastIndexOf(sep));
-            const folderId: string = await invoke('get_google_drive_file_id', { path: parentDir });
+            const folderId = await tauriCommands.getGoogleDriveFileId(parentDir);
             if (!folderId) { fileOps.showCopyToast('폴더 ID를 가져올 수 없습니다'); return; }
-            await invoke('open_folder', { path: `https://drive.google.com/drive/folders/${folderId}` });
+            await tauriCommands.openFolder(`https://drive.google.com/drive/folders/${folderId}`);
           } catch (e) { console.error('Google Drive 열기 실패:', e); }
         },
       });
@@ -587,9 +587,9 @@ export function useContextMenuBuilder({
         label: '구글 드라이브 공유',
         onClick: async () => {
           try {
-            const fileId: string = await invoke('get_google_drive_file_id', { path: singlePath });
+            const fileId = await tauriCommands.getGoogleDriveFileId(singlePath);
             if (!fileId) { fileOps.showCopyToast('파일 ID를 가져올 수 없습니다'); return; }
-            await invoke('open_folder', { path: `https://drive.google.com/file/d/${fileId}/edit?usp=sharing` });
+            await tauriCommands.openFolder(`https://drive.google.com/file/d/${fileId}/edit?usp=sharing`);
           } catch (e) { console.error('Google Drive 공유 열기 실패:', e); }
         },
       });
@@ -601,18 +601,18 @@ export function useContextMenuBuilder({
         onClick: async () => {
           try {
             // 파일 링크와 폴더 링크 모두 제공: 파일 ID가 있으면 파일 링크, 없으면 폴더 링크
-            const fileId: string = await invoke('get_google_drive_file_id', { path: singlePath });
+            const fileId = await tauriCommands.getGoogleDriveFileId(singlePath);
             if (fileId) {
               const url = `https://drive.google.com/file/d/${fileId}/view`;
-              await invoke('copy_path', { path: url });
+              await tauriCommands.copyPath(url);
               fileOps.showCopyToast('Drive 파일 링크 복사됨');
             } else {
               const sep = singlePath.includes('\\') ? '\\' : '/';
               const parentDir = singlePath.substring(0, singlePath.lastIndexOf(sep));
-              const folderId: string = await invoke('get_google_drive_file_id', { path: parentDir });
+              const folderId = await tauriCommands.getGoogleDriveFileId(parentDir);
               if (!folderId) { fileOps.showCopyToast('링크를 가져올 수 없습니다'); return; }
               const url = `https://drive.google.com/drive/folders/${folderId}`;
-              await invoke('copy_path', { path: url });
+              await tauriCommands.copyPath(url);
               fileOps.showCopyToast('Drive 폴더 링크 복사됨');
             }
           } catch (e) { console.error('Drive 링크 복사 실패:', e); }
@@ -625,7 +625,7 @@ export function useContextMenuBuilder({
         label: '오프라인에서 사용하도록 설정',
         onClick: async () => {
           try {
-            await invoke('set_google_drive_offline', { path: singlePath, offline: true });
+            await tauriCommands.setGoogleDriveOffline(singlePath, true);
             fileOps.showCopyToast('오프라인 사용 설정됨');
           } catch (e) { console.error('오프라인 설정 실패:', e); }
         },

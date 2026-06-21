@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FolderMergeAnalysis, FolderMergeConflictMode, FolderMergeRequest } from '../../types';
 import { ThemeVars } from './types';
 import { FolderInput, Loader2 } from 'lucide-react';
 import { formatSize } from './fileUtils';
 import { getBtnBase } from './ui/modalStyles';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface FolderMergeModalProps {
   request: FolderMergeRequest;

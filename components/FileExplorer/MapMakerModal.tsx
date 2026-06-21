@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import LaigterLitPreview, { LaigterLitPreviewTextures, PreviewDisplayMode } from './LaigterLitPreview';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 export interface LaigterParamsUI {
   bumpStrength: number;

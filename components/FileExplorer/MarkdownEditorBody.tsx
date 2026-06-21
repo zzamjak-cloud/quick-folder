@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -10,6 +9,7 @@ import { InputRule } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
+import { tauriCommands } from '../../utils/tauriCommands';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../utils/readTextFileWithTimeout';
@@ -252,7 +252,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       content = editor.getText();
     }
     try {
-      await invoke('write_text_file', { path, content });
+      await tauriCommands.writeTextFile(path, content);
       setSaveStatus('saved');
     } catch (e) {
       console.error('저장 실패:', e);

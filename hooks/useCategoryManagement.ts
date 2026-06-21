@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { invoke } from '@tauri-apps/api/core';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { Category, FolderShortcut } from '../types';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
+import { invokeTauriCommand as invoke } from '../utils/tauriInvoke';
 import { normalizeHexColor } from './useThemeManagement';
 
 const STORAGE_KEY = 'quickfolder_widget_data';

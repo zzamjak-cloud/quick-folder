@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../types';
 import { ThemeVars } from './types';
 import { Search, Folder, FileText, Loader2 } from 'lucide-react';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface GlobalSearchModalProps {
   isOpen: boolean;

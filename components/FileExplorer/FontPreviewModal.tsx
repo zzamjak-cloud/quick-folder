@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import ModalShell from './ui/ModalShell';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface FontPreviewModalProps {
   path: string;

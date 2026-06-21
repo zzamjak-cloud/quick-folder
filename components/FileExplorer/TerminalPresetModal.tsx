@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { AlertTriangle, Play, Plus, Save, Terminal, Trash2 } from 'lucide-react';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
@@ -11,6 +10,7 @@ import {
   getModalSectionBorderStyle,
 } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
+import { tauriCommands } from '../../utils/tauriCommands';
 import {
   createTerminalPresetId,
   isHighRiskTerminalCommand,
@@ -123,7 +123,7 @@ export default function TerminalPresetModal({ path, initialEditId, themeVars, on
   const handleOpenTerminal = async () => {
     setError('');
     try {
-      await invoke('open_terminal', { path });
+      await tauriCommands.openTerminal(path);
     } catch (e) {
       setError(`터미널 실행 실패: ${e}`);
     }
@@ -132,7 +132,7 @@ export default function TerminalPresetModal({ path, initialEditId, themeVars, on
   const handleRun = async (preset: TerminalPreset) => {
     setError('');
     try {
-      await invoke('run_terminal_command', { path, command: preset.command });
+      await tauriCommands.runTerminalCommand(path, preset.command);
     } catch (e) {
       setError(`프리셋 실행 실패: ${e}`);
     }

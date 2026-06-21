@@ -1,4 +1,4 @@
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
 import {
   applyTransferProgress,
   failTransferJob,
@@ -6,6 +6,7 @@ import {
   type TransferOperation,
   type TransferQueueProgress,
 } from '../../../stores/taskQueueStore';
+import { invokeTauriCommand as invoke } from '../../../utils/tauriInvoke';
 
 /**
  * 작업 큐 패널과 연동되는 복사/이동 (파일별 진행률 + 전체 카운트).

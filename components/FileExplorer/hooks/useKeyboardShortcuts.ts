@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize, ViewMode } from '../../../types';
 import { cancelAllQueued } from './invokeQueue';
 import { usePreview } from './usePreview';
@@ -8,6 +7,7 @@ import { Tab } from '../types';
 import { getBaseName } from '../../../utils/pathUtils';
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { resolveSpaceDiffPaths, shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -237,7 +237,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           return imageExts.has(ext);
         });
         if (imagePaths.length > 0) {
-          invoke('open_in_photoshop', { paths: imagePaths }).catch((err: unknown) => {
+          tauriCommands.openInPhotoshop(imagePaths).catch((err: unknown) => {
             setError(`Photoshop 열기 실패: ${err}`);
           });
         }

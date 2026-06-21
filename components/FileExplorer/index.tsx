@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry, ClipboardData, ThumbnailSize, ViewMode } from '../../types';
 import { ThemeVars, ContextMenuSection } from './types';
 import {
@@ -47,6 +46,7 @@ import { useFileOperations, type FolderSizeDialogState } from './hooks/useFileOp
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 import { useEscapeKey } from './hooks/useEscapeKey';
+import { tauriCommands } from '../../utils/tauriCommands';
 import {
   readJsonStorage,
   readNumberStorage,
@@ -209,7 +209,7 @@ export default function FileExplorer({
     } else if (isPsb) {
       preview.closeAllPreviews();
       if (isMac) {
-        invoke('quick_look', { path: entry.path }).catch(console.error);
+        tauriCommands.quickLook(entry.path).catch(console.error);
       } else {
         preview.handlePreviewImage(entry.path);
       }
@@ -236,7 +236,7 @@ export default function FileExplorer({
       preview.handlePreviewText(entry.path);
     } else if (isMac && !entry.is_dir) {
       preview.closeAllPreviews();
-      invoke('quick_look', { path: entry.path }).catch(console.error);
+      tauriCommands.quickLook(entry.path).catch(console.error);
     }
   }, [isMac, TEXT_PREVIEW_EXTS, preview]);
 
@@ -321,7 +321,7 @@ export default function FileExplorer({
     // 메모리 캐시 미스 시 디스크 영속 캐시로 stale 즉시 표시
     // (구글 드라이브 등: 앱 재시작 후에도 한번 본 폴더는 즉시 뜨고 백그라운드에서 갱신)
     if (!cached && !isRecent && !isSystemRoot) {
-      invoke<FileEntry[] | null>('read_cached_listing', { path })
+      tauriCommands.readCachedListing(path)
         .then(diskCached => {
           // 신선한 결과가 이미 도착했거나 다른 폴더로 이동했으면 무시
           if (requestId !== loadRequestRef.current || freshArrived) return;
@@ -333,16 +333,16 @@ export default function FileExplorer({
 
     try {
       const result = isRecent
-        ? await invoke<FileEntry[]>('get_recent_files', { roots: recentRoots, days: 7 })
+        ? await tauriCommands.getRecentFiles(recentRoots, 7)
         : isSystemRoot
-        ? await invoke<FileEntry[]>('list_system_roots')
-        : await invoke<FileEntry[]>('list_directory', { path });
+        ? await tauriCommands.listSystemRoots()
+        : await tauriCommands.listDirectory(path);
       // 이미 다른 디렉토리로 이동한 경우 무시
       if (requestId !== loadRequestRef.current) return;
       freshArrived = true;
       if (!isRecent && !isSystemRoot) {
         cacheEntries(path, result); // 메모리 캐시 갱신 (LRU)
-        invoke('write_cached_listing', { path, entries: result }).catch(() => {}); // 디스크 영속 캐시 갱신
+        tauriCommands.writeCachedListing(path, result).catch(() => {}); // 디스크 영속 캐시 갱신
       }
       // 최근항목은 이미 서버에서 수정시간 내림차순 정렬된 상태
       const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(result, sortBy, sortDir);
@@ -391,7 +391,7 @@ export default function FileExplorer({
       promise
         .then(result => {
           cacheEntries(path, result);
-          invoke('write_cached_listing', { path, entries: result }).catch(() => {});
+          tauriCommands.writeCachedListing(path, result).catch(() => {});
         })
         .catch(() => {})
         .finally(() => { prefetchInFlightRef.current.delete(path); });
@@ -712,7 +712,7 @@ export default function FileExplorer({
 
     // 그 외 파일: OS 기본 앱으로 열기
     try {
-      await invoke('open_folder', { path: entry.path });
+      await tauriCommands.openFolder(entry.path);
     } catch (e) {
       console.error('파일 열기 실패:', e);
     }
@@ -731,7 +731,7 @@ export default function FileExplorer({
 
   const openInOsExplorer = useCallback(async (path: string) => {
     try {
-      await invoke('open_folder', { path });
+      await tauriCommands.openFolder(path);
     } catch (e) {
       console.error('탐색기 열기 실패:', e);
     }
@@ -1048,7 +1048,7 @@ export default function FileExplorer({
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
         try {
-          const result = await invoke<FileEntry[]>('list_directory', { path: currentPath });
+          const result = await tauriCommands.listDirectory(currentPath);
           const sorted = sortEntries(result, sortBy, sortDir);
           const prev = entriesRef.current;
           // 파일 목록이 동일하면 업데이트 스킵 (깜빡임 방지)
@@ -1184,7 +1184,7 @@ export default function FileExplorer({
 
       try {
         // 중복 확인
-        const duplicates = await invoke<string[]>('check_duplicate_items', { sources: filtered, dest: currentPath });
+        const duplicates = await tauriCommands.checkDuplicateItems(filtered, currentPath);
         if (duplicates.length > 0) {
           const dropInfo: PendingDrop = {
             sources: filtered,

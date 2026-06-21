@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core';
 import { FolderMergeRequest } from '../types';
 import { getFileName, getPathSeparator } from './pathUtils';
+import { invokeTauriCommand as invoke } from './tauriInvoke';
 
 /**
  * 단일 폴더가 같은 이름의 기존 폴더와 병합되는 경우인지 판별.

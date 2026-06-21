@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../../utils/readTextFileWithTimeout';
+import { invokeTauriCommand as invoke } from '../../../utils/tauriInvoke';
 
 export interface PreviewState {
   // 비디오

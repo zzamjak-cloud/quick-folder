@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
 import { naturalCompare } from '../../../utils/naturalCompare';
 import { queuedInvoke } from './invokeQueue';
+import { invokeTauriCommand as invoke } from '../../../utils/tauriInvoke';
 
 // 컬럼 데이터 구조
 export interface ColumnData {

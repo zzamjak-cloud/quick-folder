@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
+import { tauriCommands } from '../../utils/tauriCommands';
 
 interface HwpPreviewModalProps {
   path: string;
@@ -41,7 +41,7 @@ export default function HwpPreviewModal({ path, themeVars, onClose }: HwpPreview
     setLoading(true);
     setText(null);
     setError(null);
-    invoke<string>('extract_hwp_text', { path })
+    tauriCommands.extractHwpText(path)
       .then((result) => {
         if (cancelled) return;
         setText(result);
@@ -58,7 +58,7 @@ export default function HwpPreviewModal({ path, themeVars, onClose }: HwpPreview
   // OS 기본 앱(한컴 한글 등)으로 열기
   const openInDefaultApp = async () => {
     try {
-      await invoke('open_folder', { path });
+      await tauriCommands.openFolder(path);
     } catch (e) {
       console.error('기본 앱 열기 실패:', e);
     }

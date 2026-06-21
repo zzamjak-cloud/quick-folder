@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 interface VideoEditToolbarProps {
   videoRef: React.RefObject<HTMLVideoElement>;

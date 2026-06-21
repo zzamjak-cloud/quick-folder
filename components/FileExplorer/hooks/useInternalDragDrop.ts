@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
 import { getFileName, isArchiveVirtualPath, sameVolume } from '../../../utils/pathUtils';
 import { createFileDragImage } from '../fileUtils';
 import { runTransferWithProgress } from './runTransferWithProgress';
+import { invokeTauriCommand as invoke } from '../../../utils/tauriInvoke';
 
 const TRAY_STAGE_WIDTH = 96;
 const EXTERNAL_DRAG_EDGE_PX = 2;

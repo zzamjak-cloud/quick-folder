@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Play, Pause } from 'lucide-react';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, getInputStyle, Spinner } from './ui/modalStyles';
 import { getFileName, getPathSeparator } from '../../utils/pathUtils';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 // 기본 프리셋
 const DEFAULT_PRESETS = [

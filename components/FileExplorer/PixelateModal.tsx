@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, getInputStyle, Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 const COLOR_OPTIONS = [4, 8, 16, 32, 64, 128, 256] as const;
 const SCALE_OPTIONS = [16, 32, 48, 64, 128, 256] as const;

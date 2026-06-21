@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, X } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
 import ImageCropOverlay from './ImageCropOverlay';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
 import PreviewToolbar from './PreviewToolbar';
 import { PreviewIconActionButton } from './PreviewIconActionButton';

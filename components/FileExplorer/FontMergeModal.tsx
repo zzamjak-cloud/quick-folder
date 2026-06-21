@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { ArrowUpDown } from 'lucide-react';
 import ModalShell from './ui/ModalShell';
 import { getInputStyle } from './ui/modalStyles';
 import { ThemeVars } from './types';
 import { getFileName, getExtension, getBaseName, getParentDir } from '../../utils/pathUtils';
+import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 
 // ─────────────────────────────────────────────
 // 타입 정의

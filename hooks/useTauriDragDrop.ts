@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { invoke } from '@tauri-apps/api/core';
 import { getFileName } from '../utils/pathUtils';
 import { isTauri } from '../utils/isTauri';
+import { invokeTauriCommand as invoke } from '../utils/tauriInvoke';
 
 // 좌표에서 카테고리 요소 찾기 (Tauri v2 논리 좌표 기반)
 function findCategoryAtPosition(position: { x: number; y: number }): { id: string; el: HTMLElement } | null {
