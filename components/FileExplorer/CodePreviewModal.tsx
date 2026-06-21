@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, Search, ChevronDown, ChevronRight, Maximize2, Minimize2, Edit3, Save } from 'lucide-react';
 import { ThemeVars } from './types';
-import { getBaseName, getExtension } from '../../utils/pathUtils';
-import { isDarkHexColor } from '../../hooks/useThemeManagement';
+import { getBaseName } from '../../utils/pathUtils';
 import { tauriCommands } from '../../utils/tauriCommands';
+import { computeFoldableBlocks } from './codePreview/folding';
+import { splitHighlightedLines, wrapAllSearchMatches, wrapSearchMatches } from './codePreview/search';
+import { CodePreviewStyles, getCodePreviewColors } from './codePreview/styles';
+import { ensureLangRegistered, getLangFromPath, highlightCodeContent } from './codePreview/syntax';
 
-// highlight.js 코어만 임포트 (전체 번들 제외)
-import hljs from 'highlight.js/lib/core';
-import type { LanguageFn } from 'highlight.js';
 import 'highlight.js/styles/vs2015.css';
 
 // ──────────────────────────────────────────────
@@ -20,158 +20,6 @@ interface CodePreviewModalProps {
   onClose: () => void;
   /** 편집 모드 진입 요청 토큰 — 0보다 크면 모달 오픈과 동시에 편집 모드로 진입 */
   editRequestToken?: number;
-}
-
-// 폴딩 가능한 줄 정보 (중괄호 블록 기준)
-interface FoldableBlock {
-  startLine: number; // 0-based 인덱스
-  endLine: number;   // 0-based 인덱스
-}
-
-// ──────────────────────────────────────────────
-// 확장자 → highlight.js 언어 이름 매핑
-// ──────────────────────────────────────────────
-const EXT_TO_LANG: Record<string, string> = {
-  js: 'javascript',
-  jsx: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  py: 'python',
-  rs: 'rust',
-  go: 'go',
-  java: 'java',
-  c: 'cpp',
-  cpp: 'cpp',
-  cc: 'cpp',
-  cxx: 'cpp',
-  h: 'cpp',
-  hpp: 'cpp',
-  cs: 'csharp',
-  css: 'css',
-  html: 'xml',
-  xml: 'xml',
-  json: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  toml: 'ini',
-  md: 'markdown',
-  sh: 'bash',
-  bat: 'bash',
-  ps1: 'powershell',
-  rb: 'ruby',
-  php: 'php',
-  swift: 'swift',
-  kt: 'kotlin',
-  r: 'r',
-  sql: 'sql',
-  scala: 'scala',
-  dart: 'dart',
-  lua: 'lua',
-  shader: 'glsl',
-  glsl: 'glsl',
-  hlsl: 'glsl',
-};
-
-// 언어별 동적 임포트 맵
-const LANG_IMPORTERS: Record<string, () => Promise<{ default: LanguageFn }>> = {
-  javascript: () => import('highlight.js/lib/languages/javascript'),
-  typescript: () => import('highlight.js/lib/languages/typescript'),
-  python: () => import('highlight.js/lib/languages/python'),
-  rust: () => import('highlight.js/lib/languages/rust'),
-  go: () => import('highlight.js/lib/languages/go'),
-  java: () => import('highlight.js/lib/languages/java'),
-  cpp: () => import('highlight.js/lib/languages/cpp'),
-  csharp: () => import('highlight.js/lib/languages/csharp'),
-  css: () => import('highlight.js/lib/languages/css'),
-  xml: () => import('highlight.js/lib/languages/xml'),
-  json: () => import('highlight.js/lib/languages/json'),
-  yaml: () => import('highlight.js/lib/languages/yaml'),
-  ini: () => import('highlight.js/lib/languages/ini'),
-  markdown: () => import('highlight.js/lib/languages/markdown'),
-  bash: () => import('highlight.js/lib/languages/bash'),
-  powershell: () => import('highlight.js/lib/languages/powershell'),
-  ruby: () => import('highlight.js/lib/languages/ruby'),
-  php: () => import('highlight.js/lib/languages/php'),
-  swift: () => import('highlight.js/lib/languages/swift'),
-  kotlin: () => import('highlight.js/lib/languages/kotlin'),
-  r: () => import('highlight.js/lib/languages/r'),
-  sql: () => import('highlight.js/lib/languages/sql'),
-  scala: () => import('highlight.js/lib/languages/scala'),
-  dart: () => import('highlight.js/lib/languages/dart'),
-  lua: () => import('highlight.js/lib/languages/lua'),
-  glsl: () => import('highlight.js/lib/languages/glsl'),
-};
-
-// 이미 등록된 언어 캐시
-const registeredLangs = new Set<string>();
-
-/**
- * highlight.js에 언어를 동적으로 등록한다 (한 번만 로드).
- */
-async function ensureLangRegistered(langName: string): Promise<boolean> {
-  if (registeredLangs.has(langName)) return true;
-  const importer = LANG_IMPORTERS[langName];
-  if (!importer) return false;
-  try {
-    const mod = await importer();
-    hljs.registerLanguage(langName, mod.default);
-    registeredLangs.add(langName);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 확장자로부터 언어 이름을 반환한다.
- */
-function getLangFromPath(filePath: string): string | null {
-  const ext = getExtension(filePath).replace(/^\./, '').toLowerCase();
-  return EXT_TO_LANG[ext] ?? null;
-}
-
-// ──────────────────────────────────────────────
-// 블록 폴딩 유틸리티
-// ──────────────────────────────────────────────
-
-/**
- * 코드 줄 배열을 분석하여 중괄호 기반 폴딩 블록을 찾는다.
- * 각 `{`가 있는 줄을 시작, 매칭되는 `}`가 있는 줄을 끝으로 본다.
- */
-function computeFoldableBlocks(lines: string[]): Map<number, number> {
-  // startLine → endLine 매핑
-  const blockMap = new Map<number, number>();
-  const stack: number[] = []; // 시작 줄 번호 스택
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // 해당 줄의 { 개수와 } 개수 계산 (문자열/주석 내부도 단순 카운트)
-    let opens = 0;
-    let closes = 0;
-    for (const ch of line) {
-      if (ch === '{') opens++;
-      else if (ch === '}') closes++;
-    }
-
-    // 여는 중괄호가 있으면 스택에 push
-    for (let o = 0; o < opens; o++) {
-      stack.push(i);
-    }
-    // 닫는 중괄호가 있으면 스택에서 pop하여 블록 완성
-    for (let c = 0; c < closes; c++) {
-      if (stack.length > 0) {
-        const startLine = stack.pop()!;
-        // 최소 2줄 이상인 블록만 폴딩 가능
-        if (i > startLine + 1) {
-          // 같은 시작줄에 여러 블록이 있으면 가장 큰 범위 우선
-          if (!blockMap.has(startLine) || blockMap.get(startLine)! < i) {
-            blockMap.set(startLine, i);
-          }
-        }
-      }
-    }
-  }
-  return blockMap;
 }
 
 // ──────────────────────────────────────────────
@@ -213,21 +61,8 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
   const editGutterRef = useRef<HTMLDivElement>(null);
 
   const fileName = getBaseName(path);
-  const isLightTheme = !isDarkHexColor(themeVars.bg ?? themeVars.surface ?? '#0f172a');
-  const codeSurface = isLightTheme ? '#f8fafc' : '#1e1e1e';
-  const codeText = isLightTheme ? '#1f2937' : '#d4d4d4';
-  const codeMuted = isLightTheme ? '#64748b' : themeVars.muted;
-  const codeBorder = isLightTheme ? 'rgba(100, 116, 139, 0.24)' : `${themeVars.border}22`;
-  const codeCommentColor = isLightTheme ? '#4d7c0f' : '#6a9955';
-  const codeKeywordColor = isLightTheme ? '#1d4ed8' : '#569cd6';
-  const codeStringColor = isLightTheme ? '#b45309' : '#ce9178';
-  const codeNumberColor = isLightTheme ? '#0f766e' : '#b5cea8';
-  const codeTypeColor = isLightTheme ? '#0f766e' : '#4ec9b0';
-  const codeFunctionColor = isLightTheme ? '#7c3aed' : '#dcdcaa';
-  const codeMetaColor = isLightTheme ? '#9333ea' : '#c586c0';
-  const codeSelectorColor = isLightTheme ? '#be123c' : '#d7ba7d';
-  const codeAdditionColor = isLightTheme ? '#166534' : '#4ade80';
-  const codeDeletionColor = isLightTheme ? '#b91c1c' : '#f87171';
+  const codeColors = useMemo(() => getCodePreviewColors(themeVars), [themeVars]);
+  const { isLightTheme, codeSurface, codeText, codeMuted, codeBorder } = codeColors;
 
   // ── 파일 로드 및 구문 강조 ──
   useEffect(() => {
@@ -261,16 +96,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
         if (cancelled) return;
 
         // 전체 코드를 highlight.js로 강조 처리한 뒤 줄별로 분리
-        let highlighted: string;
-        if (lang && registeredLangs.has(lang)) {
-          highlighted = hljs.highlight(content, { language: lang, ignoreIllegals: true }).value;
-        } else {
-          // 언어 불명 시 평문 HTML 이스케이프
-          highlighted = content
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-        }
+        const highlighted = highlightCodeContent(content, lang);
 
         // highlight.js 결과를 줄 단위로 나눈다.
         // HTML 태그가 줄을 넘나들 수 있으므로 열린 태그를 추적하여 각 줄을 올바르게 닫는다.
@@ -344,15 +170,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
   useEffect(() => {
     if (!editMode) return;
     let cancelled = false;
-    let highlighted: string;
-    if (langName && registeredLangs.has(langName)) {
-      highlighted = hljs.highlight(editedContent, { language: langName, ignoreIllegals: true }).value;
-    } else {
-      highlighted = editedContent
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    }
+    let highlighted = highlightCodeContent(editedContent, langName);
     // 검색어 매칭을 모두 <mark>로 감싸기 (HTML 태그 내부는 건너뜀)
     if (searchQuery.trim()) {
       highlighted = wrapAllSearchMatches(highlighted, searchQuery);
@@ -393,15 +211,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
       const map = computeFoldableBlocks(newLines);
       setBlockMap(map);
       // 새로운 highlight 줄도 갱신
-      let highlighted: string;
-      if (langName && registeredLangs.has(langName)) {
-        highlighted = hljs.highlight(editedContent, { language: langName, ignoreIllegals: true }).value;
-      } else {
-        highlighted = editedContent
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
-      }
+      const highlighted = highlightCodeContent(editedContent, langName);
       setHighlightedLines(splitHighlightedLines(highlighted));
     } catch (e) {
       console.error('파일 저장 실패:', e);
@@ -1194,233 +1004,7 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
           </div>
         )}
       </div>
-      <style>{`
-        .qf-code-preview .hljs {
-          background: transparent;
-          color: ${codeText};
-        }
-        .qf-code-preview .hljs-subst,
-        .qf-code-preview .hljs-punctuation,
-        .qf-code-preview .hljs-operator {
-          color: ${codeText};
-        }
-        .qf-code-preview .hljs-comment,
-        .qf-code-preview .hljs-quote {
-          color: ${codeCommentColor};
-          font-style: italic;
-        }
-        .qf-code-preview .hljs-keyword,
-        .qf-code-preview .hljs-selector-tag,
-        .qf-code-preview .hljs-literal,
-        .qf-code-preview .hljs-section,
-        .qf-code-preview .hljs-link {
-          color: ${codeKeywordColor};
-        }
-        .qf-code-preview .hljs-string,
-        .qf-code-preview .hljs-regexp,
-        .qf-code-preview .hljs-bullet,
-        .qf-code-preview .hljs-template-variable {
-          color: ${codeStringColor};
-        }
-        .qf-code-preview .hljs-number,
-        .qf-code-preview .hljs-symbol,
-        .qf-code-preview .hljs-variable,
-        .qf-code-preview .hljs-params {
-          color: ${codeNumberColor};
-        }
-        .qf-code-preview .hljs-type,
-        .qf-code-preview .hljs-class .hljs-title,
-        .qf-code-preview .hljs-built_in,
-        .qf-code-preview .hljs-attr {
-          color: ${codeTypeColor};
-        }
-        .qf-code-preview .hljs-title,
-        .qf-code-preview .hljs-title.function_,
-        .qf-code-preview .hljs-title.class_,
-        .qf-code-preview .hljs-function .hljs-title {
-          color: ${codeFunctionColor};
-        }
-        .qf-code-preview .hljs-meta,
-        .qf-code-preview .hljs-meta .hljs-keyword {
-          color: ${codeMetaColor};
-        }
-        .qf-code-preview .hljs-selector-id,
-        .qf-code-preview .hljs-selector-class,
-        .qf-code-preview .hljs-selector-attr,
-        .qf-code-preview .hljs-selector-pseudo {
-          color: ${codeSelectorColor};
-        }
-        .qf-code-preview .hljs-addition {
-          color: ${codeAdditionColor};
-        }
-        .qf-code-preview .hljs-deletion {
-          color: ${codeDeletionColor};
-        }
-      `}</style>
+      <CodePreviewStyles colors={codeColors} />
     </div>
   );
-}
-
-// ──────────────────────────────────────────────
-// 유틸리티: highlight.js 출력 HTML을 줄 단위로 분리
-// ──────────────────────────────────────────────
-
-/**
- * highlight.js가 생성한 HTML 문자열을 줄 단위로 나눈다.
- * HTML 태그가 여러 줄에 걸쳐 있을 수 있으므로,
- * 각 줄에서 열린 태그를 추적하고 줄 끝에 닫는 태그를 추가한다.
- */
-function splitHighlightedLines(html: string): string[] {
-  const rawLines = html.split('\n');
-  const result: string[] = [];
-
-  // 열린 스팬 태그 스택 (스타일 태그 전체)
-  let openTags: string[] = [];
-
-  for (const line of rawLines) {
-    // 이전 줄에서 열린 태그들로 현재 줄 시작
-    const prefix = openTags.map(tag => tag).join('');
-
-    // 현재 줄 처리
-    let combined = prefix + line;
-
-    // 이 줄에서 열리고 닫히는 태그 추적
-    const tagRegex = /<(\/?)span([^>]*)>/g;
-    let match;
-    const lineOpenTags = [...openTags];
-
-    while ((match = tagRegex.exec(line)) !== null) {
-      const isClose = match[1] === '/';
-      if (!isClose) {
-        // 열린 태그 push
-        lineOpenTags.push(`<span${match[2]}>`);
-      } else {
-        // 닫힌 태그 pop
-        if (lineOpenTags.length > 0) lineOpenTags.pop();
-      }
-    }
-
-    // 줄 끝에 닫히지 않은 태그 닫기
-    const closingSuffix = lineOpenTags.map(() => '</span>').join('');
-    result.push(combined + closingSuffix);
-
-    // 다음 줄 시작에 유지할 열린 태그 업데이트
-    openTags = lineOpenTags;
-  }
-
-  return result;
-}
-
-// ──────────────────────────────────────────────
-// 유틸리티: highlight.js HTML에서 검색어를 <mark>로 감싸기
-// ──────────────────────────────────────────────
-
-/**
- * highlight.js HTML에서 HTML 태그를 건너뛰면서 텍스트의 모든 검색 매칭을 <mark>로 감싼다.
- * (편집 모드 pre 오버레이용 — 입력 즉시 시각적 피드백)
- */
-function wrapAllSearchMatches(html: string, query: string): string {
-  if (!query) return html;
-  const markStyle = 'background:#854d0e88;color:inherit;border-radius:2px;';
-  const lowerQuery = query.toLowerCase();
-  const qLen = query.length;
-
-  let result = '';
-  let i = 0;
-
-  while (i < html.length) {
-    // HTML 태그 통째로 통과
-    if (html[i] === '<') {
-      const end = html.indexOf('>', i);
-      if (end === -1) { result += html.slice(i); break; }
-      result += html.slice(i, end + 1);
-      i = end + 1;
-      continue;
-    }
-    // HTML 엔티티(&amp; 등)는 통째로 통과 (검색어 매칭 대상 아님)
-    if (html[i] === '&') {
-      const end = html.indexOf(';', i);
-      if (end !== -1 && end - i <= 10) {
-        result += html.slice(i, end + 1);
-        i = end + 1;
-        continue;
-      }
-    }
-    // 현재 위치에서 검색어 매칭 검사 — 매칭 범위 안에 태그/엔티티가 없는 경우만 wrap
-    const slice = html.slice(i, i + qLen);
-    if (slice.length === qLen
-        && slice.toLowerCase() === lowerQuery
-        && !slice.includes('<') && !slice.includes('&') && !slice.includes('>')) {
-      result += `<mark style="${markStyle}">${slice}</mark>`;
-      i += qLen;
-      continue;
-    }
-    result += html[i];
-    i++;
-  }
-  return result;
-}
-
-/**
- * highlight.js가 생성한 HTML에서 HTML 태그를 건너뛰면서
- * 텍스트 노드 내에서 검색어를 찾아 <mark>로 표시한다.
- */
-function wrapSearchMatches(html: string, query: string, isCurrent: boolean): string {
-  if (!query) return html;
-
-  const markStyle = isCurrent
-    ? 'background:#f59e0b;color:#000;border-radius:2px;'
-    : 'background:#854d0e55;color:inherit;border-radius:2px;';
-
-  let result = '';
-  let i = 0;
-  const lowerHtml = html.toLowerCase();
-  const lowerQuery = query.toLowerCase();
-
-  while (i < html.length) {
-    // HTML 태그 건너뛰기
-    if (html[i] === '<') {
-      const end = html.indexOf('>', i);
-      if (end === -1) {
-        result += html.slice(i);
-        break;
-      }
-      result += html.slice(i, end + 1);
-      i = end + 1;
-      continue;
-    }
-
-    // HTML 엔티티 건너뛰기 (&amp; &lt; 등)
-    if (html[i] === '&') {
-      const end = html.indexOf(';', i);
-      if (end !== -1 && end - i <= 10) {
-        result += html.slice(i, end + 1);
-        i = end + 1;
-        continue;
-      }
-    }
-
-    // 텍스트 구간: 검색어 찾기
-    const matchPos = lowerHtml.indexOf(lowerQuery, i);
-    if (matchPos === -1) {
-      // 검색어 없음: 나머지 텍스트 그대로 추가
-      result += html.slice(i);
-      break;
-    }
-
-    // 매칭 전 텍스트 출력 (단, 태그나 엔티티 내부가 아닌 경우만)
-    const beforeMatch = html.slice(i, matchPos);
-    // 태그가 중간에 끼어있으면 matchPos까지 텍스트만 추가하고 루프 계속
-    if (beforeMatch.includes('<') || beforeMatch.includes('&')) {
-      result += html[i];
-      i++;
-      continue;
-    }
-
-    result += beforeMatch;
-    result += `<mark style="${markStyle}">${html.slice(matchPos, matchPos + query.length)}</mark>`;
-    i = matchPos + query.length;
-  }
-
-  return result;
 }
