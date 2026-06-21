@@ -1,6 +1,6 @@
 mod helpers;
-mod modules;
-use modules::*;
+pub mod modules;
+pub use modules::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

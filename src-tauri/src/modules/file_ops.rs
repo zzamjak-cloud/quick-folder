@@ -18,10 +18,7 @@ use crate::modules::error::AppError;
 #[cfg(test)]
 use mutation::{delete_items_impl, is_cloud_path, read_text_file_impl, rename_item_impl};
 #[cfg(test)]
-use transfer::{
-    copy_items_impl, count_files_to_copy, merge_folders_recursive, move_items_impl,
-    FolderMergeConflictMode,
-};
+use transfer::{copy_items_impl, count_files_to_copy, merge_folders_recursive, move_items_impl};
 
 // ===== 테스트 =====
 
@@ -346,7 +343,7 @@ mod tests {
             merge_folders_recursive(
                 &src_folder,
                 &dest_folder,
-                FolderMergeConflictMode::Skip,
+                transfer::FolderMergeConflictMode::Skip,
                 None,
             )
             .unwrap();
