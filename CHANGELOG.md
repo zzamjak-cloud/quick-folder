@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.46] - 2026-06-23
+
+### Fixed
+- PSD/PSB 스페이스바 미리보기가 작은 썸네일로 표시되던 문제 수정 — 그리드(≤320px)는 임베드 썸네일을 유지하고, 미리보기·컬럼뷰는 전체 합성 후 다운스케일해 선명하게 표시
+
+### Changed
+- PSD 미리보기를 원본 해상도 대신 2048px로 캡 — 4000px+ 원본 풀렌더 낭비를 줄여 미리보기 표시 속도 개선
+- 로컬 썸네일 디스크 캐시 키 `thumbnail-v4`로 갱신(작게 캐시된 미리보기 자동 무효화, 업데이트 시 자동 재생성)
+
 ## [1.27.45] - 2026-06-23
 
 ### Fixed
