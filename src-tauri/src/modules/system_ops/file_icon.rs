@@ -6,7 +6,7 @@ mod native;
 mod text;
 
 use crate::modules::archive_ops::materialize_archive_path_in_cache;
-use cache::icon_cache;
+use cache::{icon_cache, icon_cache_key, read_disk_icon_cache, write_disk_icon_cache};
 use native::get_native_icon_bytes;
 
 // OS 네이티브 파일 아이콘 가져오기 (확장자별 캐시)
@@ -23,22 +23,26 @@ pub fn get_file_icon(
         .unwrap_or_else(|| std::path::PathBuf::from(&path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
     let p = std::path::Path::new(&resolved_path_str);
-    let cache_key = if p.is_dir() {
-        format!("__folder___{}", size)
-    } else {
-        let ext = p
-            .extension()
-            .map(|e| e.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        format!("{}_{}", ext, size)
-    };
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let cache_key = icon_cache_key(p.is_dir(), &ext, size);
 
-    // 캐시 히트
+    // 1차: 메모리 캐시
     {
         let cache = icon_cache().lock().map_err(|e| e.to_string())?;
         if let Some(b64) = cache.get(&cache_key) {
             return Ok(Some(b64.clone()));
         }
+    }
+
+    // 2차: 디스크 캐시. 앱 업데이트/재시작 후에도 OS 아이콘 재호출을 피한다.
+    if let Some(bytes) = read_disk_icon_cache(&app, &cache_key) {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let mut cache = icon_cache().lock().map_err(|e| e.to_string())?;
+        cache.insert(cache_key, b64.clone());
+        return Ok(Some(b64));
     }
 
     // 플랫폼별 아이콘 추출 (패닉 방지)
@@ -47,6 +51,7 @@ pub fn get_file_icon(
         get_native_icon_bytes(&resolved_path_str, size)
     })) {
         Ok(Some(bytes)) => {
+            write_disk_icon_cache(&app, &cache_key, &bytes);
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             let mut cache = icon_cache().lock().map_err(|e| e.to_string())?;
             cache.insert(cache_key, b64.clone());

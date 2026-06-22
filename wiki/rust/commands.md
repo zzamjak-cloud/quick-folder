@@ -128,7 +128,7 @@ struct DuplicateGroup {
 | `get_video_thumbnail` | `path, size: u32` | base64 | 비디오 첫 프레임 |
 | `get_video_thumbnail_path` | `path, size: u32` | 경로 | 비디오 썸네일 경로 |
 | `get_psd_thumbnail` | `path, size: u32` | base64 | PSD 썸네일 |
-| `get_file_icon` | `path: String` | base64 | 네이티브 파일 아이콘 |
+| `get_file_icon` | `path, size: u32` | base64 | 네이티브 파일 아이콘 |
 
 ## 이미지 처리
 

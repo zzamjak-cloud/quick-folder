@@ -4,13 +4,16 @@
 
 ```
 1. 메모리 캐시 (thumbnailCache.ts)
-   키: thumbKey(path, size) = `${path}::${size}`
-   값: base64 data URL
+   키: thumbKey(path, size, modified) = `${path}|${size}|${modified}`
+   값: asset URL 또는 base64 data URL
 
 2. 디스크 캐시 (Rust)
    위치: app_cache_dir/img_thumbnails/    ← 이미지
          app_cache_dir/psd_thumbnails/    ← PSD
-   키: 파일경로 + 수정시각 + 크기 해시
+         app_cache_dir/video_thumbnails/  ← 비디오
+         app_cache_dir/file_icons/        ← OS 네이티브 아이콘
+   키: 썸네일은 파일경로 + 수정시각 + 파일크기 + 표시크기 해시
+       아이콘은 platform + ext/folder + 표시크기 해시
 ```
 
 ## thumbnailCache.ts
@@ -48,7 +51,7 @@
 | `get_video_thumbnail` | `path, size: u32` | base64 string | 비디오 첫 프레임 |
 | `get_video_thumbnail_path` | `path, size: u32` | 파일 경로 | 비디오 썸네일 경로 |
 | `get_psd_thumbnail` | `path, size: u32` | base64 string | PSD 썸네일 |
-| `get_file_icon` | `path: String` | base64 string | 네이티브 파일 아이콘 |
+| `get_file_icon` | `path, size: u32` | base64 string | 네이티브 파일 아이콘 (`file_icons` 디스크 캐시 사용) |
 | `invalidate_thumbnail_cache` | `path: String` | — | 디스크 캐시 무효화 |
 
 ## 썸네일 로딩 흐름 (FileCard)
@@ -66,3 +69,4 @@ IntersectionObserver 진입
 - 썸네일은 반드시 **`queuedInvokeLow`** 사용. 일반 `invoke` 사용 시 폴더 전환 시 이전 요청이 취소되지 않아 UI 오염.
 - 폴더 이동 시 `cancelAllQueued()` 호출 필수 (FileExplorer/index.tsx에서 처리).
 - `ThumbnailSize` 타입: `40|60|80|100|120|160|200|240|280|320` — 이 값 외 사용 금지.
+- 네이티브 아이콘 캐시는 파일 내용이 아니라 OS/확장자/폴더 타입 기준이다. 파일별 커스텀 아이콘을 정확히 보여야 하는 기능에서는 별도 키 정책이 필요하다.

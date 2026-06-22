@@ -90,7 +90,7 @@ src-tauri/src/
 | `media_ops/video.rs` | 압축, 편집, 이어붙이기, GIF 변환, 진행률 파싱 |
 | `tool_ops/ghostscript.rs` | 다운로드, 설치, 경로 탐색, PDF 압축, 플랫폼별 설치 |
 | `tool_ops/fonttools.rs` | 번들 압축 해제, 설치, 병합, 경로, Python 실행 |
-| `system_ops/file_icon.rs` | 캐시, 텍스트 아이콘, macOS/Windows/fallback 네이티브 아이콘 |
+| `system_ops/file_icon.rs` | 메모리·디스크 아이콘 캐시, 텍스트 아이콘, macOS/Windows/fallback 네이티브 아이콘 |
 
 ## helpers.rs 함수
 
