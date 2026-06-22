@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { X, Search, ChevronDown, ChevronRight, Maximize2, Minimize2, Edit3, Save } from 'lucide-react';
+import { X, Search, Maximize2, Minimize2, Edit3, Save } from 'lucide-react';
 import { ThemeVars } from './types';
 import { getBaseName } from '../../utils/pathUtils';
 import { tauriCommands } from '../../utils/tauriCommands';
@@ -7,6 +7,10 @@ import { computeFoldableBlocks } from './codePreview/folding';
 import { splitHighlightedLines, wrapAllSearchMatches, wrapSearchMatches } from './codePreview/search';
 import { CodePreviewStyles, getCodePreviewColors } from './codePreview/styles';
 import { ensureLangRegistered, getLangFromPath, highlightCodeContent } from './codePreview/syntax';
+import { CodePreviewEditorSurface } from './codePreview/CodePreviewEditorSurface';
+import { CodePreviewReadOnlyLines } from './codePreview/CodePreviewReadOnlyLines';
+import { CodePreviewSearchBar } from './codePreview/CodePreviewSearchBar';
+import { CodePreviewStatusBar } from './codePreview/CodePreviewStatusBar';
 
 import 'highlight.js/styles/vs2015.css';
 
@@ -425,14 +429,46 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
   }, []);
 
   // ── 검색 탐색 버튼 ──
-  const goToPrevMatch = () => {
+  const goToPrevMatch = useCallback(() => {
     if (matchLines.length === 0) return;
     setSearchMatchIndex(i => (i - 1 + matchLines.length) % matchLines.length);
-  };
-  const goToNextMatch = () => {
+  }, [matchLines.length]);
+
+  const goToNextMatch = useCallback(() => {
     if (matchLines.length === 0) return;
     setSearchMatchIndex(i => (i + 1) % matchLines.length);
-  };
+  }, [matchLines.length]);
+
+  const handleSearchPrevious = useCallback(() => {
+    if (editMode) {
+      const ta = textareaRef.current;
+      if (ta && searchQuery) {
+        const haystack = editedContent.toLowerCase();
+        const needle = searchQuery.toLowerCase();
+        const before = haystack.slice(0, ta.selectionStart);
+        let idx = before.lastIndexOf(needle);
+        if (idx === -1) idx = haystack.lastIndexOf(needle);
+        if (idx >= 0) goToTextareaMatch(idx);
+      }
+      return;
+    }
+    goToPrevMatch();
+  }, [editMode, editedContent, goToPrevMatch, goToTextareaMatch, searchQuery]);
+
+  const handleSearchNext = useCallback(() => {
+    if (editMode) {
+      const idx = findNextInTextarea();
+      if (idx >= 0) goToTextareaMatch(idx);
+      return;
+    }
+    goToNextMatch();
+  }, [editMode, findNextInTextarea, goToNextMatch, goToTextareaMatch]);
+
+  const handleCloseSearch = useCallback(() => {
+    setSearchVisible(false);
+    setSearchQuery('');
+    setReplaceQuery('');
+  }, []);
 
   // ── 렌더링할 줄 목록 계산 (폴딩 반영) ──
   const visibleLines = useMemo(() => {
@@ -648,133 +684,22 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
 
         {/* ── 검색 바 ── */}
         {searchVisible && (
-          <div
-            className="flex flex-col gap-1 px-4 py-2 flex-shrink-0"
-            style={{ borderBottom: `1px solid ${themeVars.border}`, backgroundColor: themeVars.surface }}
-          >
-            <div className="flex items-center gap-2">
-              <Search size={13} style={{ color: themeVars.muted }} />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                spellCheck={false}
-                autoCorrect="off"
-                autoCapitalize="off"
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="검색어 입력... (Enter: 다음, Shift+Enter: 이전)"
-                className="flex-1 text-xs outline-none bg-transparent"
-                style={{ color: themeVars.text }}
-              />
-              {/* 매칭 카운트 (읽기 모드에서만 라인 인덱스 표시) */}
-              {!editMode && (
-                <span className="text-xs tabular-nums" style={{ color: themeVars.muted }}>
-                  {matchLines.length === 0
-                    ? (searchQuery ? '없음' : '')
-                    : `${searchMatchIndex + 1} / ${matchLines.length}`}
-                </span>
-              )}
-              {/* 이전 */}
-              <button
-                className="px-2 py-0.5 text-xs rounded hover:opacity-70"
-                style={{
-                  backgroundColor: themeVars.surface2,
-                  color: themeVars.text,
-                  border: `1px solid ${themeVars.border}`,
-                }}
-                onClick={() => {
-                  if (editMode) {
-                    const ta = textareaRef.current;
-                    if (ta && searchQuery) {
-                      const haystack = editedContent.toLowerCase();
-                      const needle = searchQuery.toLowerCase();
-                      const before = haystack.slice(0, ta.selectionStart);
-                      let idx = before.lastIndexOf(needle);
-                      if (idx === -1) idx = haystack.lastIndexOf(needle);
-                      if (idx >= 0) goToTextareaMatch(idx);
-                    }
-                  } else {
-                    goToPrevMatch();
-                  }
-                }}
-                title="이전 매칭 (Shift+Enter)"
-              >
-                ↑
-              </button>
-              {/* 다음 */}
-              <button
-                className="px-2 py-0.5 text-xs rounded hover:opacity-70"
-                style={{
-                  backgroundColor: themeVars.surface2,
-                  color: themeVars.text,
-                  border: `1px solid ${themeVars.border}`,
-                }}
-                onClick={() => {
-                  if (editMode) {
-                    const idx = findNextInTextarea();
-                    if (idx >= 0) goToTextareaMatch(idx);
-                  } else {
-                    goToNextMatch();
-                  }
-                }}
-                title="다음 매칭 (Enter)"
-              >
-                ↓
-              </button>
-              {/* 닫기 */}
-              <button
-                className="p-0.5 hover:opacity-70"
-                style={{ color: themeVars.muted }}
-                onClick={() => { setSearchVisible(false); setSearchQuery(''); setReplaceQuery(''); }}
-                title="검색 닫기 (ESC)"
-              >
-                <X size={13} />
-              </button>
-            </div>
-            {/* 편집 모드 전용: 치환 입력 + 버튼 */}
-            {editMode && (
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] w-4 flex-shrink-0" style={{ color: themeVars.muted }}>↻</span>
-                <input
-                  type="text"
-                  value={replaceQuery}
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  onChange={e => setReplaceQuery(e.target.value)}
-                  placeholder="대체할 텍스트..."
-                  className="flex-1 text-xs outline-none bg-transparent"
-                  style={{ color: themeVars.text }}
-                />
-                <button
-                  className="px-2 py-0.5 text-xs rounded hover:opacity-70"
-                  style={{
-                    backgroundColor: themeVars.surface2,
-                    color: themeVars.text,
-                    border: `1px solid ${themeVars.border}`,
-                  }}
-                  onClick={handleReplaceNext}
-                  disabled={!searchQuery}
-                  title="현재 매칭 1개를 변경하고 다음으로 이동"
-                >
-                  다음 변경
-                </button>
-                <button
-                  className="px-2 py-0.5 text-xs rounded hover:opacity-70"
-                  style={{
-                    backgroundColor: `${themeVars.accent}30`,
-                    color: themeVars.accent,
-                    border: `1px solid ${themeVars.accent}`,
-                  }}
-                  onClick={handleReplaceAll}
-                  disabled={!searchQuery}
-                  title="전체 매칭을 일괄 변경"
-                >
-                  모두 변경
-                </button>
-              </div>
-            )}
-          </div>
+          <CodePreviewSearchBar
+            themeVars={themeVars}
+            editMode={editMode}
+            searchInputRef={searchInputRef}
+            searchQuery={searchQuery}
+            replaceQuery={replaceQuery}
+            matchCount={matchLines.length}
+            searchMatchIndex={searchMatchIndex}
+            onSearchQueryChange={setSearchQuery}
+            onReplaceQueryChange={setReplaceQuery}
+            onPreviousMatch={handleSearchPrevious}
+            onNextMatch={handleSearchNext}
+            onCloseSearch={handleCloseSearch}
+            onReplaceNext={handleReplaceNext}
+            onReplaceAll={handleReplaceAll}
+          />
         )}
 
         {/* ── 코드 영역 ── */}
@@ -793,77 +718,21 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
         >
           {/* ── 편집 모드: textarea + 구문강조 오버레이 ── */}
           {!loading && !error && editMode && (
-            <>
-              {/* 라인 번호 거터 (textarea와 함께 스크롤) */}
-              <div
-                ref={editGutterRef}
-                className="flex-shrink-0 overflow-hidden select-none"
-                style={{
-                  width: lineNumWidth,
-                  paddingTop: 8,
-                  paddingBottom: 40,
-                  paddingRight: 12,
-                  paddingLeft: 8,
-                  color: codeMuted,
-                  opacity: isLightTheme ? 0.8 : 0.5,
-                  borderRight: `1px solid ${codeBorder}`,
-                  textAlign: 'right',
-                  userSelect: 'none',
-                  fontVariantNumeric: 'tabular-nums',
-                  whiteSpace: 'pre',
-                }}
-              >
-                {editedContent.split('\n').map((_, i) => (
-                  <div key={i} style={{ height: 'calc(13px * 1.6)' }}>{i + 1}</div>
-                ))}
-              </div>
-              {/* pre 오버레이 + textarea */}
-              <div className="relative flex-1" style={{ minWidth: 0 }}>
-                <pre
-                  ref={editPreRef}
-                  className="absolute inset-0 m-0"
-                  style={{
-                    pointerEvents: 'none',
-                    whiteSpace: 'pre',
-                    wordBreak: 'normal',
-                    overflowWrap: 'normal',
-                    padding: '8px 12px 40px 12px',
-                    fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
-                    fontSize: 13,
-                    lineHeight: '1.6',
-                    margin: 0,
-                    overflow: 'auto',
-                    color: codeText,
-                    tabSize: 2,
-                  }}
-                  dangerouslySetInnerHTML={{ __html: editedHighlighted }}
-                />
-                <textarea
-                  ref={textareaRef}
-                  value={editedContent}
-                  onChange={handleEditedChange}
-                  onScroll={handleEditScroll}
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  className="absolute inset-0 w-full h-full outline-none resize-none"
-                  style={{
-                    color: 'transparent',
-                    caretColor: themeVars.text ?? '#fff',
-                    background: 'transparent',
-                    whiteSpace: 'pre',
-                    wordBreak: 'normal',
-                    overflowWrap: 'normal',
-                    padding: '8px 12px 40px 12px',
-                    fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
-                    fontSize: 13,
-                    lineHeight: '1.6',
-                    border: 'none',
-                    tabSize: 2,
-                  }}
-                />
-              </div>
-            </>
+            <CodePreviewEditorSurface
+              themeVars={themeVars}
+              lineNumWidth={lineNumWidth}
+              editedContent={editedContent}
+              editedHighlighted={editedHighlighted}
+              codeMuted={codeMuted}
+              codeBorder={codeBorder}
+              codeText={codeText}
+              isLightTheme={isLightTheme}
+              editGutterRef={editGutterRef}
+              editPreRef={editPreRef}
+              textareaRef={textareaRef}
+              onEditedChange={handleEditedChange}
+              onEditScroll={handleEditScroll}
+            />
           )}
 
           {loading && (
@@ -885,127 +754,35 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
           )}
 
           {!loading && !error && !editMode && rawLines.length > 0 && (
-            <div className="relative">
-              {visibleLines.map((lineIdx) => {
-                const isStart = blockMap.has(lineIdx);
-                const isFolded = foldedStarts.has(lineIdx);
-                const isSearchMatch =
-                  searchQuery.trim() !== '' && matchLines.includes(lineIdx);
-                const isCurrentSearchMatch =
-                  isSearchMatch && matchLines[searchMatchIndex] === lineIdx;
-
-                return (
-                  <div
-                    key={lineIdx}
-                    ref={el => { lineRefs.current[lineIdx] = el; }}
-                    className="flex group"
-                    style={{
-                      backgroundColor: isCurrentSearchMatch
-                        ? `${themeVars.accent}20`
-                        : isSearchMatch
-                          ? 'rgba(255,255,100,0.10)'
-                          : 'transparent',
-                    }}
-                  >
-                    {/* 라인 번호 거터 */}
-                    <div
-                      className="flex items-start flex-shrink-0 select-none pt-0"
-                      style={{
-                        width: lineNumWidth,
-                        paddingRight: 12,
-                        paddingLeft: 8,
-                          color: codeMuted,
-                          opacity: isLightTheme ? 0.8 : 0.5,
-                          borderRight: `1px solid ${codeBorder}`,
-                          textAlign: 'right',
-                          userSelect: 'none',
-                      }}
-                    >
-                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {lineIdx + 1}
-                      </span>
-                    </div>
-
-                    {/* 폴딩 토글 버튼 */}
-                    <div
-                      className="flex items-start flex-shrink-0"
-                      style={{ width: 20, paddingTop: 1 }}
-                    >
-                      {isStart ? (
-                        <button
-                          className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          style={{ color: codeMuted, lineHeight: 1 }}
-                          onClick={() => toggleFold(lineIdx)}
-                          title={isFolded ? '블록 펼치기' : '블록 접기'}
-                        >
-                          {isFolded
-                            ? <ChevronRight size={13} />
-                            : <ChevronDown size={13} />}
-                        </button>
-                      ) : null}
-                    </div>
-
-                    {/* 코드 내용 */}
-                    <div
-                      className="flex-1 px-3 py-0 overflow-x-visible whitespace-pre"
-                      style={{ tabSize: 2, color: codeText }}
-                    >
-                      {isFolded ? (
-                        // 접혀있을 때: 첫 줄 + {...} 축약 표시
-                        <span>
-                          <span
-                            dangerouslySetInnerHTML={{ __html: getLineHtml(lineIdx) }}
-                          />
-                          <span
-                            className="ml-1 px-1 rounded cursor-pointer"
-                            style={{
-                              backgroundColor: `${themeVars.accent}25`,
-                              color: themeVars.accent,
-                              fontSize: 11,
-                            }}
-                            onClick={() => toggleFold(lineIdx)}
-                            title="블록 펼치기"
-                          >
-                            {'{...}'}
-                          </span>
-                        </span>
-                      ) : (
-                        <span
-                          dangerouslySetInnerHTML={{ __html: getLineHtml(lineIdx) }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {/* 하단 여백 */}
-              <div style={{ height: 40 }} />
-            </div>
+            <CodePreviewReadOnlyLines
+              themeVars={themeVars}
+              visibleLines={visibleLines}
+              blockMap={blockMap}
+              foldedStarts={foldedStarts}
+              searchQuery={searchQuery}
+              matchLines={matchLines}
+              searchMatchIndex={searchMatchIndex}
+              lineRefs={lineRefs}
+              lineNumWidth={lineNumWidth}
+              codeMuted={codeMuted}
+              codeBorder={codeBorder}
+              codeText={codeText}
+              isLightTheme={isLightTheme}
+              getLineHtml={getLineHtml}
+              toggleFold={toggleFold}
+            />
           )}
         </div>
 
         {/* ── 하단 상태 바 ── */}
         {!loading && !error && (
-          <div
-            className="flex items-center justify-between px-4 py-1.5 flex-shrink-0 text-xs"
-            style={{
-              borderTop: `1px solid ${themeVars.border}`,
-              color: themeVars.muted,
-              backgroundColor: themeVars.surface,
-            }}
-          >
-            <span>
-              {editMode ? editedContent.split('\n').length : rawLines.length}줄
-              {editMode && isDirty && (
-                <span className="ml-2" style={{ color: '#f87171' }}>● 미저장</span>
-              )}
-            </span>
-            <span>
-              {editMode
-                ? '편집 모드 (Ctrl+S 저장 · ESC 종료)'
-                : (foldedStarts.size > 0 ? `${foldedStarts.size}개 블록 접힘` : '읽기 모드 (E 키로 편집)')}
-            </span>
-          </div>
+          <CodePreviewStatusBar
+            themeVars={themeVars}
+            editMode={editMode}
+            isDirty={isDirty}
+            lineCount={editMode ? editedContent.split('\n').length : rawLines.length}
+            foldedCount={foldedStarts.size}
+          />
         )}
       </div>
       <CodePreviewStyles colors={codeColors} />
