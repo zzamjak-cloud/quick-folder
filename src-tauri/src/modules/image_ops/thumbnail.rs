@@ -46,7 +46,7 @@ fn stable_thumbnail_cache_key(path: &str, modified: u128, file_len: u64, size: u
     let file_len = file_len.to_string();
     let size = size.to_string();
     stable_cache_key(&[
-        b"thumbnail-v3",
+        b"thumbnail-v4",
         path.as_bytes(),
         modified.as_bytes(),
         file_len.as_bytes(),
@@ -720,18 +720,25 @@ fn is_dataless_cloud_file(_path: &Path) -> bool {
     false
 }
 
+// 임베드 썸네일(8BIM 1036)은 보통 ~160px로 작다. 그리드 표시(최대 320px)까지는 충분하지만
+// 미리보기/컬럼뷰(원본 해상도=size 0 또는 큰 size)에서는 흐릿하므로 전체 합성으로 선명하게 낸다.
+const PSD_EMBEDDED_MAX_SIZE: u32 = 320;
+
 fn generate_psd_thumbnail_bytes(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
-    // 1) 임베드 썸네일 우선: 용량 무관, 레이어 합성 없음
-    if let Ok(Some(bytes)) = extract_psd_embedded_thumbnail(path, size) {
-        return Ok(Some(bytes));
+    // 1) 그리드용 작은 크기는 임베드 썸네일 우선(용량 무관, 레이어 합성 없음).
+    //    size==0(원본) 또는 320 초과(미리보기·컬럼뷰)는 임베드를 건너뛰고 전체 합성.
+    if size != 0 && size <= PSD_EMBEDDED_MAX_SIZE {
+        if let Ok(Some(bytes)) = extract_psd_embedded_thumbnail(path, size) {
+            return Ok(Some(bytes));
+        }
     }
 
-    // 2) 임베드 썸네일이 없을 때만 전체 파싱 폴백.
-    //    대용량 PSD 전체 합성은 메모리 과부하·크래시 위험 → 제외하고 아이콘 폴백.
+    // 2) 전체 파싱(합성). 대용량 PSD 전체 합성은 메모리 과부하·크래시 위험 →
+    //    초과 시 임베드 썸네일이라도 반환(미리보기는 다소 작아도 빈 화면보다 낫다).
     const MAX_FULL_PARSE_BYTES: u64 = 200 * 1024 * 1024;
     let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(u64::MAX);
     if file_len > MAX_FULL_PARSE_BYTES {
-        return Ok(None);
+        return extract_psd_embedded_thumbnail(path, size);
     }
 
     let bytes = std::fs::read(path)?;

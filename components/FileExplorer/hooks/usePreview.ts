@@ -107,8 +107,9 @@ export function usePreview(): PreviewState {
       const isPsd = /\.(psd|psb)$/i.test(path);
       const isIcns = /\.icns$/i.test(path);
       if (isPsd) {
-        // PSD/PSB: Rust 변환 필요 (size=0 → 원본 해상도 유지)
-        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 0 });
+        // PSD/PSB: Rust 변환 필요. 원본(4000px+)을 풀사이즈로 렌더하면 낭비이므로
+        // 미리보기 창에 충분히 선명한 2048px로 캡 → 렌더·base64·표시 모두 빨라진다.
+        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 2048 });
         if (b64) {
           setPreviewImageData(`data:image/png;base64,${b64}`);
         }

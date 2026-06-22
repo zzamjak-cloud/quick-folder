@@ -101,7 +101,7 @@ export async function getPersistentThumbUrl(
   const cacheDir = isPsd ? 'psd_thumbnails' : fileType === 'image' ? 'img_thumbnails' : 'video_thumbnails';
   const stableModified = Math.trunc(modified || 0);
   const cacheKey = stableCacheKey([
-    'thumbnail-v3',
+    'thumbnail-v4',
     path,
     String(stableModified),
     String(Math.trunc(fileSize || 0)),

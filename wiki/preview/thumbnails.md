@@ -75,8 +75,13 @@ Google Drive 경로는 `get_google_drive_file_id`와 같은 ID 추출 로직을 
 프론트는 Google Drive 같은 cloud path에서 path 기반 `img_thumbnails`/`video_thumbnails` URL을 선반영하지 않는다. Rust가 실제 cache path를 반환한 뒤에만 `<img>`에 넣어 새로고침 직후 asset 404를 피한다.
 PSD/PSB는 그리드에서 `get_psd_thumbnail_path`를 사용한다.
 
-### PSD 썸네일 경량 추출 (용량 무관)
-`generate_psd_thumbnail_bytes`는 **임베드 썸네일(8BIM 이미지 리소스 ID 1036, JPEG)** 을 우선 추출한다(`extract_psd_embedded_thumbnail`). 파일 앞부분(헤더+이미지 리소스 섹션, 레이어 데이터 *이전*)만 읽어 용량과 무관하게 가볍고, 전체 합성(`psd.rgba()`)을 하지 않는다. 임베드 썸네일이 없을 때만 전체 파싱으로 폴백하되 **200MB 초과는 폴백 제외**(과거 OOM 크래시 방지) → 아이콘 폴백.
+### PSD 썸네일 경량 추출 (용량 무관) — 단, 크기별 분기
+`generate_psd_thumbnail_bytes`는 **요청 크기(size)에 따라** 경로가 갈린다:
+- **그리드(size 1~320)**: 임베드 썸네일(8BIM 1036, JPEG) 우선 추출(`extract_psd_embedded_thumbnail`). 파일 앞부분(헤더+이미지 리소스, 레이어 데이터 *이전*)만 읽어 용량 무관·합성 없음. 임베드가 없으면 전체 파싱 폴백.
+- **미리보기/컬럼뷰(size 0 또는 320 초과)**: 임베드(~160px)는 흐릿하므로 **건너뛰고 전체 합성**(`psd.rgba()`) 후 size로 다운스케일 → 선명. `PSD_EMBEDDED_MAX_SIZE = 320` 상수로 분기.
+- 스페이스바 미리보기(`usePreview`)는 원본(size 0) 대신 **2048px 캡**으로 호출 — 4000px+ 원본 풀렌더 낭비를 막아 렌더·base64·표시를 빠르게. 컬럼뷰는 1024.
+- **200MB 초과 전체 합성은 OOM 위험 → 임베드 썸네일이라도 반환**(미리보기가 다소 작아도 빈 화면보다 낫다).
+- 로컬 썸네일 캐시 키는 `thumbnail-v4` (Rust `stable_thumbnail_cache_key` ↔ 프론트 `getPersistentThumbUrl` 동일해야 함). 임베드 최적화 도입 후 작게 캐시된 미리보기(size 0/1024)를 무효화하려고 v3→v4로 올렸다.
 - 주의: 임베드 썸네일은 Photoshop 저장 옵션에 의존한다. 구버전/스크립트 생성 PSD는 1036 리소스가 없어(예: XMP만 큰 경우) QuickLook/형제 이미지로만 표시된다.
 - **PSB(대용량 포맷)도 동일 추출 경로**를 쓴다(헤더 version 2지만 이미지 리소스 섹션은 4바이트 길이로 동일). 단, `classify_file`(`types.rs`)에서 `psb`를 `FileType::Image`로 분류해야 FileCard 썸네일 효과가 실행된다. 분류가 빠지면 썸네일 시도조차 안 한다.
 
