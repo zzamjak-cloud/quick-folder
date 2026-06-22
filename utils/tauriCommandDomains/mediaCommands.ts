@@ -1,5 +1,11 @@
 import { runCommand, runDirectCommand } from '../tauriCommandRunner.ts';
 
+export interface ImageCompressPreview {
+  dataUrl?: string;
+  data_url?: string;
+  size: number;
+}
+
 export const mediaCommands = {
   pasteImageFromClipboard(destDir: string) {
     return runCommand<string | null>('paste_image_from_clipboard', { destDir });
@@ -13,6 +19,24 @@ export const mediaCommands = {
   },
   pixelateImage(input: string, pixelSize: number, scale: number, maxColors: number) {
     return runCommand<string>('pixelate_image', { input, pixelSize, scale, maxColors });
+  },
+  cropImage(path: string, x: number, y: number, width: number, height: number) {
+    return runCommand<string>('crop_image', { path, x, y, width, height });
+  },
+  saveAnnotatedImage(originalPath: string, imageData: string) {
+    return runCommand<string>('save_annotated_image', { originalPath, imageData });
+  },
+  compressImagePreview(path: string, quality: 'low' | 'medium' | 'high') {
+    return runCommand<ImageCompressPreview>('compress_image_preview', { path, quality });
+  },
+  compressImage(path: string, quality: 'low' | 'medium' | 'high') {
+    return runCommand<string>('compress_image', { path, quality });
+  },
+  resizeImage(path: string, width: number, height: number) {
+    return runCommand<string>('resize_image', { path, width, height });
+  },
+  laigterMapsPreview<T>(input: string, params: unknown, maxSide: number) {
+    return runCommand<T>('laigter_maps_preview', { input, params, maxSide });
   },
   removeWhiteBgSave(
     inputs: string[],

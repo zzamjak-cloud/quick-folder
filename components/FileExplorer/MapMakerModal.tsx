@@ -5,7 +5,7 @@ import { checkerboardStyle, Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import LaigterLitPreview, { LaigterLitPreviewTextures, PreviewDisplayMode } from './LaigterLitPreview';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
-import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import { tauriCommands } from '../../utils/tauriCommands';
 
 export interface LaigterParamsUI {
   bumpStrength: number;
@@ -331,11 +331,7 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
     setLoading(true);
     setError('');
     try {
-      const data = await invoke<PreviewPayload>('laigter_maps_preview', {
-        input: path,
-        params,
-        maxSide: 512,
-      });
+      const data = await tauriCommands.laigterMapsPreview<PreviewPayload>(path, params, 512);
       setPreview(data);
     } catch (e) {
       setError(`미리보기 실패: ${e}`);

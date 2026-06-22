@@ -10,7 +10,7 @@ import {
   queuedInvoke,
   queuedInvokeLow,
 } from '../utils/tauriInvoke.ts';
-import { fileCommands, systemCommands, tauriCommands } from '../utils/tauriCommands.ts';
+import { fileCommands, mediaCommands, previewCommands, systemCommands, tauriCommands } from '../utils/tauriCommands.ts';
 
 type InvokeArgs = Record<string, unknown>;
 type TauriInvokeMock = Parameters<typeof __setTauriInvokeForTest>[0];
@@ -114,14 +114,26 @@ test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 
 
   assert.equal(tauriCommands.copyPath, systemCommands.copyPath);
   assert.equal(tauriCommands.checkDuplicateItems, fileCommands.checkDuplicateItems);
+  assert.equal(tauriCommands.cropImage, mediaCommands.cropImage);
+  assert.equal(tauriCommands.getFontInfo, previewCommands.getFontInfo);
 
   await tauriCommands.copyPath('/tmp/a.txt');
   await fileCommands.checkDuplicateItems(['/tmp/a.txt'], '/tmp');
   await fileCommands.writeCachedListing('/tmp', []);
+  await fileCommands.materializeArchivePaths(['/tmp/archive.zip/file.txt']);
+  await mediaCommands.cropImage('/tmp/image.png', 1, 2, 3, 4);
+  await mediaCommands.laigterMapsPreview('/tmp/image.png', { bumpStrength: 1 }, 512);
+  await previewCommands.getFontInfo('/tmp/font.ttf');
+  await systemCommands.startFileDrag(['/tmp/a.txt'], 'data:image/png;base64,AA==', { send: true });
 
   assert.deepEqual(calls, [
     { cmd: 'copy_path', args: { path: '/tmp/a.txt' } },
     { cmd: 'check_duplicate_items', args: { sources: ['/tmp/a.txt'], dest: '/tmp' } },
     { cmd: 'write_cached_listing', args: { path: '/tmp', entries: [] } },
+    { cmd: 'materialize_archive_paths', args: { paths: ['/tmp/archive.zip/file.txt'] } },
+    { cmd: 'crop_image', args: { path: '/tmp/image.png', x: 1, y: 2, width: 3, height: 4 } },
+    { cmd: 'laigter_maps_preview', args: { input: '/tmp/image.png', params: { bumpStrength: 1 }, maxSide: 512 } },
+    { cmd: 'get_font_info', args: { path: '/tmp/font.ttf' } },
+    { cmd: 'plugin:drag|start_drag', args: { item: ['/tmp/a.txt'], image: 'data:image/png;base64,AA==', onEvent: { send: true } } },
   ]);
 });

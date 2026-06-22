@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, X } from 'lucide-react';
 import ImageCropOverlay from './ImageCropOverlay';
-import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import { tauriCommands } from '../../utils/tauriCommands';
 import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
 import PreviewToolbar from './PreviewToolbar';
 import { PreviewIconActionButton } from './PreviewIconActionButton';
@@ -113,10 +113,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     if (!preview.previewImagePath || saving) return;
     setSaving(true);
     try {
-      const outputPath = await invoke<string>('crop_image', {
-        path: preview.previewImagePath,
-        x, y, width, height,
-      });
+      const outputPath = await tauriCommands.cropImage(preview.previewImagePath, x, y, width, height);
       onCropSave?.(outputPath);
     } catch (e) {
       console.error('크롭 저장 실패:', e);
@@ -132,10 +129,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     try {
       const dataUrl = await drawingCanvasRef.current.compositeToDataUrl();
       if (!dataUrl) { setSaving(false); return; }
-      const outputPath = await invoke<string>('save_annotated_image', {
-        originalPath: preview.previewImagePath,
-        imageData: dataUrl,
-      });
+      const outputPath = await tauriCommands.saveAnnotatedImage(preview.previewImagePath, dataUrl);
       onCropSave?.(outputPath);
     } catch (e) {
       console.error('드로잉 저장 실패:', e);
@@ -175,10 +169,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
 
     let cancelled = false;
     setCompressPreviewLoading(true);
-    invoke<{ dataUrl?: string; data_url?: string; size: number }>('compress_image_preview', {
-      path: preview.previewImagePath,
-      quality: compressQuality,
-    })
+    tauriCommands.compressImagePreview(preview.previewImagePath, compressQuality)
       .then((result) => {
         if (cancelled) return;
         setCompressedPreviewData(result.data_url ?? result.dataUrl ?? null);
@@ -216,10 +207,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     if (!preview.previewImagePath || saving) return;
     setSaving(true);
     try {
-      const outputPath = await invoke<string>('compress_image', {
-        path: preview.previewImagePath,
-        quality: compressQuality,
-      });
+      const outputPath = await tauriCommands.compressImage(preview.previewImagePath, compressQuality);
       handleCloseImage();
       onCropSave?.(outputPath);
     } catch (e) {
@@ -236,11 +224,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return;
     setSaving(true);
     try {
-      const outputPath = await invoke<string>('resize_image', {
-        path: preview.previewImagePath,
-        width: Math.round(w),
-        height: Math.round(h),
-      });
+      const outputPath = await tauriCommands.resizeImage(preview.previewImagePath, Math.round(w), Math.round(h));
       handleCloseImage();
       onCropSave?.(outputPath);
     } catch (e) {

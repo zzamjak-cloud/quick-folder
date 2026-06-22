@@ -30,6 +30,9 @@ export const fileCommands = {
   listDirectory(path: string) {
     return runCommand<FileEntry[]>('list_directory', { path });
   },
+  isDirectory(path: string) {
+    return runCommand<boolean>('is_directory', { path });
+  },
   listSystemRoots() {
     return runDirectCommand<FileEntry[]>('list_system_roots');
   },
@@ -47,6 +50,9 @@ export const fileCommands = {
   },
   checkDuplicateItems(sources: string[], dest: string) {
     return runCommand<string[]>('check_duplicate_items', { sources, dest });
+  },
+  materializeArchivePaths(paths: string[]) {
+    return runCommand<string[]>('materialize_archive_paths', { paths });
   },
   compressToZip(paths: string[], dest: string) {
     return runCommand<void>('compress_to_zip', { paths, dest });

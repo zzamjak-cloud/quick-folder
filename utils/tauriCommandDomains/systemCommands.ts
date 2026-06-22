@@ -22,4 +22,7 @@ export const systemCommands = {
   readFilesFromClipboard() {
     return runDirectCommand<string[]>('read_files_from_clipboard');
   },
+  startFileDrag(item: string[], image: string, onEvent: unknown) {
+    return runDirectCommand<void>('plugin:drag|start_drag', { item, image, onEvent });
+  },
 };

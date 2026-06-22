@@ -3,7 +3,7 @@ import { Channel } from '@tauri-apps/api/core';
 import { getFileName, isArchiveVirtualPath, sameVolume } from '../../../utils/pathUtils';
 import { createFileDragImage } from '../fileUtils';
 import { runTransferWithProgress } from './runTransferWithProgress';
-import { invokeTauriCommand as invoke } from '../../../utils/tauriInvoke';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 const TRAY_STAGE_WIDTH = 96;
 const EXTERNAL_DRAG_EDGE_PX = 2;
@@ -218,10 +218,10 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       const onEvent = new Channel<DragCallbackResult>(() => {});
       cleanup();
       const dragPathsPromise = paths.some(isArchiveVirtualPath)
-        ? invoke<string[]>('materialize_archive_paths', { paths })
+        ? tauriCommands.materializeArchivePaths(paths)
         : Promise.resolve(paths);
       dragPathsPromise
-        .then((dragPaths) => invoke('plugin:drag|start_drag', { item: dragPaths, image, onEvent }))
+        .then((dragPaths) => tauriCommands.startFileDrag(dragPaths, image, onEvent))
         .catch((err) => {
           console.error('OS 파일 드래그 실패:', err);
           onError?.(`압축 파일을 꺼내지 못했습니다: ${formatDragError(err)}`);
@@ -339,7 +339,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       // 카테고리 드롭: 폴더만 즐겨찾기에 등록
       if (catTarget && onAddToCategory) {
         for (const p of paths) {
-          const isDir = await invoke<boolean>('is_directory', { path: p }).catch(() => false);
+          const isDir = await tauriCommands.isDirectory(p).catch(() => false);
           if (isDir) {
             const name = getFileName(p);
             onAddToCategory(catTarget, p, name);
@@ -352,13 +352,13 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
       if (target) {
         try {
           const sources = paths.some(isArchiveVirtualPath)
-            ? await invoke<string[]>('materialize_archive_paths', { paths })
+            ? await tauriCommands.materializeArchivePaths(paths)
             : paths;
           // 같은 볼륨(로컬-로컬, 동일 클라우드 계정-계정) → 이동, 다른 볼륨(볼륨 경계 넘음) → 복사
           const shouldCopy = paths.some(isArchiveVirtualPath) || sources.some(p => !sameVolume(p, target));
 
           // 중복 파일 감지 → 있으면 상위 핸들러에 위임
-          const duplicates = await invoke<string[]>('check_duplicate_items', { sources, dest: target });
+          const duplicates = await tauriCommands.checkDuplicateItems(sources, target);
           if (duplicates.length > 0 && onDuplicateDetected) {
             onDuplicateDetected({ sources, dest: target, action: shouldCopy ? 'copy' : 'move', duplicates });
             return;

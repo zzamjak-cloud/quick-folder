@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import ModalShell from './ui/ModalShell';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
-import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import { tauriCommands } from '../../utils/tauriCommands';
 
 interface FontPreviewModalProps {
   path: string;
@@ -83,7 +83,7 @@ export default function FontPreviewModal({ path, onClose, themeVars }: FontPrevi
 
   // 폰트 정보 로드
   useEffect(() => {
-    invoke<FontInfo>('get_font_info', { path })
+    tauriCommands.getFontInfo<FontInfo>(path)
       .then(info => setFontInfo(info))
       .catch(err => setFontInfoError(String(err)));
   }, [path]);
@@ -92,7 +92,7 @@ export default function FontPreviewModal({ path, onClose, themeVars }: FontPrevi
   useEffect(() => {
     const familyName = `qf-preview-${Date.now()}`;
 
-    invoke<string>('read_font_bytes', { path })
+    tauriCommands.readFontBytes(path)
       .then(base64 => {
         const { mime, format } = getFontFormat(path);
         const styleEl = document.createElement('style');

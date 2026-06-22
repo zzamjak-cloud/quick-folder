@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { FileEntry } from '../../../types';
 import { naturalCompare } from '../../../utils/naturalCompare';
 import { queuedInvoke } from './invokeQueue';
-import { invokeTauriCommand as invoke } from '../../../utils/tauriInvoke';
+import { tauriCommands } from '../../../utils/tauriCommands';
 
 // 컬럼 데이터 구조
 export interface ColumnData {
@@ -108,7 +108,7 @@ export function useColumnView() {
     // 텍스트/코드/문서: 텍스트 내용 로딩
     if (isText) {
       setPreview({ entry, thumbnail: null, textContent: null, videoPath: null, loading: true });
-      invoke<string>('read_text_file', { path: entry.path, maxBytes: 8192 })
+      tauriCommands.readTextFile(entry.path, 8192)
         .then(content => {
           setPreview(prev => {
             if (!prev || prev.entry.path !== entry.path) return prev;
@@ -197,7 +197,7 @@ export function useColumnView() {
           return updated;
         });
         // 백그라운드에서 최신 데이터 갱신 (캐시 → 즉시 표시 → 변경분만 반영)
-        invoke<FileEntry[]>('list_directory', { path: requestPath })
+        tauriCommands.listDirectory(requestPath)
           .then(result => {
             const sorted = sortEntries(result);
             dirCacheRef.current.set(requestPath, sorted);
@@ -234,7 +234,7 @@ export function useColumnView() {
         });
 
         // 디렉토리 로딩
-        invoke<FileEntry[]>('list_directory', { path: requestPath })
+        tauriCommands.listDirectory(requestPath)
           .then(result => {
             if (loadRequestRef.current.get(newColIndex) !== requestPath) return;
             loadRequestRef.current.delete(newColIndex);
@@ -320,7 +320,7 @@ export function useColumnView() {
     const refreshed = await Promise.all(
       snapshot.map(async (col) => {
         try {
-          const result = await invoke<FileEntry[]>('list_directory', { path: col.path });
+          const result = await tauriCommands.listDirectory(col.path);
           const sorted = sortEntries(result);
           dirCacheRef.current.set(col.path, sorted);
           return { path: col.path, entries: sorted };
