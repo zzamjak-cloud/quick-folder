@@ -114,6 +114,8 @@ export function AppSidebar({
   deleteShortcut,
   openEditFolderModal,
 }: AppSidebarProps) {
+  const systemRootLabel = isMac ? t('app.nav.systemRoot.mac') : t('app.nav.systemRoot.windows');
+
   return (
     <div
       style={{ width: sidebarCollapsed ? 32 : leftPanelWidth }}
@@ -164,21 +166,21 @@ export function AppSidebar({
       {sidebarCollapsed ? (
         <div className="flex-1 overflow-y-auto px-1 py-2">
           <div className="flex flex-col items-center gap-1">
-            <CollapsedShortcutButton icon={<Clock size={15} />} label="최근항목" onClick={onOpenRecent} />
+            <CollapsedShortcutButton icon={<Clock size={15} />} label={t('app.nav.recent')} onClick={onOpenRecent} />
             <CollapsedShortcutButton
               icon={<HardDrive size={15} />}
-              label={isMac ? 'Macintosh HD' : '내 PC'}
+              label={systemRootLabel}
               onClick={onOpenSystemRoot}
             />
             <CollapsedShortcutButton
               icon={<Monitor size={15} />}
-              label="데스크탑"
+              label={t('app.nav.desktop')}
               onClick={onOpenDesktop}
               disabled={!desktopPath}
             />
             <CollapsedShortcutButton
               icon={<Download size={15} />}
-              label="다운로드"
+              label={t('app.nav.downloads')}
               onClick={onOpenDownloads}
               disabled={!downloadPath}
             />
@@ -215,14 +217,14 @@ export function AppSidebar({
       ) : (
         <>
           <div className="shrink-0 px-4 pt-4 pb-1">
-            <ExpandedShortcutRow icon={<Clock size={14} />} label="최근항목" onClick={onOpenRecent} />
+            <ExpandedShortcutRow icon={<Clock size={14} />} label={t('app.nav.recent')} onClick={onOpenRecent} />
             <ExpandedShortcutRow
               icon={<HardDrive size={14} />}
-              label={isMac ? 'Macintosh HD' : '내 PC'}
+              label={systemRootLabel}
               onClick={onOpenSystemRoot}
             />
-            <ExpandedShortcutRow icon={<Monitor size={14} />} label="데스크탑" onClick={onOpenDesktop} />
-            <ExpandedShortcutRow icon={<Download size={14} />} label="다운로드" onClick={onOpenDownloads} />
+            <ExpandedShortcutRow icon={<Monitor size={14} />} label={t('app.nav.desktop')} onClick={onOpenDesktop} />
+            <ExpandedShortcutRow icon={<Download size={14} />} label={t('app.nav.downloads')} onClick={onOpenDownloads} />
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
@@ -280,9 +282,9 @@ export function AppSidebar({
                       {categories.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-20 text-[var(--qf-muted)]" style={{ breakInside: 'avoid' }}>
                           <Folder size={48} className="mb-4 opacity-50" />
-                          <p className="text-lg font-medium">등록된 카테고리가 없습니다.</p>
+                          <p className="text-lg font-medium">{t('app.category.empty.title')}</p>
                           <Button onClick={openAddCategoryModal} className="mt-4" variant="secondary">
-                            새 카테고리 만들기
+                            {t('app.category.empty.create')}
                           </Button>
                         </div>
                       )}

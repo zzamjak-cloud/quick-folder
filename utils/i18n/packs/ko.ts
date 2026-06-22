@@ -1,17 +1,17 @@
 import type { LanguagePack } from '../types';
+import { koCommonTranslations } from './ko/common.ts';
+import { koSettingsTranslations } from './ko/settings.ts';
+import { koSidebarTranslations } from './ko/sidebar.ts';
+import { koLanguageTranslations } from './ko/language.ts';
+import { koAppTranslations } from './ko/app.ts';
 
 export const koTranslations = {
-    'settings.title': '설정',
-    'settings.help': '도움말',
-    'settings.sidebarZoom': '사이드바 줌기능',
-    'settings.themeColor': '테마 컬러 변경',
-    'settings.language': '언어 설정',
-    'sidebar.expand': '사이드바 펼치기 (Ctrl+B)',
-    'sidebar.collapse': '사이드바 접기 (Ctrl+B)',
-    'sidebar.addSection': '섹션 추가',
-    'language.title': '언어 설정',
-    'language.current': '현재 언어',
-  } as const;
+  ...koCommonTranslations,
+  ...koSettingsTranslations,
+  ...koSidebarTranslations,
+  ...koLanguageTranslations,
+  ...koAppTranslations,
+} as const;
 
 export const koLanguagePack = {
   code: 'ko',
