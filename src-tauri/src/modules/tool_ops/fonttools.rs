@@ -100,6 +100,7 @@ fn ureq_download_to_path(url: &str, max_bytes: u64, dest: &std::path::Path) -> R
 }
 
 /// Unix: `tar -xzf` (macOS/Linux install_only tarball)
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn extract_tar_gz(archive: &std::path::Path, dest: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     let s = archive.to_str().ok_or_else(|| AppError::Internal("tar 경로 인코딩 실패".to_string()))?;
@@ -123,7 +124,9 @@ fn extract_tar_gz(archive: &std::path::Path, dest: &std::path::Path) -> Result<(
 // ─── Windows 헬퍼 함수 ─────────────────────────────────────────────────
 
 /// Windows embeddable 배포판에서 `import site` 활성화 (pip / site-packages 사용)
+/// 현재 미사용 — embeddable 폴백 경로 복구용으로 보존
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn windows_embed_enable_import_site(embed_dir: &std::path::Path) -> Result<()> {
     let rd = std::fs::read_dir(embed_dir)?;
     for e in rd.flatten() {
@@ -143,7 +146,9 @@ fn windows_embed_enable_import_site(embed_dir: &std::path::Path) -> Result<()> {
     Err(AppError::Internal("python*._pth 를 찾지 못했습니다.".to_string()))
 }
 
+/// 현재 미사용 — embeddable 폴백 경로 복구용으로 보존
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn windows_run_embed_python_cmd(
     python_exe: &std::path::Path,
     work_dir: &std::path::Path,
@@ -187,6 +192,7 @@ fn python_exe_responds(path: &std::path::Path) -> bool {
 
 // ─── Python 경로 탐색 헬퍼 ─────────────────────────────────────────────
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn find_python3_in_bin(bin: &std::path::Path) -> Option<std::path::PathBuf> {
     let rd = std::fs::read_dir(bin).ok()?;
     let mut best: Option<std::path::PathBuf> = None;
@@ -553,7 +559,9 @@ fn ensure_unix_fonttools_standalone() -> Result<()> {
     Ok(())
 }
 
+/// 비(非) macOS/Linux 플랫폼용 no-op 스텁 (Windows에서는 호출되지 않음)
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[allow(dead_code)]
 fn ensure_unix_fonttools_standalone() -> Result<()> {
     Ok(())
 }

@@ -17,6 +17,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
 
+# ─── 개발 빌드 속도 최적화 ──────────────────────────────────────────────
+# 적용 직후 1회는 전체 재컴파일이 일어나며, 이후 증분 빌드와 링크가 빨라진다.
+[profile.dev]
+# 전체 디버그 심볼(2) 대신 라인 테이블만 생성 → 링크 시간·디스크 사용량 감소
+debug = 1
+
+# 외부 의존성은 한 번만 컴파일되어 캐시되므로, 최적화해도 반복 빌드 속도에는 영향이 없고
+# 런타임(이미지/압축/폰트 처리 등) 성능만 향상된다.
+[profile.dev.package."*"]
+opt-level = 2
+
 [build-dependencies]
 tauri-build = { version = "2.5.3", features = [] }
 

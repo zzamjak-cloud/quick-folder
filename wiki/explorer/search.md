@@ -49,7 +49,9 @@ entries (원본)
 
 ## 전역 검색 (Rust)
 ```typescript
-invoke('search_files', { root, query, maxResults })
+import { tauriCommands } from '../../utils/tauriCommands';
+
+await tauriCommands.searchFiles({ root, query, maxResults });
 // → Vec<FileEntry> 반환
 // Windows: Search Index → walkdir 폴백
 // macOS: mdfind(Spotlight) → walkdir 폴백
@@ -59,7 +61,7 @@ invoke('search_files', { root, query, maxResults })
 - 폴더 우클릭 `중복 파일 찾기` — [duplicate-finder.md](duplicate-finder.md)
 - `search_files`와 동일한 walkdir·필터, 추가로 xxh3 해시로 **내용** 비교
 ```typescript
-invoke('find_duplicate_files', { root: folderPath })
+await tauriCommands.findDuplicateFiles({ root: folderPath });
 // → DuplicateFileGroup[] { size, files }
 ```
 

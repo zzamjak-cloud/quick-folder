@@ -6,6 +6,10 @@ npm run tauri dev     # 개발 모드 (hot reload)
 npm run tauri build   # 프로덕션 빌드
 npm run build         # 프론트엔드만
 npm run preview       # 웹 미리보기
+npm run test          # Node + Vitest UI 테스트 전체
+npm run test:node     # Node 단위 테스트 (tests/*.ts)
+npm run test:ui       # Vitest UI 테스트 (tests/ui/**)
+cargo test            # Rust 테스트 (command_boundary 포함)
 ```
 
 ## 설정 파일 위치
@@ -16,6 +20,7 @@ npm run preview       # 웹 미리보기
 | `src-tauri/capabilities/default.json` | 플러그인 권한 (28개 항목) |
 | `src-tauri/Cargo.toml` | Rust 의존성 |
 | `vite.config.ts` | Vite 빌드 설정 |
+| `vitest.config.ts` | Vitest UI 테스트 설정 |
 | `tsconfig.json` | TypeScript 설정 |
 | `package.json` | npm 설정·버전 |
 
@@ -60,4 +65,5 @@ npm run preview       # 웹 미리보기
 
 ## 관련 위키
 - [release.md](release.md)
+- [testing.md](testing.md)
 - [../i18n/overview.md](../i18n/overview.md)

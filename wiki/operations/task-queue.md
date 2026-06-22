@@ -15,9 +15,9 @@ ZIP 해제·압축 등 다른 작업은 이 패널을 쓰지 않는다 (`FileExp
 | 파일 | 설명 |
 |------|------|
 | `stores/taskQueueStore.ts` | 전역 큐 상태 (`useSyncExternalStore`) |
-| `components/TaskQueuePanel.tsx` | 패널 UI (`App.tsx`에 마운트) |
+| `components/TaskQueuePanel.tsx` | 패널 UI (`components/AppModals.tsx`에 마운트) |
 | `components/FileExplorer/hooks/runTransferWithProgress.ts` | Rust 명령 호출 + 스토어 연동 |
-| `src-tauri/src/modules/file_ops.rs` | `transfer_items_with_progress` |
+| `src-tauri/src/modules/file_ops/transfer/progress.rs` | `transfer_items_with_progress` |
 
 ## Rust 명령
 

@@ -41,4 +41,4 @@ merge_folders(source, dest_parent, conflict_mode, is_move)
 - `utils/folderMerge.ts` — 폴더 병합 시나리오 감지
 - `components/FileExplorer/hooks/useClipboard.ts`
 - `components/FileExplorer/hooks/useInternalDragDrop.ts`
-- `src-tauri/src/modules/file_ops.rs`
+- `src-tauri/src/modules/file_ops/transfer/folder_merge.rs`

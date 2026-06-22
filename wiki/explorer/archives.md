@@ -17,10 +17,11 @@
 ## 관련 코드
 - `components/FileExplorer/index.tsx`
 - `components/FileExplorer/hooks/useInternalDragDrop.ts`
+- `components/FileExplorer/hooks/usePreviewRouting.ts`
 - `components/FileExplorer/hooks/useFileOperations.ts`
 - `utils/pathUtils.ts`
-- `src-tauri/src/modules/file_ops.rs`
-- `src-tauri/src/modules/archive_ops.rs`
+- `src-tauri/src/modules/file_ops/listing.rs` — list_directory 라우팅
+- `src-tauri/src/modules/archive_ops/` — 압축 내부 목록·materialize
 
 ## 가상 경로 규칙
 - 압축 루트 진입 경로는 `buildArchiveBrowsePath(path)`로 만든다.
@@ -45,7 +46,7 @@
 - Ctrl+더블클릭/새 탭 열기 흐름은 `buildArchiveBrowsePath()` 기준으로 압축 루트 가상 경로를 탭에 연다.
 
 ## 목록 로딩과 메타데이터
-- 프런트는 계속 `list_directory`만 호출하고, Rust `file_ops.rs`가 archive virtual path를 감지하면 `archive_ops.rs`로 라우팅한다.
+- 프런트는 `tauriCommands.listDirectory`만 호출하고, Rust `file_ops/listing.rs`가 archive virtual path를 감지하면 `archive_ops/`로 라우팅한다.
 - ZIP은 `zip` crate로 직접 읽는다.
 - `.rar`, `.7z`, `.tar` 계열은 `tar -tf` / `tar -tvf` 출력으로 내부 목록과 크기를 만든다.
 - 파일 항목은 실제 entry size를 표시하고, 디렉터리만 `0`을 유지한다.

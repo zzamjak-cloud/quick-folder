@@ -150,7 +150,9 @@ fn macos_download_gs_portable() -> Result<()> {
 // ─── Windows 헬퍼 함수 ─────────────────────────────────────────────────────
 
 /// Windows: 레지스트리 App Paths — 설치 프로그램이 등록하는 전체 경로 (가장 신뢰도 높음)
+/// 현재 미사용 — GS 탐색 폴백 경로 복구용으로 보존
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn find_gs_via_app_paths_registry() -> Option<String> {
     use std::os::windows::process::CommandExt;
     const KEYS: &[&str] = &[
@@ -199,7 +201,9 @@ fn find_gs_via_app_paths_registry() -> Option<String> {
 }
 
 /// Windows: GPL Ghostscript 기본 설치 위치 (PATH 없이 gswin64c.exe 전체 경로)
+/// 현재 미사용 — GS 탐색 폴백 경로 복구용으로 보존
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 fn find_gs_exe_in_windows_program_files() -> Option<String> {
     use std::time::SystemTime;
     let mut roots: Vec<String> = vec![

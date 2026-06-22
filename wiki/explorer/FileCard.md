@@ -25,7 +25,7 @@ IntersectionObserver 진입
 ## 인라인 이름변경
 `useRenameInput` 훅에서 상태·핸들러 제공:
 - 활성화: `F2` 또는 `renameInput.startRename(path, currentName)`
-- 확정: `Enter` 또는 포커스 아웃 → `invoke('rename_item')`
+- 확정: `Enter` 또는 포커스 아웃 → `tauriCommands.renameItem({ oldPath, newName })`
 - 취소: `Escape`
 
 ## 지원 파일 타입별 썸네일 Rust 명령

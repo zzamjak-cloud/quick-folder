@@ -6,29 +6,59 @@
 
 ## 모듈 구조
 
+대형 단일 `.rs` 파일은 **facade + 하위 모듈** 패턴으로 분리됐다. facade 파일(`file_ops.rs` 등)이 Tauri 명령을 노출하고, 실제 구현은 하위 모듈에 있다.
+
 ```
 src-tauri/src/
-├── lib.rs              ← 명령 등록
-├── helpers.rs          ← 공통 헬퍼
+├── lib.rs
+├── helpers.rs
 └── modules/
     ├── mod.rs
-    ├── types.rs        ← Rust 타입 (FileEntry, FileType 등)
-    ├── constants.rs    ← 상수
-    ├── error.rs        ← 에러 처리
-    ├── archive_ops.rs  ← 압축 탐색·중첩 압축·materialize
-    ├── file_ops.rs     ← 파일 CRUD
-    ├── image_ops.rs    ← 이미지 처리
-    ├── hwp_ops.rs      ← HWP 파일
-    ├── system_ops/
-    │   ├── file_explorer.rs  ← 폴더 나열·캐시
-    │   ├── file_search.rs    ← 파일 검색·중복 파일 탐색
-    │   ├── file_icon.rs      ← 네이티브 아이콘
-    │   ├── clipboard.rs      ← 클립보드
-    │   └── google_drive.rs   ← Google Drive
+    ├── types.rs
+    ├── constants.rs
+    ├── error.rs
+    ├── file_ops.rs              ← facade
+    │   ├── file_ops/listing.rs       ← list_directory
+    │   ├── file_ops/mutation.rs      ← rename·delete·create
+    │   ├── file_ops/archive.rs       ← compress_to_zip·extract_zip
+    │   ├── file_ops/cache.rs
+    │   └── file_ops/transfer/
+    │       ├── transfer.rs           ← transfer_items_with_progress 진입
+    │       ├── progress.rs           ← Channel 진행률 전송
+    │       ├── duplicate.rs
+    │       └── folder_merge.rs       ← analyze_folder_merge·merge_folders
+    ├── archive_ops.rs           ← facade
+    │   ├── archive_ops/listing.rs
+    │   ├── archive_ops/extract.rs
+    │   ├── archive_ops/materialize.rs
+    │   ├── archive_ops/path.rs
+    │   └── archive_ops/records.rs
+    ├── image_ops.rs             ← facade
+    │   ├── image_ops/thumbnail.rs
+    │   ├── image_ops/compression.rs
+    │   ├── image_ops/convert.rs
+    │   ├── image_ops/background.rs
+    │   ├── image_ops/pixelate.rs
+    │   ├── image_ops/sprite.rs
+    │   ├── image_ops/font.rs
+    │   ├── image_ops/dimensions.rs
+    │   └── image_ops/heavy.rs
+    ├── media_ops.rs             ← facade
+    │   ├── media_ops/video.rs
+    │   ├── media_ops/gif.rs
+    │   └── media_ops/thumbnail.rs
+    ├── hwp_ops.rs
+    ├── laigter_maps.rs
+    └── system_ops/
+        ├── file_explorer.rs
+        ├── file_search.rs
+        ├── file_icon.rs
+        ├── clipboard.rs
+        └── google_drive.rs
     └── tool_ops/
-        ├── ffmpeg.rs         ← FFmpeg (비디오·GIF)
-        ├── ghostscript.rs    ← Ghostscript (PDF·GIF 압축)
-        └── fonttools.rs      ← FontTools (폰트 병합)
+        ├── ffmpeg.rs
+        ├── ghostscript.rs
+        └── fonttools.rs
 ```
 
 ## helpers.rs 함수
@@ -46,15 +76,45 @@ src-tauri/src/
 | `is_system_filename(name)` | 시스템 파일명 패턴 판별 |
 
 ## Frontend 호출 방식
+
+raw `invoke()` 직접 호출 대신 **typed command API**를 사용한다.
+
 ```typescript
-import { invoke } from '@tauri-apps/api/core'
-await invoke('command_name', { arg1: value1, arg2: value2 })
+import { tauriCommands } from '../utils/tauriCommands';
+import { runCommand } from '../utils/tauriCommandRunner';
+
+// 권장: 도메인별 typed API
+await tauriCommands.listDirectory({ path });
+await tauriCommands.deleteItems({ paths });
+
+// 저수준 (큐·우선순위 필요 시)
+import { queuedInvoke, queuedInvokeLow } from '../utils/tauriInvoke';
+await queuedInvoke('get_thumbnail', { path, size });
 ```
 
+| 계층 | 파일 | 역할 |
+|------|------|------|
+| typed API | `utils/tauriCommands.ts` | 도메인 command merge |
+| 도메인 | `utils/tauriCommandDomains/*.ts` | file/media/preview/system |
+| 래퍼 | `utils/tauriCommandRunner.ts` | `runCommand` / `runDirectCommand` |
+| 큐 | `utils/tauriInvoke.ts` | 우선순위·취소·동시성 제한 |
+| re-export | `hooks/invokeQueue.ts` | FileExplorer에서 import 경로 유지 |
+
+새 Rust 명령 추가 시: `lib.rs` 등록 → 해당 `tauriCommandDomains/*.ts`에 typed wrapper 추가 → `tauriCommands.ts` merge 확인.
+
 ## 압축 탐색 메모
-- `file_ops.rs::list_directory`는 archive virtual path를 감지하면 `archive_ops.rs`로 라우팅한다.
+- `file_ops/listing.rs::list_directory`는 archive virtual path를 감지하면 `archive_ops.rs`로 라우팅한다.
 - ZIP은 Rust `zip` crate로 직접 읽고, `.rar`/`.7z`/`.tar` 계열은 `tar` 출력 기반으로 목록을 구성한다.
 - 압축 내부 파일을 OS로 넘겨야 할 때는 `materialize_archive_paths` 또는 `materialize_archive_path_in_cache`를 사용해 임시 실파일을 만든다.
+
+## 테스트
+
+| 파일 | 역할 |
+|------|------|
+| `src-tauri/tests/command_boundary.rs` | Tauri 명령 등록·핸들러 경계 통합 테스트 |
+| facade 내 `#[cfg(test)]` | submodule 단위 테스트 |
+
+→ [../infra/testing.md](../infra/testing.md)
 
 ## 주요 Cargo.toml 의존성
 | 크레이트 | 용도 |
@@ -75,3 +135,4 @@ await invoke('command_name', { arg1: value1, arg2: value2 })
 
 ## 관련 위키
 - [commands.md](commands.md) — 전체 명령 레퍼런스
+- [../infra/testing.md](../infra/testing.md) — 테스트 실행

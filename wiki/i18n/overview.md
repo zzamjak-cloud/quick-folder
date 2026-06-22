@@ -9,19 +9,48 @@ QuickFolder는 자체 언어팩을 앱 안에 포함한다. 런타임 번역 API
 | `utils/i18n.ts` | 공개 API, 언어 감지, DOM 현지화 브리지 |
 | `utils/i18n/languageOptions.ts` | 지원 언어 코드, 국기, 기본 Locale prefix |
 | `utils/i18n/types.ts` | 언어팩 공통 타입 |
-| `utils/i18n/packs/ko.ts` | 한국어 기준 언어팩 |
-| `utils/i18n/packs/en.ts` | 영어 언어팩, 레거시 한글 문자열 매핑, 패턴 매핑 |
 | `utils/i18n/packs/index.ts` | 언어팩 레지스트리와 번역 키 타입 |
+| `utils/i18n/packs/ko.ts` | 한국어 merge entry |
+| `utils/i18n/packs/ko/*.ts` | 한국어 도메인별 번역 (app, common, settings, sidebar, language) |
+| `utils/i18n/packs/en.ts` | 영어 merge entry + legacy re-export |
+| `utils/i18n/packs/en/*.ts` | 영어 도메인별 번역 |
+| `utils/i18n/packs/en/legacy.ts` | 기존 한글 UI `legacyTextTranslations`·`legacyPatterns` |
 | `App.tsx` | 초기 언어 결정, 언어 변경 저장, 변경 후 새로고침 |
 | `components/LanguageSettingsModal.tsx` | 국가별 국기 + 언어명 선택 UI |
 
+## 언어팩 디렉터리 구조
+
+```
+utils/i18n/packs/
+├── index.ts
+├── ko.ts              ← ko/* merge entry
+├── en.ts              ← en/* + legacy merge entry
+├── ko/
+│   ├── app.ts
+│   ├── common.ts
+│   ├── language.ts
+│   ├── settings.ts
+│   └── sidebar.ts
+└── en/
+    ├── app.ts
+    ├── common.ts
+    ├── language.ts
+    ├── settings.ts
+    ├── sidebar.ts
+    └── legacy.ts      ← legacyTextTranslations·legacyPatterns
+```
+
+새 UI 문자열은 도메인 파일(`ko/app.ts` 등)의 `translations` 키에 추가한다. 기존 한글 UI는 `en/legacy.ts`의 exact/pattern 매핑으로 보완한다.
+
 ## 언어 선택 규칙
 
-1. 사용자가 언어를 직접 선택하면 `localStorage['qf_language']`에 저장한다.
+1. 사용자가 언어를 직접 선택하면 `utils/i18n.ts`의 `LANGUAGE_STORAGE_KEY`(`qf_language`)에 `readStorage`/`writeStorage`로 저장한다.
 2. 저장된 값이 있으면 OS Locale보다 사용자의 마지막 선택을 우선한다.
 3. 저장된 값이 없으면 OS Locale을 기준으로 기본 언어를 감지한다.
 4. 언어 변경 시 앱을 새로고침해서 모든 UI 문자열을 같은 언어로 다시 렌더링한다.
 5. 자동 업데이트 이후에도 `qf_language` 키를 유지해 마지막 사용자 선택을 보존한다.
+
+→ localStorage 직접 접근 대신 `utils/storage.ts` 헬퍼 사용.
 
 ## 현재 지원 언어
 
@@ -47,13 +76,13 @@ QuickFolder는 자체 언어팩을 앱 안에 포함한다. 런타임 번역 API
 언어를 추가하거나 UI 문구를 수정할 때는 아래 항목을 모두 확인한다.
 
 1. `LANGUAGE_OPTIONS`에 `{ code, flag, nativeName, localePrefixes }`를 추가한다.
-2. `utils/i18n/packs/{code}.ts`를 만들고 `translations`에 모든 키를 새 언어로 채운다.
-3. 기존 한글 UI 문자열은 해당 언어팩의 `legacyTextTranslations`에 정확 매핑으로 추가한다.
+2. `utils/i18n/packs/{code}/` 디렉터리에 도메인 파일을 만들고 `translations` 키를 채운다. `{code}.ts` merge entry에 import한다.
+3. 기존 한글 UI 문자열은 `en/legacy.ts`의 `legacyTextTranslations`에 exact 매핑으로 추가한다.
 4. 같은 의미라도 마침표, 조사, 띄어쓰기, 괄호가 다르면 별도 문자열로 추가한다.
-5. 파일명·경로·숫자·확장자처럼 동적 값이 섞인 문장은 정규식 패턴으로 처리한다.
+5. 파일명·경로·숫자·확장자처럼 동적 값이 섞인 문장은 `legacyPatterns` 정규식으로 처리한다.
 6. 사이드바, 탐색기 상단, 검색창, 우클릭 메뉴, 도움말, 툴팁, 토스트, 모달, 빈 상태 문구를 모두 확인한다.
-7. `npm run build`를 통과시킨다.
-8. 브라우저에서 `localStorage.qf_language`를 대상 언어로 설정하고 새로고침한다.
+7. `npm run build`와 `npm run test`를 통과시킨다.
+8. `readStorage(LANGUAGE_STORAGE_KEY)`를 대상 언어로 설정하고 새로고침한다.
 9. UI 텍스트, `title`, `aria-label`, `placeholder`에 원본 한글이 남지 않는지 확인한다.
 10. `utils/i18n/packs/index.ts`의 `LANGUAGE_PACKS`에 새 언어팩을 등록한다.
 11. 새 문자열을 추가한 기능의 위키 문서도 함께 갱신한다.

@@ -25,10 +25,11 @@
 | `getThumb(path, size)` | 메모리 캐시 조회 (없으면 `undefined`) |
 | `setThumb(path, size, dataUrl)` | 메모리 캐시 저장 |
 
-## invokeQueue.ts
+## invokeQueue.ts / tauriInvoke.ts
 
 ### 위치
-`components/FileExplorer/hooks/invokeQueue.ts`
+- `components/FileExplorer/hooks/invokeQueue.ts` — re-export (import 경로 유지)
+- `utils/tauriInvoke.ts` — 실제 구현 (우선순위·취소·동시성)
 
 ### exports
 | 함수 | 용도 |
@@ -36,6 +37,7 @@
 | `queuedInvoke(cmd, args)` | 일반 우선순위 큐 |
 | `queuedInvokeLow(cmd, args)` | 낮은 우선순위 (썸네일용) |
 | `cancelAllQueued()` | 대기 중 모든 요청 취소 (폴더 이동 시 사용) |
+| `invokeTauriCommand(cmd, args, priority)` | 저수준 invoke (테스트 mock 지원) |
 
 ## Rust 썸네일 명령
 

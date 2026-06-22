@@ -1,9 +1,6 @@
 //! 클립보드 모듈
 //! OS 파일 클립보드 및 이미지 붙여넣기
 
-#[cfg(target_os = "windows")]
-use super::super::constants::windows::*;
-
 // ===== OS 파일 클립보드 (파일 경로를 시스템 클립보드에 등록/읽기) =====
 
 // 파일 경로를 시스템 클립보드에 쓰기
@@ -128,7 +125,9 @@ fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
     use std::ptr;
 
     // winapi 크레이트에 DROPFILES가 없어서 직접 정의
+    // 필드명은 Win32 DROPFILES 구조체(MSDN)와 1:1 대응시키기 위해 원본 명명을 유지
     #[repr(C)]
+    #[allow(non_snake_case)]
     struct DROPFILES {
         pFiles: u32,
         pt_x: i32,

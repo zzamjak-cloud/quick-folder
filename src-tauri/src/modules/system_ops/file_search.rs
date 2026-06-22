@@ -3,7 +3,7 @@
 
 use super::super::types::{FileEntry, FileType, classify_file};
 use super::super::constants::{SEARCH_MAX_DEPTH, DUPLICATE_SCAN_MAX_DEPTH, MAX_DUPLICATE_SCAN_FILES, MAX_DUPLICATE_GROUPS};
-use crate::helpers::{is_hidden_file, is_system_filename};
+use crate::helpers::{is_hidden_file, is_system_file, is_system_filename};
 
 #[cfg(target_os = "windows")]
 use super::super::constants::windows::*;
