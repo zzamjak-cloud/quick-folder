@@ -144,14 +144,6 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
     }
   }, [searchMatchIndex, matchLines, editMode]);
 
-  // ── editRequestToken 변경 시 편집 모드 진입 ──
-  useEffect(() => {
-    if (editRequestToken > 0 && !loading) {
-      enterEditMode();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editRequestToken, loading]);
-
   // ── 편집 모드 진입 시 editedContent 초기화 + 첫 라인 포커스 ──
   const enterEditMode = useCallback(() => {
     const initialContent = rawLines.join('\n');
@@ -164,6 +156,21 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
       textareaRef.current?.setSelectionRange(0, 0);
     });
   }, [rawLines]);
+
+  const enterEditModeRef = useRef(enterEditMode);
+  const handledEditRequestRef = useRef(0);
+
+  useEffect(() => {
+    enterEditModeRef.current = enterEditMode;
+  }, [enterEditMode]);
+
+  // ── editRequestToken 변경 시 편집 모드 진입 ──
+  useEffect(() => {
+    if (editRequestToken <= 0 || loading) return;
+    if (handledEditRequestRef.current === editRequestToken) return;
+    handledEditRequestRef.current = editRequestToken;
+    enterEditModeRef.current();
+  }, [editRequestToken, loading]);
 
   // ── editedContent 구문 강조 + 검색어 mark 하이라이트 (편집 모드에서만) ──
   // searchQuery가 있으면 모든 매칭을 <mark>로 감싸서 즉시 시각적 피드백 제공
@@ -215,7 +222,6 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
       setHighlightedLines(splitHighlightedLines(highlighted));
     } catch (e) {
       console.error('파일 저장 실패:', e);
-      // eslint-disable-next-line no-alert
       alert(`파일 저장에 실패했습니다: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
@@ -224,7 +230,6 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
 
   const exitEditMode = useCallback(() => {
     if (isDirty) {
-      // eslint-disable-next-line no-alert
       const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 편집 모드를 종료하시겠습니까?');
       if (!ok) return false;
     }
@@ -238,7 +243,6 @@ export default function CodePreviewModal({ path, themeVars, onClose, editRequest
 
   const handleCloseModal = useCallback(() => {
     if (editMode && isDirty) {
-      // eslint-disable-next-line no-alert
       const ok = window.confirm('저장되지 않은 변경사항이 있습니다. 닫으시겠습니까?');
       if (!ok) return;
     }

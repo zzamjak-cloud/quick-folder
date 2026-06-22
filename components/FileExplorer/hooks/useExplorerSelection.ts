@@ -45,7 +45,7 @@ export function useExplorerSelection({
       setFocusedIndex(nextFocusedIndex);
     }
     selectionAnchorRef.current = -1;
-  }, [displayEntries, displayPathSet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [displayEntries, displayPathSet, focusedIndex, selectedPaths, setFocusedIndex, setSelectedPaths]);
 
   const selectEntry = useCallback((path: string, multi: boolean, range: boolean) => {
     const clickedIndex = displayEntries.findIndex(entry => entry.path === path);

@@ -1102,9 +1102,8 @@ export default function App() {
             height: 36,
             paddingLeft: 72,
             backgroundColor: themeVars?.surface ?? '#111827',
-            // @ts-expect-error WebkitAppRegion은 비표준 CSS 속성 (Tauri 타이틀바 드래그용)
             WebkitAppRegion: 'drag',
-          }}
+          } as React.CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' }}
         >
           <span
             className="text-xs font-semibold text-[var(--qf-muted)] select-none pointer-events-none"

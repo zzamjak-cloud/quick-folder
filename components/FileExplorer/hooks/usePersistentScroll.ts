@@ -34,6 +34,7 @@ export function usePersistentScroll<T extends HTMLElement>(
   const activeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestKeyRef = useRef<string | null>(storageKey);
   const latestPositionRef = useRef<ScrollPosition>({ top: 0, left: 0 });
+  const restoreDepsKey = restoreDeps.join('\u001f');
 
   const saveScroll = useCallback((key = latestKeyRef.current) => {
     const el = ref.current;
@@ -70,8 +71,7 @@ export function usePersistentScroll<T extends HTMLElement>(
     });
 
     return () => cancelAnimationFrame(frame);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey, saveScroll, ref, ...restoreDeps]);
+  }, [storageKey, saveScroll, ref, restoreDepsKey]);
 
   useEffect(() => {
     return () => {

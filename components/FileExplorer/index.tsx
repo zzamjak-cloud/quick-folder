@@ -122,6 +122,7 @@ export default function FileExplorer({
 
   // --- 컬럼 뷰 상태 ---
   const columnView = useColumnView();
+  const columnRootPath = columnView.columns[0]?.path ?? null;
 
   // --- 실행취소 스택 ---
   const undoStack = useUndoStack();
@@ -260,14 +261,13 @@ export default function FileExplorer({
     if (viewMode !== 'columns') {
       columnView.clearColumns();
     }
-  }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [columnView.clearColumns, viewMode]);
 
   // displayEntries 또는 currentPath 변경 시 컬럼 뷰 동기화
   useEffect(() => {
     if (viewMode !== 'columns' || !currentPath) return;
     // 현재 컬럼의 루트 경로와 currentPath가 불일치하면 전체 재초기화
-    const columnsRootPath = columnView.columns[0]?.path ?? null;
-    if (columnsRootPath !== currentPath) {
+    if (columnRootPath !== currentPath) {
       // 탭 전환 또는 내비게이션: 컬럼 전체 리셋
       if (displayEntries.length > 0) {
         columnView.initColumns(currentPath, displayEntries);
@@ -286,11 +286,25 @@ export default function FileExplorer({
       // 같은 경로 내 변경 (검색/필터/파일 목록 갱신) → 첫 번째 컬럼만 업데이트
       columnView.updateFirstColumn(displayEntries);
     }
-  }, [displayEntries, currentPath, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    columnRootPath,
+    columnView.clearColumns,
+    columnView.initColumns,
+    columnView.selectInColumn,
+    columnView.updateFirstColumn,
+    currentPath,
+    displayEntries,
+    setSelectedPaths,
+    viewMode,
+  ]);
 
   // --- initialPath 변경 시 현재 탭 경로 변경 (탭이 없으면 새 탭 생성) ---
+  const handledInitialPathKeyRef = useRef<string | number | null>(null);
+
   useEffect(() => {
     if (!initialPath) return;
+    if (handledInitialPathKeyRef.current === initialPathKey) return;
+    handledInitialPathKeyRef.current = initialPathKey;
     // 현재 활성 탭이 이미 같은 경로면 불필요
     if (activeTab && activeTab.path === initialPath) return;
     if (activeTab) {
@@ -300,14 +314,18 @@ export default function FileExplorer({
       // 탭이 없으면 새 탭 생성
       openTab(initialPath);
     }
-  }, [initialPath, initialPathKey]);
+  }, [activeTab, initialPath, initialPathKey, navigateTo, openTab]);
 
   // 앱 시작 시 저장된 탭이 있으면 마지막 활성 탭 로드
+  const didLoadInitialActiveTabRef = useRef(false);
+
   useEffect(() => {
+    if (didLoadInitialActiveTabRef.current) return;
     if (activeTab && !initialPath) {
+      didLoadInitialActiveTabRef.current = true;
       loadDirectory(activeTab.path);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, initialPath, loadDirectory]);
 
   // navigateTo 래퍼: 검색 상태 초기화
   const handleNavigateTo = useCallback((path: string) => {
