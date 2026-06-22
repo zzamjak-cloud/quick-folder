@@ -4,8 +4,8 @@ use crate::modules::archive_ops::materialize_archive_path_in_cache;
 use crate::modules::error::{AppError, Result};
 
 #[tauri::command]
-pub async fn get_image_dimensions(
-    app: tauri::AppHandle,
+pub async fn get_image_dimensions<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Option<(u32, u32)>> {
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<(u32, u32)>> {

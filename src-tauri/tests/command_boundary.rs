@@ -1,8 +1,9 @@
 use app_lib::types::{FileEntry, FileType};
 use app_lib::{
-    check_duplicate_items, compress_to_zip, create_directory, create_text_file, delete_items,
-    duplicate_items, extract_zip, list_directory, read_cached_listing, rename_item,
-    write_cached_listing, write_text_file,
+    check_duplicate_items, compress_image_preview, compress_to_zip, create_directory,
+    create_text_file, crop_image, delete_items, duplicate_items, extract_zip,
+    get_image_dimensions, list_archive_directory, list_directory, read_cached_listing,
+    rename_item, resize_image, write_cached_listing, write_text_file,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -136,6 +137,75 @@ fn archive_commands_compress_and_extract_files() {
             .expect("압축 해제 중첩 파일 읽기 실패"),
         "nested"
     );
+}
+
+#[test]
+fn archive_virtual_listing_reads_zip_root_and_child_entries() {
+    let app = tauri::test::mock_app();
+    let app_handle = app.handle().clone();
+    let test_dir = TestDir::new("archive_virtual_listing");
+    let source_dir = test_dir.join("source");
+    let zip_path = test_dir.join("bundle.zip");
+
+    fs::create_dir_all(source_dir.join("child")).expect("소스 디렉토리 생성 실패");
+    fs::write(source_dir.join("root.txt"), "root").expect("루트 파일 생성 실패");
+    fs::write(source_dir.join("child/nested.txt"), "nested").expect("중첩 파일 생성 실패");
+
+    tauri::async_runtime::block_on(async {
+        compress_to_zip(vec![path_string(&source_dir)], path_string(&zip_path))
+            .await
+            .expect("compress_to_zip command 실패");
+    });
+
+    let root_entries = list_archive_directory(&app_handle, &format!("{}/", zip_path.display()))
+        .expect("list_archive_directory root command 실패");
+    assert!(root_entries
+        .iter()
+        .any(|entry| entry.name == "source" && entry.is_dir));
+
+    let child_entries =
+        list_archive_directory(&app_handle, &format!("{}/source", zip_path.display()))
+            .expect("list_archive_directory child command 실패");
+    assert!(child_entries
+        .iter()
+        .any(|entry| entry.name == "root.txt" && !entry.is_dir));
+    assert!(child_entries
+        .iter()
+        .any(|entry| entry.name == "child" && entry.is_dir));
+}
+
+#[test]
+fn image_commands_read_dimensions_crop_resize_and_preview() {
+    let app = tauri::test::mock_app();
+    let app_handle = app.handle().clone();
+    let test_dir = TestDir::new("image_commands");
+    let image_path = test_dir.join("sample.png");
+    let image = image::RgbaImage::from_pixel(4, 3, image::Rgba([80, 120, 160, 255]));
+
+    image.save(&image_path).expect("테스트 이미지 저장 실패");
+
+    tauri::async_runtime::block_on(async {
+        let dimensions = get_image_dimensions(app_handle.clone(), path_string(&image_path))
+            .await
+            .expect("get_image_dimensions command 실패");
+        assert_eq!(dimensions, Some((4, 3)));
+
+        let crop_path = crop_image(path_string(&image_path), 1, 1, 2, 2)
+            .await
+            .expect("crop_image command 실패");
+        assert!(PathBuf::from(&crop_path).exists());
+
+        let resized_path = resize_image(path_string(&image_path), 2, 2)
+            .await
+            .expect("resize_image command 실패");
+        assert!(PathBuf::from(&resized_path).exists());
+
+        let preview = compress_image_preview(path_string(&image_path), "medium".to_string())
+            .await
+            .expect("compress_image_preview command 실패");
+        assert!(preview.data_url.starts_with("data:image/png;base64,"));
+        assert!(preview.size > 0);
+    });
 }
 
 #[test]
