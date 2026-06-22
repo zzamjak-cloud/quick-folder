@@ -1,9 +1,9 @@
 use app_lib::types::{FileEntry, FileType};
 use app_lib::{
     check_duplicate_items, compress_image_preview, compress_to_zip, create_directory,
-    create_text_file, crop_image, delete_items, duplicate_items, extract_zip,
-    get_image_dimensions, list_archive_directory, list_directory, read_cached_listing,
-    rename_item, resize_image, write_cached_listing, write_text_file,
+    create_text_file, crop_image, delete_items, duplicate_items, extract_zip, get_image_dimensions,
+    list_archive_directory, list_directory, read_cached_listing, read_text_file, rename_item,
+    resize_image, write_cached_listing, write_text_file,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -276,4 +276,71 @@ fn app_handle_commands_list_cache_rename_and_delete_items() {
     });
 
     assert!(nested_dir.is_dir());
+}
+
+#[test]
+fn file_system_failure_commands_return_errors_without_overwriting() {
+    let app = tauri::test::mock_app();
+    let app_handle = app.handle().clone();
+    let test_dir = TestDir::new("file_system_failures");
+    let missing_file = test_dir.join("missing.txt");
+    let missing_parent_file = test_dir.join("missing-parent").join("note.txt");
+    let source_file = test_dir.join("source.txt");
+    let existing_target = test_dir.join("target.txt");
+
+    fs::write(&source_file, "source").expect("소스 파일 생성 실패");
+    fs::write(&existing_target, "target").expect("대상 파일 생성 실패");
+
+    let read_error = read_text_file(app_handle.clone(), path_string(&missing_file), 1024)
+        .expect_err("없는 파일 읽기는 실패해야 함");
+    assert!(!read_error.to_string().is_empty());
+
+    tauri::async_runtime::block_on(async {
+        assert!(
+            list_directory(app_handle.clone(), path_string(&missing_file))
+                .await
+                .is_err(),
+            "파일 경로 목록 조회는 실패해야 함"
+        );
+        assert!(
+            write_text_file(path_string(&missing_parent_file), "content".to_string())
+                .await
+                .is_err(),
+            "없는 부모 디렉토리 쓰기는 실패해야 함"
+        );
+        assert!(
+            extract_zip(
+                path_string(&missing_file),
+                path_string(&test_dir.join("extract"))
+            )
+            .await
+            .is_err(),
+            "없는 ZIP 압축 해제는 실패해야 함"
+        );
+        assert!(
+            compress_to_zip(
+                vec![path_string(&missing_file)],
+                path_string(&test_dir.join("bad.zip"))
+            )
+            .await
+            .is_err(),
+            "없는 입력 파일 압축은 실패해야 함"
+        );
+        assert!(
+            rename_item(
+                app_handle.clone(),
+                path_string(&source_file),
+                path_string(&existing_target),
+            )
+            .await
+            .is_err(),
+            "기존 대상 경로로 이름 변경은 실패해야 함"
+        );
+    });
+
+    assert_eq!(
+        fs::read_to_string(&existing_target).expect("대상 파일 읽기 실패"),
+        "target"
+    );
+    assert!(source_file.exists());
 }

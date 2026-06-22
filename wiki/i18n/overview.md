@@ -87,6 +87,10 @@ utils/i18n/packs/
 10. `utils/i18n/packs/index.ts`의 `LANGUAGE_PACKS`에 새 언어팩을 등록한다.
 11. 새 문자열을 추가한 기능의 위키 문서도 함께 갱신한다.
 
+## 렌더링 snapshot
+
+`tests/ui/i18nRenderingSnapshot.test.tsx`는 `HelpModal`을 렌더링한 뒤 `installDomLocalization('en')`을 적용해 텍스트와 `aria-label` 현지화를 inline snapshot으로 고정한다. 언어팩 exact mapping, DOM text, attribute 변환이 같이 바뀌는 경우 snapshot을 함께 갱신한다.
+
 ## 필수 점검 화면
 
 | 화면/기능 | 확인 항목 |

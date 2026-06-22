@@ -80,6 +80,9 @@ git push origin v{version}
 `tauri-action`이 `darwin-aarch64` / `darwin-x86_64` 키로 `latest.json` 등록.  
 `updater.target("darwin-universal")` 설정 시 키 불일치로 업데이트 감지 불가 → 사용 금지.
 
+## 업데이터 테스트
+`tests/ui/useAutoUpdate.test.tsx`에서 `@tauri-apps/plugin-updater`, `@tauri-apps/plugin-process`, `@tauri-apps/api/app`을 mock 처리한다. 업데이트 감지 모달, `downloadAndInstall` progress/done 이벤트, `relaunch()`, `open_sac_settings` wrapper 경계를 검증한다.
+
 ## 릴리스 트리거 문구
 **"버전 올리고 태그 푸시해줘"** / "릴리스해줘" / "태그 푸시해줘" → 위 절차를 중간 확인 없이 즉시 실행.
 

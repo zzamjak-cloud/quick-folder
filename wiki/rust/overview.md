@@ -44,22 +44,53 @@ src-tauri/src/
     │   ├── image_ops/dimensions.rs
     │   └── image_ops/heavy.rs
     ├── media_ops.rs             ← facade
-    │   ├── media_ops/video.rs
+    │   ├── media_ops/video.rs        ← video command facade
+    │   │   ├── media_ops/video/compress.rs
+    │   │   ├── media_ops/video/edit.rs
+    │   │   ├── media_ops/video/concat.rs
+    │   │   ├── media_ops/video/gif.rs
+    │   │   └── media_ops/video/progress.rs
     │   ├── media_ops/gif.rs
     │   └── media_ops/thumbnail.rs
     ├── hwp_ops.rs
     ├── laigter_maps.rs
-    └── system_ops/
-        ├── file_explorer.rs
-        ├── file_search.rs
-        ├── file_icon.rs
-        ├── clipboard.rs
-        └── google_drive.rs
+    ├── system_ops/
+    │   ├── file_explorer.rs
+    │   ├── file_search.rs
+    │   ├── file_icon.rs             ← icon command facade
+    │   │   ├── file_icon/cache.rs
+    │   │   ├── file_icon/text.rs
+    │   │   └── file_icon/native/
+    │   │       ├── macos.rs
+    │   │       ├── windows.rs
+    │   │       └── fallback.rs
+    │   ├── clipboard.rs
+    │   └── google_drive.rs
     └── tool_ops/
         ├── ffmpeg.rs
-        ├── ghostscript.rs
-        └── fonttools.rs
+        ├── ghostscript.rs           ← gs command facade
+        │   ├── ghostscript/download.rs
+        │   ├── ghostscript/install.rs
+        │   ├── ghostscript/path.rs
+        │   ├── ghostscript/pdf.rs
+        │   ├── ghostscript/macos.rs
+        │   └── ghostscript/windows.rs
+        └── fonttools.rs             ← fonttools command facade
+            ├── fonttools/archive.rs
+            ├── fonttools/install.rs
+            ├── fonttools/merge.rs
+            ├── fonttools/paths.rs
+            └── fonttools/python.rs
 ```
+
+## 최근 분리된 대형 모듈
+
+| facade | 하위 모듈 역할 |
+|--------|----------------|
+| `media_ops/video.rs` | 압축, 편집, 이어붙이기, GIF 변환, 진행률 파싱 |
+| `tool_ops/ghostscript.rs` | 다운로드, 설치, 경로 탐색, PDF 압축, 플랫폼별 설치 |
+| `tool_ops/fonttools.rs` | 번들 압축 해제, 설치, 병합, 경로, Python 실행 |
+| `system_ops/file_icon.rs` | 캐시, 텍스트 아이콘, macOS/Windows/fallback 네이티브 아이콘 |
 
 ## helpers.rs 함수
 
@@ -111,7 +142,7 @@ await queuedInvoke('get_thumbnail', { path, size });
 
 | 파일 | 역할 |
 |------|------|
-| `src-tauri/tests/command_boundary.rs` | Tauri 명령 등록·핸들러 경계 통합 테스트 |
+| `src-tauri/tests/command_boundary.rs` | Tauri 명령 등록·핸들러 경계·파일 시스템 실패 통합 테스트 |
 | facade 내 `#[cfg(test)]` | submodule 단위 테스트 |
 
 → [../infra/testing.md](../infra/testing.md)

@@ -1,6 +1,6 @@
 # 테스트 체계
 
-develop 브랜치 리팩토링(v1.27.43 이후)에서 Node 단위 테스트, Vitest UI 테스트, Rust command boundary 테스트가 도입됐다.
+develop 브랜치 리팩토링(v1.27.43 이후)에서 Node 단위 테스트, Vitest UI 테스트, Rust command boundary 테스트가 도입됐다. 이후 Tauri plugin 경계, drag/drop, updater, 파일 시스템 실패 케이스, i18n 렌더링 snapshot까지 확장됐다.
 
 ## 실행 명령
 
@@ -39,16 +39,32 @@ cargo test            # Rust (src-tauri/tests/command_boundary.rs 포함)
 | `usePreviewRouting.test.tsx` | 더블클릭→미리보기/압축 라우팅 |
 | `useContextMenuBuilder.test.tsx` | 우클릭 메뉴 구성 |
 | `InlineFuzzyFilterInput.test.tsx` | 인라인 퍼지 필터 입력 |
+| `useTauriDragDrop.test.tsx` | Tauri native drag/drop plugin 이벤트·카테고리 드롭 |
+| `useAutoUpdate.test.tsx` | Tauri updater/process/app plugin 경계·재시작 흐름 |
+| `i18nRenderingSnapshot.test.tsx` | 도움말 모달 DOM 현지화 렌더링 snapshot |
 
 ## Rust command boundary (`src-tauri/tests/command_boundary.rs`)
 
 Tauri 명령 등록·핸들러 경계를 통합 테스트한다. `file_ops`, `archive_ops`, `image_ops`, `media_ops` facade가 올바르게 노출되는지 검증한다.
+파일 시스템 실패 케이스도 같은 경계에서 검증한다. 존재하지 않는 파일 read/list/write parent, 누락된 ZIP 해제, 누락된 입력 압축, rename 충돌 시 원본·대상 보존을 포함한다.
+
+## 경계별 회귀 범위
+
+| 경계 | 테스트 |
+|------|--------|
+| Tauri command registration | `src-tauri/tests/command_boundary.rs` |
+| 파일 시스템 실패 응답 | `src-tauri/tests/command_boundary.rs` |
+| Tauri updater plugin | `tests/ui/useAutoUpdate.test.tsx` |
+| Tauri drag/drop plugin | `tests/ui/useTauriDragDrop.test.tsx` |
+| i18n DOM 렌더링 | `tests/ui/i18nRenderingSnapshot.test.tsx` |
 
 ## 새 기능 추가 시
 
 1. **순수 유틸** → `tests/{name}.test.ts` (Node runner)
 2. **React 훅·컴포넌트** → `tests/ui/{name}.test.tsx` (Vitest)
 3. **새 Rust 명령** → `command_boundary.rs`에 등록 여부·기본 응답 추가
+4. **Tauri plugin 연동** → plugin mock + wrapper 호출 경계 추가
+5. **언어팩 렌더링** → representative component snapshot 추가
 
 ## 관련 위키
 

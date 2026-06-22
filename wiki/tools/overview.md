@@ -27,7 +27,8 @@ invoke('install_ffmpeg')
 
 ### 위치
 `binaries/gs` — 사이드카 바이너리  
-`src-tauri/src/modules/tool_ops/ghostscript.rs`
+`src-tauri/src/modules/tool_ops/ghostscript.rs` — command facade
+`src-tauri/src/modules/tool_ops/ghostscript/{download,install,path,pdf,macos,windows}.rs`
 
 ### 의존 기능
 PDF 압축 (`compress_pdf`), GIF 압축 (`compress_gif`)
@@ -43,7 +44,8 @@ invoke('check_gs') / invoke('download_gs') / invoke('install_gs')
 
 ### 위치
 `binaries/python-fonttools-*` — 플랫폼별 Python 번들  
-`src-tauri/src/modules/tool_ops/fonttools.rs`
+`src-tauri/src/modules/tool_ops/fonttools.rs` — command facade
+`src-tauri/src/modules/tool_ops/fonttools/{archive,install,merge,paths,python}.rs`
 
 ### 의존 기능
 폰트 병합 (`merge_fonts`)

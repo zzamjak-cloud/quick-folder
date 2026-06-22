@@ -54,6 +54,13 @@ OS 파일 탐색기에서 폴더 드래그
 | `applyCategoryDragHighlight(el)` | 드래그 오버 시 하이라이트 |
 | `clearCategoryDragHighlight()` | 하이라이트 해제 |
 
+## 테스트
+
+| 파일 | 검증 대상 |
+|------|----------|
+| `tests/ui/useTauriDragDrop.test.tsx` | `onDragDropEvent` over/drop/leave, `is_directory` 필터링, 카테고리 하이라이트, unlisten |
+| `tests/tauriInvoke.test.ts` | `plugin:drag|start_drag` direct command 경계 |
+
 ## 관련 위키
 - [../categories/overview.md](../categories/overview.md)
 - [../explorer/archives.md](../explorer/archives.md)

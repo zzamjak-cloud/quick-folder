@@ -6,7 +6,15 @@ FFmpeg 없으면 이 섹션의 모든 기능 불가.
 → [../tools/overview.md](../tools/overview.md)
 
 ## Rust 모듈
-`src-tauri/src/modules/tool_ops/ffmpeg.rs`
+| 파일 | 역할 |
+|------|------|
+| `src-tauri/src/modules/tool_ops/ffmpeg.rs` | FFmpeg 설치·경로 확인 |
+| `src-tauri/src/modules/media_ops/video.rs` | 비디오 명령 facade |
+| `src-tauri/src/modules/media_ops/video/compress.rs` | 비디오 압축 |
+| `src-tauri/src/modules/media_ops/video/edit.rs` | trim/cut |
+| `src-tauri/src/modules/media_ops/video/concat.rs` | 비디오 이어붙이기 |
+| `src-tauri/src/modules/media_ops/video/gif.rs` | 비디오 → GIF |
+| `src-tauri/src/modules/media_ops/video/progress.rs` | FFmpeg 진행률 파싱 |
 
 ## 비디오 명령
 
