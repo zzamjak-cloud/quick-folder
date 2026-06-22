@@ -1,8 +1,10 @@
 //! 파일 검색 및 최근 파일 조회 모듈
 //! Spotlight/Windows Search Index 활용 + walkdir 폴백
 
-use super::super::types::{FileEntry, FileType, classify_file};
-use super::super::constants::{SEARCH_MAX_DEPTH, DUPLICATE_SCAN_MAX_DEPTH, MAX_DUPLICATE_SCAN_FILES, MAX_DUPLICATE_GROUPS};
+use super::super::constants::{
+    DUPLICATE_SCAN_MAX_DEPTH, MAX_DUPLICATE_GROUPS, MAX_DUPLICATE_SCAN_FILES, SEARCH_MAX_DEPTH,
+};
+use super::super::types::{classify_file, FileEntry, FileType};
 use crate::helpers::{is_hidden_file, is_system_filename};
 
 #[cfg(target_os = "windows")]
@@ -103,7 +105,11 @@ pub async fn get_recent_files(roots: Vec<String>, days: u32) -> Result<Vec<FileE
 // macOS: Spotlight 인덱스(mdfind) 활용으로 즉시 검색, 실패 시 walkdir 폴백
 // Windows: Windows Search Index(ADODB) 활용, 실패 시 walkdir 폴백
 #[tauri::command]
-pub async fn search_files(root: String, query: String, max_results: usize) -> Result<Vec<FileEntry>, String> {
+pub async fn search_files(
+    root: String,
+    query: String,
+    max_results: usize,
+) -> Result<Vec<FileEntry>, String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
         // macOS: mdfind (Spotlight 인덱스) 먼저 시도
         #[cfg(target_os = "macos")]
@@ -132,7 +138,11 @@ pub async fn search_files(root: String, query: String, max_results: usize) -> Re
 
 // macOS Spotlight 인덱스(mdfind) 기반 즉시 검색
 #[cfg(target_os = "macos")]
-fn search_with_mdfind(root: &str, query: &str, max_results: usize) -> Result<Vec<FileEntry>, String> {
+fn search_with_mdfind(
+    root: &str,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<FileEntry>, String> {
     use std::process::Command;
 
     let output = Command::new("mdfind")
@@ -148,31 +158,42 @@ fn search_with_mdfind(root: &str, query: &str, max_results: usize) -> Result<Vec
     let mut result = vec![];
 
     for line in stdout.lines() {
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         let path = std::path::Path::new(line);
 
         // 숨김 파일 제외 (경로의 어느 컴포넌트든 .으로 시작하면 제외)
-        let has_hidden = path.components().any(|c| {
-            is_hidden_file(&c.as_os_str().to_string_lossy())
-        });
-        if has_hidden { continue; }
+        let has_hidden = path
+            .components()
+            .any(|c| is_hidden_file(&c.as_os_str().to_string_lossy()));
+        if has_hidden {
+            continue;
+        }
 
         let meta = match std::fs::metadata(path) {
             Ok(m) => m,
             Err(_) => continue,
         };
 
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let modified = meta.modified().ok()
+        let modified = meta
+            .modified()
+            .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
         let is_dir = meta.is_dir();
-        let file_type = if is_dir { FileType::Directory } else { classify_file(&name) };
+        let file_type = if is_dir {
+            FileType::Directory
+        } else {
+            classify_file(&name)
+        };
 
         result.push(FileEntry {
             path: line.to_string(),
@@ -183,7 +204,9 @@ fn search_with_mdfind(root: &str, query: &str, max_results: usize) -> Result<Vec
             name,
         });
 
-        if result.len() >= max_results { break; }
+        if result.len() >= max_results {
+            break;
+        }
     }
 
     Ok(result)
@@ -192,7 +215,11 @@ fn search_with_mdfind(root: &str, query: &str, max_results: usize) -> Result<Vec
 // Windows Search Index (ADODB COM) 기반 즉시 검색
 // Windows는 기본적으로 사용자 폴더를 인덱싱하므로 Spotlight과 유사한 속도
 #[cfg(target_os = "windows")]
-fn search_with_windows_index(root: &str, query: &str, max_results: usize) -> Result<Vec<FileEntry>, String> {
+fn search_with_windows_index(
+    root: &str,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<FileEntry>, String> {
     use std::process::Command;
 
     // SQL 인젝션 방지: 작은따옴표 이스케이프
@@ -236,15 +263,20 @@ fn search_with_windows_index(root: &str, query: &str, max_results: usize) -> Res
 
     for line in stdout.lines() {
         let line = line.trim();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         let path = std::path::Path::new(line);
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
         // 숨김 파일 제외
-        if is_hidden_file(&name) { continue; }
+        if is_hidden_file(&name) {
+            continue;
+        }
 
         let meta = match std::fs::metadata(path) {
             Ok(m) => m,
@@ -252,15 +284,23 @@ fn search_with_windows_index(root: &str, query: &str, max_results: usize) -> Res
         };
 
         // Windows 시스템/숨김 파일 제외
-        if is_system_file(&meta) { continue; }
+        if is_system_file(&meta) {
+            continue;
+        }
 
-        let modified = meta.modified().ok()
+        let modified = meta
+            .modified()
+            .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
         let is_dir = meta.is_dir();
-        let file_type = if is_dir { FileType::Directory } else { classify_file(&name) };
+        let file_type = if is_dir {
+            FileType::Directory
+        } else {
+            classify_file(&name)
+        };
 
         result.push(FileEntry {
             path: line.to_string(),
@@ -271,14 +311,20 @@ fn search_with_windows_index(root: &str, query: &str, max_results: usize) -> Res
             name,
         });
 
-        if result.len() >= max_results { break; }
+        if result.len() >= max_results {
+            break;
+        }
     }
 
     Ok(result)
 }
 
 // walkdir 기반 직접 재귀 탐색 (인덱스 검색 폴백)
-fn search_with_walkdir(root: &str, query: &str, max_results: usize) -> Result<Vec<FileEntry>, String> {
+fn search_with_walkdir(
+    root: &str,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<FileEntry>, String> {
     use walkdir::WalkDir;
 
     let query_lower = query.to_lowercase();
@@ -307,23 +353,33 @@ fn search_with_walkdir(root: &str, query: &str, max_results: usize) -> Result<Ve
         });
 
     for entry in walker.flatten() {
-        if entry.depth() == 0 { continue; }
+        if entry.depth() == 0 {
+            continue;
+        }
 
         let name = entry.file_name().to_string_lossy().to_string();
-        if !name.to_lowercase().contains(&query_lower) { continue; }
+        if !name.to_lowercase().contains(&query_lower) {
+            continue;
+        }
 
         let meta = match entry.metadata() {
             Ok(m) => m,
             Err(_) => continue,
         };
 
-        let modified = meta.modified().ok()
+        let modified = meta
+            .modified()
+            .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
         let is_dir = meta.is_dir();
-        let file_type = if is_dir { FileType::Directory } else { classify_file(&name) };
+        let file_type = if is_dir {
+            FileType::Directory
+        } else {
+            classify_file(&name)
+        };
 
         result.push(FileEntry {
             path: entry.path().to_string_lossy().to_string(),
@@ -334,7 +390,9 @@ fn search_with_walkdir(root: &str, query: &str, max_results: usize) -> Result<Ve
             name,
         });
 
-        if result.len() >= max_results { break; }
+        if result.len() >= max_results {
+            break;
+        }
     }
 
     Ok(result)

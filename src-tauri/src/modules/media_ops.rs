@@ -6,7 +6,10 @@ mod video;
 
 pub use gif::{compress_gif, gif_to_mp4};
 pub(crate) use thumbnail::get_os_thumbnail;
-pub use thumbnail::{get_video_thumbnail, get_video_thumbnail_path, invalidate_thumbnail_cache};
+pub use thumbnail::{
+    ensure_thumbnails_batch, get_video_thumbnail, get_video_thumbnail_path,
+    invalidate_thumbnail_cache, ThumbnailBatchItem, ThumbnailBatchResult,
+};
 pub use video::{
     compress_video, concat_videos, cut_video, trim_video, video_to_gif, VideoProgress,
 };

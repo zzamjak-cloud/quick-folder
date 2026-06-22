@@ -102,6 +102,7 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "ffmpeg-sidecar",
+ "filetime",
  "hwarang",
  "icns",
  "ico 0.3.0",
@@ -125,6 +126,7 @@ dependencies = [
  "ureq",
  "walkdir",
  "winapi",
+ "xattr",
  "xxhash-rust",
  "zip 2.4.2",
 ]

@@ -19,8 +19,14 @@ pub fn read_files_from_clipboard() -> Result<Vec<String>, String> {
 fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
     // osascript(AppleScript)로 클립보드에 파일 등록
     // Finder와 동일한 방식으로 동작하여 Notion, Slack 등 외부 앱 호환
-    let file_refs: Vec<String> = paths.iter()
-        .map(|p| format!("POSIX file \"{}\"", p.replace('\\', "\\\\").replace('"', "\\\"")))
+    let file_refs: Vec<String> = paths
+        .iter()
+        .map(|p| {
+            format!(
+                "POSIX file \"{}\"",
+                p.replace('\\', "\\\\").replace('"', "\\\"")
+            )
+        })
         .collect();
     let script = if file_refs.len() == 1 {
         format!("set the clipboard to ({})", file_refs[0])
@@ -48,7 +54,9 @@ fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
     unsafe {
         let pb_class = Class::get("NSPasteboard").ok_or("NSPasteboard not found")?;
         let pb: *mut Object = msg_send![pb_class, generalPasteboard];
-        if pb.is_null() { return Err("generalPasteboard is null".into()); }
+        if pb.is_null() {
+            return Err("generalPasteboard is null".into());
+        }
 
         let url_class = Class::get("NSURL").ok_or("NSURL not found")?;
         let arr_class = Class::get("NSArray").ok_or("NSArray not found")?;
@@ -71,22 +79,32 @@ fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
 
             for i in 0..count {
                 let url: *mut Object = msg_send![urls, objectAtIndex: i];
-                if url.is_null() { continue; }
+                if url.is_null() {
+                    continue;
+                }
 
                 let is_file: i8 = msg_send![url, isFileURL];
-                if is_file == 0 { continue; }
+                if is_file == 0 {
+                    continue;
+                }
 
                 let path: *mut Object = msg_send![url, path];
-                if path.is_null() { continue; }
+                if path.is_null() {
+                    continue;
+                }
 
                 let utf8: *const std::os::raw::c_char = msg_send![path, UTF8String];
-                if utf8.is_null() { continue; }
+                if utf8.is_null() {
+                    continue;
+                }
 
                 let path_str = std::ffi::CStr::from_ptr(utf8).to_string_lossy().to_string();
                 result.push(path_str);
             }
 
-            if !result.is_empty() { return Ok(result); }
+            if !result.is_empty() {
+                return Ok(result);
+            }
         }
 
         // 폴백: NSFilenamesPboardType으로 Finder 복사 파일 읽기
@@ -98,13 +116,19 @@ fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
             let mut result = Vec::with_capacity(pcount);
             for i in 0..pcount {
                 let item: *mut Object = msg_send![plist, objectAtIndex: i];
-                if item.is_null() { continue; }
+                if item.is_null() {
+                    continue;
+                }
                 let utf8: *const std::os::raw::c_char = msg_send![item, UTF8String];
-                if utf8.is_null() { continue; }
+                if utf8.is_null() {
+                    continue;
+                }
                 let s = std::ffi::CStr::from_ptr(utf8).to_string_lossy().to_string();
                 result.push(s);
             }
-            if !result.is_empty() { return Ok(result); }
+            if !result.is_empty() {
+                return Ok(result);
+            }
         }
 
         Ok(vec![])
@@ -119,10 +143,14 @@ fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
-    use winapi::um::winuser::{OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData, CF_HDROP};
-    use winapi::um::winbase::{GlobalAlloc, GlobalLock, GlobalUnlock, GlobalFree, GMEM_MOVEABLE, GMEM_ZEROINIT};
     use std::mem;
     use std::ptr;
+    use winapi::um::winbase::{
+        GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE, GMEM_ZEROINIT,
+    };
+    use winapi::um::winuser::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData, CF_HDROP,
+    };
 
     // winapi 크레이트에 DROPFILES가 없어서 직접 정의
     // 필드명은 Win32 DROPFILES 구조체(MSDN)와 1:1 대응시키기 위해 원본 명명을 유지
@@ -137,7 +165,8 @@ fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
     }
 
     // 경로를 UTF-16 null 종료 문자열로 변환
-    let wide_paths: Vec<Vec<u16>> = paths.iter()
+    let wide_paths: Vec<Vec<u16>> = paths
+        .iter()
         .map(|p| p.encode_utf16().chain(std::iter::once(0)).collect())
         .collect();
 
@@ -217,9 +246,11 @@ fn read_files_from_clipboard_native() -> Result<Vec<String>, String> {
 
 #[cfg(target_os = "windows")]
 fn read_files_from_clipboard_inner() -> Result<Vec<String>, String> {
-    use winapi::um::winuser::{OpenClipboard, CloseClipboard, GetClipboardData, CF_HDROP, IsClipboardFormatAvailable};
-    use winapi::um::shellapi::{DragQueryFileW, HDROP};
     use std::ptr;
+    use winapi::um::shellapi::{DragQueryFileW, HDROP};
+    use winapi::um::winuser::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, CF_HDROP,
+    };
 
     unsafe {
         if IsClipboardFormatAvailable(CF_HDROP) == 0 {
@@ -290,9 +321,10 @@ pub fn paste_image_from_clipboard(dest_dir: String) -> Result<Option<String>, St
     let height = img.height as u32;
     let rgba_data: Vec<u8> = img.bytes.into_owned();
     let img_buf: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
-        image::ImageBuffer::from_raw(width, height, rgba_data)
-            .ok_or("이미지 버퍼 생성 실패")?;
-    img_buf.save(&file_path).map_err(|e| format!("이미지 저장 실패: {}", e))?;
+        image::ImageBuffer::from_raw(width, height, rgba_data).ok_or("이미지 버퍼 생성 실패")?;
+    img_buf
+        .save(&file_path)
+        .map_err(|e| format!("이미지 저장 실패: {}", e))?;
 
     Ok(Some(file_path.to_string_lossy().to_string()))
 }

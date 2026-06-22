@@ -1,10 +1,36 @@
 import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { FileEntry, ThumbnailSize, ViewMode } from '../../../types';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { RECENT_PATH, SYSTEM_ROOT_PATH } from '../constants';
 import type { EntrySortBy, EntrySortDir } from '../entrySorting';
 import { cancelAllQueued, queuedInvokeLow } from './invokeQueue';
+import { thumbKey, getThumb, setThumb } from './thumbnailCache';
+
+// PSD/PSB와 동일 이름의 이미지 형제가 있으면 그 이미지를 PSD 썸네일 소스로 지정한다.
+// 임베드 썸네일이 없는 PSD도 형제 이미지로 즉시 표시 → QuickLook/원본 파싱 회피.
+function attachPsdThumbnailSiblings(list: FileEntry[]): FileEntry[] {
+  const imageByStem = new Map<string, string>();
+  for (const e of list) {
+    if (e.is_dir) continue;
+    const m = /^(.*)\.(jpe?g|png|gif|webp|bmp)$/i.exec(e.name);
+    if (m) imageByStem.set(m[1].toLowerCase(), e.path);
+  }
+  if (imageByStem.size === 0) return list;
+
+  let changed = false;
+  const out = list.map(e => {
+    if (e.is_dir) return e;
+    const pm = /^(.*)\.(psd|psb)$/i.exec(e.name);
+    if (!pm) return e;
+    const sibling = imageByStem.get(pm[1].toLowerCase());
+    if (!sibling) return e;
+    changed = true;
+    return { ...e, thumbnailPath: sibling };
+  });
+  return changed ? out : list;
+}
 
 interface UseDirectoryLoaderOptions {
   gridRef: RefObject<HTMLDivElement | null>;
@@ -58,19 +84,45 @@ export function useDirectoryLoader({
   const prewarmThumbnails = useCallback((list: FileEntry[]) => {
     const size = thumbnailSizeRef.current;
     const run = () => {
+      const items: { path: string; fileType: 'image' | 'video' | 'psd' }[] = [];
+      // items와 1:1 — 배치 결과를 넣을 메모리 캐시 키(카드의 thumbKey와 동일)
+      const targetKeys: string[] = [];
       let count = 0;
       for (const entry of list) {
         if (count >= 120) break;
         if (entry.is_dir) continue;
+        const key = thumbKey(entry.path, size, entry.modified);
+        // 동일 이름 이미지 형제가 있는 PSD는 그 이미지를 가볍게 워밍
+        if (entry.thumbnailPath) {
+          items.push({ path: entry.thumbnailPath, fileType: 'image' });
+          targetKeys.push(key);
+          count++;
+          continue;
+        }
         const lower = entry.name.toLowerCase();
-        if (lower.endsWith('.psd') || lower.endsWith('.psb')) continue;
-        let command = '';
-        if (entry.file_type === 'image') command = 'get_file_thumbnail_path';
-        else if (entry.file_type === 'video') command = 'get_video_thumbnail_path';
-        else continue;
+        if (lower.endsWith('.psd') || lower.endsWith('.psb')) {
+          items.push({ path: entry.path, fileType: 'psd' });
+          targetKeys.push(key);
+          count++;
+          continue;
+        }
+        if (entry.file_type === 'image' || entry.file_type === 'video') {
+          items.push({ path: entry.path, fileType: entry.file_type });
+          targetKeys.push(key);
+        } else continue;
         count++;
-        queuedInvokeLow(command, { path: entry.path, size }).promise.catch(() => {});
       }
+      if (items.length === 0) return;
+      // 배치 결과(입력과 1:1 순서)를 메모리 캐시에 주입 → prewarm된 항목은 카드가 IPC 없이 즉시 표시
+      tauriCommands.ensureThumbnailsBatch(items, size)
+        .then(results => {
+          results.forEach((result, index) => {
+            const key = targetKeys[index];
+            if (!key || !result || !result.cachedPath) return;
+            if (getThumb(key) === undefined) setThumb(key, convertFileSrc(result.cachedPath));
+          });
+        })
+        .catch(() => {});
     };
     const requestIdleCallback = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
     if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
@@ -104,7 +156,7 @@ export function useDirectoryLoader({
         .then(diskCached => {
           if (requestId !== loadRequestRef.current || freshArrived) return;
           if (!diskCached || diskCached.length === 0) return;
-          setEntries(sortEntries(diskCached, sortBy, sortDir));
+          setEntries(sortEntries(attachPsdThumbnailSiblings(diskCached), sortBy, sortDir));
         })
         .catch(() => {});
     }
@@ -117,11 +169,12 @@ export function useDirectoryLoader({
           : await tauriCommands.listDirectory(path);
       if (requestId !== loadRequestRef.current) return;
       freshArrived = true;
+      const augmented = (isRecent || isSystemRoot) ? result : attachPsdThumbnailSiblings(result);
       if (!isRecent && !isSystemRoot) {
-        cacheEntries(path, result);
+        cacheEntries(path, augmented);
         tauriCommands.writeCachedListing(path, result).catch(() => {});
       }
-      const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(result, sortBy, sortDir);
+      const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(augmented, sortBy, sortDir);
       setEntries(sortedResult);
       if (!isRecent && !isSystemRoot) prewarmThumbnails(sortedResult);
       if (!cached) {

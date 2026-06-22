@@ -8,17 +8,18 @@ import { isTauri } from '../../../utils/isTauri';
  *
  * 목적: 폴더 재방문/뒤로가기 시 IPC 호출 없이 즉시 썸네일 표시.
  * 값은 asset 프로토콜 URL(convertFileSrc 결과) 또는 빈 문자열('' = 썸네일 없음).
- * 키는 경로+크기+수정시각 → 파일이 바뀌면 자동으로 캐시 미스가 되어 재생성.
+ * 키는 세대+경로+크기+수정시각 → 파일/표시 정책이 바뀌면 자동으로 캐시 미스가 되어 재생성.
  *
  * 단순 LRU: Map의 삽입 순서를 이용해 접근 시 재삽입, 상한 초과 시 가장 오래된 항목 제거.
  */
 
 const MAX_ENTRIES = 4000;
+const THUMBNAIL_MEMORY_CACHE_VERSION = 'v4';
 const cache = new Map<string, string>();
 let appCacheDirPromise: Promise<string | null> | null = null;
 
 export function thumbKey(path: string, size: number, modified: number): string {
-  return `${path}|${size}|${modified}`;
+  return `${THUMBNAIL_MEMORY_CACHE_VERSION}|${path}|${size}|${modified}`;
 }
 
 /** 캐시 조회. undefined=미조회(요청 필요), ''=썸네일 없음 확정, 그 외=asset URL */
@@ -90,13 +91,17 @@ export async function getPersistentThumbUrl(
   fileSize: number,
 ): Promise<string | null> {
   if (fileType !== 'image' && fileType !== 'video') return null;
+  // Google Drive 등 cloud path는 Rust에서 file ID 기반 drive_thumbnails 경로를 결정한다.
+  // 프론트가 path 기반 img/video_thumbnails URL을 먼저 꽂으면 새로고침 직후 404가 난다.
+  if (isCloudPath(path)) return null;
   const root = await getAppCacheDir();
   if (!root) return null;
 
-  const cacheDir = fileType === 'image' ? 'img_thumbnails' : 'video_thumbnails';
-  const stableModified = isCloudPath(path) ? 0 : Math.trunc(modified || 0);
+  const isPsd = /\.(psd|psb)$/i.test(path);
+  const cacheDir = isPsd ? 'psd_thumbnails' : fileType === 'image' ? 'img_thumbnails' : 'video_thumbnails';
+  const stableModified = Math.trunc(modified || 0);
   const cacheKey = stableCacheKey([
-    'thumbnail-v2',
+    'thumbnail-v3',
     path,
     String(stableModified),
     String(Math.trunc(fileSize || 0)),

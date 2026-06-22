@@ -17,10 +17,17 @@ interface QueueItem {
 }
 
 const MAX_CONCURRENT = 6;
+// 저우선(썸네일)은 별도 레인. QuickLook/File Provider 같은 네트워크 대기형이라
+// CPU가 아니라 I/O를 기다리므로 동시성을 높게 잡아도 안전(CPU 합성은 Rust heavy-op 퍼밋이 제한).
+// 클라우드 폴더 워밍은 파일당 네트워크 왕복이 지배적이라 동시 다운로드 수가 곧 처리량.
+const MAX_LOW_CONCURRENT = 24;
 const MAX_QUEUE_SIZE = 200;
-const MAX_LOW_QUEUE_SIZE = 256;
+// 저우선(썸네일) 큐 상한. 오버플로우 시 가장 오래된(=먼저 보인 상단) 항목부터 제거되므로,
+// 한 폴더의 가시 카드 수(+프리페치 마진)를 넉넉히 수용해 보이는 썸네일 요청이 버려지지 않게 한다.
+const MAX_LOW_QUEUE_SIZE = 512;
 
 let running = 0;
+let lowRunning = 0;
 const queue: QueueItem[] = [];
 const lowQueue: QueueItem[] = [];
 let invokeImpl: TauriInvoke = invoke;
@@ -38,28 +45,41 @@ export function isTauriCommandCancelled(error: unknown): boolean {
   return error instanceof Error && error.message === 'cancelled';
 }
 
-function processNext() {
-  while (running < MAX_CONCURRENT && (queue.length > 0 || lowQueue.length > 0)) {
-    const item = (queue.length > 0 ? queue.shift() : lowQueue.shift())!;
+function startItem(item: QueueItem, isLow: boolean) {
+  if (isLow) lowRunning++;
+  else running++;
+  invokeImpl(item.cmd, item.args)
+    .then(result => {
+      if (!item.cancelled) item.resolve(result);
+      else item.reject(cancelledError());
+    })
+    .catch(error => {
+      item.reject(normalizeTauriError(error));
+    })
+    .finally(() => {
+      if (isLow) lowRunning--;
+      else running--;
+      processNext();
+    });
+}
 
+function processNext() {
+  // 일반 우선순위와 저우선(썸네일)은 독립 레인으로 처리해 서로를 굶기지 않는다.
+  while (running < MAX_CONCURRENT && queue.length > 0) {
+    const item = queue.shift()!;
     if (item.cancelled) {
       item.reject(cancelledError());
       continue;
     }
-
-    running++;
-    invokeImpl(item.cmd, item.args)
-      .then(result => {
-        if (!item.cancelled) item.resolve(result);
-        else item.reject(cancelledError());
-      })
-      .catch(error => {
-        item.reject(normalizeTauriError(error));
-      })
-      .finally(() => {
-        running--;
-        processNext();
-      });
+    startItem(item, false);
+  }
+  while (lowRunning < MAX_LOW_CONCURRENT && lowQueue.length > 0) {
+    const item = lowQueue.shift()!;
+    if (item.cancelled) {
+      item.reject(cancelledError());
+      continue;
+    }
+    startItem(item, true);
   }
 }
 
@@ -156,6 +176,7 @@ export function __setTauriInvokeForTest(nextInvoke: TauriInvoke): () => void {
 export function __resetTauriInvokeForTest(): void {
   cancelQueuedTauriCommands();
   running = 0;
+  lowRunning = 0;
   queue.length = 0;
   lowQueue.length = 0;
   invokeImpl = invoke;

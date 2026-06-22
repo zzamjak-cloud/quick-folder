@@ -21,7 +21,10 @@ pub use font::{get_font_info, read_font_bytes, FontInfo};
 pub use pixelate::{pixelate_image, pixelate_preview};
 pub use sprite::{save_sprite_sheet, split_sprite_sheet, sprite_sheet_preview};
 pub(crate) use thumbnail::{
-    cached_thumbnail, ensure_cached_thumbnail, invalidate_thumbnail_cache_paths,
-    invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root,
+    cached_thumbnail, ensure_cached_thumbnail, ensure_google_drive_thumbnail,
+    invalidate_thumbnail_cache_paths, invalidate_thumbnail_cache_paths_in_root,
+    thumbnail_cache_root,
 };
-pub use thumbnail::{get_file_thumbnail, get_file_thumbnail_path, get_psd_thumbnail};
+pub use thumbnail::{
+    get_file_thumbnail, get_file_thumbnail_path, get_psd_thumbnail, get_psd_thumbnail_path,
+};

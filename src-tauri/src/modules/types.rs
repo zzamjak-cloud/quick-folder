@@ -29,16 +29,15 @@ pub struct FileEntry {
 pub fn classify_file(name: &str) -> FileType {
     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
-        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" | "icns" | "psd" => {
-            FileType::Image
-        }
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "ico" | "icns" | "psd"
+        | "psb" => FileType::Image,
         "mp4" | "mov" | "avi" | "mkv" | "webm" => FileType::Video,
         "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "md" | "gslides"
         | "gdoc" | "gsheet" | "gmap" => FileType::Document,
         "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h" | "css"
-        | "html" | "json" | "toml" | "yaml" | "yml" | "cs" | "shader" | "glsl" | "hlsl"
-        | "lua" | "rb" | "php" | "swift" | "kt" | "sh" | "bat" | "ps1" | "r" | "sql"
-        | "scala" | "dart" | "zig" | "xml" | "csv" | "log" => FileType::Code,
+        | "html" | "json" | "toml" | "yaml" | "yml" | "cs" | "shader" | "glsl" | "hlsl" | "lua"
+        | "rb" | "php" | "swift" | "kt" | "sh" | "bat" | "ps1" | "r" | "sql" | "scala" | "dart"
+        | "zig" | "xml" | "csv" | "log" => FileType::Code,
         "zip" | "tar" | "gz" | "7z" | "rar" | "dmg" | "pkg" | "unitypackage" => FileType::Archive,
         "ttf" | "otf" | "woff" | "woff2" | "ttc" => FileType::Font,
         _ => {
@@ -52,12 +51,10 @@ pub fn classify_file(name: &str) -> FileType {
                 .unwrap_or(name)
                 .to_lowercase();
             match lower_name.as_str() {
-                "license" | "licence" | "readme" | "makefile" | "dockerfile"
-                | "gemfile" | "rakefile" | "procfile" | "vagrantfile"
-                | ".gitignore" | ".gitattributes" | ".editorconfig" | ".env"
-                | ".npmrc" | ".prettierrc" | ".eslintrc" | ".dockerignore" => {
-                    FileType::Document
-                }
+                "license" | "licence" | "readme" | "makefile" | "dockerfile" | "gemfile"
+                | "rakefile" | "procfile" | "vagrantfile" | ".gitignore" | ".gitattributes"
+                | ".editorconfig" | ".env" | ".npmrc" | ".prettierrc" | ".eslintrc"
+                | ".dockerignore" => FileType::Document,
                 _ => FileType::Other,
             }
         }
@@ -77,6 +74,7 @@ mod tests {
         assert_eq!(matches!(classify_file("icon.svg"), FileType::Image), true);
         assert_eq!(matches!(classify_file("photo.webp"), FileType::Image), true);
         assert_eq!(matches!(classify_file("design.psd"), FileType::Image), true);
+        assert_eq!(matches!(classify_file("large.psb"), FileType::Image), true);
     }
 
     #[test]
@@ -84,14 +82,26 @@ mod tests {
         assert_eq!(matches!(classify_file("movie.mp4"), FileType::Video), true);
         assert_eq!(matches!(classify_file("clip.mov"), FileType::Video), true);
         assert_eq!(matches!(classify_file("video.avi"), FileType::Video), true);
-        assert_eq!(matches!(classify_file("animation.gif"), FileType::Image), true); // GIF는 Image
+        assert_eq!(
+            matches!(classify_file("animation.gif"), FileType::Image),
+            true
+        ); // GIF는 Image
     }
 
     #[test]
     fn test_classify_file_documents() {
-        assert_eq!(matches!(classify_file("report.pdf"), FileType::Document), true);
-        assert_eq!(matches!(classify_file("note.txt"), FileType::Document), true);
-        assert_eq!(matches!(classify_file("readme.md"), FileType::Document), true);
+        assert_eq!(
+            matches!(classify_file("report.pdf"), FileType::Document),
+            true
+        );
+        assert_eq!(
+            matches!(classify_file("note.txt"), FileType::Document),
+            true
+        );
+        assert_eq!(
+            matches!(classify_file("readme.md"), FileType::Document),
+            true
+        );
         assert_eq!(matches!(classify_file("data.json"), FileType::Code), true); // JSON은 Code
     }
 
@@ -105,29 +115,53 @@ mod tests {
 
     #[test]
     fn test_classify_file_archives() {
-        assert_eq!(matches!(classify_file("archive.zip"), FileType::Archive), true);
-        assert_eq!(matches!(classify_file("package.tar"), FileType::Archive), true);
-        assert_eq!(matches!(classify_file("backup.7z"), FileType::Archive), true);
+        assert_eq!(
+            matches!(classify_file("archive.zip"), FileType::Archive),
+            true
+        );
+        assert_eq!(
+            matches!(classify_file("package.tar"), FileType::Archive),
+            true
+        );
+        assert_eq!(
+            matches!(classify_file("backup.7z"), FileType::Archive),
+            true
+        );
     }
 
     #[test]
     fn test_classify_file_fonts() {
         assert_eq!(matches!(classify_file("font.ttf"), FileType::Font), true);
-        assert_eq!(matches!(classify_file("typeface.otf"), FileType::Font), true);
-        assert_eq!(matches!(classify_file("webfont.woff2"), FileType::Font), true);
+        assert_eq!(
+            matches!(classify_file("typeface.otf"), FileType::Font),
+            true
+        );
+        assert_eq!(
+            matches!(classify_file("webfont.woff2"), FileType::Font),
+            true
+        );
     }
 
     #[test]
     fn test_classify_file_other() {
         assert_eq!(matches!(classify_file("data.xyz"), FileType::Other), true);
-        assert_eq!(matches!(classify_file("file.unknown"), FileType::Other), true);
-        assert_eq!(matches!(classify_file("noextension"), FileType::Other), true);
+        assert_eq!(
+            matches!(classify_file("file.unknown"), FileType::Other),
+            true
+        );
+        assert_eq!(
+            matches!(classify_file("noextension"), FileType::Other),
+            true
+        );
     }
 
     #[test]
     fn test_classify_file_case_insensitive() {
         assert_eq!(matches!(classify_file("IMAGE.PNG"), FileType::Image), true);
         assert_eq!(matches!(classify_file("Video.MP4"), FileType::Video), true);
-        assert_eq!(matches!(classify_file("Document.PDF"), FileType::Document), true);
+        assert_eq!(
+            matches!(classify_file("Document.PDF"), FileType::Document),
+            true
+        );
     }
 }

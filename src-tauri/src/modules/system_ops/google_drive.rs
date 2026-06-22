@@ -49,40 +49,41 @@ fn try_read_drive_id_stream(path: &str) -> Option<String> {
     }
 }
 
-/// Google Drive 파일의 extended attribute에서 파일 ID 추출
-/// macOS: xattr -p com.google.drivefs.item-id#S <path>
-/// Windows: path:user.drive.id 스트림
-/// 폴백: .gsheet/.gdoc 파일은 JSON 내 doc_id 사용
-#[tauri::command]
-pub fn get_google_drive_file_id(path: String) -> Result<String, String> {
+pub(crate) fn get_google_drive_file_id_for_path(path: &str) -> Result<Option<String>, String> {
     // 1차: xattr로 파일 ID 추출 (macOS 전용)
+    // getxattr 시스템콜 직접 호출 — 매 썸네일 요청(캐시 히트 포함)마다 xattr 서브프로세스를
+    // fork/exec 하던 오버헤드 제거.
     #[cfg(target_os = "macos")]
     {
-        let output = std::process::Command::new("xattr")
-            .args(["-p", "com.google.drivefs.item-id#S", &path])
-            .output()
-            .map_err(|e| format!("xattr 실행 실패: {}", e))?;
-
-        if output.status.success() {
-            let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if let Ok(Some(value)) = xattr::get(path, "com.google.drivefs.item-id#S") {
+            let id = String::from_utf8_lossy(&value).trim().to_string();
             if !id.is_empty() {
-                return Ok(id);
+                return Ok(Some(id));
             }
         }
     }
 
     // 1차: DriveFS 스트림 (Windows 전용)
     #[cfg(target_os = "windows")]
-    if let Some(id) = try_read_drive_id_stream(&path) {
-        return Ok(id);
+    if let Some(id) = try_read_drive_id_stream(path) {
+        return Ok(Some(id));
     }
 
     // 2차 폴백: Google 서비스 파일의 JSON에서 doc_id 추출
-    if let Some(doc_id) = try_parse_google_service_file(&path) {
-        return Ok(doc_id);
+    if let Some(doc_id) = try_parse_google_service_file(path) {
+        return Ok(Some(doc_id));
     }
 
-    Ok(String::new())
+    Ok(None)
+}
+
+/// Google Drive 파일의 extended attribute에서 파일 ID 추출
+/// macOS: xattr -p com.google.drivefs.item-id#S <path>
+/// Windows: path:user.drive.id 스트림
+/// 폴백: .gsheet/.gdoc 파일은 JSON 내 doc_id 사용
+#[tauri::command]
+pub fn get_google_drive_file_id(path: String) -> Result<String, String> {
+    Ok(get_google_drive_file_id_for_path(&path)?.unwrap_or_default())
 }
 
 /// Google Drive 파일의 오프라인 핀 설정/해제

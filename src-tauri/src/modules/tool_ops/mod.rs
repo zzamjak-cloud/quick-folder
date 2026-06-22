@@ -2,10 +2,10 @@
 //! FFmpeg, Ghostscript, Python fonttools 체크/다운로드/설치
 
 mod ffmpeg;
-mod ghostscript;
 mod fonttools;
+mod ghostscript;
 
 // Re-export all public functions
 pub use ffmpeg::*;
-pub use ghostscript::*;
 pub use fonttools::*;
+pub use ghostscript::*;

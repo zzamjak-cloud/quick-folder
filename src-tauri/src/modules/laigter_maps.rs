@@ -152,7 +152,9 @@ fn sobel_gradients(h: &[f32], width: usize, height: usize) -> (Vec<f32>, Vec<f32
             };
             gx[idx] = -hm1(-1, -1) + hm1(1, -1) - 2.0 * hm1(-1, 0) + 2.0 * hm1(1, 0) - hm1(-1, 1)
                 + hm1(1, 1);
-            gy[idx] = -hm1(-1, -1) - 2.0 * hm1(0, -1) - hm1(1, -1) + hm1(-1, 1) + 2.0 * hm1(0, 1)
+            gy[idx] = -hm1(-1, -1) - 2.0 * hm1(0, -1) - hm1(1, -1)
+                + hm1(-1, 1)
+                + 2.0 * hm1(0, 1)
                 + hm1(1, 1);
         }
     }
@@ -167,7 +169,10 @@ fn encode_png_b64(img: &RgbaImage) -> Result<String> {
 }
 
 /// (normal, parallax height RGB, specular RGB, occlusion RGB)
-fn generate_maps_from_rgba(img: &RgbaImage, params: &LaigterParams) -> Result<(RgbaImage, RgbaImage, RgbaImage, RgbaImage)> {
+fn generate_maps_from_rgba(
+    img: &RgbaImage,
+    params: &LaigterParams,
+) -> Result<(RgbaImage, RgbaImage, RgbaImage, RgbaImage)> {
     let width = img.width() as usize;
     let height = img.height() as usize;
     if width < 2 || height < 2 {
@@ -181,7 +186,11 @@ fn generate_maps_from_rgba(img: &RgbaImage, params: &LaigterParams) -> Result<(R
     let (gx, gy) = sobel_gradients(&h, width, height);
 
     let bump = params.bump_strength.max(0.01);
-    let y_sign = if params.normal_y_flip { -1.0_f32 } else { 1.0_f32 };
+    let y_sign = if params.normal_y_flip {
+        -1.0_f32
+    } else {
+        1.0_f32
+    };
 
     let mut normal_img = RgbaImage::new(width as u32, height as u32);
     let mut parallax_img = RgbaImage::new(width as u32, height as u32);

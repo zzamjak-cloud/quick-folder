@@ -25,6 +25,7 @@ export interface FileEntry {
   size: number;       // 바이트 단위 (폴더는 0)
   modified: number;   // unix timestamp (ms)
   file_type: FileType;
+  thumbnailPath?: string; // 썸네일 소스 경로 오버라이드 (예: PSD의 동일 이름 이미지 형제)
 }
 
 /** 중복 파일 탐색 결과 그룹 */

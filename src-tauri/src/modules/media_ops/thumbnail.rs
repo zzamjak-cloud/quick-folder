@@ -3,8 +3,26 @@
 use crate::modules::archive_ops::materialize_archive_path_in_cache;
 use crate::modules::error::{AppError, Result};
 use crate::modules::image_ops::{
-    cached_thumbnail, ensure_cached_thumbnail, invalidate_thumbnail_cache_paths,
+    cached_thumbnail, ensure_cached_thumbnail, ensure_google_drive_thumbnail,
+    invalidate_thumbnail_cache_paths,
 };
+use base64::Engine;
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThumbnailBatchItem {
+    pub path: String,
+    pub file_type: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThumbnailBatchResult {
+    pub path: String,
+    pub file_type: String,
+    pub cached_path: Option<String>,
+    pub error: Option<String>,
+}
 
 #[tauri::command]
 pub async fn get_video_thumbnail(
@@ -14,17 +32,35 @@ pub async fn get_video_thumbnail(
 ) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app
+    let app_cache = app
         .path()
         .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
-        .join("video_thumbnails");
+        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let cache_dir = app_cache.join("video_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || {
         let resolved_path = materialize_archive_path_in_cache(&app, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
+        if is_cloud {
+            if let Some(cache_path) =
+                ensure_google_drive_thumbnail(&app_cache, &resolved_path_str, size, || {
+                    // 비율 보존: 네이티브 프레임 추출(AVFoundation maximumSize / Windows shell
+                    // RESIZETOFIT — 둘 다 비율 유지)만 사용. QuickLook은 정사각으로 잘려 영상
+                    // 비율을 왜곡하므로 쓰지 않는다.
+                    get_native_video_thumbnail(&resolved_path_str, size)
+                })?
+            {
+                let cached = std::fs::read(cache_path)?;
+                return Ok(Some(
+                    base64::engine::general_purpose::STANDARD.encode(&cached),
+                ));
+            }
+        }
+
         cached_thumbnail(&cache_dir, &resolved_path_str, size, false, || {
+            // 비율 보존 네이티브 추출만 사용(QuickLook 정사각 잘림 회피)
             get_native_video_thumbnail(&resolved_path_str, size)
         })
     })
@@ -41,11 +77,11 @@ pub async fn get_video_thumbnail_path(
 ) -> Result<Option<String>> {
     use tauri::Manager;
 
-    let cache_dir = app
+    let app_cache = app
         .path()
         .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
-        .join("video_thumbnails");
+        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let cache_dir = app_cache.join("video_thumbnails");
 
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
         let resolved_path = materialize_archive_path_in_cache(&app, &path)?
@@ -53,25 +89,87 @@ pub async fn get_video_thumbnail_path(
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         // 클라우드 경로: OS 썸네일 우선(풀 다운로드 회피) + mtime 무시 캐시 키
         let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
+        if is_cloud {
+            if let Some(cache_path) =
+                ensure_google_drive_thumbnail(&app_cache, &resolved_path_str, size, || {
+                    // 비율 보존: 네이티브 프레임 추출(AVFoundation maximumSize / Windows shell
+                    // RESIZETOFIT — 둘 다 비율 유지)만 사용. QuickLook은 정사각으로 잘려 영상
+                    // 비율을 왜곡하므로 쓰지 않는다.
+                    get_native_video_thumbnail(&resolved_path_str, size)
+                })?
+            {
+                return Ok(Some(cache_path.to_string_lossy().to_string()));
+            }
+        }
         let cache_path = ensure_cached_thumbnail(
             &cache_dir,
             &resolved_path_str,
             size,
             false,
             is_cloud,
-            || {
-                if is_cloud {
-                    if let Ok(Some(bytes)) = get_os_thumbnail(&resolved_path_str, size) {
-                        return Ok(Some(bytes));
-                    }
-                }
-                get_native_video_thumbnail(&resolved_path_str, size)
-            },
+            // 비율 보존 네이티브 추출만 사용(QuickLook 정사각 잘림 회피)
+            || get_native_video_thumbnail(&resolved_path_str, size),
         )?;
         Ok(cache_path.map(|p| p.to_string_lossy().to_string()))
     })
     .await
     .map_err(|e| AppError::VideoProcessing(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn ensure_thumbnails_batch(
+    app: tauri::AppHandle,
+    items: Vec<ThumbnailBatchItem>,
+    size: u32,
+) -> Result<Vec<ThumbnailBatchResult>> {
+    const MAX_BATCH_ITEMS: usize = 200;
+    // 클라우드(File Provider)는 I/O 대기형이라 한 건씩 직렬 처리하면 폴더 워밍이 매우 느리다.
+    // 청크 단위로 동시에 처리해 처리량을 높인다(CPU 합성은 내부 heavy-op 퍼밋이 별도 제한).
+    const BATCH_CONCURRENCY: usize = 12;
+
+    let items: Vec<ThumbnailBatchItem> = items.into_iter().take(MAX_BATCH_ITEMS).collect();
+    let mut results = Vec::with_capacity(items.len());
+
+    for chunk in items.chunks(BATCH_CONCURRENCY) {
+        let mut handles = Vec::with_capacity(chunk.len());
+        for item in chunk {
+            let app = app.clone();
+            let task_path = item.path.clone();
+            let task_ft = item.file_type.clone();
+            let handle = tauri::async_runtime::spawn(async move {
+                match task_ft.as_str() {
+                    "image" => {
+                        crate::modules::image_ops::get_file_thumbnail_path(app, task_path, size)
+                            .await
+                    }
+                    "psd" => {
+                        crate::modules::image_ops::get_psd_thumbnail_path(app, task_path, size).await
+                    }
+                    "video" => get_video_thumbnail_path(app, task_path, size).await,
+                    _ => Ok(None),
+                }
+            });
+            // path/file_type을 함께 보관해 join 실패 시에도 입력과 1:1 순서·개수를 보장
+            // (프론트 prewarm이 결과를 입력 순서로 메모리 캐시에 매핑한다)
+            handles.push((item.path.clone(), item.file_type.clone(), handle));
+        }
+
+        for (path, file_type, handle) in handles {
+            let (cached_path, error) = match handle.await {
+                Ok(Ok(cached_path)) => (cached_path, None),
+                Ok(Err(e)) => (None, Some(e.to_string())),
+                Err(_) => (None, Some("thumbnail task failed".to_string())),
+            };
+            results.push(ThumbnailBatchResult {
+                path,
+                file_type,
+                cached_path,
+                error,
+            });
+        }
+    }
+
+    Ok(results)
 }
 
 // macOS: AVFoundation AVAssetImageGenerator로 동영상 프레임 추출

@@ -1,9 +1,21 @@
-import { runCommand, runDirectCommand } from '../tauriCommandRunner.ts';
+import { runCommand, runDirectCommand, runLowPriorityCommand } from '../tauriCommandRunner.ts';
 
 export interface ImageCompressPreview {
   dataUrl?: string;
   data_url?: string;
   size: number;
+}
+
+export interface ThumbnailBatchItem {
+  path: string;
+  fileType: 'image' | 'video' | 'psd';
+}
+
+export interface ThumbnailBatchResult {
+  path: string;
+  fileType: string;
+  cachedPath?: string | null;
+  error?: string | null;
 }
 
 export const mediaCommands = {
@@ -55,6 +67,9 @@ export const mediaCommands = {
   },
   gifToMp4(path: string) {
     return runCommand<string>('gif_to_mp4', { path });
+  },
+  ensureThumbnailsBatch(items: ThumbnailBatchItem[], size: number) {
+    return runLowPriorityCommand<ThumbnailBatchResult[]>('ensure_thumbnails_batch', { items, size });
   },
   checkGhostscript() {
     return runCommand<boolean>('check_gs');

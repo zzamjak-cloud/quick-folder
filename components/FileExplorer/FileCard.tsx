@@ -6,8 +6,9 @@ import { Play, RefreshCw } from 'lucide-react';
 import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
-import { queuedInvoke } from './hooks/invokeQueue';
+import { queuedInvokeLow } from './hooks/invokeQueue';
 import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
+import { isCloudPath } from '../../utils/pathUtils';
 import FuzzyHighlightedName from './FuzzyHighlightedName';
 
 interface FileCardProps {
@@ -70,8 +71,9 @@ export default memo(function FileCard({
   const failedThumbnailUrlsRef = useRef<Set<string>>(new Set());
 
   // PSD 파일 여부 확인
-  const isPsd = entry.name.toLowerCase().endsWith('.psd');
+  const isPsd = /\.(psd|psb)$/i.test(entry.name);
   const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns)$/i.test(entry.name);
+  const isCloudEntry = isCloudPath(entry.path);
 
   // 네이티브 아이콘 (공유 캐시 훅)
   const nativeIcon = useNativeIcon(entry, thumbnailSize, isVisible);
@@ -90,14 +92,22 @@ export default memo(function FileCard({
   });
 
   // IntersectionObserver로 lazy 썸네일 로딩
+  // 클라우드 파일은 File Provider 지연이 있어 실제 스크롤 컨테이너 기준으로 더 일찍 요청한다.
   useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+    const scrollRoot = node.closest('.qf-scrollable');
     const observer = new IntersectionObserver(
-      ([oe]) => { if (oe.isIntersecting) setIsVisible(true); },
-      { threshold: 0.1 }
+      ([oe]) => setIsVisible(oe.isIntersecting),
+      {
+        root: scrollRoot,
+        rootMargin: isCloudEntry ? '1800px 0px' : '480px 0px',
+        threshold: 0,
+      },
     );
-    if (cardRef.current) observer.observe(cardRef.current);
+    observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [isCloudEntry]);
 
   // 화면에 보일 때 이미지/동영상 썸네일 자동 요청
   // - 전역 캐시 우선 조회 → 재방문 시 IPC 없이 즉시 표시
@@ -107,7 +117,6 @@ export default memo(function FileCard({
   useEffect(() => {
     if (!isVisible || isPending) return;
     const ft = entry.file_type;
-    // PSD는 성능상 그리드 제외 (우클릭 미리보기로 대체)
     if (ft !== 'image' && ft !== 'video') return;
 
     const key = thumbKey(entry.path, thumbnailSize, entry.modified);
@@ -118,13 +127,20 @@ export default memo(function FileCard({
       return;
     }
 
+    // PSD에 동일 이름 이미지 형제가 있으면 그 이미지를 썸네일 소스로 사용
+    const thumbSourcePath = entry.thumbnailPath ?? entry.path;
+    const useImageThumb = !!entry.thumbnailPath || (!isPsd && ft === 'image');
+
     let cancelled = false;
-    getPersistentThumbUrl(entry.path, ft, thumbnailSize, entry.modified, entry.size)
-      .then(url => {
-        if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
-        if (getThumb(key) === undefined) setThumbnail(prev => prev ?? url);
-      })
-      .catch(() => {});
+    // 형제 이미지를 쓰는 경우 path/modified/size가 달라 persistent URL 추측이 빗나가므로 건너뛴다.
+    if (!entry.thumbnailPath) {
+      getPersistentThumbUrl(entry.path, ft, thumbnailSize, entry.modified, entry.size)
+        .then(url => {
+          if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
+          if (getThumb(key) === undefined) setThumbnail(prev => prev ?? url);
+        })
+        .catch(() => {});
+    }
 
     const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize;
     lastThumbnailSizeRef.current = thumbnailSize;
@@ -132,8 +148,14 @@ export default memo(function FileCard({
 
     let cancelFn: (() => void) | null = null;
     const timer = setTimeout(() => {
-      const cmd = ft === 'image' ? 'get_file_thumbnail_path' : 'get_video_thumbnail_path';
-      const { promise, cancel } = queuedInvoke<string | null>(cmd, { path: entry.path, size: thumbnailSize });
+      const cmd = useImageThumb
+        ? 'get_file_thumbnail_path'
+        : isPsd
+          ? 'get_psd_thumbnail_path'
+          : ft === 'image'
+            ? 'get_file_thumbnail_path'
+            : 'get_video_thumbnail_path';
+      const { promise, cancel } = queuedInvokeLow<string | null>(cmd, { path: thumbSourcePath, size: thumbnailSize });
       cancelFn = cancel;
       promise
         .then(p => {
@@ -149,7 +171,7 @@ export default memo(function FileCard({
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, entry.size, thumbnailSize, thumbnailReloadSeq]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.thumbnailPath, entry.modified, entry.size, thumbnailSize, thumbnailReloadSeq, isPsd]);
 
   const handleThumbnailLoad = useCallback(() => {
     if (!thumbnail) return;
@@ -164,11 +186,12 @@ export default memo(function FileCard({
     setThumbnailReloadSeq(n => n + 1);
   }, [thumbnail, entry.path, entry.modified, thumbnailSize]);
 
-  // 화면에 보일 때 이미지 규격 조회 (이미지만, PSD 제외 - 성능)
+  // 이미지 규격 조회 (보조 정보). 썸네일이 먼저 표시된 뒤에만 요청해
+  // 초기 진입 시 썸네일 요청과 저우선 큐를 두 배로 점유하지 않게 한다(가시 카드 우선).
   useEffect(() => {
-    if (!isVisible || isPending || entry.file_type !== 'image' || imageDims) return;
+    if (!isVisible || isPending || entry.file_type !== 'image' || imageDims || !thumbnail) return;
 
-    const { promise, cancel } = queuedInvoke<[number, number] | null>(
+    const { promise, cancel } = queuedInvokeLow<[number, number] | null>(
       'get_image_dimensions', { path: entry.path }
     );
     promise
@@ -176,7 +199,7 @@ export default memo(function FileCard({
       .catch(() => {/* 취소 또는 실패 무시 */});
 
     return () => cancel();
-  }, [isVisible, isPending, entry.file_type, entry.path, isPsd]);
+  }, [isVisible, isPending, entry.file_type, entry.path, imageDims, thumbnail]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -263,8 +286,12 @@ export default memo(function FileCard({
             <img
               src={thumbnail}
               alt={entry.name}
-              className="w-full h-full object-contain"
-              loading="lazy"
+              className="object-contain"
+              style={{
+                width: isCloudEntry ? '92%' : '100%',
+                height: isCloudEntry ? '92%' : '100%',
+              }}
+              loading={isCloudEntry ? 'eager' : 'lazy'}
               draggable={false}
               onLoad={handleThumbnailLoad}
               onError={handleThumbnailError}
