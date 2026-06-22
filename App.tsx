@@ -1,59 +1,34 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  Plus,
-  Settings,
   Folder,
-  Trash2,
   Palette,
   ZoomIn,
-  ChevronDown,
-  ChevronRight,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Clock,
-  Download,
-  Monitor,
-  HardDrive,
   HelpCircle,
   Languages,
 } from 'lucide-react';
 import {
-  DndContext,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
-  DragOverlay,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
   CollisionDetection,
 } from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  rectSortingStrategy,
-} from '@dnd-kit/sortable';
+import { arrayMove } from '@dnd-kit/sortable';
 // CSS import 제거 - transform 미사용 (드래그 중 아이템 위치 고정)
 import { v4 as uuidv4 } from 'uuid';
 import { Category, FolderShortcut, ToastMessage, ClipboardData } from './types';
-import { Button } from './components/ui/Button';
-import { Modal } from './components/ui/Modal';
-import { ToastContainer } from './components/ToastContainer';
-import TaskQueuePanel from './components/TaskQueuePanel';
-import { UpdateModal } from './components/UpdateModal';
-import { UpdateFailedModal } from './components/UpdateFailedModal';
-import { HelpModal } from './components/HelpModal';
 import FileExplorer from './components/FileExplorer';
 import TempFileTray from './components/TempFileTray';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauri } from './utils/isTauri';
-import { CategoryColumn, DropIndicator } from './components/CategoryColumn';
-import { ThemeSettingsModal } from './components/ThemeSettingsModal';
-import { ZoomModal } from './components/ZoomModal';
-import { LanguageSettingsModal } from './components/LanguageSettingsModal';
+import type { DropIndicator } from './components/CategoryColumn';
+import { AppSidebar } from './components/AppSidebar';
+import { AppModals } from './components/AppModals';
 import ContextMenu from './components/FileExplorer/ContextMenu';
 import type { ContextMenuSection, Tab } from './components/FileExplorer/types';
 import type { AppLanguage, TranslationKey } from './utils/i18n';
@@ -85,9 +60,6 @@ import { tauriCommands } from './utils/tauriCommands';
 import {
   useThemeManagement,
   adjustColorForTheme,
-  COLORS,
-  FOLDER_TEXT_COLORS,
-  normalizeHexColor,
 } from './hooks/useThemeManagement';
 import { useWindowState } from './hooks/useWindowState';
 import { useAutoUpdate } from './hooks/useAutoUpdate';
@@ -1122,278 +1094,45 @@ export default function App() {
         />
       )}
       <div className={`flex flex-1 overflow-hidden${tempTrayPaths.length > 0 ? ' hidden' : ''}`}>
-        {/* Left: Favorites Panel */}
-        <div
-          style={{ width: sidebarCollapsed ? 32 : leftPanelWidth }}
-          className="qf-sidebar flex-shrink-0 flex flex-col overflow-hidden transition-[width] duration-200"
-        >
-          {/* 사이드바 헤더: 폴딩 아이콘 + (펼침 시) 검색/버튼 */}
-          <div className="flex-shrink-0 border-b border-[var(--qf-border)]">
-            {sidebarCollapsed ? (
-              /* 접힌 상태: 폴딩 아이콘만 */
-              <div className="flex items-center justify-center" style={{ height: 36 }}>
-                <button
-                  onClick={() => setSidebarCollapsed(prev => !prev)}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title={t('sidebar.expand')}
-                >
-                  <PanelLeftOpen size={14} />
-                </button>
-              </div>
-            ) : (
-              /* 펼친 상태: 폴딩 아이콘 + 버튼 (한 줄) */
-              <div className="flex items-center px-3 gap-1.5" style={{ height: 36 }}>
-                <button
-                  onClick={() => setSidebarCollapsed(prev => !prev)}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)]"
-                  title={t('sidebar.collapse')}
-                >
-                  <PanelLeftClose size={14} />
-                </button>
-                <div className="flex-1" />
-                <button
-                  type="button"
-                  onClick={handleOpenSettingsMenu}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                  title={t('settings.title')}
-                  aria-label={t('settings.title')}
-                >
-                  <Settings size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={catMgmt.openAddCategoryModal}
-                  className="p-1 text-[var(--qf-muted)] hover:text-[var(--qf-text)] transition-colors rounded-md hover:bg-[var(--qf-surface-hover)] flex-shrink-0"
-                  title={t('sidebar.addSection')}
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 사이드바 콘텐츠 */}
-          {sidebarCollapsed ? (
-            <div className="flex-1 overflow-y-auto px-1 py-2">
-              <div className="flex flex-col items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleOpenRecent}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
-                  title="최근항목"
-                  aria-label="최근항목"
-                >
-                  <Clock size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenSystemRoot}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
-                  title={isMac ? 'Macintosh HD' : '내 PC'}
-                  aria-label={isMac ? 'Macintosh HD' : '내 PC'}
-                >
-                  <HardDrive size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenDesktop}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)] disabled:cursor-not-allowed disabled:opacity-35"
-                  title="데스크탑"
-                  aria-label="데스크탑"
-                  disabled={!desktopPath}
-                >
-                  <Monitor size={15} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenDownloads}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--qf-accent)] transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)] disabled:cursor-not-allowed disabled:opacity-35"
-                  title="다운로드"
-                  aria-label="다운로드"
-                  disabled={!downloadPath}
-                >
-                  <Download size={15} />
-                </button>
-              </div>
-
-              {collapsedSessionBadges.length > 0 && (
-                <>
-                  <div className="mx-auto my-2 h-px w-5 bg-[var(--qf-border)]" />
-                  <div className="flex flex-col items-center gap-1">
-                    {collapsedSessionBadges.map(({ category, label, color }) => (
-                      <button
-                        key={category.id}
-                        type="button"
-                        onClick={(event) => {
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          setCollapsedSessionMenu({ categoryId: category.id, x: rect.right + 6, y: rect.top });
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors hover:bg-[var(--qf-surface-hover)] focus:outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
-                        style={{
-                          borderColor: color ?? 'var(--qf-border)',
-                          color: color ?? 'var(--qf-text)',
-                          backgroundColor: 'var(--qf-surface)',
-                        }}
-                        title={category.title}
-                        aria-label={category.title}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* 고정 영역: 최근항목/데스크탑/다운로드/시스템 루트 */}
-              <div className="shrink-0 px-4 pt-4 pb-1">
-                <div
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-                  onClick={handleOpenRecent}
-                >
-                  <Clock size={14} className="text-[var(--qf-accent)]" />
-                  <span className="text-xs font-semibold text-[var(--qf-text)]">최근항목</span>
-                </div>
-                <div
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-                  onClick={handleOpenSystemRoot}
-                >
-                  <HardDrive size={14} className="text-[var(--qf-accent)]" />
-                  <span className="text-xs font-semibold text-[var(--qf-text)]">{isMac ? 'Macintosh HD' : '내 PC'}</span>
-                </div>
-                <div
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-                  onClick={handleOpenDesktop}
-                >
-                  <Monitor size={14} className="text-[var(--qf-accent)]" />
-                  <span className="text-xs font-semibold text-[var(--qf-text)]">데스크탑</span>
-                </div>
-                <div
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none hover:bg-[var(--qf-surface-hover)] transition-colors"
-                  onClick={handleOpenDownloads}
-                >
-                  <Download size={14} className="text-[var(--qf-accent)]" />
-                  <span className="text-xs font-semibold text-[var(--qf-text)]">다운로드</span>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
-
-          <DndContext
-            sensors={sensors}
-            collisionDetection={customCollisionDetection}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-          >
-            <main
-              className="w-full"
-              onDragOverCapture={(e) => {
-                e.preventDefault();
-                updateHoveredCategoryFromDragEvent(e);
-              }}
-              onDragLeaveCapture={clearHoveredCategoryIfLeftMain}
-            >
-              <div
-                style={{
-                  transform: `scale(${theme.zoomScale})`,
-                  transformOrigin: 'top left',
-                  width: `${100 / theme.zoomScale}%`,
-                }}
-              >
-              <SortableContext
-                items={categories.map(c => c.id)}
-                strategy={rectSortingStrategy}
-              >
-                {(
-                  <div
-                    style={{
-                      columnCount: 1,
-                      columnGap: '0.75rem',
-                      width: '100%',
-                      marginTop: '-0.75rem',
-                    }}
-                  >
-                  {categories.map((category, idx) => (
-                    <CategoryColumn
-                      key={category.id}
-                      category={category}
-                      categoryIndex={idx}
-                      toggleCollapse={catMgmt.toggleCollapse}
-                      toggleCollapseAll={catMgmt.toggleCollapseAll}
-                      handleAddFolder={catMgmt.handleAddFolder}
-                      openEditCategoryModal={catMgmt.openEditCategoryModal}
-                      deleteCategory={catMgmt.deleteCategory}
-                      handleOpenFolder={handleOpenInExplorer}
-                      handleOpenInNewTab={handleOpenInNewTab}
-                      handleCopyPath={handleCopyPath}
-                      deleteShortcut={catMgmt.deleteShortcut}
-                      openEditFolderModal={catMgmt.openEditFolderModal}
-                      isDark={theme.isDark}
-                      dropIndicator={dropIndicator}
-                    />
-                  ))}
-
-                {categories.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-20 text-[var(--qf-muted)]" style={{ breakInside: 'avoid' }}>
-                    <Folder size={48} className="mb-4 opacity-50" />
-                    <p className="text-lg font-medium">등록된 카테고리가 없습니다.</p>
-                    <Button onClick={catMgmt.openAddCategoryModal} className="mt-4" variant="secondary">
-                      새 카테고리 만들기
-                    </Button>
-                  </div>
-                )}
-                  </div>
-                )}
-               </SortableContext>
-              </div>
-            </main>
-            <DragOverlay>
-              {activeId ? (() => {
-                const activeCategory = categories.find(c => c.id === activeId);
-                if (activeCategory) {
-                  return (
-                    <div className="bg-[var(--qf-surface-2)] border-2 border-[var(--qf-accent)] rounded-2xl p-3 shadow-2xl backdrop-blur-sm min-w-[200px]">
-                      <div className="flex items-center gap-2">
-                        <h2
-                          className="font-semibold"
-                          style={{
-                            color: (() => {
-                              const raw = activeCategory.color?.startsWith('#')
-                                ? activeCategory.color
-                                : (activeCategory.color &&
-                                    (LEGACY_TEXT_CLASS_TO_HEX[activeCategory.color] ||
-                                      LEGACY_BG_CLASS_TO_HEX[activeCategory.color])) ||
-                                  undefined;
-                              return raw ? adjustColorForTheme(raw, theme.isDark) : undefined;
-                            })(),
-                          }}
-                        >
-                          {activeCategory.title}
-                        </h2>
-                      </div>
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div className="bg-[var(--qf-surface-2)] p-2 rounded-lg shadow-xl border border-[var(--qf-accent-50)] flex items-center gap-3">
-                      <div className="p-1.5 rounded-md bg-[var(--qf-surface)] text-[var(--qf-accent)]">
-                        <Folder size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-[var(--qf-text)] truncate">Moving...</div>
-                      </div>
-                    </div>
-                  );
-                }
-              })() : null}
-            </DragOverlay>
-          </DndContext>
-              </div>
-            </>
-          )}
-        </div>
+        <AppSidebar
+          sidebarCollapsed={sidebarCollapsed}
+          leftPanelWidth={leftPanelWidth}
+          setSidebarCollapsed={setSidebarCollapsed}
+          t={t}
+          onOpenSettingsMenu={handleOpenSettingsMenu}
+          onOpenRecent={handleOpenRecent}
+          onOpenSystemRoot={handleOpenSystemRoot}
+          onOpenDesktop={handleOpenDesktop}
+          onOpenDownloads={handleOpenDownloads}
+          isMac={isMac}
+          desktopPath={desktopPath}
+          downloadPath={downloadPath}
+          collapsedSessionBadges={collapsedSessionBadges}
+          setCollapsedSessionMenu={setCollapsedSessionMenu}
+          sensors={sensors}
+          customCollisionDetection={customCollisionDetection}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          updateHoveredCategoryFromDragEvent={updateHoveredCategoryFromDragEvent}
+          clearHoveredCategoryIfLeftMain={clearHoveredCategoryIfLeftMain}
+          zoomScale={theme.zoomScale}
+          categories={categories}
+          activeId={activeId}
+          dropIndicator={dropIndicator}
+          isDark={theme.isDark}
+          openAddCategoryModal={catMgmt.openAddCategoryModal}
+          toggleCollapse={catMgmt.toggleCollapse}
+          toggleCollapseAll={catMgmt.toggleCollapseAll}
+          handleAddFolder={catMgmt.handleAddFolder}
+          openEditCategoryModal={catMgmt.openEditCategoryModal}
+          deleteCategory={catMgmt.deleteCategory}
+          handleOpenFolder={handleOpenInExplorer}
+          handleOpenInNewTab={handleOpenInNewTab}
+          handleCopyPath={handleCopyPath}
+          deleteShortcut={catMgmt.deleteShortcut}
+          openEditFolderModal={catMgmt.openEditFolderModal}
+        />
 
         {/* 드래그 구분선 (접힌 상태에서는 너비 조절 비활성화) */}
         <div
@@ -1514,124 +1253,26 @@ export default function App() {
         />
       )}
 
-      {/* --- Modals --- */}
-
-      <ThemeSettingsModal isOpen={isBgModalOpen} onClose={() => setIsBgModalOpen(false)} theme={theme} />
-      <ZoomModal isOpen={isZoomModalOpen} onClose={() => setIsZoomModalOpen(false)} zoomPercent={theme.zoomPercent} setZoomPercent={theme.setZoomPercent} />
-      <LanguageSettingsModal
-        isOpen={isLanguageModalOpen}
+      <AppModals
+        isBgModalOpen={isBgModalOpen}
+        setIsBgModalOpen={setIsBgModalOpen}
+        isZoomModalOpen={isZoomModalOpen}
+        setIsZoomModalOpen={setIsZoomModalOpen}
+        isLanguageModalOpen={isLanguageModalOpen}
+        setIsLanguageModalOpen={setIsLanguageModalOpen}
+        isHelpModalOpen={isHelpModalOpen}
+        setIsHelpModalOpen={setIsHelpModalOpen}
+        theme={theme}
+        themeVars={themeVars}
         language={language}
         onLanguageChange={handleLanguageChange}
-        onClose={() => setIsLanguageModalOpen(false)}
         t={t}
+        catMgmt={catMgmt}
+        autoUpdate={autoUpdate}
+        addToast={addToast}
+        toasts={toasts}
+        removeToast={removeToast}
       />
-
-      {/* Category Modal */}
-      <Modal
-        isOpen={catMgmt.isCatModalOpen}
-        onClose={() => catMgmt.setIsCatModalOpen(false)}
-        title={catMgmt.editingCategory ? "카테고리 수정" : "새 카테고리 추가"}
-      >
-        <form onSubmit={catMgmt.handleSaveCategory} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-1">카테고리 이름</label>
-            <input type="text" required value={catMgmt.catFormTitle} onChange={(e) => catMgmt.setCatFormTitle(e.target.value)} className="w-full bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none" placeholder="예: 업무용, 개인용..." />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-2">색상 태그</label>
-            <div className="flex flex-wrap gap-2">
-              {COLORS.map((color) => (
-                <button key={color.value} type="button" onClick={() => catMgmt.setCatFormColor(color.value)} className={`w-8 h-8 rounded-full transition-transform ${catMgmt.catFormColor === color.value ? 'ring-2 ring-offset-2 ring-offset-[var(--qf-surface)] ring-white scale-110' : 'hover:scale-110 opacity-70 hover:opacity-100'}`} style={{ backgroundColor: color.value }} title={color.name} />
-              ))}
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <input type="color" value={normalizeHexColor(catMgmt.catFormColor) ?? '#60a5fa'} onChange={(e) => catMgmt.setCatFormColor(e.target.value)} className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1" aria-label="카테고리 텍스트 커스텀 컬러 선택" />
-              <input type="text" value={catMgmt.catFormColor} onChange={(e) => catMgmt.setCatFormColor(e.target.value)} placeholder="#60a5fa" className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs" />
-              <Button type="button" variant="secondary" onClick={() => { const v = normalizeHexColor(catMgmt.catFormColor); if (v) catMgmt.setCatFormColor(v); else addToast("색상 값은 #RRGGBB 형식이어야 합니다.", "error"); }}>적용</Button>
-            </div>
-          </div>
-          <div className="pt-4 flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => catMgmt.setIsCatModalOpen(false)}>취소</Button>
-            <Button type="submit">{catMgmt.editingCategory ? "수정 완료" : "추가하기"}</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Folder Shortcut Modal */}
-      <Modal
-        isOpen={catMgmt.isFolderModalOpen}
-        onClose={() => catMgmt.setIsFolderModalOpen(false)}
-        title={catMgmt.editingShortcut ? "폴더 바로가기 수정" : "폴더 바로가기 추가"}
-      >
-        <form onSubmit={catMgmt.handleSaveFolder} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-1">바로가기 이름</label>
-            <input type="text" required value={catMgmt.folderFormName} onChange={(e) => catMgmt.setFolderFormName(e.target.value)} className="w-full bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none" placeholder="예: 프로젝트 문서" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-1">폴더 경로</label>
-            <div className="relative">
-              <input type="text" required value={catMgmt.folderFormPath} onChange={(e) => catMgmt.setFolderFormPath(e.target.value)} className="w-full bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg pl-3 pr-10 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs" placeholder="C:\Users\Name\Documents..." />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-[var(--qf-muted)]"><Folder size={14} /></div>
-            </div>
-            <p className="text-xs text-[var(--qf-muted)] mt-1">* 탐색기 주소창의 경로를 복사해서 붙여넣으세요.</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-[var(--qf-muted)] mb-2">텍스트 색상</label>
-            <div className="flex flex-wrap gap-2">
-              {FOLDER_TEXT_COLORS.map((color) => (
-                <button key={color.value || color.name} type="button" onClick={() => catMgmt.setFolderFormColor(color.value)} className={`w-8 h-8 rounded-full transition-transform ${catMgmt.folderFormColor === color.value ? 'ring-2 ring-offset-2 ring-offset-[var(--qf-surface)] ring-white scale-110' : 'hover:scale-110 opacity-70 hover:opacity-100'}`} style={{ backgroundColor: color.value || (themeVars?.text ?? '#e5e7eb'), border: color.value ? undefined : '1px solid rgba(255,255,255,0.18)' }} title={color.name} />
-              ))}
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <input type="color" value={normalizeHexColor(catMgmt.folderFormColor) ?? '#ffffff'} onChange={(e) => catMgmt.setFolderFormColor(e.target.value)} className="h-10 w-12 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface-2)] p-1" aria-label="폴더 텍스트 커스텀 컬러 선택" />
-              <input type="text" value={catMgmt.folderFormColor} onChange={(e) => catMgmt.setFolderFormColor(e.target.value)} placeholder="#ffffff" className="flex-1 bg-[var(--qf-surface-2)] border border-[var(--qf-border)] rounded-lg px-3 py-2 text-[var(--qf-text)] focus:ring-2 focus:ring-[var(--qf-accent)] focus:border-transparent outline-none font-mono text-xs" />
-              <Button type="button" variant="secondary" onClick={() => { if (!catMgmt.folderFormColor) return; const v = normalizeHexColor(catMgmt.folderFormColor); if (v) catMgmt.setFolderFormColor(v); else addToast("색상 값은 #RRGGBB 형식이어야 합니다.", "error"); }}>적용</Button>
-            </div>
-          </div>
-          <div className="pt-4 flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => catMgmt.setIsFolderModalOpen(false)}>취소</Button>
-            <Button type="submit">{catMgmt.editingShortcut ? "수정 완료" : "추가하기"}</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Update Modal */}
-      {autoUpdate.updateInfo && (
-        <UpdateModal
-          isOpen={autoUpdate.isUpdateModalOpen}
-          onClose={() => autoUpdate.setIsUpdateModalOpen(false)}
-          onUpdate={autoUpdate.handleUpdate}
-          version={autoUpdate.updateInfo.version}
-          currentVersion={autoUpdate.currentAppVersion}
-          releaseNotes={autoUpdate.updateInfo.body}
-          isDownloading={autoUpdate.isDownloading}
-          downloadProgress={autoUpdate.downloadProgress}
-          isWindows={autoUpdate.isWindows}
-          onOpenSacSettings={autoUpdate.openSacSettings}
-        />
-      )}
-
-      {/* 이전 업데이트 시도 실패 안내 (SAC 등으로 조용히 차단된 경우) */}
-      {autoUpdate.previousUpdateFailed && (
-        <UpdateFailedModal
-          isOpen={true}
-          onClose={autoUpdate.dismissPreviousUpdateFailed}
-          fromVersion={autoUpdate.previousUpdateFailed.fromVersion}
-          toVersion={autoUpdate.previousUpdateFailed.toVersion}
-          isWindows={autoUpdate.isWindows}
-          onOpenSacSettings={autoUpdate.openSacSettings}
-        />
-      )}
-
-      {/* 도움말 모달 */}
-      <HelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
-
-      {/* 파일 전송 작업 큐 (복사/이동) */}
-      <TaskQueuePanel themeVars={themeVars} />
-
-      {/* Notifications */}
-      <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>
   );
 }
