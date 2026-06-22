@@ -157,7 +157,7 @@ pub(super) fn find_python_via_py_launcher() -> Option<String> {
 
 #[cfg(target_os = "windows")]
 pub(super) fn find_python_via_registry() -> Option<String> {
-    use super::super::constants::registry::{REG_TYPE_EXPAND_SZ_LEN, REG_TYPE_SZ_LEN};
+    use crate::modules::constants::registry::{REG_TYPE_EXPAND_SZ_LEN, REG_TYPE_SZ_LEN};
     use std::os::windows::process::CommandExt;
     for root in ["HKLM", "HKCU"] {
         for ver in ["3.14", "3.13", "3.12", "3.11", "3.10", "3.9", "3.8"] {

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.45] - 2026-06-23
+
+### Fixed
+- Windows 빌드 실패 수정: `tool_ops/fonttools/python.rs`의 registry 상수 import 경로 오류(`super::super::constants` → `crate::modules::constants`)로 Windows 컴파일이 깨지던 문제 (v1.27.44는 macOS만 발행됨)
+
 ## [1.27.44] - 2026-06-23
 
 ### Added
