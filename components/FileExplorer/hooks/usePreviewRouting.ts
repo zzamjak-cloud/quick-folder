@@ -3,7 +3,8 @@ import type { FileEntry } from '../../../types';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { isArchiveVirtualPath, isBrowsableArchiveFilePath } from '../../../utils/pathUtils';
 import { queuedInvokeLow } from './invokeQueue';
-import { getThumb, thumbKey } from './thumbnailCache';
+import { getThumb, thumbKey, FIXED_GRID_THUMB_SIZE } from './thumbnailCache';
+import { isCloudPath } from '../../../utils/pathUtils';
 import type { PreviewState } from './usePreview';
 
 interface UsePreviewRoutingOptions {
@@ -52,8 +53,13 @@ export function usePreviewRouting({
     if (entry.is_dir) return;
 
     // 그리드에 이미 로드된 썸네일(메모리 캐시)을 미리보기 즉시 placeholder로 사용 → '로딩중' 제거.
+    // 그리드가 320 고정 키로 캐시하는 항목(PSD·클라우드 이미지, 형제 없음)은 같은 크기로 조회해야 HIT.
     // '' = 썸네일 없음 확정이므로 제외. 없으면 undefined → 기존 동작.
-    const cachedThumb = getThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
+    const usesFixedKey =
+      !entry.thumbnailPath &&
+      (/\.(psd|psb)$/i.test(entry.path) || (entry.file_type === 'image' && isCloudPath(entry.path)));
+    const phSize = usesFixedKey ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
+    const cachedThumb = getThumb(thumbKey(entry.path, phSize, entry.modified));
     const placeholder = cachedThumb ? cachedThumb : undefined;
 
     const isVideo = entry.file_type === 'video';
@@ -145,30 +151,42 @@ interface UsePreviewPrewarmOptions {
   isMac: boolean;
 }
 
-// 선택된 PSD의 미리보기 composite(끝부분 부분 읽기, ~0.5MB)를 백그라운드로 미리 데움.
-// → 스페이스바 미리보기를 캐시 HIT로 즉시 표시. 저우선 큐라 폴더 이동 시 자동 취소된다.
+// 선택된 PSD + 앞뒤 이웃의 미리보기 composite(끝부분 부분 읽기, ~0.5MB)를 백그라운드로 미리 데움.
+// → 스페이스바 미리보기를 캐시 HIT로 즉시 표시(화살표 이동 후 바로 열어도 준비됨).
+// 저우선 큐라 폴더 이동 시 자동 취소되고, 이미 캐시된 항목은 Rust에서 즉시 반환된다.
 export function usePreviewPrewarm({ selectedPaths, entries, isMac }: UsePreviewPrewarmOptions) {
   useEffect(() => {
     if (selectedPaths.length !== 1) return;
-    const path = selectedPaths[0];
-    const isPsd = /\.psd$/i.test(path);
-    const isPsb = /\.psb$/i.test(path);
-    // 맥에서 PSB는 QuickLook으로 미리보기하므로 composite 프리워밍이 불필요.
-    if (!isPsd && !(isPsb && !isMac)) return;
-    const entry = entries.find(e => e.path === path);
-    if (!entry || entry.is_dir) return;
+    const idx = entries.findIndex(e => e.path === selectedPaths[0]);
+    if (idx < 0) return;
 
-    let cancelFn: (() => void) | null = null;
+    // 맥에서 PSB는 QuickLook으로 미리보기하므로 composite 프리워밍 불필요.
+    const wantsPrewarm = (e: FileEntry | undefined): e is FileEntry =>
+      !!e && !e.is_dir && (/\.psd$/i.test(e.path) || (/\.psb$/i.test(e.path) && !isMac));
+
+    // 선택 항목을 먼저(큐 우선), 그다음 앞뒤 2개 — 화살표 이동 대비.
+    const NEIGHBOR = 2;
+    const targets: string[] = [];
+    if (wantsPrewarm(entries[idx])) targets.push(entries[idx].path);
+    for (let d = 1; d <= NEIGHBOR; d++) {
+      if (wantsPrewarm(entries[idx + d])) targets.push(entries[idx + d].path);
+      if (wantsPrewarm(entries[idx - d])) targets.push(entries[idx - d].path);
+    }
+    if (targets.length === 0) return;
+
+    const cancels: Array<() => void> = [];
     // 화살표로 빠르게 넘길 때 매 항목 프리워밍하지 않도록 짧게 디바운스.
     const timer = setTimeout(() => {
-      const { promise, cancel } = queuedInvokeLow<boolean>('prewarm_psd_preview', { path, size: 1280 });
-      cancelFn = cancel;
-      promise.catch(() => {});
+      for (const p of targets) {
+        const { promise, cancel } = queuedInvokeLow<boolean>('prewarm_psd_preview', { path: p, size: 1280 });
+        cancels.push(cancel);
+        promise.catch(() => {});
+      }
     }, 250);
 
     return () => {
       clearTimeout(timer);
-      if (cancelFn) cancelFn();
+      cancels.forEach(c => c());
     };
   }, [selectedPaths, entries, isMac]);
 }

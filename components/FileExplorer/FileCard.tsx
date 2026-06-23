@@ -7,7 +7,7 @@ import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowSt
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvokeLow } from './hooks/invokeQueue';
-import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
+import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl, FIXED_GRID_THUMB_SIZE } from './hooks/thumbnailCache';
 import { isCloudPath } from '../../utils/pathUtils';
 import FuzzyHighlightedName from './FuzzyHighlightedName';
 
@@ -58,9 +58,18 @@ export default memo(function FileCard({
   cvEnabled = false,
   fuzzyHighlightIndices,
 }: FileCardProps) {
+  // 생성이 무거운/네트워크 항목(PSD, 클라우드 이미지)은 표시 크기와 무관하게 320으로 1번만 생성·캐시.
+  // 화면에는 그리드 레이아웃이 <img>를 CSS로 축소 표시 → 줌/크기변경 시 재생성·재다운로드 없음.
+  // 형제 이미지를 쓰는 PSD, 로컬 이미지/비디오는 표시 크기 그대로 생성(생성이 싸므로).
+  const isPsd = /\.(psd|psb)$/i.test(entry.name);
+  const isCloudEntry = isCloudPath(entry.path);
+  const useFixedRenderSize =
+    !entry.thumbnailPath && (isPsd || (entry.file_type === 'image' && isCloudEntry));
+  const renderSize: number = useFixedRenderSize ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
+
   // 초기값을 전역 캐시에서 동기 조회 → 재방문 시 깜빡임 없이 즉시 표시
   const [thumbnail, setThumbnail] = useState<string | null>(() => {
-    const cached = getThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
+    const cached = getThumb(thumbKey(entry.path, renderSize, entry.modified));
     return cached ? cached : null;
   });
   const [thumbnailReloadSeq, setThumbnailReloadSeq] = useState(0);
@@ -70,10 +79,7 @@ export default memo(function FileCard({
   const lastThumbnailSizeRef = useRef<number>(0);
   const failedThumbnailUrlsRef = useRef<Set<string>>(new Set());
 
-  // PSD 파일 여부 확인
-  const isPsd = /\.(psd|psb)$/i.test(entry.name);
   const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns)$/i.test(entry.name);
-  const isCloudEntry = isCloudPath(entry.path);
 
   // 네이티브 아이콘 (공유 캐시 훅)
   const nativeIcon = useNativeIcon(entry, thumbnailSize, isVisible);
@@ -119,7 +125,7 @@ export default memo(function FileCard({
     const ft = entry.file_type;
     if (ft !== 'image' && ft !== 'video') return;
 
-    const key = thumbKey(entry.path, thumbnailSize, entry.modified);
+    const key = thumbKey(entry.path, renderSize, entry.modified);
     const cached = getThumb(key);
     if (cached !== undefined) {
       // '' = 썸네일 없음 확정 → 아이콘 폴백
@@ -134,7 +140,7 @@ export default memo(function FileCard({
     let cancelled = false;
     // 형제 이미지를 쓰는 경우 path/modified/size가 달라 persistent URL 추측이 빗나가므로 건너뛴다.
     if (!entry.thumbnailPath) {
-      getPersistentThumbUrl(entry.path, ft, thumbnailSize, entry.modified, entry.size)
+      getPersistentThumbUrl(entry.path, ft, renderSize, entry.modified, entry.size)
         .then(url => {
           if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
           if (getThumb(key) === undefined) setThumbnail(prev => prev ?? url);
@@ -142,8 +148,8 @@ export default memo(function FileCard({
         .catch(() => {});
     }
 
-    const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== thumbnailSize;
-    lastThumbnailSizeRef.current = thumbnailSize;
+    const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== renderSize;
+    lastThumbnailSizeRef.current = renderSize;
     const delay = sizeChanged ? 300 : 0;
 
     let cancelFn: (() => void) | null = null;
@@ -155,7 +161,7 @@ export default memo(function FileCard({
           : ft === 'image'
             ? 'get_file_thumbnail_path'
             : 'get_video_thumbnail_path';
-      const { promise, cancel } = queuedInvokeLow<string | null>(cmd, { path: thumbSourcePath, size: thumbnailSize });
+      const { promise, cancel } = queuedInvokeLow<string | null>(cmd, { path: thumbSourcePath, size: renderSize });
       cancelFn = cancel;
       promise
         .then(p => {
@@ -176,15 +182,15 @@ export default memo(function FileCard({
   const handleThumbnailLoad = useCallback(() => {
     if (!thumbnail) return;
     failedThumbnailUrlsRef.current.delete(thumbnail);
-    setThumb(thumbKey(entry.path, thumbnailSize, entry.modified), thumbnail);
-  }, [thumbnail, entry.path, entry.modified, thumbnailSize]);
+    setThumb(thumbKey(entry.path, renderSize, entry.modified), thumbnail);
+  }, [thumbnail, entry.path, entry.modified, renderSize]);
 
   const handleThumbnailError = useCallback(() => {
     if (thumbnail) failedThumbnailUrlsRef.current.add(thumbnail);
-    deleteThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
+    deleteThumb(thumbKey(entry.path, renderSize, entry.modified));
     setThumbnail(null);
     setThumbnailReloadSeq(n => n + 1);
-  }, [thumbnail, entry.path, entry.modified, thumbnailSize]);
+  }, [thumbnail, entry.path, entry.modified, renderSize]);
 
   // 이미지 규격 조회 (보조 정보). 썸네일이 먼저 표시된 뒤에만 요청해
   // 초기 진입 시 썸네일 요청과 저우선 큐를 두 배로 점유하지 않게 한다(가시 카드 우선).

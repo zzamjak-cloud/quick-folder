@@ -15,8 +15,66 @@ import { isTauri } from '../../../utils/isTauri';
 
 const MAX_ENTRIES = 4000;
 const THUMBNAIL_MEMORY_CACHE_VERSION = 'v4';
+
+// 생성 비용이 목표 크기와 무관한 항목(PSD composite, 클라우드 이미지=전체 다운로드+디코드)은
+// 표시 크기와 무관하게 항상 이 크기로 1번만 생성·캐시하고 화면에는 CSS로 축소 표시한다.
+// → 줌/크기변경 시 재생성·재다운로드를 없앤다. 그리드 최대값(320)과 일치해야 함.
+// (로컬 이미지/비디오는 생성이 싸고 작은 표시엔 작은 썸네일이 유리해 제외 — 표시 크기 그대로)
+export const FIXED_GRID_THUMB_SIZE = 320;
 const cache = new Map<string, string>();
 let appCacheDirPromise: Promise<string | null> | null = null;
+
+// 세션 간 영속화: 캐시(키→asset URL)를 localStorage에 저장해 앱 재시작 시 IPC 없이 즉시 표시.
+// 디스크 캐시 PNG는 이미 영속(app_cache_dir)이라 URL만 보존하면 됨. 프루닝 등으로 파일이 사라진
+// 항목은 <img> onError → deleteThumb로 자가 치유된다. 버전 접미사로 포맷 변경 시 자동 무효화.
+const PERSIST_KEY = `qf.thumbcache.${THUMBNAIL_MEMORY_CACHE_VERSION}`;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function safeLocalStorage(): Storage | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+function hydratePersistedCache(): void {
+  const ls = safeLocalStorage();
+  if (!ls) return;
+  try {
+    const raw = ls.getItem(PERSIST_KEY);
+    if (!raw) return;
+    const arr = JSON.parse(raw) as [string, string][];
+    // 저장 순서(오래된→최근)대로 삽입해 LRU 순서 보존
+    for (const [k, v] of arr) {
+      if (typeof k === 'string' && typeof v === 'string') cache.set(k, v);
+    }
+  } catch {
+    // 손상된 데이터 무시
+  }
+}
+
+function schedulePersist(): void {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    const ls = safeLocalStorage();
+    if (!ls) return;
+    try {
+      ls.setItem(PERSIST_KEY, JSON.stringify(Array.from(cache.entries())));
+    } catch {
+      // quota 초과 등 → 한 번 비우고 재시도(실패 시 포기)
+      try {
+        ls.removeItem(PERSIST_KEY);
+        ls.setItem(PERSIST_KEY, JSON.stringify(Array.from(cache.entries())));
+      } catch {
+        /* 포기 — 다음 변경 때 다시 시도 */
+      }
+    }
+  }, 2000);
+}
+
+hydratePersistedCache();
 
 export function thumbKey(path: string, size: number, modified: number): string {
   return `${THUMBNAIL_MEMORY_CACHE_VERSION}|${path}|${size}|${modified}`;
@@ -40,10 +98,11 @@ export function setThumb(key: string, url: string): void {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
+  schedulePersist();
 }
 
 export function deleteThumb(key: string): void {
-  cache.delete(key);
+  if (cache.delete(key)) schedulePersist();
 }
 
 function getAppCacheDir(): Promise<string | null> {

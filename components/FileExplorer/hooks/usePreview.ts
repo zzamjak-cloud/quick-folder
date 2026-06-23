@@ -119,10 +119,12 @@ export function usePreview(): PreviewState {
       if (isPsd) {
         // PSD/PSB: Rust가 파일 끝의 merged composite만 부분 읽기해 빠르게 렌더한다
         // (거대한 레이어 데이터 다운로드/합성 회피). 캔버스 전체 해상도라 1280으로 충분히 선명.
-        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 1280 });
+        // 캐시 PNG '경로'를 받아 asset 프로토콜로 로딩 → base64/IPC 팽창·메인스레드 디코드 제거,
+        // WebView 자체 캐시 활용(재오픈 즉시).
+        const cachePath = await invoke<string | null>('get_psd_preview_path', { path, size: 1280 });
         if (reqId !== imageLoadRequestRef.current) return; // 다른 미리보기로 전환됨
-        if (b64) {
-          setPreviewImageData(`data:image/png;base64,${b64}`);
+        if (cachePath) {
+          setPreviewImageData(convertFileSrc(cachePath));
         }
       } else if (isIcns) {
         // ICNS: 브라우저 미지원 → Rust로 PNG 변환하여 미리보기

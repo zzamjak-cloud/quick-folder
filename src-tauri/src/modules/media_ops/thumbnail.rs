@@ -125,7 +125,7 @@ pub async fn ensure_thumbnails_batch(
     const MAX_BATCH_ITEMS: usize = 200;
     // 클라우드(File Provider)는 I/O 대기형이라 한 건씩 직렬 처리하면 폴더 워밍이 매우 느리다.
     // 청크 단위로 동시에 처리해 처리량을 높인다(CPU 합성은 내부 heavy-op 퍼밋이 별도 제한).
-    const BATCH_CONCURRENCY: usize = 12;
+    const BATCH_CONCURRENCY: usize = 16;
 
     let items: Vec<ThumbnailBatchItem> = items.into_iter().take(MAX_BATCH_ITEMS).collect();
     let mut results = Vec::with_capacity(items.len());

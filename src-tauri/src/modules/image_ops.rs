@@ -23,9 +23,9 @@ pub use sprite::{save_sprite_sheet, split_sprite_sheet, sprite_sheet_preview};
 pub(crate) use thumbnail::{
     cached_thumbnail, ensure_cached_thumbnail, ensure_google_drive_thumbnail,
     invalidate_thumbnail_cache_paths, invalidate_thumbnail_cache_paths_in_root,
-    thumbnail_cache_root,
+    migrate_psd_local_cache_once, thumbnail_cache_root,
 };
 pub use thumbnail::{
-    get_file_thumbnail, get_file_thumbnail_path, get_psd_thumbnail, get_psd_thumbnail_path,
-    prewarm_psd_preview,
+    get_file_thumbnail, get_file_thumbnail_path, get_psd_preview_path, get_psd_thumbnail,
+    get_psd_thumbnail_path, prewarm_psd_preview,
 };

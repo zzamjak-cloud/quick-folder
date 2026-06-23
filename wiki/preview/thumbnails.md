@@ -34,6 +34,9 @@
 | `getThumb(path, size)` | 메모리 캐시 조회 (없으면 `undefined`) |
 | `setThumb(path, size, dataUrl)` | 메모리 캐시 저장 |
 
+### 세션 간 영속화 (앱 재시작 즉시 표시)
+메모리 캐시(키→asset URL)를 **localStorage(`qf.thumbcache.{버전}`)에 디바운스(2s) 저장**하고, 모듈 로드 시 hydrate한다. 디스크 캐시 PNG는 이미 영속이라 URL만 보존하면 됨. 프루닝으로 파일이 사라진 항목은 `<img>` onError→`deleteThumb`로 자가 치유. quota 초과 시 1회 비우고 재시도(실패 시 포기). 버전 접미사로 포맷 변경 시 자동 무효화. (테스트/비브라우저 환경은 `safeLocalStorage` 가드로 무시)
+
 ## invokeQueue.ts / tauriInvoke.ts
 
 ### 위치
@@ -75,9 +78,21 @@ Google Drive 경로는 `get_google_drive_file_id`와 같은 ID 추출 로직을 
 프론트는 Google Drive 같은 cloud path에서 path 기반 `img_thumbnails`/`video_thumbnails` URL을 선반영하지 않는다. Rust가 실제 cache path를 반환한 뒤에만 `<img>`에 넣어 새로고침 직후 asset 404를 피한다.
 PSD/PSB는 그리드에서 `get_psd_thumbnail_path`를 사용한다.
 
-### PSD 썸네일 경량 추출 (용량 무관) — 단, 크기별 분기
-`generate_psd_thumbnail_bytes`는 **요청 크기(size)에 따라** 경로가 갈린다:
-- **그리드(size 1~320)**: 임베드 썸네일(8BIM 1036, JPEG) 우선 추출(`extract_psd_embedded_thumbnail`). 파일 앞부분(헤더+이미지 리소스, 레이어 데이터 *이전*)만 읽어 용량 무관·합성 없음. 임베드가 없으면 전체 파싱 폴백.
+### 그리드 렌더 크기 320 고정 (크기당 1회 → 줌 재생성·재다운로드 없음)
+**생성 비용이 목표 크기와 무관한 항목**은 표시 크기와 무관하게 **항상 320px로 1번만 생성·캐시**하고 화면에는 `<img>`를 CSS로 축소 표시한다. 대상:
+- **PSD/PSB(형제 없음)**: composite 디코드는 캔버스 전체를 디코드 → 목표 크기 무관.
+- **클라우드 이미지(형제 없음, `file_type==='image'` && `isCloudPath`)**: 크기와 무관하게 **전체 파일을 다운로드+디코드**(`generate_cloud_image_thumbnail_bytes`) → 목표 크기 무관. 줌 시 재다운로드 제거가 핵심 이득.
+- **제외**: 형제 이미지를 쓰는 PSD, **로컬 이미지/비디오**(생성이 싸고 작은 표시엔 작은 썸네일이 메모리/디스크에 유리), 클라우드 비디오(이번 범위 외).
+
+세부:
+- 상수 `FIXED_GRID_THUMB_SIZE = 320`(`thumbnailCache.ts`). 그리드 최대값과 일치해야 함.
+- **키 일관성 필수**: FileCard(`renderSize`/`useFixedRenderSize`), 프리워밍(`useDirectoryLoader` — 대상은 별도 `fixedItems` 배치로 320 생성), 미리보기 placeholder(`usePreviewRouting`)가 **모두 동일 조건**으로 320 키를 써야 캐시 HIT.
+- 첫 생성 비용은 동일(어차피 1회 생성), 이득은 줌/크기변경 시 재생성·재다운로드 제거 + 파일당 캐시 1개.
+
+### PSD 썸네일 생성 (그리드도 composite 우선 — 고화질)
+`generate_psd_thumbnail_bytes`(그리드)는 **merged composite 우선**으로 바뀌었다(미리보기와 동일 소스):
+- **그리드(size 40~320)**: `extract_psd_merged_composite`로 캔버스 전체 해상도를 부분 읽기 → 그리드 크기로 다운스케일. 임베드(~160px)보다 훨씬 선명·비율 정확. composite가 없으면(최대 호환성 끔/미지원) **임베드 → 전체 파싱(≤200MB)** 폴백. 100MP 초과 캔버스는 임베드 폴백(디코드 비용 가드).
+- 비용: composite는 임베드보다 디코드가 크지만(전체 캔버스), XMP 큰 PSD는 오히려 다운로드가 작다(임베드는 14MB 리소스, composite는 ~0.5MB 꼬리). 거대 캔버스 폴더는 디코드 부담↑ → 필요 시 size 임계 분기 추가 여지.
 - **미리보기/컬럼뷰**: 그리드와 **별도 명령·캐시·생성 함수**를 쓴다(아래 "미리보기 전용 전체 렌더" 참고). 임베드(~160px)를 건너뛰고 항상 전체 합성 → 선명.
 - 스페이스바 미리보기(`usePreview`)는 원본(size 0) 대신 **2048px 캡**으로 호출 — 4000px+ 원본 풀렌더 낭비를 막아 렌더·base64·표시를 빠르게. 컬럼뷰(`useColumnView`)는 1024.
 
@@ -104,29 +119,32 @@ PSD/PSB는 그리드에서 `get_psd_thumbnail_path`를 사용한다.
 
 `generate_psd_preview_bytes` 폴백 순서: **merged composite → 임베드 → 전체 합성(≤1GB)**.
 
-프론트(`usePreview.handlePreviewImage`)는 PSD를 `get_psd_thumbnail`(size **1280**) 단건 호출. `imageLoadRequestRef` 토큰으로 빠른 전환 시 오래된 응답을 무시. 첫 렌더 후 `psd_previews`(로컬)/drive(클라우드) 캐시 HIT로 재방문 즉시 표시. 컬럼뷰(`useColumnView`, size 1024)도 같은 명령이라 자동 적용.
+프론트(`usePreview.handlePreviewImage`)는 PSD를 **`get_psd_preview_path`(size 1280)** 로 호출해 캐시 PNG **경로**를 받고 `convertFileSrc`로 asset 프로토콜 로딩한다(base64/IPC 팽창·메인스레드 디코드 제거, WebView 자체 캐시 → 재오픈 즉시). `imageLoadRequestRef` 토큰으로 빠른 전환 시 오래된 응답 무시. placeholder(그리드 썸네일 즉시표시)가 있으면 먼저 보여주고 선명본 도착 시 교체. 컬럼뷰(`useColumnView`)는 아직 `get_psd_thumbnail`(base64, size 1024) 사용.
+- Rust 미리보기 명령 3종이 **`resolve_psd_preview_cache`로 동일 캐시 키 공유**: `get_psd_preview_path`(경로·표시용), `get_psd_thumbnail`(base64·컬럼뷰/호환), `prewarm_psd_preview`(캐시만 데움·바이트 미반환).
 
 ### 미리보기 프리워밍 (`usePreviewPrewarm` + `prewarm_psd_preview`)
-스페이스바 미리보기를 즉시 띄우기 위해 **선택된 PSD의 composite를 백그라운드로 미리 데운다**.
-- 프론트 `usePreviewPrewarm`(`usePreviewRouting.ts`): `selectedPaths`가 단일 PSD일 때 250ms 디바운스 후 `queuedInvokeLow('prewarm_psd_preview', {path, size:1280})`. 저우선 큐라 폴더 이동 시 `cancelAllQueued`로 자동 취소. 맥 PSB는 QuickLook으로 미리보기하므로 프리워밍 제외.
-- Rust `prewarm_psd_preview`: `resolve_psd_preview_cache`(미리보기 표시 명령 `get_psd_thumbnail`과 **동일 캐시 키 공유**)를 호출해 캐시만 데우고 **바이트는 반환하지 않음**(IPC 경량). composite는 ~0.5MB 부분 읽기라 프리워밍 비용이 작다.
+스페이스바 미리보기를 즉시 띄우기 위해 **선택된 PSD + 앞뒤 이웃 2개의 composite를 백그라운드로 미리 데운다**(화살표 이동 후 바로 열어도 준비됨).
+- 프론트 `usePreviewPrewarm`(`usePreviewRouting.ts`): 선택 단일 항목 기준 idx±2 중 PSD(맥 PSB 제외)를 250ms 디바운스 후 `queuedInvokeLow('prewarm_psd_preview', {path, size:1280})`. 선택 항목을 큐에 먼저 넣어 우선. 저우선 큐라 폴더 이동 시 `cancelAllQueued`로 자동 취소.
+- composite는 ~0.5MB 부분 읽기라 프리워밍 비용이 작고, 이미 캐시된 항목은 Rust에서 즉시 반환.
 - 효과: 파일을 선택만 해두면 스페이스바 시 캐시 HIT → 즉시 표시.
 - 로컬 썸네일 캐시 키는 `thumbnail-v4` (Rust `stable_thumbnail_cache_key` ↔ 프론트 `getPersistentThumbUrl` 동일해야 함). 임베드 최적화 도입 후 작게 캐시된 미리보기(size 0/1024)를 무효화하려고 v3→v4로 올렸다.
 - 주의: 임베드 썸네일은 Photoshop 저장 옵션에 의존한다. 구버전/스크립트 생성 PSD는 1036 리소스가 없어(예: XMP만 큰 경우) QuickLook/형제 이미지로만 표시된다.
 - **PSB(대용량 포맷)도 동일 추출 경로**를 쓴다(헤더 version 2지만 이미지 리소스 섹션은 4바이트 길이로 동일). 단, `classify_file`(`types.rs`)에서 `psb`를 `FileType::Image`로 분류해야 FileCard 썸네일 효과가 실행된다. 분류가 빠지면 썸네일 시도조차 안 한다.
 
-### CloudStorage PSD — 부분 읽기로 임베드 추출 (비율 보존, QuickLook 미사용)
-구글드라이브 File Provider는 **부분 다운로드**를 지원한다(앞 128KB 읽으면 ~4MB 청크만 받음, 전체 X). 임베드 썸네일(1036)은 파일 앞부분에 있으므로, **dataless여도 앞부분만 읽어 추출**한다 → 대용량(수십~수백 MB) PSD도 전체 다운로드 없이 비율 보존 썸네일을 얻는다.
-- dataless 판정은 `is_dataless_cloud_file`(macOS **SF_DATALESS 플래그**). blocks 기준은 부분 읽기 후 0이 아니게 되어 오판하므로 플래그로 판정한다.
-- 클라우드 PSD 경로: dataless → `extract_psd_embedded_thumbnail`만(부분 읽기). 다운로드됨 → `generate_psd_thumbnail_bytes`(임베드+전체파싱, 둘 다 비율 보존).
-- **QuickLook(`get_os_thumbnail`)은 PSD 경로에서 쓰지 않는다** — 비정사각을 정사각으로 잘라/왜곡하기 때문(이미지 경로와 동일 원칙). 임베드도 없고 전체파싱도 불가(dataless)면 아이콘 폴백.
-- 캐시 세대 `_v5`: QuickLook 잘림/스킵으로 저장된 `_v4` 이하 캐시·negative cache를 무효화한다.
+### CloudStorage PSD — composite 부분 읽기 우선 (고화질, QuickLook 미사용)
+구글드라이브 File Provider는 **부분 다운로드**를 지원한다(seek+부분 읽기로 해당 구간만 받음). 그리드 클라우드 PSD도 **merged composite를 우선** 추출한다(`extract_psd_merged_composite`) → dataless여도 끝부분 ~0.5MB만 받아 캔버스 전체 해상도의 선명한 썸네일을 얻는다(중간 레이어 데이터는 seek로 건너뜀).
+- dataless 판정은 `is_dataless_cloud_file`(macOS **SF_DATALESS 플래그**).
+- 클라우드 PSD 경로: **composite 우선** → 없으면 dataless면 `extract_psd_embedded_thumbnail`만(전체 다운로드 회피), 다운로드됨이면 `generate_psd_thumbnail_bytes`(composite→임베드→전체파싱) 폴백.
+- **QuickLook(`get_os_thumbnail`)은 PSD 경로에서 쓰지 않는다** — 비정사각을 정사각으로 잘라/왜곡하기 때문. composite·임베드·전체파싱 모두 불가하면 아이콘 폴백.
+- 캐시 세대 **`_v6`**: 그리드를 임베드→composite로 바꾸며 기존 `_v5` 이하(저화질 임베드) 캐시를 무효화·정리한다(`previous_google_drive_thumbnail_cache_files`에 `_v5` 포함). 클라우드 이미지/영상 썸네일도 같은 세대를 공유해 1회 재생성됨(출력은 동일).
+- **로컬 PSD 그리드 캐시(`psd_thumbnails`)는 1회 마이그레이션으로 정리**한다: 앱 시작 시 `migrate_psd_local_cache_once`(lib.rs `setup`에서 백그라운드 스레드)가 마커(`.composite_migrated_v1`)가 없으면 `psd_thumbnails` 내 파일을 비워 다음 표시 때 composite로 재생성되게 한다(공유 키 `thumbnail-v4`를 올리면 이미지 썸네일까지 무효화되므로 디렉터리 정리 방식 채택). 마커는 .png가 아니라 프루닝 대상 아님.
+- **composite 디코드 최적화**: `extract_psd_merged_composite`는 픽셀별 `put_pixel` 대신 RGBA 버퍼를 직접 구성(`from_raw`)해 대용량 캔버스 디코드를 가속한다.
 
 ### 동일 이름 이미지 형제
 `useDirectoryLoader`의 `attachPsdThumbnailSiblings`가 PSD와 동일 이름 이미지(png/jpg/…)를 찾으면 `FileEntry.thumbnailPath`로 지정한다. FileCard는 이 경우 PSD 대신 형제 이미지를 `get_file_thumbnail_path`로 썸네일링한다(QuickLook/원본 파싱 회피). 단, 형제가 PSD와 다른 내용이면 부정확할 수 있는 휴리스틱.
 
 ### 동시성 레인 / 중복 다운로드 제거
-- 일반 우선순위(`MAX_CONCURRENT=6`)와 저우선(썸네일, `MAX_LOW_CONCURRENT=24`)을 **독립 레인**으로 처리한다(`tauriInvoke.ts`). 클라우드 썸네일은 파일당 File Provider 네트워크 왕복이 지배적이라 동시 다운로드 수가 곧 처리량 — 네트워크 대기형이므로 높여도 안전(CPU 합성은 Rust heavy-op 퍼밋이 별도 제한). `ensure_thumbnails_batch`는 청크(12) 병렬.
+- 일반 우선순위(`MAX_CONCURRENT=6`)와 저우선(썸네일, `MAX_LOW_CONCURRENT=32`)을 **독립 레인**으로 처리한다(`tauriInvoke.ts`). 배치 워밍 `BATCH_CONCURRENCY=16`(`media_ops/thumbnail.rs`). 클라우드는 네트워크 대기형이라 동시성이 곧 처리량 — 단 File Provider 과부하 가능성이 있어 추가 상향은 측정 후 조정(튜닝 포인트). 클라우드 썸네일은 파일당 File Provider 네트워크 왕복이 지배적이라 동시 다운로드 수가 곧 처리량 — 네트워크 대기형이므로 높여도 안전(CPU 합성은 Rust heavy-op 퍼밋이 별도 제한). `ensure_thumbnails_batch`는 청크(12) 병렬.
 - **in-flight dedup**(`ensure_google_drive_thumbnail`의 `drive_thumbnail_inflight_lock`): 같은 fileId+size를 prewarm 배치와 가시 카드가 동시에 요청하면 같은 청크를 두 번 다운로드한다. per-key 락으로 직렬화하고 락 획득 후 캐시를 재확인해 **한 번만 다운로드**한다(PSD는 파일당 ~4MB 청크라 효과 큼).
 
 ## 썸네일 로딩 흐름 (FileCard)
@@ -139,7 +157,7 @@ IntersectionObserver 진입 전 선요청
 FileCard는 실제 그리드 스크롤 컨테이너를 `IntersectionObserver.root`로 사용하고, `rootMargin`으로 화면 진입 전에 썸네일 요청을 시작한다. Google Drive 같은 cloud path는 더 큰 선요청 범위와 eager 이미지 로드를 사용해 File Provider 지연을 흡수한다. 카드가 선요청 범위를 벗어나면 pending 요청을 취소해 빠른 스크롤 중 지나간 항목이 큐를 계속 점유하지 않게 한다.
 
 ## 사전 로딩 (prewarmThumbnails)
-`useDirectoryLoader` — `loadDirectory` 완료 후 앞쪽 최대 120개 이미지/비디오/PSD 항목을 `ensure_thumbnails_batch` 1회로 묶어 Rust에서 캐시를 보장한다(클라우드 포함). 개별 카드의 lazy 로딩은 그대로라 batch 실패 시 단건 요청으로 폴백된다.
+`useDirectoryLoader` — `loadDirectory` 완료 후 앞쪽 최대 200개(= Rust `MAX_BATCH_ITEMS`) 이미지/비디오/PSD 항목을 `ensure_thumbnails_batch` 1회로 묶어 Rust에서 캐시를 보장한다(클라우드 포함). 개별 카드의 lazy 로딩은 그대로라 batch 실패 시 단건 요청으로 폴백된다.
 - **결과를 메모리 캐시에 주입**: `ensure_thumbnails_batch`는 입력과 **1:1 순서**로 `cachedPath`를 반환하고(Rust에서 join 실패 시에도 순서·개수 보장), prewarm이 이를 카드의 `thumbKey(entry.path, size, modified)`로 `setThumb`한다. → prewarm된 항목은 카드가 마운트/스크롤 진입 시 `getThumb` 동기 HIT로 **IPC 없이 즉시 표시**(특히 cloud는 카드가 경로를 동기적으로 알 다른 방법이 없어 효과 큼). PSD-형제 항목은 요청 경로(형제 이미지)와 무관하게 **원래 PSD 엔트리 키**로 주입한다.
 - 최초 화면의 첫 페인트는 카드가 즉시 발사하는 단건 요청이 담당하므로, 주입의 이득은 주로 스크롤 진입 항목 + 저우선 레인 여유에 있다.
 

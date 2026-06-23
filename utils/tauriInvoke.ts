@@ -20,7 +20,7 @@ const MAX_CONCURRENT = 6;
 // 저우선(썸네일)은 별도 레인. QuickLook/File Provider 같은 네트워크 대기형이라
 // CPU가 아니라 I/O를 기다리므로 동시성을 높게 잡아도 안전(CPU 합성은 Rust heavy-op 퍼밋이 제한).
 // 클라우드 폴더 워밍은 파일당 네트워크 왕복이 지배적이라 동시 다운로드 수가 곧 처리량.
-const MAX_LOW_CONCURRENT = 24;
+const MAX_LOW_CONCURRENT = 32;
 const MAX_QUEUE_SIZE = 200;
 // 저우선(썸네일) 큐 상한. 오버플로우 시 가장 오래된(=먼저 보인 상단) 항목부터 제거되므로,
 // 한 폴더의 가시 카드 수(+프리페치 마진)를 넉넉히 수용해 보이는 썸네일 요청이 버려지지 않게 한다.

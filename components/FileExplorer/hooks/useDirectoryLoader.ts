@@ -6,7 +6,8 @@ import { tauriCommands } from '../../../utils/tauriCommands';
 import { RECENT_PATH, SYSTEM_ROOT_PATH } from '../constants';
 import type { EntrySortBy, EntrySortDir } from '../entrySorting';
 import { cancelAllQueued, queuedInvokeLow } from './invokeQueue';
-import { thumbKey, getThumb, setThumb } from './thumbnailCache';
+import { thumbKey, getThumb, setThumb, FIXED_GRID_THUMB_SIZE } from './thumbnailCache';
+import { isCloudPath } from '../../../utils/pathUtils';
 
 // PSD/PSB와 동일 이름의 이미지 형제가 있으면 그 이미지를 PSD 썸네일 소스로 지정한다.
 // 임베드 썸네일이 없는 PSD도 형제 이미지로 즉시 표시 → QuickLook/원본 파싱 회피.
@@ -84,45 +85,58 @@ export function useDirectoryLoader({
   const prewarmThumbnails = useCallback((list: FileEntry[]) => {
     const size = thumbnailSizeRef.current;
     const run = () => {
+      // 표시 크기 배치: 로컬 이미지/비디오 + PSD-형제(생성이 싸므로 표시 크기 그대로).
       const items: { path: string; fileType: 'image' | 'video' | 'psd' }[] = [];
-      // items와 1:1 — 배치 결과를 넣을 메모리 캐시 키(카드의 thumbKey와 동일)
       const targetKeys: string[] = [];
+      // 고정 320 배치: PSD(형제 없음) + 클라우드 이미지(전체 다운로드+디코드 → 크기 무관).
+      // 카드 renderSize와 키를 일치시켜 줌/크기변경 시 재생성·재다운로드를 없앤다.
+      const fixedItems: { path: string; fileType: 'image' | 'video' | 'psd' }[] = [];
+      const fixedKeys: string[] = [];
       let count = 0;
+      // 앞쪽 항목을 한 배치로 워밍(Rust ensure_thumbnails_batch 상한 200과 동일).
       for (const entry of list) {
-        if (count >= 120) break;
+        if (count >= 200) break;
         if (entry.is_dir) continue;
-        const key = thumbKey(entry.path, size, entry.modified);
-        // 동일 이름 이미지 형제가 있는 PSD는 그 이미지를 가볍게 워밍
+        // 동일 이름 이미지 형제가 있는 PSD는 그 이미지를 표시 크기로 가볍게 워밍(키도 표시 크기)
         if (entry.thumbnailPath) {
           items.push({ path: entry.thumbnailPath, fileType: 'image' });
-          targetKeys.push(key);
+          targetKeys.push(thumbKey(entry.path, size, entry.modified));
           count++;
           continue;
         }
         const lower = entry.name.toLowerCase();
         if (lower.endsWith('.psd') || lower.endsWith('.psb')) {
-          items.push({ path: entry.path, fileType: 'psd' });
-          targetKeys.push(key);
+          fixedItems.push({ path: entry.path, fileType: 'psd' });
+          fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified));
+          count++;
+          continue;
+        }
+        if (entry.file_type === 'image' && isCloudPath(entry.path)) {
+          fixedItems.push({ path: entry.path, fileType: 'image' });
+          fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified));
           count++;
           continue;
         }
         if (entry.file_type === 'image' || entry.file_type === 'video') {
           items.push({ path: entry.path, fileType: entry.file_type });
-          targetKeys.push(key);
+          targetKeys.push(thumbKey(entry.path, size, entry.modified));
         } else continue;
         count++;
       }
-      if (items.length === 0) return;
       // 배치 결과(입력과 1:1 순서)를 메모리 캐시에 주입 → prewarm된 항목은 카드가 IPC 없이 즉시 표시
-      tauriCommands.ensureThumbnailsBatch(items, size)
-        .then(results => {
-          results.forEach((result, index) => {
-            const key = targetKeys[index];
-            if (!key || !result || !result.cachedPath) return;
-            if (getThumb(key) === undefined) setThumb(key, convertFileSrc(result.cachedPath));
-          });
-        })
-        .catch(() => {});
+      const inject = (keys: string[]) => (results: { cachedPath?: string | null }[]) => {
+        results.forEach((result, index) => {
+          const key = keys[index];
+          if (!key || !result || !result.cachedPath) return;
+          if (getThumb(key) === undefined) setThumb(key, convertFileSrc(result.cachedPath));
+        });
+      };
+      if (items.length > 0) {
+        tauriCommands.ensureThumbnailsBatch(items, size).then(inject(targetKeys)).catch(() => {});
+      }
+      if (fixedItems.length > 0) {
+        tauriCommands.ensureThumbnailsBatch(fixedItems, FIXED_GRID_THUMB_SIZE).then(inject(fixedKeys)).catch(() => {});
+      }
     };
     const requestIdleCallback = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
     if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });

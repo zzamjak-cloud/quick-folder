@@ -17,7 +17,7 @@ pub(crate) const THUMBNAIL_CACHE_DIR_NAMES: [&str; 4] = [
     "drive_thumbnails",
 ];
 const THUMBNAIL_CACHE_PRUNE_INTERVAL_MS: u64 = 60_000;
-const GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION: &str = "v5";
+const GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION: &str = "v6";
 static LAST_THUMBNAIL_CACHE_PRUNE_MS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn thumbnail_cache_root<R: tauri::Runtime>(
@@ -27,6 +27,32 @@ pub(crate) fn thumbnail_cache_root<R: tauri::Runtime>(
     app.path()
         .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))
+}
+
+// 로컬 PSD 그리드 캐시(psd_thumbnails) 1회 정리 — 임베드→composite 전환에 맞춰
+// 기존 저화질 임베드 캐시를 비워 다음 표시 때 composite로 재생성되게 한다.
+// 마커 파일로 1회만 수행(이후 실행은 즉시 반환). 마커는 .png가 아니라 프루닝 대상이 아니다.
+pub(crate) fn migrate_psd_local_cache_once<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let Ok(app_cache) = thumbnail_cache_root(app) else {
+        return;
+    };
+    let dir = app_cache.join("psd_thumbnails");
+    let marker = dir.join(".composite_migrated_v1");
+    if marker.exists() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // 캐시 PNG와 negative sentinel(.none)만 제거. 마커는 아직 없음.
+            if path.is_file() {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    } else {
+        let _ = std::fs::create_dir_all(&dir);
+    }
+    let _ = std::fs::write(&marker, b"1");
 }
 
 fn thumbnail_modified_millis(meta: &std::fs::Metadata, ignore_mtime: bool) -> u128 {
@@ -98,6 +124,7 @@ fn previous_google_drive_thumbnail_cache_files(
     };
     let cache_dir = app_cache.join("drive_thumbnails");
     vec![
+        cache_dir.join(format!("{}_{}_v5.png", safe_file_id, size)),
         cache_dir.join(format!("{}_{}_v4.png", safe_file_id, size)),
         cache_dir.join(format!("{}_{}_v3.png", safe_file_id, size)),
         cache_dir.join(format!("{}_{}_v2.png", safe_file_id, size)),
@@ -842,28 +869,27 @@ fn extract_psd_merged_composite(path: &Path, size: u32) -> Result<Option<Vec<u8>
         _ => return Ok(None), // ZIP(2/3) 등은 폴백
     }
 
-    // RGBA 이미지 구성
-    let mut img = image::RgbaImage::new(width as u32, height as u32);
+    // RGBA 버퍼 직접 구성(픽셀별 put_pixel의 경계검사 오버헤드 제거 → 대용량 캔버스 디코드 가속).
     let is_rgb = color_mode == 3 && channels >= 3;
     let has_alpha = if is_rgb { channels >= 4 } else { channels >= 2 };
-    for y in 0..height {
-        for x in 0..width {
-            let i = y * width + x;
-            let (r, g, b) = if is_rgb {
-                (planes[0][i], planes[1][i], planes[2][i])
-            } else {
-                let v = planes[0][i];
-                (v, v, v)
-            };
-            let a = if has_alpha {
-                let ach = if is_rgb { 3 } else { 1 };
-                planes[ach][i]
-            } else {
-                255
-            };
-            img.put_pixel(x as u32, y as u32, image::Rgba([r, g, b, a]));
+    let alpha_ch = if is_rgb { 3 } else { 1 };
+    let mut buf = vec![0u8; plane_size * 4];
+    for i in 0..plane_size {
+        let o = i * 4;
+        if is_rgb {
+            buf[o] = planes[0][i];
+            buf[o + 1] = planes[1][i];
+            buf[o + 2] = planes[2][i];
+        } else {
+            let v = planes[0][i];
+            buf[o] = v;
+            buf[o + 1] = v;
+            buf[o + 2] = v;
         }
+        buf[o + 3] = if has_alpha { planes[alpha_ch][i] } else { 255 };
     }
+    let img = image::RgbaImage::from_raw(width as u32, height as u32, buf)
+        .ok_or_else(|| AppError::ImageProcessing("PSD composite 버퍼 변환 실패".to_string()))?;
 
     let dynamic = image::DynamicImage::ImageRgba8(img);
     let output = if size == 0 || (width as u32 <= size && height as u32 <= size) {
@@ -926,16 +952,20 @@ fn render_psd_full(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
 }
 
 fn generate_psd_thumbnail_bytes(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
-    // 1) 그리드용 작은 크기는 임베드 썸네일 우선(용량 무관, 레이어 합성 없음).
-    //    size==0(원본) 또는 320 초과(미리보기·컬럼뷰)는 임베드를 건너뛰고 전체 합성.
+    // 1) 끝부분 merged composite(캔버스 전체 해상도)만 부분 읽기 → 그리드 크기로 다운스케일.
+    //    임베드(~160px 이하)보다 훨씬 선명하고, 거대한 레이어 데이터 다운로드/합성도 회피한다.
+    if let Ok(Some(bytes)) = extract_psd_merged_composite(path, size) {
+        return Ok(Some(bytes));
+    }
+
+    // 2) composite가 없으면(최대 호환성 끔/미지원 포맷) 임베드 썸네일(작지만 빠름).
     if size != 0 && size <= PSD_EMBEDDED_MAX_SIZE {
         if let Ok(Some(bytes)) = extract_psd_embedded_thumbnail(path, size) {
             return Ok(Some(bytes));
         }
     }
 
-    // 2) 전체 파싱(합성). 대용량 PSD 전체 합성은 메모리 과부하·크래시 위험 →
-    //    초과 시 임베드 썸네일이라도 반환(미리보기는 다소 작아도 빈 화면보다 낫다).
+    // 3) 최후: 전체 파싱(합성). 대용량은 메모리 과부하·크래시 위험 → 초과 시 임베드 폴백.
     const MAX_FULL_PARSE_BYTES: u64 = 200 * 1024 * 1024;
     let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(u64::MAX);
     if file_len > MAX_FULL_PARSE_BYTES {
@@ -1160,6 +1190,28 @@ pub async fn prewarm_psd_preview(
     .map_err(|e| AppError::Internal(format!("PSD 미리보기 프리워밍 실패: {}", e)))?
 }
 
+// 미리보기 composite 캐시 PNG '경로' 반환 (asset 프로토콜용 — base64/IPC 팽창 없음, WebView 캐시 활용)
+#[tauri::command]
+pub async fn get_psd_preview_path(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<Option<String>> {
+    use tauri::Manager;
+
+    let app_cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+        Ok(resolve_psd_preview_cache(&app, &app_cache, &path, size)?
+            .map(|p| p.to_string_lossy().to_string()))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("PSD 미리보기 경로 생성 실패: {}", e)))?
+}
+
 #[tauri::command]
 pub async fn get_psd_thumbnail_path(
     app: tauri::AppHandle,
@@ -1183,14 +1235,18 @@ pub async fn get_psd_thumbnail_path(
         if is_cloud {
             if let Some(cache_path) =
                 ensure_google_drive_thumbnail(&app_cache, &resolved_path_str, size, || {
-                    // 임베드 썸네일은 파일 앞부분(헤더+이미지 리소스)에만 있어 부분 읽기로 추출 가능하다.
-                    // File Provider(구글드라이브)는 부분 다운로드를 지원해 dataless여도 앞 ~수 MB만 받는다.
-                    // QuickLook은 비정사각 이미지를 잘라/왜곡하므로 PSD 경로에서는 쓰지 않는다(비율 보존).
+                    // 끝부분 merged composite를 부분 읽기(seek)로 우선 추출 → 캔버스 전체 해상도라
+                    // 임베드(~160px)보다 훨씬 선명하고, dataless여도 전체 다운로드 없이 ~0.5MB만 받는다.
+                    if let Ok(Some(bytes)) = extract_psd_merged_composite(&resolved_path, size) {
+                        return Ok(Some(bytes));
+                    }
+                    // composite가 없으면 임베드 폴백(파일 앞부분 부분 읽기).
+                    // QuickLook은 비정사각을 잘라/왜곡하므로 PSD 경로에서는 쓰지 않는다(비율 보존).
                     if is_dataless_cloud_file(&resolved_path) {
-                        // 미다운로드: 임베드 썸네일만 부분 읽기로 추출. 전체 파싱(=전체 다운로드)은 회피.
+                        // 미다운로드: 임베드만. 전체 파싱(=전체 다운로드)은 회피.
                         return extract_psd_embedded_thumbnail(&resolved_path, size);
                     }
-                    // 다운로드됨: 임베드 우선 + 전체 파싱 폴백(둘 다 비율 보존).
+                    // 다운로드됨: 임베드 + 전체 파싱 폴백.
                     generate_psd_thumbnail_bytes(&resolved_path, size)
                 })?
             {
