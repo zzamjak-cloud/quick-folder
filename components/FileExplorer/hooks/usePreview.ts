@@ -13,7 +13,7 @@ export interface PreviewState {
   previewLoading: boolean;
   /** 편집 모드 요청 토큰 — 같은 이미지로 Enter 재진입 시에도 편집 모드로 전환 */
   previewImageEditRequest: number;
-  handlePreviewImage: (path: string, initialEdit?: boolean) => void;
+  handlePreviewImage: (path: string, initialEdit?: boolean, placeholderUrl?: string) => void;
   closeImagePreview: () => void;
   // 텍스트
   previewTextPath: string | null;
@@ -62,6 +62,8 @@ export function usePreview(): PreviewState {
   const [previewImageData, setPreviewImageData] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewImageEditRequest, setPreviewImageEditRequest] = useState(0);
+  // 이미지/PSD 미리보기 요청 토큰 — 점진적 렌더(임베드→전체)·빠른 전환 시 오래된 응답 무시
+  const imageLoadRequestRef = useRef(0);
 
   // 텍스트 미리보기
   const [previewTextPath, setPreviewTextPath] = useState<string | null>(null);
@@ -96,26 +98,36 @@ export function usePreview(): PreviewState {
   // HWP/HWPX 미리보기
   const [hwpPreviewPath, setHwpPreviewPath] = useState<string | null>(null);
 
-  const handlePreviewImage = useCallback(async (path: string, initialEdit = false) => {
+  const handlePreviewImage = useCallback(async (path: string, initialEdit = false, placeholderUrl?: string) => {
     if (initialEdit) setPreviewImageEditRequest(n => n + 1);
     // 같은 파일이면 리로드 안 함 (깜빡임 방지)
     if (path === previewImagePath) return;
+    const reqId = ++imageLoadRequestRef.current;
     setPreviewImagePath(path);
-    setPreviewImageData(null);
-    setPreviewLoading(true);
+    const isPsd = /\.(psd|psb)$/i.test(path);
+    const isIcns = /\.icns$/i.test(path);
+    // 그리드에 이미 떠 있는 썸네일을 즉시 placeholder로 표시 → '로딩중' 공백 제거(추가 페치 없음).
+    // 선명본은 아래에서 비동기로 받아 교체. 일반 이미지는 원본을 곧바로 넣으므로 placeholder 불필요.
+    if (placeholderUrl && (isPsd || isIcns)) {
+      setPreviewImageData(placeholderUrl);
+      setPreviewLoading(false);
+    } else {
+      setPreviewImageData(null);
+      setPreviewLoading(true);
+    }
     try {
-      const isPsd = /\.(psd|psb)$/i.test(path);
-      const isIcns = /\.icns$/i.test(path);
       if (isPsd) {
-        // PSD/PSB: Rust 변환 필요. 원본(4000px+)을 풀사이즈로 렌더하면 낭비이므로
-        // 미리보기 창에 충분히 선명한 2048px로 캡 → 렌더·base64·표시 모두 빨라진다.
-        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 2048 });
+        // PSD/PSB: Rust가 파일 끝의 merged composite만 부분 읽기해 빠르게 렌더한다
+        // (거대한 레이어 데이터 다운로드/합성 회피). 캔버스 전체 해상도라 1280으로 충분히 선명.
+        const b64 = await invoke<string | null>('get_psd_thumbnail', { path, size: 1280 });
+        if (reqId !== imageLoadRequestRef.current) return; // 다른 미리보기로 전환됨
         if (b64) {
           setPreviewImageData(`data:image/png;base64,${b64}`);
         }
       } else if (isIcns) {
         // ICNS: 브라우저 미지원 → Rust로 PNG 변환하여 미리보기
         const b64 = await invoke<string | null>('get_file_thumbnail', { path, size: 512 });
+        if (reqId !== imageLoadRequestRef.current) return;
         if (b64) {
           setPreviewImageData(`data:image/png;base64,${b64}`);
         }
@@ -126,7 +138,7 @@ export function usePreview(): PreviewState {
     } catch {
       // 미리보기 생성 실패
     } finally {
-      setPreviewLoading(false);
+      if (reqId === imageLoadRequestRef.current) setPreviewLoading(false);
     }
   }, [previewImagePath]);
 

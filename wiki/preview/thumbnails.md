@@ -78,9 +78,39 @@ PSD/PSB는 그리드에서 `get_psd_thumbnail_path`를 사용한다.
 ### PSD 썸네일 경량 추출 (용량 무관) — 단, 크기별 분기
 `generate_psd_thumbnail_bytes`는 **요청 크기(size)에 따라** 경로가 갈린다:
 - **그리드(size 1~320)**: 임베드 썸네일(8BIM 1036, JPEG) 우선 추출(`extract_psd_embedded_thumbnail`). 파일 앞부분(헤더+이미지 리소스, 레이어 데이터 *이전*)만 읽어 용량 무관·합성 없음. 임베드가 없으면 전체 파싱 폴백.
-- **미리보기/컬럼뷰(size 0 또는 320 초과)**: 임베드(~160px)는 흐릿하므로 **건너뛰고 전체 합성**(`psd.rgba()`) 후 size로 다운스케일 → 선명. `PSD_EMBEDDED_MAX_SIZE = 320` 상수로 분기.
-- 스페이스바 미리보기(`usePreview`)는 원본(size 0) 대신 **2048px 캡**으로 호출 — 4000px+ 원본 풀렌더 낭비를 막아 렌더·base64·표시를 빠르게. 컬럼뷰는 1024.
-- **200MB 초과 전체 합성은 OOM 위험 → 임베드 썸네일이라도 반환**(미리보기가 다소 작아도 빈 화면보다 낫다).
+- **미리보기/컬럼뷰**: 그리드와 **별도 명령·캐시·생성 함수**를 쓴다(아래 "미리보기 전용 전체 렌더" 참고). 임베드(~160px)를 건너뛰고 항상 전체 합성 → 선명.
+- 스페이스바 미리보기(`usePreview`)는 원본(size 0) 대신 **2048px 캡**으로 호출 — 4000px+ 원본 풀렌더 낭비를 막아 렌더·base64·표시를 빠르게. 컬럼뷰(`useColumnView`)는 1024.
+
+### 미리보기 전용 전체 렌더 (`get_psd_thumbnail`) — 그리드와 완전 분리
+미리보기는 size가 커도 **임베드 단축 없이 항상 전체 합성**으로 선명해야 한다. 그리드(`get_psd_thumbnail_path` → `generate_psd_thumbnail_bytes`, 임베드 우선·빠름)와 다음과 같이 분리한다:
+- 미리보기 명령 `get_psd_thumbnail`은 `generate_psd_preview_bytes` 사용 → 임베드 건너뛰고 `render_psd_full`(공용 전체 합성 헬퍼)로 전체 파싱.
+- **캐시 분리**: 로컬 미리보기는 `psd_previews` 디렉터리(그리드 `psd_thumbnails`와 별도)에 캐시 → 과거 저해상도 임베드 캐시와 키 충돌 없음. 클라우드는 `ensure_google_drive_thumbnail`(fileId+size+`_v5`, size 1024/2048은 그리드 40~320과 겹치지 않음).
+- **클라우드 dataless여도 전체 다운로드 감수**: 미리보기는 사용자의 명시적 1회 동작이므로 `render_psd_full`의 `std::fs::read`가 전체 다운로드를 유발해 선명 렌더. (그리드는 dataless면 임베드만 — 부분 읽기 유지)
+- **OOM 가드**: 미리보기 전체 합성 상한 `MAX_PREVIEW_PARSE_BYTES = 1GB`(그리드는 200MB). 초과 시 임베드 폴백.
+- **`render_psd_full`은 `HeavyOpPermit`을 직접 잡지 않는다** — 로컬 경로는 호출자(`ensure_cached_thumbnail`/`cached_thumbnail`, `use_heavy_op=true`)가 이미 퍼밋 보유. 여기서 또 잡으면 **이중 획득 → 슬롯(MAX_HEAVY_OPS=3) 고갈 → 데드락/직렬화**로 미리보기 "로딩중"이 길어진다(회귀 주의).
+- **그리드는 여전히 임베드(~160px)** — 그리드 줌을 키워도 임베드 한계로 더 선명해지지 않는다(속도 우선 설계). 선명한 큰 화면은 미리보기가 담당.
+
+### 미리보기 = 끝부분 merged composite만 부분 읽기 (`extract_psd_merged_composite`)
+대용량 PSD(수백 MB~GB)는 전체 레이어 합성(`psd.rgba()`)이 **전체 파일 읽기 + 모든 레이어 소프트 합성**이라 수~십수 초 걸리고, 클라우드면 전체 다운로드까지 유발한다. 핵심: **최종 이미지는 캔버스 크기일 뿐 작다**(예: 138MB PSD인데 캔버스 720×1280 — 138MB는 레이어·XMP 메타데이터). 그래서 미리보기는 레이어를 합성하지 않고, PSD 끝의 **merged composite(Photoshop 최대 호환성 저장 시 담기는 평탄화 전체 해상도 이미지)** 만 읽는다.
+
+`extract_psd_merged_composite(path, size)` 동작:
+1. 헤더에서 width/height/channels/depth/color_mode 파싱.
+2. Color Mode·Image Resources 섹션은 **길이만 읽고 `seek`로 건너뜀**(XMP 14MB 등 내용 안 읽음).
+3. Layer & Mask Information 섹션 **길이(PSD=4B / PSB=8B)만 읽고 그만큼 `seek`로 건너뜀** → 거대한 레이어 데이터(예: 129MB) 다운로드/파싱 회피.
+4. 파일 끝 Image Data 섹션만 읽어 디코드: 압축 raw(0)/RLE(1·PackBits), planar 채널 → RGBA.
+- **클라우드 효과**: File Provider는 seek+부분 읽기로 해당 구간만 받음 → 138MB 중 **~0.5MB만 다운로드**(검증됨). 레이어 합성도 안 함 → 즉시.
+- **지원 범위**: 8-bit, RGB/Grayscale, raw/RLE. 그 외(16/32-bit, CMYK/Lab, ZIP, 최대호환성 끔)는 `None` → **임베드 썸네일 → 전체 레이어 합성(`render_psd_full`)** 순 폴백.
+- **메모리 가드**: 캔버스 100MP 초과는 폴백.
+
+`generate_psd_preview_bytes` 폴백 순서: **merged composite → 임베드 → 전체 합성(≤1GB)**.
+
+프론트(`usePreview.handlePreviewImage`)는 PSD를 `get_psd_thumbnail`(size **1280**) 단건 호출. `imageLoadRequestRef` 토큰으로 빠른 전환 시 오래된 응답을 무시. 첫 렌더 후 `psd_previews`(로컬)/drive(클라우드) 캐시 HIT로 재방문 즉시 표시. 컬럼뷰(`useColumnView`, size 1024)도 같은 명령이라 자동 적용.
+
+### 미리보기 프리워밍 (`usePreviewPrewarm` + `prewarm_psd_preview`)
+스페이스바 미리보기를 즉시 띄우기 위해 **선택된 PSD의 composite를 백그라운드로 미리 데운다**.
+- 프론트 `usePreviewPrewarm`(`usePreviewRouting.ts`): `selectedPaths`가 단일 PSD일 때 250ms 디바운스 후 `queuedInvokeLow('prewarm_psd_preview', {path, size:1280})`. 저우선 큐라 폴더 이동 시 `cancelAllQueued`로 자동 취소. 맥 PSB는 QuickLook으로 미리보기하므로 프리워밍 제외.
+- Rust `prewarm_psd_preview`: `resolve_psd_preview_cache`(미리보기 표시 명령 `get_psd_thumbnail`과 **동일 캐시 키 공유**)를 호출해 캐시만 데우고 **바이트는 반환하지 않음**(IPC 경량). composite는 ~0.5MB 부분 읽기라 프리워밍 비용이 작다.
+- 효과: 파일을 선택만 해두면 스페이스바 시 캐시 HIT → 즉시 표시.
 - 로컬 썸네일 캐시 키는 `thumbnail-v4` (Rust `stable_thumbnail_cache_key` ↔ 프론트 `getPersistentThumbUrl` 동일해야 함). 임베드 최적화 도입 후 작게 캐시된 미리보기(size 0/1024)를 무효화하려고 v3→v4로 올렸다.
 - 주의: 임베드 썸네일은 Photoshop 저장 옵션에 의존한다. 구버전/스크립트 생성 PSD는 1036 리소스가 없어(예: XMP만 큰 경우) QuickLook/형제 이미지로만 표시된다.
 - **PSB(대용량 포맷)도 동일 추출 경로**를 쓴다(헤더 version 2지만 이미지 리소스 섹션은 4바이트 길이로 동일). 단, `classify_file`(`types.rs`)에서 `psb`를 `FileType::Image`로 분류해야 FileCard 썸네일 효과가 실행된다. 분류가 빠지면 썸네일 시도조차 안 한다.

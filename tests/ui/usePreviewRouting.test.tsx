@@ -59,6 +59,7 @@ function renderRouting(preview = createPreview()) {
   const hook = renderHook(() => usePreviewRouting({
     preview,
     isMac: false,
+    thumbnailSize: 120,
     onNavigateTo,
     onOpenArchiveEntry,
   }));
@@ -82,7 +83,7 @@ describe('usePreviewRouting', () => {
       imageHook.result.current.previewFile(entry({ name: 'photo.png', path: '/tmp/photo.png', file_type: 'image' }));
     });
     expect(imagePreview.closeAllPreviews).toHaveBeenCalledOnce();
-    expect(imagePreview.handlePreviewImage).toHaveBeenCalledWith('/tmp/photo.png');
+    expect(imagePreview.handlePreviewImage).toHaveBeenCalledWith('/tmp/photo.png', false, undefined);
 
     const fbxPreview = createPreview();
     const fbxHook = renderRouting(fbxPreview);

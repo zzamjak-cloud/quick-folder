@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo } from 'react';
 import type { FileEntry } from '../../../types';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { isArchiveVirtualPath, isBrowsableArchiveFilePath } from '../../../utils/pathUtils';
+import { queuedInvokeLow } from './invokeQueue';
+import { getThumb, thumbKey } from './thumbnailCache';
 import type { PreviewState } from './usePreview';
 
 interface UsePreviewRoutingOptions {
   preview: PreviewState;
   isMac: boolean;
+  thumbnailSize: number;
   onNavigateTo: (path: string) => void;
   onOpenArchiveEntry: (path: string) => void;
 }
@@ -28,6 +31,7 @@ const KNOWN_TEXT_FILES = new Set([
 export function usePreviewRouting({
   preview,
   isMac,
+  thumbnailSize,
   onNavigateTo,
   onOpenArchiveEntry,
 }: UsePreviewRoutingOptions) {
@@ -47,6 +51,11 @@ export function usePreviewRouting({
   const previewFile = useCallback((entry: FileEntry) => {
     if (entry.is_dir) return;
 
+    // 그리드에 이미 로드된 썸네일(메모리 캐시)을 미리보기 즉시 placeholder로 사용 → '로딩중' 제거.
+    // '' = 썸네일 없음 확정이므로 제외. 없으면 undefined → 기존 동작.
+    const cachedThumb = getThumb(thumbKey(entry.path, thumbnailSize, entry.modified));
+    const placeholder = cachedThumb ? cachedThumb : undefined;
+
     const isVideo = entry.file_type === 'video';
     const isImage = entry.file_type === 'image' || /\.psd$/i.test(entry.name);
     const isPsb = /\.psb$/i.test(entry.name);
@@ -62,13 +71,13 @@ export function usePreviewRouting({
       preview.setVideoPlayerPath(entry.path);
     } else if (isImage) {
       if (!preview.previewImagePath) preview.closeAllPreviews();
-      preview.handlePreviewImage(entry.path);
+      preview.handlePreviewImage(entry.path, false, placeholder);
     } else if (isPsb) {
       preview.closeAllPreviews();
       if (isMac) {
         tauriCommands.quickLook(entry.path).catch(console.error);
       } else {
-        preview.handlePreviewImage(entry.path);
+        preview.handlePreviewImage(entry.path, false, placeholder);
       }
     } else if (isJson) {
       if (!preview.previewJsonPath) preview.closeAllPreviews();
@@ -92,7 +101,7 @@ export function usePreviewRouting({
       preview.closeAllPreviews();
       tauriCommands.quickLook(entry.path).catch(console.error);
     }
-  }, [codePreviewExts, isMac, preview, textPreviewExts]);
+  }, [codePreviewExts, isMac, preview, textPreviewExts, thumbnailSize]);
 
   const openEntry = useCallback(async (entry: FileEntry) => {
     if (entry.is_dir) {
@@ -128,6 +137,40 @@ export function usePreviewRouting({
     previewFile,
     openEntry,
   };
+}
+
+interface UsePreviewPrewarmOptions {
+  selectedPaths: string[];
+  entries: FileEntry[];
+  isMac: boolean;
+}
+
+// 선택된 PSD의 미리보기 composite(끝부분 부분 읽기, ~0.5MB)를 백그라운드로 미리 데움.
+// → 스페이스바 미리보기를 캐시 HIT로 즉시 표시. 저우선 큐라 폴더 이동 시 자동 취소된다.
+export function usePreviewPrewarm({ selectedPaths, entries, isMac }: UsePreviewPrewarmOptions) {
+  useEffect(() => {
+    if (selectedPaths.length !== 1) return;
+    const path = selectedPaths[0];
+    const isPsd = /\.psd$/i.test(path);
+    const isPsb = /\.psb$/i.test(path);
+    // 맥에서 PSB는 QuickLook으로 미리보기하므로 composite 프리워밍이 불필요.
+    if (!isPsd && !(isPsb && !isMac)) return;
+    const entry = entries.find(e => e.path === path);
+    if (!entry || entry.is_dir) return;
+
+    let cancelFn: (() => void) | null = null;
+    // 화살표로 빠르게 넘길 때 매 항목 프리워밍하지 않도록 짧게 디바운스.
+    const timer = setTimeout(() => {
+      const { promise, cancel } = queuedInvokeLow<boolean>('prewarm_psd_preview', { path, size: 1280 });
+      cancelFn = cancel;
+      promise.catch(() => {});
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      if (cancelFn) cancelFn();
+    };
+  }, [selectedPaths, entries, isMac]);
 }
 
 export function usePreviewAutoRefresh({

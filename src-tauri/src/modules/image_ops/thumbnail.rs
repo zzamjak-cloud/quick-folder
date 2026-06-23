@@ -703,6 +703,179 @@ fn extract_psd_embedded_thumbnail(path: &Path, size: u32) -> Result<Option<Vec<u
     Ok(None)
 }
 
+// PackBits(RLE) 한 스캔라인 디코드 → out에 width 바이트를 append.
+// 데이터가 모자라면 0으로 패딩(손상 방어).
+fn packbits_decode_scanline(src: &[u8], out: &mut Vec<u8>, expected: usize) {
+    let start = out.len();
+    let mut i = 0usize;
+    while i < src.len() && out.len() - start < expected {
+        let n = src[i] as i8;
+        i += 1;
+        if n >= 0 {
+            let cnt = n as usize + 1;
+            for _ in 0..cnt {
+                if i < src.len() {
+                    out.push(src[i]);
+                    i += 1;
+                }
+            }
+        } else if n != -128 {
+            let cnt = (1 - n as i32) as usize;
+            if i < src.len() {
+                let b = src[i];
+                i += 1;
+                for _ in 0..cnt {
+                    out.push(b);
+                }
+            }
+        }
+    }
+    while out.len() - start < expected {
+        out.push(0);
+    }
+}
+
+// PSD/PSB 끝부분의 merged composite(평탄화 전체 해상도 이미지)만 추출.
+// 파일 앞에서 레이어&마스크 섹션 "길이"만 읽고 seek로 건너뛴 뒤(거대한 레이어 데이터
+// 다운로드/파싱 회피), 끝의 Image Data 섹션만 읽어 디코드한다. 클라우드(File Provider)는
+// seek+부분 읽기로 해당 구간만 받으므로 수백 MB PSD도 수백 KB만 받고 선명한 미리보기를 얻는다.
+// 지원: 8-bit, RGB/Grayscale, 압축 raw(0)/RLE(1). 그 외(16/32-bit, CMYK/Lab, ZIP)는 None → 상위 폴백.
+fn extract_psd_merged_composite(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path)?;
+    let mut header = [0u8; 26];
+    if file.read_exact(&mut header).is_err() || &header[0..4] != b"8BPS" {
+        return Ok(None);
+    }
+    let version = u16::from_be_bytes([header[4], header[5]]);
+    let is_psb = version == 2;
+    let channels = u16::from_be_bytes([header[12], header[13]]) as usize;
+    let height = u32::from_be_bytes([header[14], header[15], header[16], header[17]]) as usize;
+    let width = u32::from_be_bytes([header[18], header[19], header[20], header[21]]) as usize;
+    let depth = u16::from_be_bytes([header[22], header[23]]);
+    let color_mode = u16::from_be_bytes([header[24], header[25]]);
+
+    // 지원 범위 제한(그 외는 상위 폴백). 1=Grayscale, 3=RGB.
+    if depth != 8 || !(color_mode == 1 || color_mode == 3) || channels == 0 {
+        return Ok(None);
+    }
+    let plane_size = width.checked_mul(height).unwrap_or(usize::MAX);
+    // 합성본 디코드는 width*height*channels 메모리. 비현실적 대용량은 폴백(임베드).
+    const MAX_COMPOSITE_PIXELS: usize = 100_000_000; // 100MP
+    if plane_size == 0 || plane_size > MAX_COMPOSITE_PIXELS {
+        return Ok(None);
+    }
+
+    let mut len4 = [0u8; 4];
+    let mut len8 = [0u8; 8];
+    // Color Mode Data: 길이(4) 후 스킵
+    file.read_exact(&mut len4)?;
+    file.seek(SeekFrom::Current(u32::from_be_bytes(len4) as i64))?;
+    // Image Resources: 길이(4) 후 스킵 (XMP 등 대용량이어도 내용은 안 읽음)
+    file.read_exact(&mut len4)?;
+    file.seek(SeekFrom::Current(u32::from_be_bytes(len4) as i64))?;
+    // Layer & Mask Information: 길이(PSD=4, PSB=8) 후 그만큼 스킵 → 레이어 본문 회피
+    let layer_mask_len: u64 = if is_psb {
+        file.read_exact(&mut len8)?;
+        u64::from_be_bytes(len8)
+    } else {
+        file.read_exact(&mut len4)?;
+        u32::from_be_bytes(len4) as u64
+    };
+    file.seek(SeekFrom::Current(layer_mask_len as i64))?;
+
+    // Image Data 섹션(파일 끝까지): 압축방식(2) + 채널 planar 데이터
+    let mut comp_buf = [0u8; 2];
+    if file.read_exact(&mut comp_buf).is_err() {
+        return Ok(None);
+    }
+    let compression = u16::from_be_bytes(comp_buf);
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)?;
+
+    // 채널 평면 디코드(planar: 전체 R, 전체 G, ...)
+    let mut planes: Vec<Vec<u8>> = Vec::with_capacity(channels);
+    match compression {
+        0 => {
+            // raw: channels * plane_size 바이트
+            if data.len() < channels.saturating_mul(plane_size) {
+                return Ok(None);
+            }
+            for c in 0..channels {
+                planes.push(data[c * plane_size..(c + 1) * plane_size].to_vec());
+            }
+        }
+        1 => {
+            // RLE: 스캔라인 바이트수 테이블(PSD 2바이트/PSB 4바이트 × channels×height) + PackBits
+            let count_bytes = if is_psb { 4 } else { 2 };
+            let total_scanlines = channels.saturating_mul(height);
+            let table_len = total_scanlines.saturating_mul(count_bytes);
+            if data.len() < table_len {
+                return Ok(None);
+            }
+            let mut counts = Vec::with_capacity(total_scanlines);
+            for s in 0..total_scanlines {
+                let o = s * count_bytes;
+                let c = if is_psb {
+                    u32::from_be_bytes([data[o], data[o + 1], data[o + 2], data[o + 3]]) as usize
+                } else {
+                    u16::from_be_bytes([data[o], data[o + 1]]) as usize
+                };
+                counts.push(c);
+            }
+            let mut off = table_len;
+            for c in 0..channels {
+                let mut plane = Vec::with_capacity(plane_size);
+                for y in 0..height {
+                    let clen = counts[c * height + y];
+                    let end = off.saturating_add(clen);
+                    if end > data.len() {
+                        return Ok(None);
+                    }
+                    packbits_decode_scanline(&data[off..end], &mut plane, width);
+                    off = end;
+                }
+                planes.push(plane);
+            }
+        }
+        _ => return Ok(None), // ZIP(2/3) 등은 폴백
+    }
+
+    // RGBA 이미지 구성
+    let mut img = image::RgbaImage::new(width as u32, height as u32);
+    let is_rgb = color_mode == 3 && channels >= 3;
+    let has_alpha = if is_rgb { channels >= 4 } else { channels >= 2 };
+    for y in 0..height {
+        for x in 0..width {
+            let i = y * width + x;
+            let (r, g, b) = if is_rgb {
+                (planes[0][i], planes[1][i], planes[2][i])
+            } else {
+                let v = planes[0][i];
+                (v, v, v)
+            };
+            let a = if has_alpha {
+                let ach = if is_rgb { 3 } else { 1 };
+                planes[ach][i]
+            } else {
+                255
+            };
+            img.put_pixel(x as u32, y as u32, image::Rgba([r, g, b, a]));
+        }
+    }
+
+    let dynamic = image::DynamicImage::ImageRgba8(img);
+    let output = if size == 0 || (width as u32 <= size && height as u32 <= size) {
+        dynamic
+    } else {
+        dynamic.thumbnail(size, size)
+    };
+    let mut buf = vec![];
+    output.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
+    Ok(Some(buf))
+}
+
 // 클라우드(File Provider) 파일이 아직 완전히 다운로드되지 않은 placeholder인지 판정.
 // SF_DATALESS 플래그 기준 — 앞부분만 부분 읽기해도(blocks가 늘어도) 플래그는 유지되므로,
 // "전체 파싱 시 전체 다운로드를 유발하는가" 판단에 정확하다. (blocks==0 기준은 부분 읽기 후 오판)
@@ -724,23 +897,12 @@ fn is_dataless_cloud_file(_path: &Path) -> bool {
 // 미리보기/컬럼뷰(원본 해상도=size 0 또는 큰 size)에서는 흐릿하므로 전체 합성으로 선명하게 낸다.
 const PSD_EMBEDDED_MAX_SIZE: u32 = 320;
 
-fn generate_psd_thumbnail_bytes(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
-    // 1) 그리드용 작은 크기는 임베드 썸네일 우선(용량 무관, 레이어 합성 없음).
-    //    size==0(원본) 또는 320 초과(미리보기·컬럼뷰)는 임베드를 건너뛰고 전체 합성.
-    if size != 0 && size <= PSD_EMBEDDED_MAX_SIZE {
-        if let Ok(Some(bytes)) = extract_psd_embedded_thumbnail(path, size) {
-            return Ok(Some(bytes));
-        }
-    }
-
-    // 2) 전체 파싱(합성). 대용량 PSD 전체 합성은 메모리 과부하·크래시 위험 →
-    //    초과 시 임베드 썸네일이라도 반환(미리보기는 다소 작아도 빈 화면보다 낫다).
-    const MAX_FULL_PARSE_BYTES: u64 = 200 * 1024 * 1024;
-    let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(u64::MAX);
-    if file_len > MAX_FULL_PARSE_BYTES {
-        return extract_psd_embedded_thumbnail(path, size);
-    }
-
+// PSD 전체 레이어 합성 후 size로 다운스케일한 PNG 바이트 생성(선명).
+// dataless 클라우드 파일이면 std::fs::read가 전체 다운로드를 유발한다.
+// 주의: HeavyOpPermit은 여기서 잡지 않는다. 로컬 경로는 호출자(ensure_cached_thumbnail/
+// cached_thumbnail, use_heavy_op=true)가 이미 퍼밋을 보유하므로, 여기서 또 잡으면
+// 이중 획득으로 슬롯(MAX_HEAVY_OPS=3)이 고갈돼 데드락/직렬화가 발생한다.
+fn render_psd_full(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
     let bytes = std::fs::read(path)?;
     let psd = psd::Psd::from_bytes(&bytes)
         .map_err(|e| AppError::ImageProcessing(format!("PSD 파싱 실패: {}", e)))?;
@@ -761,6 +923,49 @@ fn generate_psd_thumbnail_bytes(path: &Path, size: u32) -> Result<Option<Vec<u8>
     let mut buf = vec![];
     output.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
     Ok(Some(buf))
+}
+
+fn generate_psd_thumbnail_bytes(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
+    // 1) 그리드용 작은 크기는 임베드 썸네일 우선(용량 무관, 레이어 합성 없음).
+    //    size==0(원본) 또는 320 초과(미리보기·컬럼뷰)는 임베드를 건너뛰고 전체 합성.
+    if size != 0 && size <= PSD_EMBEDDED_MAX_SIZE {
+        if let Ok(Some(bytes)) = extract_psd_embedded_thumbnail(path, size) {
+            return Ok(Some(bytes));
+        }
+    }
+
+    // 2) 전체 파싱(합성). 대용량 PSD 전체 합성은 메모리 과부하·크래시 위험 →
+    //    초과 시 임베드 썸네일이라도 반환(미리보기는 다소 작아도 빈 화면보다 낫다).
+    const MAX_FULL_PARSE_BYTES: u64 = 200 * 1024 * 1024;
+    let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(u64::MAX);
+    if file_len > MAX_FULL_PARSE_BYTES {
+        return extract_psd_embedded_thumbnail(path, size);
+    }
+
+    render_psd_full(path, size)
+}
+
+// 미리보기(스페이스바/모달) 전용 PSD 렌더: 임베드 단축 없이 항상 전체 합성으로 선명하게.
+// 사용자의 명시적 1회 동작이므로 클라우드 dataless 파일의 전체 다운로드를 감수한다.
+// 그리드(generate_psd_thumbnail_bytes)보다 상한을 크게 잡되, 비현실적 대용량은
+// 임베드로 폴백해 OOM/크래시를 막는다.
+fn generate_psd_preview_bytes(path: &Path, size: u32) -> Result<Option<Vec<u8>>> {
+    // 1) 파일 끝의 merged composite(평탄화 전체 해상도)만 부분 읽기 → 거대한 레이어 데이터
+    //    다운로드/합성을 회피하면서 캔버스 전체 해상도로 선명. 대용량 PSD에서 가장 빠르다.
+    if let Ok(Some(bytes)) = extract_psd_merged_composite(path, size) {
+        return Ok(Some(bytes));
+    }
+    // 2) merged composite가 없거나(최대 호환성 끔) 미지원 포맷 → 임베드 썸네일(작지만 빠름).
+    if let Ok(Some(bytes)) = extract_psd_embedded_thumbnail(path, size) {
+        return Ok(Some(bytes));
+    }
+    // 3) 최후: 전체 레이어 합성(느림·메모리). 1GB 이하만 시도, 초과는 빈 결과.
+    const MAX_PREVIEW_PARSE_BYTES: u64 = 1024 * 1024 * 1024;
+    let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(u64::MAX);
+    if file_len <= MAX_PREVIEW_PARSE_BYTES {
+        return render_psd_full(path, size);
+    }
+    Ok(None)
 }
 
 // 이미지 썸네일 캐시 PNG 경로 반환 (asset 프로토콜용 — base64/IPC 왕복 없음)
@@ -876,6 +1081,32 @@ pub async fn get_file_thumbnail(
     .map_err(|e| AppError::Internal(format!("썸네일 생성 실패: {}", e)))?
 }
 
+// 미리보기 캐시(psd_previews / 클라우드는 drive_thumbnails)를 보장하고 캐시 PNG 경로를 반환.
+// 미리보기 표시(base64)와 백그라운드 프리워밍이 같은 캐시 키를 공유하도록 공통화한다.
+fn resolve_psd_preview_cache(
+    app: &tauri::AppHandle,
+    app_cache: &Path,
+    path: &str,
+    size: u32,
+) -> Result<Option<PathBuf>> {
+    let resolved_path =
+        materialize_archive_path_in_cache(app, path)?.unwrap_or_else(|| PathBuf::from(path));
+    let resolved_path_str = resolved_path.to_string_lossy().to_string();
+
+    // 클라우드(구글드라이브): fileId 기반 캐시로 안정화. dataless여도 끝부분 merged composite만
+    // 부분 읽기하므로 전체 다운로드 없이 선명 렌더(generate_psd_preview_bytes).
+    if crate::helpers::is_cloud_path(&resolved_path_str) {
+        return ensure_google_drive_thumbnail(app_cache, &resolved_path_str, size, || {
+            generate_psd_preview_bytes(&resolved_path, size)
+        });
+    }
+
+    let cache_dir = app_cache.join("psd_previews");
+    ensure_cached_thumbnail(&cache_dir, &resolved_path_str, size, true, false, || {
+        generate_psd_preview_bytes(&resolved_path, size)
+    })
+}
+
 // PSD 썸네일 생성 (디스크 캐시 + base64 PNG 반환)
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 #[tauri::command]
@@ -884,24 +1115,49 @@ pub async fn get_psd_thumbnail(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
+    use base64::Engine;
     use tauri::Manager;
 
-    let cache_dir = app
+    let app_cache = app
         .path()
         .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?
-        .join("psd_thumbnails");
+        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        let resolved_path =
-            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
-        let resolved_path_str = resolved_path.to_string_lossy().to_string();
-        cached_thumbnail(&cache_dir, &resolved_path_str, size, true, || {
-            generate_psd_thumbnail_bytes(&resolved_path, size)
-        })
+        match resolve_psd_preview_cache(&app, &app_cache, &path, size)? {
+            Some(cache_path) => {
+                let cached = std::fs::read(cache_path)?;
+                Ok(Some(
+                    base64::engine::general_purpose::STANDARD.encode(&cached),
+                ))
+            }
+            None => Ok(None),
+        }
     })
     .await
     .map_err(|e| AppError::Internal(format!("PSD 썸네일 생성 실패: {}", e)))?
+}
+
+// 미리보기 composite 캐시를 백그라운드로 미리 데움(바이트 미반환 → IPC 경량).
+// 선택 항목을 미리 워밍해 스페이스바 미리보기를 즉시 표시하기 위함.
+#[tauri::command]
+pub async fn prewarm_psd_preview(
+    app: tauri::AppHandle,
+    path: String,
+    size: u32,
+) -> Result<bool> {
+    use tauri::Manager;
+
+    let app_cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(resolve_psd_preview_cache(&app, &app_cache, &path, size)?.is_some())
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("PSD 미리보기 프리워밍 실패: {}", e)))?
 }
 
 #[tauri::command]

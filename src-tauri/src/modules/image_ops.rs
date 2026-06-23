@@ -27,4 +27,5 @@ pub(crate) use thumbnail::{
 };
 pub use thumbnail::{
     get_file_thumbnail, get_file_thumbnail_path, get_psd_thumbnail, get_psd_thumbnail_path,
+    prewarm_psd_preview,
 };

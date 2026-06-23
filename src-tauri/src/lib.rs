@@ -31,6 +31,7 @@ pub fn run() {
             get_file_thumbnail_path,
             get_psd_thumbnail,
             get_psd_thumbnail_path,
+            prewarm_psd_preview,
             get_file_icon,
             check_duplicate_items,
             analyze_folder_merge,

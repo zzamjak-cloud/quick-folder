@@ -41,7 +41,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 import { useDirectoryLoader } from './hooks/useDirectoryLoader';
 import { useExplorerSelection } from './hooks/useExplorerSelection';
-import { usePreviewAutoRefresh, usePreviewRouting } from './hooks/usePreviewRouting';
+import { usePreviewAutoRefresh, usePreviewPrewarm, usePreviewRouting } from './hooks/usePreviewRouting';
 import { tauriCommands } from '../../utils/tauriCommands';
 import { RECENT_PATH, SYSTEM_ROOT_PATH } from './constants';
 import { sortEntries } from './entrySorting';
@@ -443,6 +443,7 @@ export default function FileExplorer({
   const { previewFile, openEntry } = usePreviewRouting({
     preview,
     isMac,
+    thumbnailSize,
     onNavigateTo: handleNavigateTo,
     onOpenArchiveEntry: openArchiveEntry,
   });
@@ -645,6 +646,8 @@ export default function FileExplorer({
   });
 
   usePreviewAutoRefresh({ preview, selectedPaths, entries, previewFile });
+  // 선택된 PSD 미리보기를 백그라운드로 미리 데워 스페이스바 즉시 표시
+  usePreviewPrewarm({ selectedPaths, entries, isMac });
 
   // --- 글로벌 검색에서 파일 선택 후 자동 선택 ---
   useEffect(() => {
