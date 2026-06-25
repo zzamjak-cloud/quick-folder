@@ -21,6 +21,8 @@
 ## 인라인 퍼지 필터
 - 위치: `InlineFuzzyFilterInput.tsx`, `hooks/useInlineFuzzyFilter.ts`, `utils/fuzzyMatch.ts`, `FuzzyHighlightedName.tsx`
 - 한글·IME 입력은 **hidden input** `onChange`만 사용 (`keydown`으로 첫 글자를 넣지 않음 — IME 깨짐 방지)
+- **회귀 방지(IME 첫 음절)**: 패널 활성 시 hidden input에 포커스를 *미리* 유지해야 한다. 포커스를 검색어 생성 후로 미루면 한글 조합이 첫 음절부터 시작될 곳이 없어 "버"→"ㅂㅓ"처럼 자모가 분리된다 (`useInlineFuzzyFilter`의 focus 유지 + `focusin` 재포커스).
+- **회귀 방지(한글 매칭)**: `fuzzyMatch`는 검색어·파일명을 모두 `normalize('NFC')` 한 뒤 비교한다. macOS 파일명은 NFD(분해형), 키보드 입력은 NFC(조합형)라 정규화 없이는 코드포인트가 달라 매칭이 실패한다. 인덱스도 NFC 기준이므로 `FuzzyHighlightedName`도 이름을 NFC로 정규화한다.
 - 활성 패널에서는 hidden input에 포커스 유지, 방향키·Ctrl 단축키와 `Delete`는 input에서 탐색기로 재전달
 - 리스트 포커스 상태에서 **검색창 없이** 바로 타이핑하면 fzf 스타일 퍼지 매칭 시작
 - **목록에서 항목을 숨기지 않음** — 비일치 항목은 흐리게, 매칭 글자는 accent 색으로 강조

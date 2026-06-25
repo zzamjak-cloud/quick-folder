@@ -15,8 +15,12 @@ const WORD_BOUNDARY_RE = /[\s._\-/\\()[\]{}]/;
 export function fuzzyMatch(pattern: string, text: string): FuzzyMatchResult | null {
   if (!pattern) return { score: 0, indices: [] };
 
-  const p = pattern.toLowerCase();
-  const t = text.toLowerCase();
+  // 한글 정규화: 키보드 입력은 NFC(조합형), macOS 파일명은 NFD(분해형)로 들어와
+  // 코드포인트가 달라 매칭이 실패한다. 양쪽을 NFC로 통일한다.
+  // indices는 NFC 기준이므로 하이라이트 측(FuzzyHighlightedName)도 NFC로 정규화해야 한다.
+  const normText = text.normalize('NFC');
+  const p = pattern.normalize('NFC').toLowerCase();
+  const t = normText.toLowerCase();
   const n = p.length;
   const m = t.length;
 
@@ -38,9 +42,9 @@ export function fuzzyMatch(pattern: string, text: string): FuzzyMatchResult | nu
       consecutive = 0;
       score += 6;
       // 첫 글자·구분자 뒤 매칭 보너스
-      if (i === 0 || WORD_BOUNDARY_RE.test(text[i - 1] ?? '')) score += 10;
+      if (i === 0 || WORD_BOUNDARY_RE.test(normText[i - 1] ?? '')) score += 10;
       // CamelCase 경계
-      if (i > 0 && /[a-z]/.test(text[i - 1]) && /[A-Z]/.test(text[i])) score += 6;
+      if (i > 0 && /[a-z]/.test(normText[i - 1]) && /[A-Z]/.test(normText[i])) score += 6;
     }
 
     prevMatchIdx = i;

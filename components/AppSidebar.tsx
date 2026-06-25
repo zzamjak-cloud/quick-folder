@@ -20,6 +20,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import type { Category, FolderShortcut } from '../types';
+import { RECENT_PATH, SYSTEM_ROOT_PATH } from './FileExplorer/constants';
 import { Button } from './ui/Button';
 import { CategoryColumn, type DropIndicator } from './CategoryColumn';
 import type { TranslationKey } from '../utils/i18n';
@@ -116,6 +117,19 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const systemRootLabel = isMac ? t('app.nav.systemRoot.mac') : t('app.nav.systemRoot.windows');
 
+  // Ctrl(Cmd)+클릭이면 새 탭에서 열고, 아니면 기존 동작 수행
+  const openPinned = (
+    event: React.MouseEvent,
+    path: string | null,
+    normalOpen: () => void,
+  ) => {
+    if ((event.metaKey || event.ctrlKey) && path) {
+      handleOpenInNewTab(path);
+    } else {
+      normalOpen();
+    }
+  };
+
   return (
     <div
       style={{ width: sidebarCollapsed ? 32 : leftPanelWidth }}
@@ -166,22 +180,26 @@ export function AppSidebar({
       {sidebarCollapsed ? (
         <div className="flex-1 overflow-y-auto px-1 py-2">
           <div className="flex flex-col items-center gap-1">
-            <CollapsedShortcutButton icon={<Clock size={15} />} label={t('app.nav.recent')} onClick={onOpenRecent} />
+            <CollapsedShortcutButton
+              icon={<Clock size={15} />}
+              label={t('app.nav.recent')}
+              onClick={(e) => openPinned(e, RECENT_PATH, onOpenRecent)}
+            />
             <CollapsedShortcutButton
               icon={<HardDrive size={15} />}
               label={systemRootLabel}
-              onClick={onOpenSystemRoot}
+              onClick={(e) => openPinned(e, SYSTEM_ROOT_PATH, onOpenSystemRoot)}
             />
             <CollapsedShortcutButton
               icon={<Monitor size={15} />}
               label={t('app.nav.desktop')}
-              onClick={onOpenDesktop}
+              onClick={(e) => openPinned(e, desktopPath, onOpenDesktop)}
               disabled={!desktopPath}
             />
             <CollapsedShortcutButton
               icon={<Download size={15} />}
               label={t('app.nav.downloads')}
-              onClick={onOpenDownloads}
+              onClick={(e) => openPinned(e, downloadPath, onOpenDownloads)}
               disabled={!downloadPath}
             />
           </div>
@@ -217,14 +235,26 @@ export function AppSidebar({
       ) : (
         <>
           <div className="shrink-0 px-4 pt-4 pb-1">
-            <ExpandedShortcutRow icon={<Clock size={14} />} label={t('app.nav.recent')} onClick={onOpenRecent} />
+            <ExpandedShortcutRow
+              icon={<Clock size={14} />}
+              label={t('app.nav.recent')}
+              onClick={(e) => openPinned(e, RECENT_PATH, onOpenRecent)}
+            />
             <ExpandedShortcutRow
               icon={<HardDrive size={14} />}
               label={systemRootLabel}
-              onClick={onOpenSystemRoot}
+              onClick={(e) => openPinned(e, SYSTEM_ROOT_PATH, onOpenSystemRoot)}
             />
-            <ExpandedShortcutRow icon={<Monitor size={14} />} label={t('app.nav.desktop')} onClick={onOpenDesktop} />
-            <ExpandedShortcutRow icon={<Download size={14} />} label={t('app.nav.downloads')} onClick={onOpenDownloads} />
+            <ExpandedShortcutRow
+              icon={<Monitor size={14} />}
+              label={t('app.nav.desktop')}
+              onClick={(e) => openPinned(e, desktopPath, onOpenDesktop)}
+            />
+            <ExpandedShortcutRow
+              icon={<Download size={14} />}
+              label={t('app.nav.downloads')}
+              onClick={(e) => openPinned(e, downloadPath, onOpenDownloads)}
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
@@ -317,7 +347,7 @@ function CollapsedShortcutButton({
 }: {
   icon: React.ReactNode;
   label: string;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent) => void;
   disabled?: boolean;
 }) {
   return (
@@ -341,7 +371,7 @@ function ExpandedShortcutRow({
 }: {
   icon: React.ReactNode;
   label: string;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent) => void;
 }) {
   return (
     <div

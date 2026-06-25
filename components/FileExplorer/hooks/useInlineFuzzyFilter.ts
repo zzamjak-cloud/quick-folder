@@ -32,11 +32,36 @@ export function useInlineFuzzyFilter({
   searchQuery,
   setSearchQuery,
 }: UseInlineFuzzyFilterConfig) {
-  // 검색 중에만 hidden input 포커스 (IME 편집)
+  // 패널이 활성화되어 있으면 hidden input에 포커스를 유지한다.
+  // 한글 IME는 조합 시작 시점에 포커스된 요소로 입력되므로, 미리 포커스해 두지 않으면
+  // 빠르게 입력할 때 첫 음절(예: "버")의 자모가 분리되어 "ㅂㅓ"처럼 깨진다.
+  // (탐색기 전역 단축키는 useKeyboardShortcuts가 data-fuzzy-filter-input을 화이트리스트
+  //  처리하므로 포커스를 유지해도 정상 동작한다.)
   useEffect(() => {
-    if (!enabled || !searchQuery) return;
-    if (isOtherEditableElement(document.activeElement, inputRef.current)) return;
-    inputRef.current?.focus({ preventScroll: true });
+    if (!enabled) return;
+    const input = inputRef.current;
+    if (!input) return;
+
+    const grabFocus = () => {
+      if (!enabled) return;
+      if (document.activeElement === input) return;
+      if (isOtherEditableElement(document.activeElement, input)) return;
+      if (isFuzzyFilterBlocked()) return;
+      input.focus({ preventScroll: true });
+    };
+
+    grabFocus();
+
+    // 탐색기 컨테이너/빈 영역 클릭으로 포커스가 빠지면 다시 hidden input으로 되돌린다.
+    const container = input.parentElement;
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as Node | null;
+      if (target === document.body || (container && target === container)) {
+        grabFocus();
+      }
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    return () => document.removeEventListener('focusin', handleFocusIn);
   }, [enabled, searchQuery, inputRef]);
 
   // 검색어 없을 때 첫 입력 → input 포커스 (한글은 compositionstart로 영문 삽입 취소)

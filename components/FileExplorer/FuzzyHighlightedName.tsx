@@ -20,19 +20,21 @@ const FuzzyHighlightedName = memo(function FuzzyHighlightedName({
   const segments = useMemo(() => {
     if (!indices.length) return [{ text: name, highlight: false }];
 
+    // fuzzyMatch는 NFC 기준 인덱스를 반환하므로 이름도 NFC로 정규화해 정렬을 맞춘다.
+    const nfcName = name.normalize('NFC');
     const indexSet = new Set(indices);
     const parts: Array<{ text: string; highlight: boolean }> = [];
     let buf = '';
     let bufHighlight = indexSet.has(0);
 
-    for (let i = 0; i < name.length; i++) {
+    for (let i = 0; i < nfcName.length; i++) {
       const highlight = indexSet.has(i);
       if (i > 0 && highlight !== bufHighlight) {
         parts.push({ text: buf, highlight: bufHighlight });
         buf = '';
         bufHighlight = highlight;
       }
-      buf += name[i];
+      buf += nfcName[i];
     }
     if (buf) parts.push({ text: buf, highlight: bufHighlight });
     return parts;
