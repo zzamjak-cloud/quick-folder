@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronRight } from 'lucide-react';
 import { ContextMenuItem, ContextMenuSection } from './types';
 
@@ -153,12 +154,12 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
             ? 'opacity-30 cursor-not-allowed'
             : 'hover:bg-[var(--qf-surface-hover)] cursor-pointer'
         }`}
-        style={{ color: 'var(--qf-text)' }}
+        style={{ color: menuItem.labelColor ?? 'var(--qf-text)' }}
         onClick={menuItem.disabled ? undefined : () => { menuItem.onClick(); onClose(); }}
         disabled={menuItem.disabled}
         title={menuItem.label}
       >
-        <span className="flex-shrink-0" style={{ color: 'var(--qf-muted)' }}>{menuItem.icon}</span>
+        <span className="flex-shrink-0" style={{ color: menuItem.labelColor ?? 'var(--qf-muted)' }}>{menuItem.icon}</span>
         <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{menuItem.label}</span>
         {menuItem.shortcut && (
           <span className="flex-shrink-0 text-[10px] text-[var(--qf-muted)]">{menuItem.shortcut}</span>
@@ -172,7 +173,9 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
     <div key={key} className="my-1 border-t border-[var(--qf-border)]" />
   );
 
-  return (
+  // transform 조상(사이드바 줌 래퍼)을 벗어나되 테마 CSS 변수는 상속받도록 #qf-root로 포털 렌더
+  const portalRoot = document.getElementById('qf-root') ?? document.body;
+  return createPortal(
     <div
       ref={menuRef}
       className="fixed z-[9999] rounded-lg shadow-2xl"
@@ -199,6 +202,7 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
           );
         })}
       </div>
-    </div>
+    </div>,
+    portalRoot,
   );
 }

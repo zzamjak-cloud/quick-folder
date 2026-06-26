@@ -179,6 +179,11 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     setIsCatModalOpen(false);
   }, [catFormTitle, catFormColor, editingCategory, addToast]);
 
+  // 인라인 설정 팝업용: 제목·색상 즉시 갱신
+  const updateCategory = useCallback((id: string, patch: Partial<Pick<Category, 'title' | 'color'>>) => {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  }, []);
+
   const deleteCategory = useCallback(async (id: string) => {
     const confirmed = await ask('정말로 이 카테고리를 삭제하시겠습니까? 포함된 모든 바로가기가 삭제됩니다.', { title: '카테고리 삭제', kind: 'warning' });
     if (confirmed) {
@@ -329,7 +334,7 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     catFormTitle, setCatFormTitle,
     catFormColor, setCatFormColor,
     openAddCategoryModal, openEditCategoryModal, handleSaveCategory,
-    deleteCategory, toggleCollapse, toggleCollapseAll,
+    updateCategory, deleteCategory, toggleCollapse, toggleCollapseAll,
     // 폴더 모달
     isFolderModalOpen, setIsFolderModalOpen,
     folderFormName, setFolderFormName,

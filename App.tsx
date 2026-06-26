@@ -1126,6 +1126,7 @@ export default function App() {
           toggleCollapseAll={catMgmt.toggleCollapseAll}
           handleAddFolder={catMgmt.handleAddFolder}
           openEditCategoryModal={catMgmt.openEditCategoryModal}
+          updateCategory={catMgmt.updateCategory}
           deleteCategory={catMgmt.deleteCategory}
           handleOpenFolder={handleOpenInExplorer}
           handleOpenInNewTab={handleOpenInNewTab}

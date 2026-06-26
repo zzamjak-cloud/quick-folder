@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Settings, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { Category, FolderShortcut } from '../types';
@@ -6,7 +7,7 @@ import {
   LEGACY_TEXT_CLASS_TO_HEX,
   LEGACY_BG_CLASS_TO_HEX,
 } from '../hooks/useCategoryManagement';
-import { adjustColorForTheme } from '../hooks/useThemeManagement';
+import { adjustColorForTheme, COLORS, normalizeHexColor } from '../hooks/useThemeManagement';
 import { SortableShortcutItem } from './SortableShortcutItem';
 
 // 드롭 인디케이터 타입
@@ -26,6 +27,7 @@ export interface CategoryColumnProps {
   toggleCollapseAll: () => void;
   handleAddFolder: (catId: string, path?: string, name?: string) => void;
   openEditCategoryModal: (cat: Category) => void;
+  updateCategory: (id: string, patch: Partial<Pick<Category, 'title' | 'color'>>) => void;
   deleteCategory: (id: string) => void;
   handleOpenFolder: (path: string) => void;
   handleOpenInNewTab: (path: string) => void;
@@ -42,7 +44,7 @@ export function CategoryColumn({
   toggleCollapse,
   toggleCollapseAll,
   handleAddFolder,
-  openEditCategoryModal,
+  updateCategory,
   deleteCategory,
   handleOpenFolder,
   handleOpenInNewTab,
@@ -67,6 +69,20 @@ export function CategoryColumn({
   });
 
   const isExpanded = !category.isCollapsed;
+
+  // 설정 팝업 위치 (null이면 닫힘)
+  const [menuPos, setMenuPos] = React.useState<{ x: number; y: number } | null>(null);
+
+  // 편집용 현재 색상(hex). 레거시 클래스도 hex로 변환
+  const currentColorHex = category.color?.startsWith('#')
+    ? category.color
+    : (LEGACY_TEXT_CLASS_TO_HEX[category.color] ?? LEGACY_BG_CLASS_TO_HEX[category.color] ?? '#60a5fa');
+
+  const openMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenuPos({ x: rect.right, y: rect.bottom + 4 });
+  };
 
   const style: React.CSSProperties = {
     opacity: isDragging ? 0.5 : 1,
@@ -134,25 +150,11 @@ export function CategoryColumn({
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
-              onClick={() => handleAddFolder(category.id)}
-              className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-accent)] hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
-              title="폴더 추가"
-            >
-              <Plus size={14} />
-            </button>
-            <button
-              onClick={() => openEditCategoryModal(category)}
+              onClick={openMenu}
               className="p-1.5 text-[var(--qf-muted)] hover:text-[var(--qf-text)] hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
-              title="카테고리 수정"
+              title="설정"
             >
               <Settings size={14} />
-            </button>
-            <button
-              onClick={() => deleteCategory(category.id)}
-              className="p-1.5 text-[var(--qf-muted)] hover:text-red-400 hover:bg-[var(--qf-surface-hover)] rounded-md transition-colors"
-              title="카테고리 삭제"
-            >
-              <Trash2 size={14} />
             </button>
           </div>
         </div>
@@ -192,6 +194,169 @@ export function CategoryColumn({
           </div>
         )}
       </div>
+
+      {menuPos && (
+        <CategorySettingsPopup
+          pos={menuPos}
+          title={category.title}
+          colorHex={currentColorHex}
+          onTitleChange={(title) => updateCategory(category.id, { title })}
+          onColorChange={(color) => updateCategory(category.id, { color })}
+          onAddFolder={() => { handleAddFolder(category.id); setMenuPos(null); }}
+          onDelete={() => { deleteCategory(category.id); setMenuPos(null); }}
+          onClose={() => setMenuPos(null)}
+        />
+      )}
     </SortableContext>
+  );
+}
+
+// 섹션 설정 인라인 팝업 (제목 변경 + 컬러 프리셋 + 폴더 추가/삭제)
+function CategorySettingsPopup({
+  pos,
+  title,
+  colorHex,
+  onTitleChange,
+  onColorChange,
+  onAddFolder,
+  onDelete,
+  onClose,
+}: {
+  pos: { x: number; y: number };
+  title: string;
+  colorHex: string;
+  onTitleChange: (title: string) => void;
+  onColorChange: (color: string) => void;
+  onAddFolder: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [adjusted, setAdjusted] = React.useState(pos);
+  const [titleDraft, setTitleDraft] = React.useState(title);
+  const [colorDraft, setColorDraft] = React.useState(colorHex);
+
+  // 화면 밖으로 나가지 않도록 위치 보정
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    setAdjusted({
+      x: pos.x + rect.width > vw ? Math.max(8, vw - rect.width - 8) : pos.x,
+      y: pos.y + rect.height > vh ? Math.max(8, vh - rect.height - 8) : pos.y,
+    });
+  }, [pos]);
+
+  // 외부 클릭·ESC로 닫기
+  React.useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', handleClick, true);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick, true);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [onClose]);
+
+  const commitTitle = () => {
+    const v = titleDraft.trim();
+    if (v && v !== title) onTitleChange(v);
+  };
+
+  const applyCustomColor = () => {
+    const v = normalizeHexColor(colorDraft);
+    if (v) { setColorDraft(v); onColorChange(v); }
+  };
+
+  const portalRoot = document.getElementById('qf-root') ?? document.body;
+
+  return createPortal(
+    <div
+      ref={ref}
+      className="fixed z-[9999] rounded-lg shadow-2xl p-3"
+      style={{
+        left: adjusted.x,
+        top: adjusted.y,
+        width: 260,
+        backgroundColor: 'var(--qf-surface-2)',
+        border: '1px solid var(--qf-border)',
+      }}
+      onContextMenu={e => e.preventDefault()}
+    >
+      {/* 제목 변경 */}
+      <label className="block text-[11px] font-medium text-[var(--qf-muted)] mb-1">제목</label>
+      <input
+        type="text"
+        value={titleDraft}
+        onChange={(e) => setTitleDraft(e.target.value)}
+        onBlur={commitTitle}
+        onKeyDown={(e) => { if (e.key === 'Enter') { commitTitle(); (e.target as HTMLInputElement).blur(); } }}
+        className="w-full bg-[var(--qf-surface)] border border-[var(--qf-border)] rounded-md px-2 py-1.5 text-xs text-[var(--qf-text)] outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
+        placeholder="카테고리 이름"
+      />
+
+      {/* 컬러 프리셋 */}
+      <label className="block text-[11px] font-medium text-[var(--qf-muted)] mt-3 mb-1.5">색상</label>
+      <div className="flex flex-wrap gap-1.5">
+        {COLORS.map((color) => (
+          <button
+            key={color.value}
+            type="button"
+            onClick={() => { setColorDraft(color.value); onColorChange(color.value); }}
+            className={`w-6 h-6 rounded-full transition-transform ${
+              colorDraft.toLowerCase() === color.value.toLowerCase()
+                ? 'ring-2 ring-offset-1 ring-offset-[var(--qf-surface-2)] ring-white scale-110'
+                : 'hover:scale-110 opacity-70 hover:opacity-100'
+            }`}
+            style={{ backgroundColor: color.value }}
+            title={color.name}
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-1.5">
+        <input
+          type="color"
+          value={normalizeHexColor(colorDraft) ?? '#60a5fa'}
+          onChange={(e) => { setColorDraft(e.target.value); onColorChange(e.target.value); }}
+          className="h-8 w-9 rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface)] p-0.5 cursor-pointer"
+          aria-label="사용자 지정 색상"
+        />
+        <input
+          type="text"
+          value={colorDraft}
+          onChange={(e) => setColorDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') applyCustomColor(); }}
+          onBlur={applyCustomColor}
+          placeholder="#60a5fa"
+          className="flex-1 bg-[var(--qf-surface)] border border-[var(--qf-border)] rounded-md px-2 py-1.5 text-[11px] font-mono text-[var(--qf-text)] outline-none focus:ring-1 focus:ring-[var(--qf-accent)]"
+        />
+      </div>
+
+      <div className="my-2.5 border-t border-[var(--qf-border)]" />
+
+      {/* 폴더 추가 / 삭제 */}
+      <button
+        type="button"
+        onClick={onAddFolder}
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-[var(--qf-text)] rounded-md hover:bg-[var(--qf-surface-hover)] transition-colors"
+      >
+        <Plus size={14} className="text-[var(--qf-muted)]" />
+        폴더 추가
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md hover:bg-[var(--qf-surface-hover)] transition-colors"
+        style={{ color: '#f87171' }}
+      >
+        <Trash2 size={14} />
+        카테고리 삭제
+      </button>
+    </div>,
+    portalRoot,
   );
 }

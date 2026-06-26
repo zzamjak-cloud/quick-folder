@@ -68,6 +68,7 @@ interface AppSidebarProps {
   toggleCollapseAll: () => void;
   handleAddFolder: (categoryId: string, path?: string, name?: string) => void;
   openEditCategoryModal: (category: Category) => void;
+  updateCategory: (categoryId: string, patch: Partial<Pick<Category, 'title' | 'color'>>) => void;
   deleteCategory: (categoryId: string) => void;
   handleOpenFolder: (path: string) => void;
   handleOpenInNewTab: (path: string) => void;
@@ -108,6 +109,7 @@ export function AppSidebar({
   toggleCollapseAll,
   handleAddFolder,
   openEditCategoryModal,
+  updateCategory,
   deleteCategory,
   handleOpenFolder,
   handleOpenInNewTab,
@@ -298,6 +300,7 @@ export function AppSidebar({
                           toggleCollapseAll={toggleCollapseAll}
                           handleAddFolder={handleAddFolder}
                           openEditCategoryModal={openEditCategoryModal}
+                          updateCategory={updateCategory}
                           deleteCategory={deleteCategory}
                           handleOpenFolder={handleOpenFolder}
                           handleOpenInNewTab={handleOpenInNewTab}
