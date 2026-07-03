@@ -741,7 +741,7 @@ export default function FileExplorer({
   useEffect(() => {
     const handler = async () => {
       if (!currentPath) return;
-      await loadDirectory(currentPath);
+      await loadDirectory(currentPath, { skipCache: true });
       if (viewMode === 'columns') {
         await columnView.refreshOpenColumns();
       }

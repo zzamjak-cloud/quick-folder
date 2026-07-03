@@ -44,6 +44,8 @@ export interface DeleteLikeShortcutSuppressOptions {
   isFuzzyFilterInput: boolean;
   isFiltering: boolean;
   isSearchActive: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
 }
 
 export interface SpaceDiffEntry {
@@ -58,9 +60,12 @@ export function shouldSuppressDeleteLikeExplorerShortcut({
   isFuzzyFilterInput,
   isFiltering,
   isSearchActive,
+  ctrlKey = false,
+  metaKey = false,
 }: DeleteLikeShortcutSuppressOptions): boolean {
   if (key !== 'Backspace' && key !== 'Delete') return false;
   if (isSearchActive) return true;
+  if (metaKey && key === 'Backspace') return false;
   if (key === 'Backspace') return isFuzzyFilterInput || isFiltering;
   return false;
 }

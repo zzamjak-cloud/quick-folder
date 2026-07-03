@@ -26,7 +26,19 @@ const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilt
       if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
         e.preventDefault();
         e.stopPropagation();
-        onClear();
+        if (innerValue.trim().length > 0) {
+          onClear();
+          return;
+        }
+        e.currentTarget.blur();
+        queueMicrotask(() => {
+          window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape',
+            code: 'Escape',
+            bubbles: true,
+            cancelable: true,
+          }));
+        });
         return;
       }
 

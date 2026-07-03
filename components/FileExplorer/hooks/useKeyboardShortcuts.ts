@@ -294,11 +294,13 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           isFuzzyFilterInput,
           isFiltering,
           isSearchActive,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
         })) return;
 
         e.preventDefault();
         if (selectedPaths.length > 0) {
-          // Windows: Delete 키만 삭제. Mac: Backspace(⌫)·Delete 모두 삭제
+          // Windows: Delete만 삭제. Mac: Backspace(⌫)·Delete 모두 삭제
           if (e.key === 'Delete' || isMac) {
             handleDelete(selectedPaths, e.shiftKey);
           }

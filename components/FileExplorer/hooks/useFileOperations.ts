@@ -423,7 +423,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   // --- 이름변경 커밋 ---
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
     setRenamingPath(null);
-    if (!newName.trim()) return;
+    if (!newName.trim() || !currentPath) return;
     const sep = getPathSeparator(oldPath);
 
     // 새 이름에서 베이스명 추출
@@ -438,20 +438,41 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
     if (!ensureWritableContext(batchPaths)) return;
 
+    const renamedPaths: string[] = [];
+    const undoRenames: { oldPath: string; newPath: string }[] = [];
+    for (const p of batchPaths) {
+      const dir = getParentDir(p);
+      // 대표 파일은 입력한 확장자 사용, 나머지는 기존 확장자 유지
+      const ext = p === oldPath ? newExt : getExtension(p);
+      const targetName = newBase + ext;
+      const targetPath = dir + sep + targetName;
+      if (targetPath !== p) {
+        undoRenames.push({ oldPath: p, newPath: targetPath });
+      }
+      renamedPaths.push(targetPath);
+    }
+
+    if (undoRenames.length === 0) return;
+
+    const newPathByOldPath = new Map(undoRenames.map(r => [r.oldPath, r.newPath]));
+    const optimistic = sortEntries(entries.map(entry => {
+      const nextPath = newPathByOldPath.get(entry.path);
+      if (!nextPath) return entry;
+      return {
+        ...entry,
+        name: getFileName(nextPath),
+        path: nextPath,
+        thumbnailPath: entry.thumbnailPath === entry.path ? nextPath : entry.thumbnailPath,
+      };
+    }), sortBy, sortDir);
+    setEntries(optimistic);
+    setSelectedPaths(renamedPaths);
+    const optimisticIndex = optimistic.findIndex(e => renamedPaths.includes(e.path));
+    if (optimisticIndex >= 0) setFocusedIndex(optimisticIndex);
+
     try {
-      const renamedPaths: string[] = [];
-      const undoRenames: { oldPath: string; newPath: string }[] = [];
-      for (const p of batchPaths) {
-        const dir = getParentDir(p);
-        // 대표 파일은 입력한 확장자 사용, 나머지는 기존 확장자 유지
-        const ext = p === oldPath ? newExt : getExtension(p);
-        const targetName = newBase + ext;
-        const targetPath = dir + sep + targetName;
-        if (targetPath !== p) {
-          await tauriCommands.renameItem(p, targetPath);
-          undoRenames.push({ oldPath: p, newPath: targetPath });
-        }
-        renamedPaths.push(targetPath);
+      for (const r of undoRenames) {
+        await tauriCommands.renameItem(r.oldPath, r.newPath);
       }
       // undo 스택에 역순으로 push (마지막 rename부터 되돌리기)
       for (const r of [...undoRenames].reverse()) {
@@ -467,6 +488,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       // 이름 변경 후 디렉토리 재로드
       const result = await tauriCommands.listDirectory(currentPath);
       const sorted = sortEntries(result, sortBy, sortDir);
+      tauriCommands.writeCachedListing(currentPath, result).catch(() => {});
       setEntries(sorted);
       setSelectedPaths(renamedPaths);
       const idx = sorted.findIndex(e => renamedPaths.includes(e.path));
@@ -484,7 +506,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         setEntries(sortEntries(result, sortBy, sortDir));
       }
     }
-  }, [currentPath, selectedPaths, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex]);
+  }, [currentPath, entries, selectedPaths, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex]);
 
   // --- 선택된 파일들을 새 폴더로 그룹화 (Ctrl+G) ---
   const handleGroupIntoFolder = useCallback(async () => {

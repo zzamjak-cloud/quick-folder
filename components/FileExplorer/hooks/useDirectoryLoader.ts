@@ -49,6 +49,10 @@ interface UseDirectoryLoaderOptions {
   setError: Dispatch<SetStateAction<string | null>>;
 }
 
+export interface LoadDirectoryOptions {
+  skipCache?: boolean;
+}
+
 export function useDirectoryLoader({
   gridRef,
   scrollPositionRef,
@@ -143,7 +147,7 @@ export function useDirectoryLoader({
     else setTimeout(run, 300);
   }, []);
 
-  const loadDirectory = useCallback(async (path: string) => {
+  const loadDirectory = useCallback(async (path: string, options: LoadDirectoryOptions = {}) => {
     if (!path) return;
     if (gridRef.current && currentPathRef.current) {
       scrollPositionRef.current.set(`${viewModeRef.current}:${currentPathRef.current}`, gridRef.current.scrollTop);
@@ -154,7 +158,8 @@ export function useDirectoryLoader({
 
     const isRecent = path === RECENT_PATH;
     const isSystemRoot = path === SYSTEM_ROOT_PATH;
-    const cached = (isRecent || isSystemRoot) ? null : entriesCacheRef.current.get(path);
+    const skipCache = options.skipCache === true;
+    const cached = (isRecent || isSystemRoot || skipCache) ? null : entriesCacheRef.current.get(path);
     if (cached) {
       setEntries(sortEntries(cached, sortBy, sortDir));
       setSelectedPaths([]);
@@ -165,7 +170,7 @@ export function useDirectoryLoader({
     const requestId = ++loadRequestRef.current;
     let freshArrived = false;
 
-    if (!cached && !isRecent && !isSystemRoot) {
+    if (!cached && !skipCache && !isRecent && !isSystemRoot) {
       tauriCommands.readCachedListing(path)
         .then(diskCached => {
           if (requestId !== loadRequestRef.current || freshArrived) return;
