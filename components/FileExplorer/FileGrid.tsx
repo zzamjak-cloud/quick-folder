@@ -50,6 +50,8 @@ interface FileGridProps {
 
 // content-visibility 최적화를 켜는 항목 수 임계치 (이하에서는 오버헤드 회피)
 const CV_THRESHOLD = 150;
+const DRAG_AUTO_SCROLL_EDGE_PX = 56;
+const DRAG_AUTO_SCROLL_MAX_STEP_PX = 22;
 
 // --- 메인 FileGrid 컴포넌트 ---
 export default memo(function FileGrid({
@@ -106,14 +108,20 @@ export default memo(function FileGrid({
   // --- 박스 드래그 선택 ---
   const dragState = useRef<{
     origin: { x: number; y: number };
+    lastPointer: { x: number; y: number };
     isActive: boolean;
     ctrlHeld: boolean;
     prevSelection: string[];
+    selectedDuringDrag: Set<string>;
+    originScrollTop: number;
+    originScrollLeft: number;
+    hasScrolled: boolean;
   } | null>(null);
   const [selectionBox, setSelectionBox] = useState<{
     left: number; top: number; width: number; height: number;
   } | null>(null);
   const skipNextClick = useRef(false);
+  const autoScrollFrame = useRef<number | null>(null);
 
   // 콜백 ref (이벤트 핸들러에서 최신 값 접근)
   const onSelectPathsRef = useRef(onSelectPaths);
@@ -124,7 +132,128 @@ export default memo(function FileGrid({
   //   - mouseup이 어떤 이유로 누락될 때를 대비해 mouseleave/blur/visibilitychange/contextmenu/Escape에서도 강제 종료
   //   - mousemove에서도 e.buttons===0이면 (어떤 이유든 마우스가 이미 떼어진 상태) 즉시 종료
   useEffect(() => {
+    const stopAutoScroll = () => {
+      if (autoScrollFrame.current === null) return;
+      window.cancelAnimationFrame(autoScrollFrame.current);
+      autoScrollFrame.current = null;
+    };
+
+    const getAutoScrollDelta = (container: HTMLDivElement, pointerY: number) => {
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      if (maxScrollTop === 0) return 0;
+
+      const rect = container.getBoundingClientRect();
+      const edge = Math.min(DRAG_AUTO_SCROLL_EDGE_PX, Math.max(16, rect.height / 3));
+      const topEdge = rect.top + edge;
+      const bottomEdge = rect.bottom - edge;
+
+      if (pointerY < topEdge && container.scrollTop > 0) {
+        const distance = Math.min(edge, topEdge - pointerY);
+        return -Math.ceil((distance / edge) * DRAG_AUTO_SCROLL_MAX_STEP_PX);
+      }
+
+      if (pointerY > bottomEdge && container.scrollTop < maxScrollTop) {
+        const distance = Math.min(edge, pointerY - bottomEdge);
+        return Math.ceil((distance / edge) * DRAG_AUTO_SCROLL_MAX_STEP_PX);
+      }
+
+      return 0;
+    };
+
+    const updateDragSelection = (clientX: number, clientY: number) => {
+      const state = dragState.current;
+      if (!state) return;
+      state.lastPointer = { x: clientX, y: clientY };
+
+      const dx = clientX - state.origin.x;
+      const dy = clientY - state.origin.y;
+      // 5px 이상 이동해야 박스 드래그로 인식
+      if (!state.isActive && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+
+      state.isActive = true;
+      skipNextClick.current = true;
+
+      const left = Math.min(state.origin.x, clientX);
+      const top = Math.min(state.origin.y, clientY);
+      const width = Math.abs(dx);
+      const height = Math.abs(dy);
+      setSelectionBox({ left, top, width, height });
+
+      // 파일 카드와 교차 판정 (일부만 겹쳐도 선택)
+      const container = gridRef.current;
+      if (!container) return;
+      const fileElements = container.querySelectorAll('[data-file-path]');
+      const intersected = new Set<string>();
+      fileElements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        if (rect.right > left && rect.left < left + width &&
+            rect.bottom > top && rect.top < top + height) {
+          const path = el.getAttribute('data-file-path');
+          if (path) intersected.add(path);
+        }
+      });
+
+      const didScroll =
+        container.scrollTop !== state.originScrollTop ||
+        container.scrollLeft !== state.originScrollLeft;
+      state.hasScrolled ||= didScroll;
+
+      if (state.hasScrolled) {
+        intersected.forEach(path => state.selectedDuringDrag.add(path));
+      } else {
+        state.selectedDuringDrag = intersected;
+      }
+
+      // Ctrl 누른 채 드래그 시 기존 선택에 추가
+      const draggedSelection = state.hasScrolled ? state.selectedDuringDrag : intersected;
+      const newSelection = state.ctrlHeld
+        ? [...new Set([...state.prevSelection, ...draggedSelection])]
+        : [...draggedSelection];
+      onSelectPathsRef.current(newSelection);
+    };
+
+    const runAutoScroll = () => {
+      autoScrollFrame.current = null;
+      const state = dragState.current;
+      const container = gridRef.current;
+      if (!state || !state.isActive || !container) return;
+
+      const delta = getAutoScrollDelta(container, state.lastPointer.y);
+      if (delta === 0) return;
+
+      const before = container.scrollTop;
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      container.scrollTop = Math.max(0, Math.min(maxScrollTop, before + delta));
+
+      if (container.scrollTop !== before) {
+        updateDragSelection(state.lastPointer.x, state.lastPointer.y);
+      }
+
+      if (dragState.current && getAutoScrollDelta(container, dragState.current.lastPointer.y) !== 0) {
+        autoScrollFrame.current = window.requestAnimationFrame(runAutoScroll);
+      }
+    };
+
+    const scheduleAutoScroll = () => {
+      const state = dragState.current;
+      const container = gridRef.current;
+      if (!state || !state.isActive || !container) {
+        stopAutoScroll();
+        return;
+      }
+
+      if (getAutoScrollDelta(container, state.lastPointer.y) === 0) {
+        stopAutoScroll();
+        return;
+      }
+
+      if (autoScrollFrame.current === null) {
+        autoScrollFrame.current = window.requestAnimationFrame(runAutoScroll);
+      }
+    };
+
     const endDrag = () => {
+      stopAutoScroll();
       if (!dragState.current) return;
       dragState.current = null;
       setSelectionBox(null);
@@ -141,39 +270,8 @@ export default memo(function FileGrid({
         return;
       }
 
-      const dx = e.clientX - state.origin.x;
-      const dy = e.clientY - state.origin.y;
-      // 5px 이상 이동해야 박스 드래그로 인식
-      if (!state.isActive && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-
-      state.isActive = true;
-      skipNextClick.current = true;
-
-      const left = Math.min(state.origin.x, e.clientX);
-      const top = Math.min(state.origin.y, e.clientY);
-      const width = Math.abs(dx);
-      const height = Math.abs(dy);
-      setSelectionBox({ left, top, width, height });
-
-      // 파일 카드와 교차 판정 (일부만 겹쳐도 선택)
-      const container = gridRef.current;
-      if (!container) return;
-      const fileElements = container.querySelectorAll('[data-file-path]');
-      const intersected: string[] = [];
-      fileElements.forEach(el => {
-        const rect = el.getBoundingClientRect();
-        if (rect.right > left && rect.left < left + width &&
-            rect.bottom > top && rect.top < top + height) {
-          const path = el.getAttribute('data-file-path');
-          if (path) intersected.push(path);
-        }
-      });
-
-      // Ctrl 누른 채 드래그 시 기존 선택에 추가
-      const newSelection = state.ctrlHeld
-        ? [...new Set([...state.prevSelection, ...intersected])]
-        : intersected;
-      onSelectPathsRef.current(newSelection);
+      updateDragSelection(e.clientX, e.clientY);
+      scheduleAutoScroll();
     };
 
     const handleMouseUp = () => endDrag();
@@ -199,6 +297,7 @@ export default memo(function FileGrid({
       window.removeEventListener('keydown', handleKey, true);
       document.removeEventListener('visibilitychange', handleVisibility);
       document.removeEventListener('mouseleave', handleDocLeave);
+      stopAutoScroll();
     };
   }, [gridRef]);
 
@@ -213,9 +312,14 @@ export default memo(function FileGrid({
     }
     dragState.current = {
       origin: { x: e.clientX, y: e.clientY },
+      lastPointer: { x: e.clientX, y: e.clientY },
       isActive: false,
       ctrlHeld: e.ctrlKey || e.metaKey,
       prevSelection: (e.ctrlKey || e.metaKey) ? selectedPaths : [],
+      selectedDuringDrag: new Set(),
+      originScrollTop: gridRef.current?.scrollTop ?? 0,
+      originScrollLeft: gridRef.current?.scrollLeft ?? 0,
+      hasScrolled: false,
     };
     skipNextClick.current = false;
   }, [selectedPaths]);
