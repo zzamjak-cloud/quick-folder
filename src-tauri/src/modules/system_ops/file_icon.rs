@@ -15,6 +15,7 @@ pub fn get_file_icon(
     app: tauri::AppHandle,
     path: String,
     size: u32,
+    is_dir_hint: Option<bool>,
 ) -> Result<Option<String>, String> {
     use base64::Engine;
 
@@ -23,11 +24,15 @@ pub fn get_file_icon(
         .unwrap_or_else(|| std::path::PathBuf::from(&path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
     let p = std::path::Path::new(&resolved_path_str);
-    let ext = p
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    let cache_key = icon_cache_key(p.is_dir(), &ext, size);
+    let is_dir = p.is_dir() || is_dir_hint.unwrap_or(false);
+    let ext = if is_dir {
+        String::new()
+    } else {
+        p.extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    let cache_key = icon_cache_key(is_dir, &ext, size);
 
     // 1차: 메모리 캐시
     {
@@ -48,7 +53,7 @@ pub fn get_file_icon(
     // 플랫폼별 아이콘 추출 (패닉 방지)
     // 아이콘은 확장자별 캐시로 재사용되어 실질적으로 한 번만 호출 → 세마포어 불필요
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        get_native_icon_bytes(&resolved_path_str, size)
+        get_native_icon_bytes(&resolved_path_str, size, is_dir)
     })) {
         Ok(Some(bytes)) => {
             write_disk_icon_cache(&app, &cache_key, &bytes);

@@ -55,7 +55,7 @@ export function useNativeIcon(
     // 아이콘은 확장자별 캐시가 있어 실질적으로 한 번만 Rust 호출 → 큐 불필요
     // 항상 고정 해상도로 요청 → 확대해도 선명
     let cancelled = false;
-    tauriCommands.getFileIcon(entry.path, ICON_FETCH_SIZE)
+    tauriCommands.getFileIcon(entry.path, ICON_FETCH_SIZE, entry.is_dir)
       .then(b64 => {
         if (cancelled) return;
         if (b64) {
@@ -88,7 +88,7 @@ export function useFolderIcon(path: string, _size?: number): string | null {
     }
     setIcon(null);
     let cancelled = false;
-    tauriCommands.getFileIcon(path, ICON_FETCH_SIZE)
+    tauriCommands.getFileIcon(path, ICON_FETCH_SIZE, true)
       .then(b64 => {
         if (cancelled) return;
         if (b64) {

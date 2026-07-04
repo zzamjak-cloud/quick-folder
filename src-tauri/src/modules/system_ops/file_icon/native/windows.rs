@@ -58,21 +58,25 @@ fn crop_transparent_rgba(pixels: Vec<u8>, width: u32, height: u32) -> Option<(Ve
     Some((cropped, cropped_width, cropped_height))
 }
 
-pub(crate) fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
+pub(crate) fn get_native_icon_bytes(path: &str, size: u32, is_dir_hint: bool) -> Option<Vec<u8>> {
     // GDI 패닉 방지: catch_unwind로 감싸서 앱 크래시 방지
-    std::panic::catch_unwind(|| get_native_icon_bytes_inner(path, size))
+    std::panic::catch_unwind(|| get_native_icon_bytes_inner(path, size, is_dir_hint))
         .ok()
         .flatten()
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_windows_icon_query(path: &str) -> (String, u32) {
+fn resolve_windows_icon_query(path: &str, is_dir_hint: bool) -> (String, u32) {
     use std::path::Path;
-    use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
+    use winapi::um::winnt::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL};
 
     let p = Path::new(path);
-    if p.is_dir() {
+    let path_is_dir = p.is_dir();
+    if path_is_dir {
         return (path.to_string(), 0);
+    }
+    if is_dir_hint {
+        return (path.to_string(), FILE_ATTRIBUTE_DIRECTORY);
     }
 
     let ext = file_extension(path);
@@ -220,7 +224,7 @@ unsafe fn hicon_to_png_bytes(h_icon: winapi::shared::windef::HICON) -> Option<Ve
 #[cfg(target_os = "windows")]
 fn get_text_document_icon_bytes(size: u32) -> Option<Vec<u8>> {
     // Windows Shell의 .txt 연결 아이콘을 종이문서 기본 스타일로 재사용한다.
-    get_native_icon_bytes_inner("dummy.txt", size)
+    get_native_icon_bytes_inner("dummy.txt", size, false)
 }
 
 #[cfg(target_os = "windows")]
@@ -234,7 +238,7 @@ fn get_stock_doc_no_assoc_index() -> Option<i32> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
+fn get_native_icon_bytes_inner(path: &str, size: u32, is_dir_hint: bool) -> Option<Vec<u8>> {
     use std::mem;
     use winapi::shared::windef::HICON;
     use winapi::shared::winerror::S_OK;
@@ -269,7 +273,7 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
         // COINIT_APARTMENTTHREADED = 0x2 — Shell/IImageList STA
         let _ = CoInitializeEx(std::ptr::null_mut(), 0x2);
 
-        let is_dir = std::path::Path::new(path).is_dir();
+        let is_dir = std::path::Path::new(path).is_dir() || is_dir_hint;
         let original_ext = file_extension(path);
         if should_use_text_document_icon(is_dir, &original_ext) {
             if let Some(bytes) = get_text_document_icon_bytes(size) {
@@ -277,7 +281,7 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
             }
         }
 
-        let (query_path, file_attributes) = resolve_windows_icon_query(path);
+        let (query_path, file_attributes) = resolve_windows_icon_query(path, is_dir);
         let use_file_attributes = file_attributes != 0;
 
         // 1. 파일의 시스템 아이콘 인덱스 가져오기
@@ -386,7 +390,7 @@ fn get_native_icon_bytes_inner(path: &str, size: u32) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::{crop_transparent_rgba, resolve_windows_icon_query};
-    use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
+    use winapi::um::winnt::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL};
 
     #[test]
     fn crops_transparent_padding_around_icon_pixels() {
@@ -414,7 +418,8 @@ mod tests {
 
     #[test]
     fn uses_extension_query_for_code_like_files() {
-        let (query_path, file_attributes) = resolve_windows_icon_query(r"C:\repo\vite.config.ts");
+        let (query_path, file_attributes) =
+            resolve_windows_icon_query(r"C:\repo\vite.config.ts", false);
         assert_eq!(query_path, "dummy.ts");
         assert_eq!(file_attributes, FILE_ATTRIBUTE_NORMAL);
     }
@@ -422,7 +427,7 @@ mod tests {
     #[test]
     fn keeps_real_path_for_extensionless_files() {
         let path = r"C:\repo\Dockerfile";
-        let (query_path, file_attributes) = resolve_windows_icon_query(path);
+        let (query_path, file_attributes) = resolve_windows_icon_query(path, false);
         assert_eq!(query_path, path);
         assert_eq!(file_attributes, 0);
     }
@@ -431,8 +436,16 @@ mod tests {
     fn keeps_real_path_for_directories() {
         let dir = std::env::temp_dir();
         let dir_str = dir.to_string_lossy().to_string();
-        let (query_path, file_attributes) = resolve_windows_icon_query(&dir_str);
+        let (query_path, file_attributes) = resolve_windows_icon_query(&dir_str, false);
         assert_eq!(query_path, dir_str);
         assert_eq!(file_attributes, 0);
+    }
+
+    #[test]
+    fn uses_directory_attributes_for_missing_directory_hint() {
+        let path = r"C:\repo\(P)QuickClipper";
+        let (query_path, file_attributes) = resolve_windows_icon_query(path, true);
+        assert_eq!(query_path, path);
+        assert_eq!(file_attributes, FILE_ATTRIBUTE_DIRECTORY);
     }
 }

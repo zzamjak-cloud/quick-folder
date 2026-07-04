@@ -1,6 +1,6 @@
 use super::super::text::{file_extension, should_use_text_document_icon};
 
-pub(crate) fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
+pub(crate) fn get_native_icon_bytes(path: &str, size: u32, is_dir_hint: bool) -> Option<Vec<u8>> {
     use objc::runtime::{Class, Object};
     use objc::{msg_send, sel, sel_impl};
     use std::ffi::CString;
@@ -19,12 +19,22 @@ pub(crate) fn get_native_icon_bytes(path: &str, size: u32) -> Option<Vec<u8>> {
         }
 
         let str_class = Class::get("NSString")?;
-        let is_dir = std::path::Path::new(path).is_dir();
+        let p = std::path::Path::new(path);
+        let path_is_dir = p.is_dir();
+        let is_dir = path_is_dir || is_dir_hint;
         let ext = file_extension(path);
 
         let icon: *mut Object = if should_use_text_document_icon(is_dir, &ext) {
             // 텍스트 기반 문서는 실제 앱 연결 대신 macOS의 .txt 파일 타입 아이콘으로 맞춘다.
             let c_type = CString::new("txt").ok()?;
+            let ns_type: *mut Object = msg_send![str_class, stringWithUTF8String: c_type.as_ptr()];
+            if ns_type.is_null() {
+                return None;
+            }
+            msg_send![workspace, iconForFileType: ns_type]
+        } else if is_dir && !path_is_dir {
+            // 이름 변경 직후 새 경로가 아직 생기기 전에 호출돼도 폴더 아이콘을 유지한다.
+            let c_type = CString::new("public.folder").ok()?;
             let ns_type: *mut Object = msg_send![str_class, stringWithUTF8String: c_type.as_ptr()];
             if ns_type.is_null() {
                 return None;

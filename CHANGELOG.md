@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.52] - 2026-07-05
+
+### Fixed
+- 폴더 이름 변경 직후 네이티브 아이콘 요청 race로 폴더가 흰 파일 아이콘처럼 표시되던 문제 수정
+
 ## [1.27.48] - 2026-06-26
 
 ### Added

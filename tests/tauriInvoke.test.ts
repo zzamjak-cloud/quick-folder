@@ -144,6 +144,7 @@ test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 
   await mediaCommands.laigterMapsPreview('/tmp/image.png', { bumpStrength: 1 }, 512);
   await mediaCommands.ensureThumbnailsBatch([{ path: '/tmp/image.png', fileType: 'image' }], 160);
   await mediaCommands.ensureThumbnailsBatch([{ path: '/tmp/design.psd', fileType: 'psd' }], 160);
+  await previewCommands.getFileIcon('/tmp/(P)QuickClipper', 128, true);
   await previewCommands.getFontInfo('/tmp/font.ttf');
   await systemCommands.startFileDrag(['/tmp/a.txt'], 'data:image/png;base64,AA==', { send: true });
 
@@ -156,6 +157,7 @@ test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 
     { cmd: 'laigter_maps_preview', args: { input: '/tmp/image.png', params: { bumpStrength: 1 }, maxSide: 512 } },
     { cmd: 'ensure_thumbnails_batch', args: { items: [{ path: '/tmp/image.png', fileType: 'image' }], size: 160 } },
     { cmd: 'ensure_thumbnails_batch', args: { items: [{ path: '/tmp/design.psd', fileType: 'psd' }], size: 160 } },
+    { cmd: 'get_file_icon', args: { path: '/tmp/(P)QuickClipper', size: 128, isDirHint: true } },
     { cmd: 'get_font_info', args: { path: '/tmp/font.ttf' } },
     { cmd: 'plugin:drag|start_drag', args: { item: ['/tmp/a.txt'], image: 'data:image/png;base64,AA==', onEvent: { send: true } } },
   ]);

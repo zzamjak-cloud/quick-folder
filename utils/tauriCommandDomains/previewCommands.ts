@@ -7,8 +7,12 @@ export const previewCommands = {
   extractHwpText(path: string) {
     return runCommand<string>('extract_hwp_text', { path });
   },
-  getFileIcon(path: string, size: number) {
-    return runCommand<string | null>('get_file_icon', { path, size });
+  getFileIcon(path: string, size: number, isDirHint?: boolean) {
+    return runCommand<string | null>('get_file_icon', {
+      path,
+      size,
+      ...(isDirHint === undefined ? {} : { isDirHint }),
+    });
   },
   getFontInfo<T>(path: string) {
     return runCommand<T>('get_font_info', { path });
