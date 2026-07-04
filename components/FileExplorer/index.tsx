@@ -305,8 +305,10 @@ export default function FileExplorer({
     if (!initialPath) return;
     if (handledInitialPathKeyRef.current === initialPathKey) return;
     handledInitialPathKeyRef.current = initialPathKey;
-    // 현재 활성 탭이 이미 같은 경로면 불필요
-    if (activeTab && activeTab.path === initialPath) return;
+    if (activeTab && activeTab.path === initialPath) {
+      loadDirectory(initialPath);
+      return;
+    }
     if (activeTab) {
       // 기존 활성 탭의 경로를 변경 (새 탭 추가 안 함)
       navigateTo(initialPath);
@@ -314,7 +316,7 @@ export default function FileExplorer({
       // 탭이 없으면 새 탭 생성
       openTab(initialPath);
     }
-  }, [activeTab, initialPath, initialPathKey, navigateTo, openTab]);
+  }, [activeTab, initialPath, initialPathKey, loadDirectory, navigateTo, openTab]);
 
   // 앱 시작 시 저장된 탭이 있으면 마지막 활성 탭 로드
   const didLoadInitialActiveTabRef = useRef(false);
