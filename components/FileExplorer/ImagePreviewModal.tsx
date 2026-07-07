@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, X } from 'lucide-react';
 import ImageCropOverlay from './ImageCropOverlay';
 import { tauriCommands } from '../../utils/tauriCommands';
@@ -89,24 +89,49 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
   }, [themeVars]);
 
   // 이미지 로드 완료 시 표시 크기와 원본 크기 기록
-  const handleImageLoad = useCallback(() => {
+  const updateImageGeometry = useCallback(() => {
     const img = imgRef.current;
     const container = imgContainerRef.current;
     if (!img || !container) return;
     const containerRect = container.getBoundingClientRect();
     const imgRect = img.getBoundingClientRect();
-    setImageRect({
+    const nextImageRect = {
       width: imgRect.width,
       height: imgRect.height,
       left: imgRect.left - containerRect.left,
       top: imgRect.top - containerRect.top,
+    };
+    setImageRect((prev) => (
+      prev &&
+      prev.width === nextImageRect.width &&
+      prev.height === nextImageRect.height &&
+      prev.left === nextImageRect.left &&
+      prev.top === nextImageRect.top
+        ? prev
+        : nextImageRect
+    ));
+    setNaturalSize((prev) => (
+      prev &&
+      prev.width === img.naturalWidth &&
+      prev.height === img.naturalHeight
+        ? prev
+        : { width: img.naturalWidth, height: img.naturalHeight }
+    ));
+  }, []);
+
+  const handleImageLoad = useCallback(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    updateImageGeometry();
+    setImageDims({
+      width: img.naturalWidth,
+      height: img.naturalHeight,
     });
-    setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
     if (!resizeWidth && !resizeHeight) {
       setResizeWidth(String(img.naturalWidth));
       setResizeHeight(String(img.naturalHeight));
     }
-  }, []);
+  }, [resizeHeight, resizeWidth, updateImageGeometry]);
 
   // 크롭 저장 핸들러
   const handleCropSave = useCallback(async (x: number, y: number, width: number, height: number) => {
@@ -260,6 +285,33 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     setEditMode(true);
     setActiveTool('pen');
   }, [preview.previewImageEditRequest, preview.previewImagePath, isCroppable]);
+
+  useLayoutEffect(() => {
+    if (!preview.previewImageData || actionMode !== 'none') return;
+    updateImageGeometry();
+    const frame = window.requestAnimationFrame(() => updateImageGeometry());
+    return () => window.cancelAnimationFrame(frame);
+  }, [actionMode, editMode, preview.previewImageData, updateImageGeometry]);
+
+  useEffect(() => {
+    if (!preview.previewImageData || actionMode !== 'none') return;
+
+    const handleResize = () => updateImageGeometry();
+    window.addEventListener('resize', handleResize);
+
+    const observers: ResizeObserver[] = [];
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => updateImageGeometry());
+      if (imgRef.current) observer.observe(imgRef.current);
+      if (imgContainerRef.current) observer.observe(imgContainerRef.current);
+      observers.push(observer);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      observers.forEach((observer) => observer.disconnect());
+    };
+  }, [actionMode, preview.previewImageData, updateImageGeometry]);
 
   return (
     <>

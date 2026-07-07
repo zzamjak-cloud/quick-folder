@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.53] - 2026-07-07
+
+### Fixed
+- 이미지 편집 모드 진입 후 프리뷰 이미지와 Rect 편집 overlay 위치가 어긋나던 문제 수정
+- 사각형 드래그가 캔버스 밖으로 이어질 때 이미지 경계까지 그려지지 않고 중간에 끊기던 문제 수정
+
 ## [1.27.52] - 2026-07-05
 
 ### Fixed

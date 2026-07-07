@@ -45,6 +45,15 @@ const ERASER_THRESHOLD = 0.02;
 /** rect/ellipse 최소 크기 (정규화 단위) */
 const MIN_SHAPE_SIZE = 0.005;
 
+type DragMouseEvent = {
+  clientX: number;
+  clientY: number;
+  shiftKey?: boolean;
+  preventDefault?: () => void;
+};
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
 // ─── 헬퍼: 단일 스트로크 렌더링 ──────────────────────────────────────────────
 
 /**
@@ -207,6 +216,10 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
     const isDraggingRef = useRef(false);
     /** 펜 도구 실시간 경로 (렌더 성능을 위해 ref로 관리) */
     const penPointsRef = useRef<{ x: number; y: number }[]>([]);
+    const windowDragHandlersRef = useRef<{
+      move: (event: MouseEvent) => void;
+      up: (event: MouseEvent) => void;
+    } | null>(null);
 
     // ─── 캔버스 전체 다시 그리기 ────────────────────────────────────────────
 
@@ -234,16 +247,26 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
     // ─── 좌표 변환: 마우스 이벤트 → 정규화 (0~1) ────────────────────────────
 
     const toNorm = useCallback(
-      (e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } => {
+      (e: DragMouseEvent): { x: number; y: number } => {
         const canvas = canvasRef.current!;
         const rect = canvas.getBoundingClientRect();
+        const width = rect.width || 1;
+        const height = rect.height || 1;
         return {
-          x: (e.clientX - rect.left) / rect.width,
-          y: (e.clientY - rect.top) / rect.height,
+          x: clamp01((e.clientX - rect.left) / width),
+          y: clamp01((e.clientY - rect.top) / height),
         };
       },
       [],
     );
+
+    const removeWindowDragListeners = useCallback(() => {
+      const handlers = windowDragHandlersRef.current;
+      if (!handlers) return;
+      window.removeEventListener('mousemove', handlers.move);
+      window.removeEventListener('mouseup', handlers.up);
+      windowDragHandlersRef.current = null;
+    }, []);
 
     // ─── 스트로크 존재 여부 알림 ─────────────────────────────────────────────
 
@@ -282,18 +305,24 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
         // 펜/rect/ellipse: 드래그 시작
         isDraggingRef.current = true;
         dragStartRef.current = pos;
+        removeWindowDragListeners();
+        const move = (event: MouseEvent) => handleMouseMove(event);
+        const up = (event: MouseEvent) => handleMouseUp(event);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        windowDragHandlersRef.current = { move, up };
 
         if (tool === 'pen') {
           penPointsRef.current = [pos];
         }
       },
-      [tool, toNorm, redraw, notifyHasStrokes],
+      [tool, color, lineWidth, toNorm, redraw, notifyHasStrokes, removeWindowDragListeners],
     );
 
     const handleMouseMove = useCallback(
-      (e: React.MouseEvent<HTMLCanvasElement>) => {
+      (e: DragMouseEvent) => {
         if (!isDraggingRef.current || !dragStartRef.current) return;
-        e.preventDefault();
+        e.preventDefault?.();
 
         const pos = toNorm(e);
         const start = dragStartRef.current;
@@ -330,6 +359,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
             ex = start.x + Math.sign(pos.x - start.x) * side;
             ey = start.y + Math.sign(pos.y - start.y) * side;
           }
+          ex = clamp01(ex);
+          ey = clamp01(ey);
 
           const preview: Stroke = {
             type: tool as StrokeType,
@@ -345,10 +376,11 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
     );
 
     const handleMouseUp = useCallback(
-      (e: React.MouseEvent<HTMLCanvasElement>) => {
+      (e: DragMouseEvent) => {
         if (!isDraggingRef.current || !dragStartRef.current) return;
         isDraggingRef.current = false;
-        e.preventDefault();
+        e.preventDefault?.();
+        removeWindowDragListeners();
 
         const pos = toNorm(e);
         const start = dragStartRef.current;
@@ -389,9 +421,11 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
           }
 
           // 최소 크기 검사
-          const adx = Math.abs(ex - start.x);
-          const ady = Math.abs(ey - start.y);
-          if (adx > MIN_SHAPE_SIZE || ady > MIN_SHAPE_SIZE) {
+          ex = clamp01(ex);
+          ey = clamp01(ey);
+          const shapeDx = Math.abs(ex - start.x);
+          const shapeDy = Math.abs(ey - start.y);
+          if (shapeDx > MIN_SHAPE_SIZE || shapeDy > MIN_SHAPE_SIZE) {
             finalStroke = {
               type: tool as StrokeType,
               points: [start, { x: ex, y: ey }],
@@ -409,11 +443,12 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
 
         redraw();
       },
-      [tool, color, lineWidth, toNorm, redraw, notifyHasStrokes],
+      [tool, color, lineWidth, toNorm, redraw, notifyHasStrokes, removeWindowDragListeners],
     );
 
     /** 캔버스 밖으로 마우스가 나갈 때 드래그 취소 */
     const handleMouseLeave = useCallback(() => {
+      if (windowDragHandlersRef.current) return;
       if (isDraggingRef.current && tool === 'pen') {
         // 펜은 나가면 스트로크 확정
         if (penPointsRef.current.length >= 1) {
@@ -434,6 +469,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
         redraw();
       }
     }, [tool, color, lineWidth, redraw, notifyHasStrokes]);
+
+    useEffect(() => removeWindowDragListeners, [removeWindowDragListeners]);
 
     // ─── Ctrl+Z 단축키 (캡처 단계, 글로벌 단축키 차단) ─────────────────────
 
@@ -557,7 +594,6 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
           touchAction: 'none',
         }}
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
       />

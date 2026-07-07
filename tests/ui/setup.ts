@@ -34,3 +34,31 @@ Object.defineProperty(globalThis, 'sessionStorage', {
   writable: true,
   configurable: true,
 });
+
+// jsdom은 canvas 2D context를 구현하지 않으므로, 캔버스 기반 UI 테스트의 기본 mock을 제공한다.
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  value: () => ({
+    arc: () => {},
+    beginPath: () => {},
+    clearRect: () => {},
+    closePath: () => {},
+    drawImage: () => {},
+    ellipse: () => {},
+    fill: () => {},
+    fillRect: () => {},
+    fillText: () => {},
+    lineTo: () => {},
+    measureText: () => ({ width: 0 }),
+    moveTo: () => {},
+    restore: () => {},
+    roundRect: () => {},
+    save: () => {},
+    stroke: () => {},
+    strokeRect: () => {},
+  }),
+});
+Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
+  configurable: true,
+  value: () => 'data:image/png;base64,',
+});
