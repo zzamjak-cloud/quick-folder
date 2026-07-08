@@ -74,6 +74,7 @@ export const mediaCommands = {
       cropY: null,
       cropW: null,
       cropH: null,
+      scaleWidth: null,
       onProgress,
     });
   },

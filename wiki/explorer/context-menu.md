@@ -108,3 +108,4 @@ interface ContextMenuTrailingAction {
 
 - 다중 선택 우클릭은 `contextMenu.paths` 전체에서 동영상 경로만 필터링한다.
 - `handleVideoToGif`는 FFmpeg 확인 후 선택된 동영상을 순차 처리하고, 완료 후 현재 폴더를 갱신한다.
+- 우클릭 `GIF 변환`과 편집 툴바의 구간 `GIF 내보내기`는 모두 원본 해상도를 유지한다.

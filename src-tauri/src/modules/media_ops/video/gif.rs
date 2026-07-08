@@ -12,6 +12,7 @@ pub async fn video_to_gif(
     crop_y: Option<i32>,
     crop_w: Option<i32>,
     crop_h: Option<i32>,
+    scale_width: Option<i32>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
@@ -38,7 +39,7 @@ pub async fn video_to_gif(
     std::fs::create_dir_all(&tmp_dir)?;
     let palette_path = tmp_dir.join("palette.png");
 
-    // 필터 체인 구성: 크롭(옵션) → 스케일 → 팔레트/gif
+    // 필터 체인 구성: 크롭(옵션) → 스케일(옵션) → 팔레트/gif
     let mut filters = Vec::new();
 
     // 크롭 필터 (지정된 경우)
@@ -46,9 +47,11 @@ pub async fn video_to_gif(
         filters.push(format!("crop={}:{}:{}:{}", w, h, x, y));
     }
 
-    // FPS 제한 + 해상도 축소 (GIF 용량 감소)
+    // FPS 제한. 해상도 축소는 호출자가 명시한 경우에만 적용한다.
     filters.push("fps=15".to_string());
-    filters.push("scale=480:-1:flags=lanczos".to_string());
+    if let Some(width) = scale_width.filter(|width| *width > 0) {
+        filters.push(format!("scale={}:-1:flags=lanczos", width));
+    }
 
     let base_filter = filters.join(",");
 

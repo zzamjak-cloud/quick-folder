@@ -75,6 +75,7 @@ pub async fn video_to_gif(
     crop_y: Option<i32>,
     crop_w: Option<i32>,
     crop_h: Option<i32>,
+    scale_width: Option<i32>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     gif::video_to_gif(
@@ -85,6 +86,7 @@ pub async fn video_to_gif(
         crop_y,
         crop_w,
         crop_h,
+        scale_width,
         on_progress,
     )
     .await

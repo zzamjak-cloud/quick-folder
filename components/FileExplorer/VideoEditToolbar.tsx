@@ -301,6 +301,7 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         cropY: cropRect?.y ?? null,
         cropW: cropRect?.w ?? null,
         cropH: cropRect?.h ?? null,
+        scaleWidth: null,
         onProgress: progress,
       });
       setStatusText(`GIF 생성 완료: ${getFileName(output)}`);
