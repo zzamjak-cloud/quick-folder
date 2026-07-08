@@ -35,6 +35,7 @@ export interface UseContextMenuBuilderConfig {
     handleCompressZip: (paths: string[]) => void;
     handleExtractZip: (paths: string[]) => void;
     handleCompressVideo: (paths: string | string[], quality: 'low' | 'medium' | 'high') => void;
+    handleVideoToGif: (paths: string[]) => void;
     handleGifToMp4: (paths: string[]) => void;
     handleCompressPdf: (path: string) => void;
     handleInspectFolderSize: (path: string) => void;
@@ -333,6 +334,12 @@ export function useContextMenuBuilder({
           { id: 'quality-medium', icon: undefined, label: '좋은 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'medium') },
           { id: 'quality-high', icon: undefined, label: '최고 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'high') },
         ],
+      });
+      toolSection.items.push({
+        id: 'video-to-gif',
+        icon: <Image size={13} />,
+        label: 'GIF 변환',
+        onClick: () => fileOps.handleVideoToGif(videoPaths),
       });
       }
     }
@@ -678,7 +685,7 @@ export function useContextMenuBuilder({
     openEntry, openInOsExplorer, preview.handlePreviewImage,
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
     fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleConvertCase, fileOps.handleDelete,
-    fileOps.handleCompressZip, fileOps.handleExtractZip, fileOps.handleCompressVideo, fileOps.handleGifToMp4,
+    fileOps.handleCompressZip, fileOps.handleExtractZip, fileOps.handleCompressVideo, fileOps.handleVideoToGif, fileOps.handleGifToMp4,
     fileOps.handleCompressPdf, fileOps.handleInspectFolderSize, fileOps.handleCopyPath,
     fileOps.handleSpritePack, fileOps.handleCreateDirectory, fileOps.handleCreateMarkdown,
     handleAddTag, handleRemoveTag,

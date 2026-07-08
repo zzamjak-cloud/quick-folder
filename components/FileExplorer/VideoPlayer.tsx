@@ -51,6 +51,10 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
     setDuration(0);
   }, [path]);
 
+  useEffect(() => {
+    overlayRef.current?.focus({ preventScroll: true });
+  }, [path]);
+
   // 시크바 조작
   const handleSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current;
@@ -163,6 +167,17 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
         return;
       }
 
+      // E 키: 편집 모드 토글 (입력 필드/Ctrl 등 미수반 단독 입력 + IME 입력 중 제외)
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && (e as any).keyCode !== 229) {
+        const target = e.target as HTMLElement | null;
+        const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (isTyping) return;
+        e.stopPropagation();
+        e.preventDefault();
+        setEditMode((prev) => !prev);
+        return;
+      }
+
       const video = videoRef.current;
       if (!video) return;
 
@@ -210,17 +225,6 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
         video.paused ? video.play() : video.pause();
         return;
       }
-
-      // E 키: 편집 모드 토글 (입력 필드/Ctrl 등 미수반 단독 입력 + IME 입력 중 제외)
-      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && (e as any).keyCode !== 229) {
-        const target = e.target as HTMLElement | null;
-        const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-        if (isTyping) return;
-        e.stopPropagation();
-        e.preventDefault();
-        setEditMode((prev) => !prev);
-        return;
-      }
     };
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
@@ -229,8 +233,9 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
   return (
     <div
       ref={overlayRef}
+      tabIndex={-1}
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.92)' }}
+      style={{ backgroundColor: 'rgba(0,0,0,0.92)', outline: 'none' }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       {/* 헤더: 파일명 + 편집 버튼 + 닫기 버튼 */}

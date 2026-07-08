@@ -64,6 +64,7 @@
 |--------|------|
 | `Ctrl+Alt+O` | Photoshop에서 열기 |
 | `Space` | 1개 선택: 미리보기 / 비교 가능한 파일 2개 선택: Diff Viewer |
+| `E` | 동영상 미리보기에서 편집 모드 토글 |
 
 ### 뷰
 | 단축키 | 기능 |
@@ -104,3 +105,7 @@ if (ctrl && e.code === 'KeyT') { /* ... */ }
 document.addEventListener('keydown', handler, { capture: true })
 e.stopImmediatePropagation()
 ```
+
+## 동영상 미리보기 단축키
+`VideoPlayer.tsx`는 모달 overlay를 포커스 대상으로 만들고, `E` 키는 `videoRef` 조회보다 먼저 처리한다.
+비디오 엘리먼트가 리렌더 중이거나 네이티브 컨트롤이 포커스를 잡아도 편집 모드 토글이 누락되지 않아야 한다.

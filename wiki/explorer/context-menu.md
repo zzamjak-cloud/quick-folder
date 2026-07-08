@@ -97,3 +97,14 @@ interface ContextMenuTrailingAction {
 
 - 비교 가능 여부: `utils/isComparableTextFile.ts`
 - 선택 순서 = Diff Viewer 왼쪽·오른쪽 순서
+
+## 비디오 도구
+섹션 id: `tools`
+
+| id | 라벨 | 조건 | 동작 |
+|----|------|------|------|
+| `compress-video` | 동영상 압축 | 동영상 1개 이상 선택 | 품질 하위 메뉴 → `handleCompressVideo(videoPaths, quality)` |
+| `video-to-gif` | GIF 변환 | 동영상 1개 이상 선택 | `handleVideoToGif(videoPaths)` |
+
+- 다중 선택 우클릭은 `contextMenu.paths` 전체에서 동영상 경로만 필터링한다.
+- `handleVideoToGif`는 FFmpeg 확인 후 선택된 동영상을 순차 처리하고, 완료 후 현재 폴더를 갱신한다.

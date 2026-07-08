@@ -741,6 +741,34 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
 
+  // --- 동영상 → GIF 변환 ---
+  const handleVideoToGif = useCallback(async (paths: string[]) => {
+    if (paths.length === 0) return;
+    if (!ensureWritableContext(paths)) return;
+    try {
+      const installed = await tauriCommands.checkFfmpeg();
+      if (!installed) {
+        showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        return;
+      }
+
+      let successCount = 0;
+      for (let i = 0; i < paths.length; i += 1) {
+        const progress = new Channel<{ percent: number; speed: string; fps: number }>();
+        setOperationProgress({ type: 'GIF 변환', current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
+        await tauriCommands.videoToGif(paths[i], progress);
+        successCount += 1;
+      }
+
+      setOperationProgress(null);
+      if (currentPath) loadDirectory(currentPath);
+      showCopyToast(`GIF 변환 완료: ${successCount}/${paths.length}개`);
+    } catch (e) {
+      setOperationProgress(null);
+      showCopyToast(`GIF 변환 실패: ${e}`);
+    }
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
+
   // --- PDF 압축 ---
   const handleCompressPdf = useCallback(async (path: string) => {
     if (!ensureWritableContext([path])) return;
@@ -850,6 +878,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handleRemoveWhiteBgApply,
     handleSpritePack,
     handleCompressVideo,
+    handleVideoToGif,
     handleGifToMp4,
     handleCompressPdf,
     handleInspectFolderSize,

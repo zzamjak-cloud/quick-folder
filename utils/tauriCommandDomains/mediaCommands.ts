@@ -65,6 +65,18 @@ export const mediaCommands = {
   compressVideo(input: string, quality: 'low' | 'medium' | 'high', onProgress: unknown) {
     return runCommand<string>('compress_video', { input, quality, onProgress });
   },
+  videoToGif(input: string, onProgress: unknown) {
+    return runCommand<string>('video_to_gif', {
+      input,
+      startSec: 0,
+      endSec: 31_536_000,
+      cropX: null,
+      cropY: null,
+      cropW: null,
+      cropH: null,
+      onProgress,
+    });
+  },
   gifToMp4(path: string) {
     return runCommand<string>('gif_to_mp4', { path });
   },

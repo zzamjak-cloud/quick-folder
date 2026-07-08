@@ -35,6 +35,7 @@ function createConfig(overrides: Partial<UseContextMenuBuilderConfig> = {}): Use
       handleCompressZip: vi.fn(),
       handleExtractZip: vi.fn(),
       handleCompressVideo: vi.fn(),
+      handleVideoToGif: vi.fn(),
       handleGifToMp4: vi.fn(),
       handleCompressPdf: vi.fn(),
       handleInspectFolderSize: vi.fn(),
@@ -132,6 +133,26 @@ describe('useContextMenuBuilder', () => {
       'quality-low',
       'quality-medium',
       'quality-high',
+    ]);
+    expect(itemIds(createConfig({
+      contextMenu: { x: 10, y: 10, paths: [videoEntry.path] },
+      entries: [videoEntry],
+    }))).toContain('video-to-gif');
+
+    const secondVideoEntry = entry({ name: 'clip-2.webm', path: '/work/clip-2.webm', file_type: 'video' });
+    const multiVideoConfig = createConfig({
+      contextMenu: { x: 10, y: 10, paths: [videoEntry.path, secondVideoEntry.path] },
+      entries: [videoEntry, secondVideoEntry],
+    });
+    const multiVideoMenu = renderHook(() => useContextMenuBuilder(multiVideoConfig));
+    const videoToGif = multiVideoMenu.result.current.contextMenuSections
+      .flatMap(section => section.items)
+      .find(item => item.id === 'video-to-gif');
+
+    videoToGif?.onClick();
+    expect(multiVideoConfig.fileOps.handleVideoToGif).toHaveBeenCalledWith([
+      '/work/clip.mp4',
+      '/work/clip-2.webm',
     ]);
   });
 });
