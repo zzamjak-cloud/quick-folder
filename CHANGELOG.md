@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.54] - 2026-07-08
+
+### Fixed
+- 동영상 편집 팝업의 선택 구간 내보내기/삭제가 keyframe 복사 대신 timestamp를 재설정하는 재인코딩 경로를 사용하도록 수정
+- 개발 빌드에서 0바이트 FFmpeg sidecar가 있을 때 설치 앱의 정상 FFmpeg를 fallback으로 찾도록 수정
+- 동영상 내보내기 progress 전송을 제한하고 WebView 채널 실패 시 중단해 WebView2 오류 로그가 반복되는 문제 완화
+
 ## [1.27.53] - 2026-07-07
 
 ### Fixed

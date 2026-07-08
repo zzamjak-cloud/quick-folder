@@ -1,7 +1,7 @@
 {
   "name": "quickfolder-widget",
   "private": true,
-  "version": "1.27.53",
+  "version": "1.27.54",
   "type": "module",
   "scripts": {
     "dev": "vite",
