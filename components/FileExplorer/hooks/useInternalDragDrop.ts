@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Channel } from '@tauri-apps/api/core';
 import { getFileName, isArchiveVirtualPath, sameVolume } from '../../../utils/pathUtils';
 import { createFileDragImage } from '../fileUtils';
@@ -106,6 +106,12 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
   const [isTrayTargetActive, setIsTrayTargetActive] = useState(false);
   const [activeDragPaths, setActiveDragPaths] = useState<string[]>([]);
   const ghostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      cancelActiveFileDrag();
+    };
+  }, [currentPath]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, entryPath: string) => {
     if (e.button !== 0) return;

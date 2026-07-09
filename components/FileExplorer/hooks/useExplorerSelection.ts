@@ -26,14 +26,20 @@ export function useExplorerSelection({
 
   useEffect(() => {
     if (!isFocused && splitMode !== 'single') {
+      selectionAnchorRef.current = -1;
       setSelectedPaths([]);
       setFocusedIndex(-1);
     }
   }, [isFocused, splitMode, setFocusedIndex, setSelectedPaths]);
 
   useEffect(() => {
+    selectionAnchorRef.current = -1;
+  }, [displayEntries]);
+
+  useEffect(() => {
     const nextSelectedPaths = selectedPaths.filter(path => displayPathSet.has(path));
     if (nextSelectedPaths.length !== selectedPaths.length) {
+      selectionAnchorRef.current = -1;
       setSelectedPaths(nextSelectedPaths);
     }
 
@@ -44,7 +50,6 @@ export function useExplorerSelection({
     if (focusedIndex !== nextFocusedIndex) {
       setFocusedIndex(nextFocusedIndex);
     }
-    selectionAnchorRef.current = -1;
   }, [displayEntries, displayPathSet, focusedIndex, selectedPaths, setFocusedIndex, setSelectedPaths]);
 
   const selectEntry = useCallback((path: string, multi: boolean, range: boolean) => {
@@ -52,6 +57,7 @@ export function useExplorerSelection({
     if (clickedIndex >= 0) setFocusedIndex(clickedIndex);
 
     if (multi) {
+      selectionAnchorRef.current = -1;
       setSelectedPaths(prev =>
         prev.includes(path) ? prev.filter(selectedPath => selectedPath !== path) : [...prev, path]
       );
@@ -68,20 +74,24 @@ export function useExplorerSelection({
         setSelectedPaths(paths.slice(start, end + 1));
       }
     } else {
+      selectionAnchorRef.current = -1;
       setSelectedPaths([path]);
     }
   }, [displayEntries, selectedPaths, setFocusedIndex, setSelectedPaths]);
 
   const selectAll = useCallback(() => {
+    selectionAnchorRef.current = -1;
     setSelectedPaths(displayEntries.map(entry => entry.path));
   }, [displayEntries, setSelectedPaths]);
 
   const deselectAll = useCallback(() => {
+    selectionAnchorRef.current = -1;
     setSelectedPaths([]);
     setFocusedIndex(-1);
   }, [setFocusedIndex, setSelectedPaths]);
 
   const handleSelectPaths = useCallback((paths: string[]) => {
+    selectionAnchorRef.current = -1;
     const nextPaths = paths.filter(path => displayPathSet.has(path));
     setSelectedPaths(nextPaths);
     setFocusedIndex(nextPaths.length > 0

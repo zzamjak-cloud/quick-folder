@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.57] - 2026-07-09
+
+### Fixed
+- 탐색기에서 `Shift + Arrow` 선택 확장이 anchor를 유지하지 못하고 단일 선택 이동처럼 동작하던 문제 수정
+- 내부 파일 drag 중 탭/경로 변경 또는 탐색기 unmount가 발생하면 drag ghost 썸네일과 선택 억제 상태가 화면에 남던 문제 수정
+
+## [1.27.56] - 2026-07-09
+
+### Fixed
+- GIF 변환 시 원본 해상도를 유지하도록 수정
+
+## [1.27.55] - 2026-07-09
+
+### Added
+- 동영상 GIF 변환 기능 추가
+
 ## [1.27.54] - 2026-07-08
 
 ### Fixed

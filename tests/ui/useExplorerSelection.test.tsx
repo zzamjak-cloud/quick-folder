@@ -32,7 +32,23 @@ function useSelectionHarness(displayEntries: FileEntry[], initialSelectedPaths: 
     ...selection,
     selectedPaths,
     focusedIndex,
+    applyKeyboardSelection(paths: string[], focusIndex: number) {
+      setSelectedPaths(paths);
+      setFocusedIndex(focusIndex);
+    },
   };
+}
+
+function applyShiftArrowRange(
+  current: ReturnType<typeof useSelectionHarness>,
+  entries: FileEntry[],
+  currentIndex: number,
+  nextIndex: number,
+) {
+  if (current.selectionAnchorRef.current < 0) current.selectionAnchorRef.current = currentIndex;
+  const from = Math.min(current.selectionAnchorRef.current, nextIndex);
+  const to = Math.max(current.selectionAnchorRef.current, nextIndex);
+  current.applyKeyboardSelection(entries.slice(from, to + 1).map(entry => entry.path), nextIndex);
 }
 
 describe('useExplorerSelection', () => {
@@ -79,5 +95,30 @@ describe('useExplorerSelection', () => {
       expect(result.current.selectedPaths).toEqual([]);
       expect(result.current.focusedIndex).toBe(-1);
     });
+  });
+
+  test('Shift+Arrow 반복 입력은 첫 anchor부터 선택 범위를 확장한다', async () => {
+    const entries = [entry('/a'), entry('/b'), entry('/c'), entry('/d')];
+    const { result } = renderHook(() => useSelectionHarness(entries));
+
+    act(() => {
+      result.current.selectEntry('/b', false, false);
+    });
+
+    act(() => {
+      applyShiftArrowRange(result.current, entries, 1, 2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedPaths).toEqual(['/b', '/c']);
+      expect(result.current.focusedIndex).toBe(2);
+    });
+
+    act(() => {
+      applyShiftArrowRange(result.current, entries, 2, 3);
+    });
+
+    expect(result.current.selectedPaths).toEqual(['/b', '/c', '/d']);
+    expect(result.current.focusedIndex).toBe(3);
   });
 });
