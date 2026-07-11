@@ -22,4 +22,13 @@ export const enAppTranslations = {
   'app.folder.modal.pathHelp': '* Copy and paste the path from your file explorer address bar.',
   'app.folder.modal.colorLabel': 'Text color',
   'app.folder.modal.customColorAria': 'Choose custom folder text color',
+  'markdownEditor.loading': 'Loading Markdown editor...',
+  'markdownEditor.placeholder': 'Write Markdown...',
+  'markdownEditor.status.saved': 'Saved',
+  'markdownEditor.status.saving': 'Saving...',
+  'markdownEditor.status.unsaved': 'Unsaved',
+  'fuzzy.matchCount': '{count} matches',
+  'fuzzy.noMatches': 'No matches',
+  'fuzzy.shortcuts': 'ESC cancel · Backspace delete',
+  'fuzzy.clear': 'Clear filter',
 } as const;

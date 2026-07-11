@@ -39,6 +39,7 @@ export default function ImageCropOverlay({
   const [crop, setCrop] = useState<CropRect | null>(null);
   const [widthInput, setWidthInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{
     mode: DragMode;
     startX: number;
@@ -179,12 +180,16 @@ export default function ImageCropOverlay({
   }, [getDragMode]);
 
   // --- 마우스 이벤트 ---
-  const getLocalPos = useCallback((e: React.MouseEvent) => {
+  const getLocalPosFromClient = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    return { x: clientX - rect.left, y: clientY - rect.top };
   }, []);
+
+  const getLocalPos = useCallback((e: React.MouseEvent) => (
+    getLocalPosFromClient(e.clientX, e.clientY)
+  ), [getLocalPosFromClient]);
 
   const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
@@ -200,12 +205,13 @@ export default function ImageCropOverlay({
       startY: pos.y,
       origCrop: crop ? { ...crop } : null,
     };
+    setIsDragging(true);
   }, [getLocalPos, getDragMode, crop]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const updateDrag = useCallback((clientX: number, clientY: number, shiftKey: boolean) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const pos = getLocalPos(e);
+    const pos = getLocalPosFromClient(clientX, clientY);
     const { mode, startX, startY, origCrop } = dragRef.current;
     const { width: cw, height: ch } = imageRect;
 
@@ -214,16 +220,13 @@ export default function ImageCropOverlay({
       return;
     }
 
-    e.preventDefault();
-    e.stopPropagation();
-
     if (mode === 'create') {
       let x = Math.min(startX, pos.x);
       let y = Math.min(startY, pos.y);
       let w = Math.abs(pos.x - startX);
       let h = Math.abs(pos.y - startY);
 
-      if (e.shiftKey) {
+      if (shiftKey) {
         const size = Math.max(w, h);
         w = size;
         h = size;
@@ -270,7 +273,7 @@ export default function ImageCropOverlay({
         y = newY;
       }
 
-      if (e.shiftKey) {
+      if (shiftKey) {
         const size = Math.min(w, h);
         w = size;
         h = size;
@@ -278,17 +281,54 @@ export default function ImageCropOverlay({
 
       setCrop({ x, y, w, h });
     }
-  }, [getLocalPos, getCursor, imageRect]);
+  }, [getLocalPosFromClient, getCursor, imageRect]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    updateDrag(e.clientX, e.clientY, e.shiftKey);
+    if (dragRef.current.mode !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [updateDrag]);
+
+  const finishDrag = useCallback(() => {
+    const { mode } = dragRef.current;
+    setCrop(prev => (
+      mode === 'create' && prev && prev.w < MIN_CROP_SIZE && prev.h < MIN_CROP_SIZE
+        ? null
+        : prev
+    ));
+    dragRef.current = { mode: 'none', startX: 0, startY: 0, origCrop: null };
+    setIsDragging(false);
+  }, []);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const { mode } = dragRef.current;
-    if (mode === 'create' && crop && crop.w < MIN_CROP_SIZE && crop.h < MIN_CROP_SIZE) {
-      setCrop(null);
-    }
-    dragRef.current = { mode: 'none', startX: 0, startY: 0, origCrop: null };
-  }, [crop]);
+    finishDrag();
+  }, [finishDrag]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      updateDrag(e.clientX, e.clientY, e.shiftKey);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const handleWindowMouseUp = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      finishDrag();
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove, true);
+    window.addEventListener('mouseup', handleWindowMouseUp, true);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove, true);
+      window.removeEventListener('mouseup', handleWindowMouseUp, true);
+    };
+  }, [isDragging, updateDrag, finishDrag]);
 
   // --- 저장 핸들러 ---
   const handleSave = useCallback(() => {
@@ -346,7 +386,6 @@ export default function ImageCropOverlay({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
       />
       {crop && (
         <div

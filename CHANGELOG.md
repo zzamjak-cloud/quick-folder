@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.58] - 2026-07-11
+
+### Changed
+- 사이드바 바로가기 삭제 확인을 OS 알림 팝업 대신 메뉴 내 `Delete Confirm` 2단계 클릭 방식으로 변경
+
+### Fixed
+- 테마 색상·사이드바 확대·마크다운 에디터·퍼지 검색 상태 표시의 영어 언어 대응 누락 수정
+- 이미지 편집 크롭 드래그가 우측 하단 크기 고정 UI 위에서 끊기던 문제 수정
+- 오래된 절대 텍스처 경로를 가진 FBX 파일 미리보기가 실패하던 문제 수정
+
 ## [1.27.57] - 2026-07-09
 
 ### Fixed

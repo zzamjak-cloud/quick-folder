@@ -54,6 +54,7 @@ import {
   writeNumberStorage,
   writeStorage,
 } from '../../utils/storage';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 저장소 키 분리용 (기본: 'default')
@@ -74,6 +75,7 @@ interface FileExplorerProps {
   onTrayDragStateChange?: (dragging: boolean, trayActive: boolean) => void;
   // 최근항목 조회 시 사용할 즐겨찾기 폴더 경로 목록
   recentRoots?: string[];
+  t: (key: TranslationKey) => string;
 }
 
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
@@ -93,6 +95,7 @@ export default function FileExplorer({
   onStageFilesToTray,
   onTrayDragStateChange,
   recentRoots = [],
+  t,
   initialPathKey = 0,
 }: FileExplorerProps) {
   // --- 상태 ---
@@ -1100,6 +1103,7 @@ export default function FileExplorer({
         onFilterInputFocus={focusFilterInput}
         videoCompression={fileOps.videoCompression}
         gsSetup={fileOps.gsSetup}
+        t={t}
       />
 
       <ExplorerModalBridge
@@ -1127,6 +1131,7 @@ export default function FileExplorer({
         onClearDropConfirm={() => setDropConfirm(null)}
         onExecuteDrop={executeDrop}
         onReloadPath={loadDirectory}
+        t={t}
       />
     </ExplorerLayout>
   );

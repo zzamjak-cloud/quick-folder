@@ -26,6 +26,7 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { createFbxUrlModifier, getDirName } from './fbxPreviewPaths';
 
 export interface FbxPreviewSceneHandle {
   resetCamera: () => void;
@@ -140,24 +141,30 @@ const FbxPreviewScene = forwardRef<FbxPreviewSceneHandle, FbxPreviewSceneProps>(
         scene.add(gridHelper);
 
         const loadingManager = new LoadingManager();
+        loadingManager.setURLModifier(createFbxUrlModifier(path, convertFileSrc));
         loadingManager.onError = (url) => {
           console.warn('텍스처 로드 실패 (무시):', url);
         };
         const loader = new FBXLoader(loadingManager);
 
-        const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-        const parentDir = lastSlash >= 0 ? path.substring(0, lastSlash) : path;
-        loader.setResourcePath(`${convertFileSrc(parentDir)}/`);
+        const parentDir = getDirName(path);
+        const resourcePath = `${convertFileSrc(parentDir)}/`;
+        loader.setResourcePath(resourcePath);
 
-        loader.load(
-          convertFileSrc(path),
-          (fbx: Group) => {
+        const loadModel = async () => {
+          try {
+            const response = await fetch(convertFileSrc(path));
+            if (!response.ok && response.status !== 0) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+
+            const fbx = loader.parse(await response.arrayBuffer(), resourcePath) as Group;
             if (disposed) return;
 
             const box = new Box3().setFromObject(fbx);
             const center = box.getCenter(new Vector3());
             const size = box.getSize(new Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
 
             fbx.position.sub(center);
             gridHelper.position.y = -size.y / 2;
@@ -177,19 +184,15 @@ const FbxPreviewScene = forwardRef<FbxPreviewSceneHandle, FbxPreviewSceneProps>(
             scene.add(fbx);
             applyWireframe(scene, wireframeRef.current);
             setLoading(false);
-          },
-          (xhr: ProgressEvent) => {
-            if (xhr.lengthComputable) {
-              setLoadProgress(Math.round((xhr.loaded / xhr.total) * 100));
-            }
-          },
-          (err: unknown) => {
+            setLoadProgress(100);
+          } catch (err) {
             if (disposed) return;
             console.error('FBX 로드 오류:', err);
             setError('FBX 파일을 불러오는 데 실패했습니다.');
             setLoading(false);
-          },
-        );
+          }
+        };
+        void loadModel();
 
         const animate = () => {
           animFrameRef.current = requestAnimationFrame(animate);

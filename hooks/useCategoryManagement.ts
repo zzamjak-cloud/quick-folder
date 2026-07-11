@@ -313,17 +313,14 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     }
   }, [addToast]);
 
-  const deleteShortcut = useCallback(async (catId: string, shortcutId: string) => {
-    const confirmed = await ask('정말로 이 바로가기를 삭제하시겠습니까?', { title: '바로가기 삭제', kind: 'warning' });
-    if (confirmed) {
-      setCategories(prev => prev.map(c => {
-        if (c.id === catId) {
-          return { ...c, shortcuts: c.shortcuts.filter(s => s.id !== shortcutId) };
-        }
-        return c;
-      }));
-      addToast("바로가기가 삭제되었습니다.", "info");
-    }
+  const deleteShortcut = useCallback((catId: string, shortcutId: string) => {
+    setCategories(prev => prev.map(c => {
+      if (c.id === catId) {
+        return { ...c, shortcuts: c.shortcuts.filter(s => s.id !== shortcutId) };
+      }
+      return c;
+    }));
+    addToast("바로가기가 삭제되었습니다.", "info");
   }, [addToast]);
 
   return {

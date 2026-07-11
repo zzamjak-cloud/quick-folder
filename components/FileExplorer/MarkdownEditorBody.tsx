@@ -14,11 +14,13 @@ import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { readTextFileWithTimeout, DEFAULT_READ_TEXT_TIMEOUT_MS } from '../../utils/readTextFileWithTimeout';
 import { getMarkdownSyntaxColors } from './markdownTheme';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface MarkdownEditorProps {
   path: string;
   themeVars: ThemeVars;
   onClose: () => void;
+  t: (key: TranslationKey) => string;
 }
 
 type SaveStatus = 'saved' | 'saving' | 'unsaved';
@@ -134,7 +136,7 @@ const AUTO_PAIR_MAP: Record<string, string> = {
   '{': '}',
 };
 
-const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClose }) => {
+const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClose, t }) => {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -154,6 +156,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
   const loadedRef = useRef(false);
   // --- 미저장 상태 ref (handleClose에서 최신 값 참조용) ---
   const saveStatusRef = useRef<SaveStatus>('saved');
+  const placeholderRef = useRef(t('markdownEditor.placeholder'));
 
   // --- TipTap 에디터 초기화 ---
   const editor = useEditor({
@@ -162,7 +165,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({
-        placeholder: '마크다운을 작성하세요…',
+        placeholder: () => placeholderRef.current,
       }),
       ArrowReplace,
       MoveBlock,
@@ -231,6 +234,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
       if (loadedRef.current) setSaveStatus('unsaved');
     },
   });
+
+  useEffect(() => {
+    placeholderRef.current = t('markdownEditor.placeholder');
+    editor?.view.dispatch(editor.state.tr);
+  }, [editor, t]);
 
   // --- 저장 함수 ---
   const saveRef = useRef<() => Promise<void>>(async () => {});
@@ -433,7 +441,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ path, themeVars, onClos
     },
   ];
 
-  const statusText = saveStatus === 'saved' ? '저장됨' : saveStatus === 'saving' ? '저장 중...' : '미저장';
+  const statusText = saveStatus === 'saved'
+    ? t('markdownEditor.status.saved')
+    : saveStatus === 'saving'
+      ? t('markdownEditor.status.saving')
+      : t('markdownEditor.status.unsaved');
   const statusColor = saveStatus === 'saved' ? '#6b9' : saveStatus === 'saving' ? '#db8' : '#f87171';
 
   return (

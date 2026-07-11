@@ -7,6 +7,7 @@ import type { useModalStates } from './hooks/useModalStates';
 import type { PendingDrop } from './hooks/useInternalDragDrop';
 import type { FolderSizeDialogState } from './hooks/useFileOperations';
 import type { LaigterParamsUI } from './MapMakerModal';
+import type { TranslationKey } from '../../utils/i18n';
 import ContextMenu from './ContextMenu';
 import FileExplorerModalLayer from './FileExplorerModalLayer';
 import { useEscapeKey } from './hooks/useEscapeKey';
@@ -86,6 +87,7 @@ interface ExplorerModalBridgeProps {
   onClearDropConfirm: () => void;
   onExecuteDrop: (info: PendingDrop, overwrite: boolean) => Promise<void>;
   onReloadPath: (path: string) => void;
+  t: (key: TranslationKey) => string;
 }
 
 export default function ExplorerModalBridge({
@@ -113,6 +115,7 @@ export default function ExplorerModalBridge({
   onClearDropConfirm,
   onExecuteDrop,
   onReloadPath,
+  t,
 }: ExplorerModalBridgeProps) {
   return (
     <>
@@ -186,6 +189,7 @@ export default function ExplorerModalBridge({
         onDuplicateFileDelete={onDuplicateFileDelete}
         onMergeFontsComplete={fileOps.handleMergeFontsComplete}
         onFolderMergeComplete={onFolderMergeComplete}
+        t={t}
       />
 
       {contextMenu && (

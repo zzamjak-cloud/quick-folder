@@ -6,6 +6,7 @@ import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 export type Theme = {
   id: string;
   name: string;
+  nameKey: string;
   bg: string;
   accent: string;
 };
@@ -14,16 +15,16 @@ export type Theme = {
 const SETTINGS_KEY = 'quickfolder_widget_settings';
 
 export const THEME_PRESETS: Theme[] = [
-  { id: 'navy', name: '기본(네이비)', bg: '#0f172a', accent: '#3b82f6' },
-  { id: 'graphite', name: '그라파이트', bg: '#0b0f19', accent: '#22c55e' },
-  { id: 'slate', name: '슬레이트', bg: '#111827', accent: '#a855f7' },
-  { id: 'purple', name: '다크 퍼플', bg: '#120a2a', accent: '#ec4899' },
-  { id: 'forest', name: '다크 그린', bg: '#081c15', accent: '#10b981' },
-  { id: 'brown', name: '다크 브라운', bg: '#1b120a', accent: '#f59e0b' },
-  { id: 'macos-light', name: 'macOS 라이트', bg: '#f5f5f5', accent: '#007aff' },
-  { id: 'macos-dark', name: 'macOS 다크', bg: '#1e1e1e', accent: '#0a84ff' },
-  { id: 'windows-light', name: 'Windows 라이트', bg: '#f3f3f3', accent: '#005fb8' },
-  { id: 'windows-dark', name: 'Windows 다크', bg: '#202020', accent: '#60cdff' },
+  { id: 'navy', name: '기본(네이비)', nameKey: 'theme.preset.navy', bg: '#0f172a', accent: '#3b82f6' },
+  { id: 'graphite', name: '그라파이트', nameKey: 'theme.preset.graphite', bg: '#0b0f19', accent: '#22c55e' },
+  { id: 'slate', name: '슬레이트', nameKey: 'theme.preset.slate', bg: '#111827', accent: '#a855f7' },
+  { id: 'purple', name: '다크 퍼플', nameKey: 'theme.preset.purple', bg: '#120a2a', accent: '#ec4899' },
+  { id: 'forest', name: '다크 그린', nameKey: 'theme.preset.forest', bg: '#081c15', accent: '#10b981' },
+  { id: 'brown', name: '다크 브라운', nameKey: 'theme.preset.brown', bg: '#1b120a', accent: '#f59e0b' },
+  { id: 'macos-light', name: 'macOS 라이트', nameKey: 'theme.preset.macosLight', bg: '#f5f5f5', accent: '#007aff' },
+  { id: 'macos-dark', name: 'macOS 다크', nameKey: 'theme.preset.macosDark', bg: '#1e1e1e', accent: '#0a84ff' },
+  { id: 'windows-light', name: 'Windows 라이트', nameKey: 'theme.preset.windowsLight', bg: '#f3f3f3', accent: '#005fb8' },
+  { id: 'windows-dark', name: 'Windows 다크', nameKey: 'theme.preset.windowsDark', bg: '#202020', accent: '#60cdff' },
 ];
 
 type TextColorPreset = { name: string; value: string };

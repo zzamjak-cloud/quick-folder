@@ -7,6 +7,7 @@ import FileGrid from './FileGrid';
 import NavigationBar from './NavigationBar';
 import StatusBar from './StatusBar';
 import TabBar from './TabBar';
+import type { TranslationKey } from '../../utils/i18n';
 
 type SortBy = 'name' | 'size' | 'modified' | 'type';
 type SortDir = 'asc' | 'desc';
@@ -90,6 +91,7 @@ interface ExplorerContentProps {
     total?: number;
   } | null;
   gsSetup: { fileName: string } | null;
+  t: (key: TranslationKey) => string;
 }
 
 export default function ExplorerContent({
@@ -163,6 +165,7 @@ export default function ExplorerContent({
   onFilterInputFocus,
   videoCompression,
   gsSetup,
+  t,
 }: ExplorerContentProps) {
   return (
     <>
@@ -272,6 +275,7 @@ export default function ExplorerContent({
               fuzzyMatchCount={fuzzyMatchCount}
               onFuzzyFilterClear={onFuzzyFilterClear}
               onFilterInputFocus={onFilterInputFocus}
+              t={t}
             />
           )}
 

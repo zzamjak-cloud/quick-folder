@@ -1,12 +1,14 @@
 import React, { memo } from 'react';
 import { Search, X } from 'lucide-react';
 import { ThemeVars } from './types';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface InlineFuzzyFilterBarProps {
   query: string;
   matchCount: number;
   themeVars: ThemeVars | null;
   onClear: () => void;
+  t: (key: TranslationKey) => string;
 }
 
 /** 파일 목록 상단에 표시되는 인라인 퍼지 필터 상태 바 */
@@ -15,6 +17,7 @@ const InlineFuzzyFilterBar = memo(function InlineFuzzyFilterBar({
   matchCount,
   themeVars,
   onClear,
+  t,
 }: InlineFuzzyFilterBarProps) {
   if (!query) return null;
 
@@ -33,16 +36,18 @@ const InlineFuzzyFilterBar = memo(function InlineFuzzyFilterBar({
         {query}
       </span>
       <span style={{ color: themeVars?.muted ?? '#94a3b8' }}>
-        {matchCount > 0 ? `${matchCount}개 일치` : '일치 없음'}
+        {matchCount > 0
+          ? t('fuzzy.matchCount').replace('{count}', String(matchCount))
+          : t('fuzzy.noMatches')}
       </span>
       <span className="ml-auto text-[10px]" style={{ color: themeVars?.muted ?? '#94a3b8' }}>
-        ESC 취소 · Backspace 삭제
+        {t('fuzzy.shortcuts')}
       </span>
       <button
         type="button"
         className="p-0.5 rounded hover:opacity-80"
         onClick={onClear}
-        title="필터 취소"
+        title={t('fuzzy.clear')}
       >
         <X size={12} style={{ color: themeVars?.muted ?? '#94a3b8' }} />
       </button>

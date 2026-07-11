@@ -1,16 +1,18 @@
 import React, { Suspense } from 'react';
 import type { ThemeVars } from '../../types';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface MarkdownEditorProps {
   path: string;
   themeVars: ThemeVars;
   onClose: () => void;
+  t: (key: TranslationKey) => string;
 }
 
 const MarkdownEditorBody = React.lazy(() => import('./MarkdownEditorBody'));
 
 export default function MarkdownEditor(props: MarkdownEditorProps) {
-  const { themeVars } = props;
+  const { themeVars, t } = props;
   return (
     <Suspense
       fallback={
@@ -21,7 +23,7 @@ export default function MarkdownEditor(props: MarkdownEditorProps) {
             color: themeVars?.muted ?? '#aaa',
           }}
         >
-          마크다운 편집기 로딩 중...
+          {t('markdownEditor.loading')}
         </div>
       }
     >

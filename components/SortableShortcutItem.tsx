@@ -40,6 +40,7 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
 
   const folderIcon = useFolderIcon(shortcut.path, 16);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -69,6 +70,10 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) setDeleteConfirm(false);
+  }, [menuOpen, shortcut.id]);
 
   return (
     <>
@@ -157,8 +162,16 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
               },
               {
                 icon: <Trash2 size={12} style={{ color: '#f87171' }} />,
-                label: '삭제',
-                onClick: () => { deleteShortcut(categoryId, shortcut.id); setMenuOpen(false); },
+                label: deleteConfirm ? 'Delete Confirm' : '삭제',
+                isConfirming: deleteConfirm,
+                onClick: () => {
+                  if (!deleteConfirm) {
+                    setDeleteConfirm(true);
+                    return;
+                  }
+                  deleteShortcut(categoryId, shortcut.id);
+                  setMenuOpen(false);
+                },
               },
             ].map(item => (
               <button
@@ -166,6 +179,7 @@ export function SortableShortcutItem({ shortcut, categoryId, handleOpenFolder, h
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); item.onClick(); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-[var(--qf-surface-hover)] text-[var(--qf-text)]"
+                style={item.isConfirming ? { color: '#f87171', fontWeight: 600 } : undefined}
               >
                 <span className="text-[var(--qf-muted)]">{item.icon}</span>
                 {item.label}

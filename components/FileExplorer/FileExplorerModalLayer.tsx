@@ -4,6 +4,7 @@ import type { ThemeVars } from './types';
 import type { PreviewState } from './hooks/usePreview';
 import type { useModalStates } from './hooks/useModalStates';
 import type { LaigterParamsUI } from './MapMakerModal';
+import type { TranslationKey } from '../../utils/i18n';
 
 const PreviewModals = lazy(() => import('./PreviewModals').then(module => ({ default: module.PreviewModals })));
 const PixelateModal = lazy(() => import('./PixelateModal'));
@@ -59,6 +60,7 @@ interface FileExplorerModalLayerProps {
   onDuplicateFileDelete: (path: string) => Promise<void>;
   onMergeFontsComplete: (outputPath: string) => void;
   onFolderMergeComplete: () => void;
+  t: (key: TranslationKey) => string;
 }
 
 export default function FileExplorerModalLayer({
@@ -81,6 +83,7 @@ export default function FileExplorerModalLayer({
   onDuplicateFileDelete,
   onMergeFontsComplete,
   onFolderMergeComplete,
+  t,
 }: FileExplorerModalLayerProps) {
   const shouldRenderPreviewModals = Boolean(
     preview.previewImagePath ||
@@ -239,6 +242,7 @@ export default function FileExplorerModalLayer({
           <MarkdownEditor
             path={modals.markdownEditorPath}
             themeVars={themeVars}
+            t={t}
             onClose={() => {
               modals.setMarkdownEditorPath(null);
               onReloadCurrentPath();

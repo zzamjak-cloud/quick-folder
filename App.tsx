@@ -1188,6 +1188,7 @@ export default function App() {
               onStageFilesToTray={handleStageFilesToTray}
               onTrayDragStateChange={handleTrayDragStateDefault}
               recentRoots={recentRoots}
+              t={t}
             />
           </div>
 
@@ -1229,6 +1230,7 @@ export default function App() {
                   onStageFilesToTray={handleStageFilesToTray}
                   onTrayDragStateChange={handleTrayDragStatePane1}
                   recentRoots={recentRoots}
+                  t={t}
                 />
               </div>
             </>

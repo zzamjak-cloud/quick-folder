@@ -22,4 +22,13 @@ export const koAppTranslations = {
   'app.folder.modal.pathHelp': '* 탐색기 주소창의 경로를 복사해서 붙여넣으세요.',
   'app.folder.modal.colorLabel': '텍스트 색상',
   'app.folder.modal.customColorAria': '폴더 텍스트 커스텀 컬러 선택',
+  'markdownEditor.loading': '마크다운 편집기 로딩 중...',
+  'markdownEditor.placeholder': '마크다운을 작성하세요…',
+  'markdownEditor.status.saved': '저장됨',
+  'markdownEditor.status.saving': '저장 중...',
+  'markdownEditor.status.unsaved': '미저장',
+  'fuzzy.matchCount': '{count}개 일치',
+  'fuzzy.noMatches': '일치 없음',
+  'fuzzy.shortcuts': 'ESC 취소 · Backspace 삭제',
+  'fuzzy.clear': '필터 취소',
 } as const;

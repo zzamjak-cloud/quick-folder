@@ -7,6 +7,7 @@ import FileCard from './FileCard';
 import InlineFuzzyFilterBar from './InlineFuzzyFilterBar';
 import { createScrollStorageKey, usePersistentScroll } from './hooks/usePersistentScroll';
 import { DetailsTable, ListRow } from './fileGrid/FileGridRows';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface FileGridProps {
   entries: FileEntry[];
@@ -46,6 +47,7 @@ interface FileGridProps {
   fuzzyMatchCount?: number;
   onFuzzyFilterClear?: () => void;
   onFilterInputFocus?: () => void;
+  t: (key: TranslationKey) => string;
 }
 
 // content-visibility 최적화를 켜는 항목 수 임계치 (이하에서는 오버헤드 회피)
@@ -92,6 +94,7 @@ export default memo(function FileGrid({
   fuzzyMatchCount = 0,
   onFuzzyFilterClear,
   onFilterInputFocus,
+  t,
 }: FileGridProps) {
   const isFuzzyNonMatch = useCallback(
     (path: string) => isFuzzyFiltering && !fuzzyMatchIndices?.has(path),
@@ -398,6 +401,7 @@ export default memo(function FileGrid({
           matchCount={fuzzyMatchCount}
           themeVars={themeVars}
           onClear={onFuzzyFilterClear}
+          t={t}
         />
       )}
       {/* 백그라운드 로딩 인디케이터 (기존 파일 표시 중 새 디렉토리 로드) */}
