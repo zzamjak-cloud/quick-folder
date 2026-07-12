@@ -145,6 +145,7 @@ describe('FileExplorer initialPath 로딩', () => {
         onPathChange={vi.fn()}
         onAddToFavorites={vi.fn()}
         themeVars={null}
+        t={key => key}
       />,
     );
 

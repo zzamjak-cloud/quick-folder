@@ -3,12 +3,14 @@ import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { getModalButtonStyle, getModalInputBaseStyle, getModalSectionBorderStyle } from './ui/modalStyles';
 import { getPathSeparator, getBaseName, getExtension } from '../../utils/pathUtils';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface BulkRenameModalProps {
   paths: string[];
   onClose: () => void;
   onApply: (renames: { oldPath: string; newPath: string }[]) => Promise<void>;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 // 다수 파일명에서 공통으로 시작하는 연속 prefix를 추출한다.
@@ -28,7 +30,7 @@ function findCommonPrefix(names: string[]): string {
   return prefix;
 }
 
-export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: BulkRenameModalProps) {
+export default function BulkRenameModal({ paths, onClose, onApply, themeVars, t }: BulkRenameModalProps) {
   // 원본 파일 정보 파싱
   const originalFiles = paths.map(p => {
     const sep = getPathSeparator(p);
@@ -57,14 +59,14 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
 
   // Rename: 변경할 이름으로 전체 교체
   const handleRename = () => {
-    if (!inputName) { setWarning('변경할 이름을 입력하세요'); return; }
+    if (!inputName) { setWarning(t('bulkRename.warning.inputNameRequired')); return; }
     updatePreview(previewNames.map(() => inputName));
   };
 
   // Replace: 현재 미리보기 이름에서 문자열 치환
   const handleReplace = () => {
     if (!inputName || !replaceName) {
-      setWarning('변경할 이름과 대체할 이름을 모두 입력하세요');
+      setWarning(t('bulkRename.warning.inputAndReplaceRequired'));
       return;
     }
     updatePreview(previewNames.map(n => n.replaceAll(inputName, replaceName)));
@@ -72,19 +74,19 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
 
   // Delete: 현재 미리보기 이름에서 일치하는 문자열 제거
   const handleDelete = () => {
-    if (!inputName) { setWarning('변경할 이름을 입력하세요'); return; }
+    if (!inputName) { setWarning(t('bulkRename.warning.inputNameRequired')); return; }
     updatePreview(previewNames.map(n => n.replaceAll(inputName, '')));
   };
 
   // Prefix: 접두사 추가
   const handlePrefix = () => {
-    if (!inputName) { setWarning('변경할 이름을 입력하세요'); return; }
+    if (!inputName) { setWarning(t('bulkRename.warning.inputNameRequired')); return; }
     updatePreview(previewNames.map(n => inputName + n));
   };
 
   // Suffix: 접미사 추가 (확장자 앞)
   const handleSuffix = () => {
-    if (!inputName) { setWarning('변경할 이름을 입력하세요'); return; }
+    if (!inputName) { setWarning(t('bulkRename.warning.inputNameRequired')); return; }
     updatePreview(previewNames.map(n => n + inputName));
   };
 
@@ -107,7 +109,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
       await onApply(renames);
       onClose();
     } catch (e) {
-      setWarning(`적용 실패: ${e}`);
+      setWarning(t('bulkRename.warning.applyFailed').replace('{message}', String(e)));
     } finally {
       setApplying(false);
     }
@@ -126,11 +128,11 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
 
   return (
     <ModalShell
-      title={`이름 모두 바꾸기 (${paths.length}개 파일)`}
+      title={t('bulkRename.title').replace('{count}', String(paths.length))}
       width={560}
       maxHeight="85vh"
       saving={applying}
-      saveLabel="적용"
+      saveLabel={t('bulkRename.apply')}
       overlayClose
       zIndex={9998}
       footerBtnStyle={btnStyle}
@@ -141,23 +143,23 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
       {/* 입력 영역 */}
       <div className="px-4 py-3 flex flex-col gap-2" style={sectionBorderStyle}>
         <div className="flex items-center gap-2">
-          <label className="text-xs w-20 flex-shrink-0" style={{ color: themeVars?.muted }}>변경할 이름</label>
+          <label className="text-xs w-20 flex-shrink-0" style={{ color: themeVars?.muted }}>{t('bulkRename.nameLabel')}</label>
           <input
             value={inputName}
             onChange={e => setInputName(e.target.value)}
             className="flex-1 px-2 py-1 text-xs rounded-md outline-none"
             style={inputStyle}
-            placeholder="입력..."
+            placeholder={t('bulkRename.namePlaceholder')}
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs w-20 flex-shrink-0" style={{ color: themeVars?.muted }}>대체할 이름</label>
+          <label className="text-xs w-20 flex-shrink-0" style={{ color: themeVars?.muted }}>{t('bulkRename.replaceLabel')}</label>
           <input
             value={replaceName}
             onChange={e => setReplaceName(e.target.value)}
             className="flex-1 px-2 py-1 text-xs rounded-md outline-none"
             style={inputStyle}
-            placeholder="Replace 시 사용..."
+            placeholder={t('bulkRename.replacePlaceholder')}
           />
         </div>
 
@@ -170,7 +172,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
           <button style={btnStyle} onClick={handleSuffix}>Suffix</button>
           <button style={btnStyle} onClick={handleNumber}>Number</button>
           <div className="flex items-center gap-1 ml-1">
-            <label className="text-[10px]" style={{ color: themeVars?.muted }}>자리수</label>
+            <label className="text-[10px]" style={{ color: themeVars?.muted }}>{t('bulkRename.digitsLabel')}</label>
             <input
               type="number"
               min={1}
@@ -185,7 +187,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
             style={{ ...btnStyle, marginLeft: 'auto', opacity: 0.7 }}
             onClick={handleReset}
           >
-            리셋
+            {t('bulkRename.reset')}
           </button>
         </div>
 
@@ -196,7 +198,7 @@ export default function BulkRenameModal({ paths, onClose, onApply, themeVars }: 
 
       {/* 미리보기 */}
       <div className="flex-1 overflow-y-auto px-4 py-3" style={{ maxHeight: 300 }}>
-        <div className="text-[10px] mb-2" style={{ color: themeVars?.muted }}>미리보기</div>
+        <div className="text-[10px] mb-2" style={{ color: themeVars?.muted }}>{t('bulkRename.preview')}</div>
         <div className="flex flex-col gap-1">
           {originalFiles.map((f, i) => (
             <div key={f.path} className="flex items-center gap-2 text-xs py-0.5">

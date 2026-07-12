@@ -123,6 +123,7 @@ export default function FileExplorerModalLayer({
             onClose={() => modals.setPixelatePath(null)}
             onApply={onPixelateApply}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -185,6 +186,7 @@ export default function FileExplorerModalLayer({
             onClose={() => modals.setBulkRenamePaths(null)}
             onApply={onBulkRenameApply}
             themeVars={themeVars}
+            t={t}
           />
         )}
 

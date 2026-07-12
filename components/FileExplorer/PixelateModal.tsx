@@ -4,6 +4,7 @@ import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, getInputStyle, Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 const COLOR_OPTIONS = [4, 8, 16, 32, 64, 128, 256] as const;
 const SCALE_OPTIONS = [16, 32, 48, 64, 128, 256] as const;
@@ -13,9 +14,10 @@ interface PixelateModalProps {
   onClose: () => void;
   onApply: (path: string, pixelSize: number, scale: number, maxColors: number) => Promise<void>;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
-export default function PixelateModal({ path, onClose, onApply, themeVars }: PixelateModalProps) {
+export default function PixelateModal({ path, onClose, onApply, themeVars, t }: PixelateModalProps) {
   // 실제 적용 값
   const [pixelSize, setPixelSize] = useState(4);
   const [scale, setScale] = useState(32);
@@ -59,12 +61,12 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
       });
       setPreview(base64);
     } catch (e) {
-      setError(`미리보기 실패: ${e}`);
+      setError(t('pixelate.warning.previewFailed').replace('{message}', String(e)));
       setPreview(null);
     } finally {
       setLoading(false);
     }
-  }, [path]);
+  }, [path, t]);
 
   // 파라미터 변경 시 200ms 디바운스 후 미리보기 갱신
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
       await onApply(path, pixelSize, scale, maxColors);
       onClose();
     } catch (e) {
-      setError(`저장 실패: ${e}`);
+      setError(t('pixelate.warning.saveFailed').replace('{message}', String(e)));
     } finally {
       setSaving(false);
     }
@@ -121,10 +123,10 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
 
   return (
     <ModalShell
-      title={`픽셀화 — ${fileName}`}
+      title={t('pixelate.title').replace('{fileName}', fileName)}
       maxWidth="40rem"
       saving={saving}
-      saveLabel="저장"
+      saveLabel={t('pixelate.save')}
       onClose={onClose}
       onSave={handleSave}
       themeVars={themeVars}
@@ -135,7 +137,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
         <div className="flex gap-3">
           {/* 확대 미리보기 */}
           <div className="flex-1 flex flex-col items-center gap-1.5">
-            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>확대 미리보기</span>
+            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>{t('pixelate.zoomPreview')}</span>
             <div
               className="flex items-center justify-center rounded-md overflow-hidden w-full"
               style={{
@@ -148,7 +150,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
               {!loading && preview && (
                 <img
                   src={`data:image/png;base64,${preview}`}
-                  alt="확대 미리보기"
+                  alt={t('pixelate.zoomPreview')}
                   style={{
                     width: '100%',
                     height: '100%',
@@ -158,7 +160,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
                 />
               )}
               {!loading && !preview && !error && (
-                <span className="text-xs" style={{ color: themeVars?.muted }}>미리보기 없음</span>
+                <span className="text-xs" style={{ color: themeVars?.muted }}>{t('pixelate.noPreview')}</span>
               )}
             </div>
           </div>
@@ -166,7 +168,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
           {/* 실제 크기 미리보기 */}
           <div className="flex-1 flex flex-col items-center gap-1.5">
             <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
-              실제 크기{previewSize ? ` (${previewSize.w}×${previewSize.h})` : ''}
+              {t('pixelate.actualSize')}{previewSize ? ` (${previewSize.w}×${previewSize.h})` : ''}
             </span>
             <div
               className="flex items-center justify-center rounded-md overflow-auto w-full"
@@ -181,13 +183,13 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
                 <img
                   ref={imgRef}
                   src={`data:image/png;base64,${preview}`}
-                  alt="실제 크기 미리보기"
+                  alt={t('pixelate.actualSizePreview')}
                   onLoad={handleImgLoad}
                   style={{ imageRendering: 'pixelated' }}
                 />
               )}
               {!loading && !preview && !error && (
-                <span className="text-xs" style={{ color: themeVars?.muted }}>미리보기 없음</span>
+                <span className="text-xs" style={{ color: themeVars?.muted }}>{t('pixelate.noPreview')}</span>
               )}
             </div>
           </div>
@@ -198,7 +200,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
           {/* 출력 크기 버튼 그룹 */}
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-              출력 크기
+              {t('pixelate.outputSize')}
             </label>
             <div className="flex gap-1.5 flex-wrap">
               {SCALE_OPTIONS.map(s =>
@@ -210,7 +212,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
           {/* 픽셀 크기 슬라이더 (범위가 출력 크기에 비례) */}
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-              픽셀 크기
+              {t('pixelate.pixelSize')}
             </label>
             <input
               type="range"
@@ -233,7 +235,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
           {/* 컬러 수 드롭다운 */}
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-              컬러 수
+              {t('pixelate.colorCount')}
             </label>
             <select
               value={maxColors}
@@ -242,7 +244,7 @@ export default function PixelateModal({ path, onClose, onApply, themeVars }: Pix
               style={inputStyle}
             >
               {COLOR_OPTIONS.map(n => (
-                <option key={n} value={n}>{n} 컬러</option>
+                <option key={n} value={n}>{t('pixelate.colorOption').replace('{count}', String(n))}</option>
               ))}
             </select>
           </div>
