@@ -7,6 +7,7 @@ import { HwpPreviewModalHost } from './HwpPreviewModalHost';
 import type { ThemeVars } from './types';
 import type { PreviewState } from './hooks/usePreview';
 import type { FileEntry } from '../../types';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface PreviewModalsProps {
   preview: PreviewState;
@@ -20,6 +21,7 @@ interface PreviewModalsProps {
   onOpenImageResize?: (path: string) => void;
   onOpenMdEditor: (path: string) => void;
   onFileChanged?: () => void;
+  t: (key: TranslationKey) => string;
 }
 
 export function PreviewModals({
@@ -34,6 +36,7 @@ export function PreviewModals({
   onOpenImageResize,
   onOpenMdEditor,
   onFileChanged,
+  t,
 }: PreviewModalsProps) {
   return (
     <>
@@ -42,6 +45,7 @@ export function PreviewModals({
         onClose={() => preview.setVideoPlayerPath(null)}
         onFileChanged={onFileChanged}
         themeVars={themeVars}
+        t={t}
       />
       <ImagePreviewModal
         preview={preview}

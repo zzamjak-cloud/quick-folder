@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { FileEntry, DuplicateFileGroup } from '../../types';
 import { ThemeVars } from './types';
 import { Files, Loader2, Trash2, X } from 'lucide-react';
 import { formatSize } from './fileUtils';
 import { FileTypeIcon } from './fileUtils';
-import { thumbKey, getThumb, setThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
-import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl } from './hooks/thumbnailCache';
+import { invokeTauriCommand as invoke, queuedInvokeLow } from '../../utils/tauriInvoke';
 import ContextMenu from './ContextMenu';
 import { ContextMenuSection } from './types';
 import { useEscapeKey } from './hooks/useEscapeKey';
+import type { TranslationKey } from '../../utils/i18n';
+import { mediaCommands } from '../../utils/tauriCommands';
 
 interface DuplicateFilesModalProps {
   rootPath: string;
@@ -16,6 +19,50 @@ interface DuplicateFilesModalProps {
   onSelect: (entry: FileEntry) => void;
   onDelete: (path: string) => Promise<void>;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
+}
+
+function formatMessage(template: string, values: Record<string, string | number>): string {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
+function isFileEntry(value: unknown): value is FileEntry {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Partial<FileEntry>;
+  return (
+    typeof entry.name === 'string'
+    && typeof entry.path === 'string'
+    && typeof entry.is_dir === 'boolean'
+    && typeof entry.size === 'number'
+    && typeof entry.modified === 'number'
+    && typeof entry.file_type === 'string'
+  );
+}
+
+function normalizeDuplicateGroups(value: unknown): DuplicateFileGroup[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(group => {
+      if (!group || typeof group !== 'object') return null;
+      const source = group as Partial<DuplicateFileGroup>;
+      const files = Array.isArray(source.files) ? source.files.filter(isFileEntry) : [];
+      if (typeof source.size !== 'number' || files.length < 2) return null;
+      return { size: source.size, files };
+    })
+    .filter((group): group is DuplicateFileGroup => group !== null);
+}
+
+function getThumbnailKind(entry: FileEntry): 'image' | 'video' | 'psd' | null {
+  const name = entry.name.toLowerCase();
+  if (/\.(psd|psb)$/.test(name)) return 'psd';
+  if (entry.thumbnailPath || entry.file_type === 'image' || /\.(jpe?g|png|gif|webp|bmp|ico|icns|tiff?)$/.test(name)) {
+    return 'image';
+  }
+  if (entry.file_type === 'video' || /\.(mp4|mov|avi|mkv|webm)$/.test(name)) return 'video';
+  return null;
 }
 
 /** 중복 탐색 결과 썸네일 카드 */
@@ -34,9 +81,10 @@ function DuplicateThumb({
 }) {
   const thumbSize = 80;
   const [thumbnail, setThumbnail] = useState<string | null>(() => {
-    const cached = getThumb(thumbKey(entry.path, thumbSize, entry.modified));
+    const cached = getThumb(thumbKey(entry.path, thumbSize, entry.modified, entry.size, entry.identity));
     return cached ? cached : null;
   });
+  const [thumbnailReloadSeq, setThumbnailReloadSeq] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -49,42 +97,98 @@ function DuplicateThumb({
   };
 
   useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return undefined;
+    }
+
     const observer = new IntersectionObserver(
       ([oe]) => { if (oe.isIntersecting) setIsVisible(true); },
       { threshold: 0.1 }
     );
+    const fallbackTimer = window.setTimeout(() => setIsVisible(true), 150);
     if (cardRef.current) observer.observe(cardRef.current);
-    return () => observer.disconnect();
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      observer.disconnect();
+    };
   }, []);
 
   useEffect(() => {
     if (!isVisible) return;
-    const ft = entry.file_type;
-    if (ft !== 'image' && ft !== 'video') return;
+    const thumbKind = getThumbnailKind(entry);
+    if (!thumbKind) return;
 
-    const key = thumbKey(entry.path, thumbSize, entry.modified);
+    const key = thumbKey(entry.path, thumbSize, entry.modified, entry.size, entry.identity);
     const cached = getThumb(key);
-    if (cached !== undefined) {
-      setThumbnail(cached ? cached : null);
+    if (cached) {
+      setThumbnail(cached);
       return;
     }
+    if (cached === '') deleteThumb(key);
+
+    const thumbSourcePath = entry.thumbnailPath ?? entry.path;
+    const thumbCommand = thumbKind === 'image'
+      ? 'get_file_thumbnail_path'
+      : thumbKind === 'psd'
+        ? 'get_psd_thumbnail_path'
+        : 'get_video_thumbnail_path';
 
     let cancelled = false;
-    getPersistentThumbUrl(entry.path, ft, thumbSize, entry.modified, entry.size)
+    const cancelThumbs: (() => void)[] = [];
+
+    const requestThumbnailPath = () => {
+      const { promise, cancel } = queuedInvokeLow<string | null>(thumbCommand, {
+        path: thumbSourcePath,
+        size: thumbSize,
+      });
+      cancelThumbs.push(cancel);
+      return promise;
+    };
+
+    if (!entry.thumbnailPath && thumbKind !== 'psd') {
+      getPersistentThumbUrl(entry.path, thumbKind, thumbSize, entry.modified, entry.size, entry.identity)
+        .then(url => {
+          if (cancelled || !url) return;
+          const latestCached = getThumb(key);
+          if (latestCached === undefined || latestCached === '') setThumbnail(prev => prev ?? url);
+        })
+        .catch(() => {});
+    }
+
+    requestThumbnailPath()
       .then(url => {
         if (cancelled) return;
-        setThumb(key, url ?? '');
-        setThumbnail(url);
+        if (url) return url;
+        return mediaCommands.invalidateThumbnailCache([thumbSourcePath])
+          .catch(() => {})
+          .then(() => {
+            if (cancelled) return null;
+            deleteThumb(key);
+            return requestThumbnailPath().catch(() => null);
+          });
+      })
+      .then(url => {
+        if (cancelled || url === undefined) return;
+        const assetUrl = url ? convertFileSrc(url) : '';
+        if (assetUrl) setThumb(key, assetUrl);
+        setThumbnail(assetUrl ? assetUrl : null);
       })
       .catch(() => {
-        if (!cancelled) {
-          setThumb(key, '');
-          setThumbnail(null);
-        }
+        if (!cancelled) setThumbnail(null);
       });
 
-    return () => { cancelled = true; };
-  }, [isVisible, entry]);
+    return () => {
+      cancelled = true;
+      cancelThumbs.forEach(cancel => cancel());
+    };
+  }, [isVisible, entry, thumbnailReloadSeq]);
+
+  const handleThumbnailError = useCallback(() => {
+    deleteThumb(thumbKey(entry.path, thumbSize, entry.modified, entry.size, entry.identity));
+    setThumbnail(null);
+    setThumbnailReloadSeq(seq => seq + 1);
+  }, [entry.path, entry.modified, entry.size, entry.identity]);
 
   const relPath = getRelativePath(entry.path);
   const dirPart = relPath.includes('/') || relPath.includes('\\')
@@ -110,9 +214,15 @@ function DuplicateThumb({
         style={{ width: 120, height: 80, backgroundColor: themeVars?.surface ?? '#1e293b' }}
       >
         {thumbnail ? (
-          <img src={thumbnail} alt={entry.name} className="max-w-full max-h-full object-contain" draggable={false} />
+          <img
+            src={thumbnail}
+            alt={entry.name}
+            className="max-w-full max-h-full object-contain"
+            draggable={false}
+            onError={handleThumbnailError}
+          />
         ) : (
-          <FileTypeIcon fileType={entry.file_type} size={32} />
+          <FileTypeIcon fileType={entry.file_type} size={32} fileName={entry.name} />
         )}
       </div>
       <div className="px-1.5 py-1">
@@ -131,6 +241,7 @@ export default function DuplicateFilesModal({
   onSelect,
   onDelete,
   themeVars,
+  t,
 }: DuplicateFilesModalProps) {
   const [groups, setGroups] = useState<DuplicateFileGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,9 +254,9 @@ export default function DuplicateFilesModal({
     setLoading(true);
     setError(null);
     try {
-      const res = await invoke<DuplicateFileGroup[]>('find_duplicate_files', { root: rootPath });
+      const res = await invoke<unknown>('find_duplicate_files', { root: rootPath });
       if (reqId !== requestIdRef.current) return;
-      setGroups(res);
+      setGroups(normalizeDuplicateGroups(res));
     } catch (e) {
       if (reqId !== requestIdRef.current) return;
       setError(String(e));
@@ -169,7 +280,7 @@ export default function DuplicateFilesModal({
 
   const handleDeleteFromMenu = async (entry: FileEntry) => {
     setContextMenu(null);
-    const confirmed = window.confirm(`"${entry.name}" 파일을 휴지통으로 이동할까요?`);
+    const confirmed = window.confirm(formatMessage(t('duplicateFinder.confirmDelete'), { name: entry.name }));
     if (!confirmed) return;
     try {
       await onDelete(entry.path);
@@ -178,7 +289,7 @@ export default function DuplicateFilesModal({
         .filter(g => g.files.length >= 2)
       );
     } catch (e) {
-      window.alert(`삭제 실패: ${e}`);
+      window.alert(formatMessage(t('duplicateFinder.deleteFailed'), { message: String(e) }));
     }
   };
 
@@ -187,7 +298,7 @@ export default function DuplicateFilesModal({
     items: [{
       id: 'delete',
       icon: <Trash2 size={13} style={{ color: '#f87171' }} />,
-      label: '삭제',
+      label: t('duplicateFinder.delete'),
       onClick: () => { if (contextMenu) void handleDeleteFromMenu(contextMenu.entry); },
     }],
   }] : [];
@@ -215,7 +326,7 @@ export default function DuplicateFilesModal({
           <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${borderColor}` }}>
             <Files size={16} style={{ color: mutedColor, flexShrink: 0 }} />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate" style={{ color: textColor }}>중복 파일 찾기</div>
+              <div className="text-sm font-medium truncate" style={{ color: textColor }}>{t('duplicateFinder.title')}</div>
               <div className="text-[10px] truncate" style={{ color: mutedColor }} title={rootPath}>{rootPath}</div>
             </div>
             {loading && <Loader2 size={16} className="animate-spin" style={{ color: mutedColor }} />}
@@ -228,7 +339,7 @@ export default function DuplicateFilesModal({
           <div className="overflow-y-auto flex-1 px-4 py-3" style={{ maxHeight: 'calc(75vh - 88px)' }}>
             {loading ? (
               <div className="py-12 text-center text-xs" style={{ color: mutedColor }}>
-                하위 폴더를 검색하는 중...
+                {t('duplicateFinder.loading')}
               </div>
             ) : error ? (
               <div className="py-12 text-center text-xs" style={{ color: '#f87171' }}>
@@ -236,17 +347,20 @@ export default function DuplicateFilesModal({
               </div>
             ) : groups.length === 0 ? (
               <div className="py-12 text-center text-xs" style={{ color: mutedColor }}>
-                중복된 파일이 없습니다
+                {t('duplicateFinder.empty')}
               </div>
             ) : (
               <div className="flex flex-col gap-4">
                 <div className="text-[10px]" style={{ color: mutedColor }}>
-                  {groups.length}개 그룹 · 총 {totalDuplicates}개 파일
+                  {formatMessage(t('duplicateFinder.summary'), { groups: groups.length, files: totalDuplicates })}
                 </div>
                 {groups.map((group, gi) => (
                   <div key={`${group.size}-${gi}`}>
                     <div className="text-[10px] mb-1.5" style={{ color: mutedColor }}>
-                      동일 파일 {group.files.length}개 · {formatSize(group.size, false)}
+                      {formatMessage(t('duplicateFinder.groupLabel'), {
+                        count: group.files.length,
+                        size: formatSize(group.size, false),
+                      })}
                     </div>
                     <div className="flex gap-2 overflow-x-auto pb-1">
                       {group.files.map(file => (

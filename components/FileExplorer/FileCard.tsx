@@ -69,7 +69,7 @@ export default memo(function FileCard({
 
   // 초기값을 전역 캐시에서 동기 조회 → 재방문 시 깜빡임 없이 즉시 표시
   const [thumbnail, setThumbnail] = useState<string | null>(() => {
-    const cached = getThumb(thumbKey(entry.path, renderSize, entry.modified));
+    const cached = getThumb(thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity));
     return cached ? cached : null;
   });
   const [thumbnailReloadSeq, setThumbnailReloadSeq] = useState(0);
@@ -125,7 +125,7 @@ export default memo(function FileCard({
     const ft = entry.file_type;
     if (ft !== 'image' && ft !== 'video') return;
 
-    const key = thumbKey(entry.path, renderSize, entry.modified);
+    const key = thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity);
     const cached = getThumb(key);
     if (cached !== undefined) {
       // '' = 썸네일 없음 확정 → 아이콘 폴백
@@ -140,7 +140,7 @@ export default memo(function FileCard({
     let cancelled = false;
     // 형제 이미지를 쓰는 경우 path/modified/size가 달라 persistent URL 추측이 빗나가므로 건너뛴다.
     if (!entry.thumbnailPath) {
-      getPersistentThumbUrl(entry.path, ft, renderSize, entry.modified, entry.size)
+      getPersistentThumbUrl(entry.path, ft, renderSize, entry.modified, entry.size, entry.identity)
         .then(url => {
           if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
           if (getThumb(key) === undefined) setThumbnail(prev => prev ?? url);
@@ -177,20 +177,20 @@ export default memo(function FileCard({
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.thumbnailPath, entry.modified, entry.size, thumbnailSize, thumbnailReloadSeq, isPsd]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.thumbnailPath, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd]);
 
   const handleThumbnailLoad = useCallback(() => {
     if (!thumbnail) return;
     failedThumbnailUrlsRef.current.delete(thumbnail);
-    setThumb(thumbKey(entry.path, renderSize, entry.modified), thumbnail);
-  }, [thumbnail, entry.path, entry.modified, renderSize]);
+    setThumb(thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity), thumbnail);
+  }, [thumbnail, entry.path, entry.modified, entry.size, entry.identity, renderSize]);
 
   const handleThumbnailError = useCallback(() => {
     if (thumbnail) failedThumbnailUrlsRef.current.add(thumbnail);
-    deleteThumb(thumbKey(entry.path, renderSize, entry.modified));
+    deleteThumb(thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity));
     setThumbnail(null);
     setThumbnailReloadSeq(n => n + 1);
-  }, [thumbnail, entry.path, entry.modified, renderSize]);
+  }, [thumbnail, entry.path, entry.modified, entry.size, entry.identity, renderSize]);
 
   // 이미지 규격 조회 (보조 정보). 썸네일이 먼저 표시된 뒤에만 요청해
   // 초기 진입 시 썸네일 요청과 저우선 큐를 두 배로 점유하지 않게 한다(가시 카드 우선).

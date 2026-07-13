@@ -1,14 +1,16 @@
 use crate::modules::archive_ops::{list_archive_directory, resolve_archive_virtual_path_with_app};
 use crate::modules::error::{AppError, Result};
-use crate::modules::types::{classify_file, FileEntry, FileType};
+use crate::modules::types::{classify_file, file_identity, FileEntry, FileType};
 
 fn virtual_dir_entry(name: String, path: String) -> FileEntry {
+    let identity = format!("virtual:{}", path);
     FileEntry {
         name,
         path,
         is_dir: true,
         size: 0,
         modified: 0,
+        identity,
         file_type: FileType::Directory,
     }
 }
@@ -74,6 +76,7 @@ pub async fn list_directory<R: tauri::Runtime>(
                 is_dir: meta.is_dir(),
                 size: if meta.is_dir() { 0 } else { meta.len() },
                 modified,
+                identity: file_identity(&meta),
                 file_type,
                 name,
             });

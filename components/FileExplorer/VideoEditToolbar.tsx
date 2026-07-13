@@ -3,6 +3,7 @@ import { Channel } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface VideoEditToolbarProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -12,6 +13,7 @@ interface VideoEditToolbarProps {
   themeVars: ThemeVars | null;
   onFileChanged?: () => void;
   cropRect?: { x: number; y: number; w: number; h: number } | null;
+  t: (key: TranslationKey) => string;
 }
 
 // 외부에서 호출 가능한 메서드
@@ -32,6 +34,13 @@ function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatMessage(template: string, values: Record<string, string | number>): string {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
 }
 
 // 비디오에서 타임라인 썸네일 캡처
@@ -114,6 +123,7 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   themeVars,
   onFileChanged,
   cropRect,
+  t,
 }, ref) {
   const [startPoint, setStartPoint] = useState(0);
   const [endPoint, setEndPoint] = useState(duration || 0);
@@ -233,11 +243,11 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   const handleTrim = async () => {
     if (processing) return;
     setProcessing(true);
-    setStatusText('내보내기 중...');
+    setStatusText(t('videoEdit.status.exporting'));
     try {
       const progress = new Channel<VideoProgress>();
       progress.onmessage = (msg) => {
-        setStatusText(`처리 중... ${msg.percent.toFixed(0)}%`);
+        setStatusText(formatMessage(t('videoEdit.status.processingPercent'), { percent: msg.percent.toFixed(0) }));
       };
       const output = await invoke<string>('trim_video', {
         input: videoPath,
@@ -249,10 +259,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         cropH: cropRect?.h ?? null,
         onProgress: progress,
       });
-      setStatusText(`내보내기 완료: ${getFileName(output)}`);
+      setStatusText(formatMessage(t('videoEdit.status.exportComplete'), { fileName: getFileName(output) }));
       onFileChanged?.();
     } catch (e) {
-      setStatusText(`내보내기 실패: ${e}`);
+      setStatusText(formatMessage(t('videoEdit.status.exportFailed'), { message: String(e) }));
     } finally {
       setProcessing(false);
     }
@@ -262,11 +272,11 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   const handleDeleteSegment = async () => {
     if (processing) return;
     setProcessing(true);
-    setStatusText('구간 삭제 중...');
+    setStatusText(t('videoEdit.status.deletingSegment'));
     try {
       const progress = new Channel<VideoProgress>();
       progress.onmessage = (msg) => {
-        setStatusText(`처리 중... ${msg.percent.toFixed(0)}%`);
+        setStatusText(formatMessage(t('videoEdit.status.processingPercent'), { percent: msg.percent.toFixed(0) }));
       };
       const output = await invoke<string>('cut_video', {
         input: videoPath,
@@ -274,10 +284,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         endSec: endPoint,
         onProgress: progress,
       });
-      setStatusText(`구간 삭제 완료: ${getFileName(output)}`);
+      setStatusText(formatMessage(t('videoEdit.status.deleteComplete'), { fileName: getFileName(output) }));
       onFileChanged?.();
     } catch (e) {
-      setStatusText(`구간 삭제 실패: ${e}`);
+      setStatusText(formatMessage(t('videoEdit.status.deleteFailed'), { message: String(e) }));
     } finally {
       setProcessing(false);
     }
@@ -287,11 +297,11 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   const handleExportGif = async () => {
     if (processing) return;
     setProcessing(true);
-    setStatusText('GIF 변환 중...');
+    setStatusText(t('videoEdit.status.gifConverting'));
     try {
       const progress = new Channel<VideoProgress>();
       progress.onmessage = (msg) => {
-        setStatusText(`GIF 변환 중... ${msg.percent.toFixed(0)}%`);
+        setStatusText(formatMessage(t('videoEdit.status.gifConvertingPercent'), { percent: msg.percent.toFixed(0) }));
       };
       const output = await invoke<string>('video_to_gif', {
         input: videoPath,
@@ -304,10 +314,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         scaleWidth: null,
         onProgress: progress,
       });
-      setStatusText(`GIF 생성 완료: ${getFileName(output)}`);
+      setStatusText(formatMessage(t('videoEdit.status.gifComplete'), { fileName: getFileName(output) }));
       onFileChanged?.();
     } catch (e) {
-      setStatusText(`GIF 변환 실패: ${e}`);
+      setStatusText(formatMessage(t('videoEdit.status.gifFailed'), { message: String(e) }));
     } finally {
       setProcessing(false);
     }
@@ -325,8 +335,8 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   const segSec = Math.floor(segLen % 60);
   const segLabel =
     segMin > 0
-      ? `${segMin}분 ${segSec}초`
-      : `${segSec}초`;
+      ? formatMessage(t('videoEdit.duration.minutesSeconds'), { minutes: segMin, seconds: segSec })
+      : formatMessage(t('videoEdit.duration.seconds'), { seconds: segSec });
 
   // 버튼 공통 스타일
   const btnBase: React.CSSProperties = {
@@ -362,9 +372,9 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
     >
       {/* 1단: 구간 선택 버튼 + 시간 입력 필드 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button style={btnBase} onClick={goToStart} title="시작점으로 이동">|◄</button>
-        <button style={btnBase} onClick={() => { setStartPoint(prev => { const n = Math.max(0, prev - FRAME_STEP); setStartInput(formatTime(n)); if (videoRef.current) videoRef.current.currentTime = n; return n; }); }} title="시작점 1프레임 뒤로">◄◄</button>
-        <button style={btnBase} onClick={setStartToCurrent} title="현재 위치를 시작점으로">◄ 시작점</button>
+        <button style={btnBase} onClick={goToStart} title={t('videoEdit.goToStart')}>|◄</button>
+        <button style={btnBase} onClick={() => { setStartPoint(prev => { const n = Math.max(0, prev - FRAME_STEP); setStartInput(formatTime(n)); if (videoRef.current) videoRef.current.currentTime = n; return n; }); }} title={t('videoEdit.nudgeStartBack')}>◄◄</button>
+        <button style={btnBase} onClick={setStartToCurrent} title={t('videoEdit.setStartToCurrent')}>◄ {t('videoEdit.startPoint')}</button>
         {/* 시작점 시간 입력 */}
         <input
           value={startInput}
@@ -377,7 +387,7 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); e.stopPropagation(); }}
           className="text-xs font-mono text-center rounded"
           style={{ width: 56, padding: '3px 4px', background: themeVars?.bg ?? '#111', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
-          title="시작점 시간 (mm:ss)"
+          title={t('videoEdit.startTimeTitle')}
         />
         <span className="text-xs" style={{ color: themeVars?.muted ?? '#666' }}>~</span>
         {/* 끝점 시간 입력 */}
@@ -392,11 +402,11 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); e.stopPropagation(); }}
           className="text-xs font-mono text-center rounded"
           style={{ width: 56, padding: '3px 4px', background: themeVars?.bg ?? '#111', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }}
-          title="끝점 시간 (mm:ss)"
+          title={t('videoEdit.endTimeTitle')}
         />
-        <button style={btnBase} onClick={setEndToCurrent} title="현재 위치를 끝점으로">끝점 ►</button>
-        <button style={btnBase} onClick={() => { setEndPoint(prev => { const n = Math.min(duration, prev + FRAME_STEP); setEndInput(formatTime(n)); if (videoRef.current) videoRef.current.currentTime = n; return n; }); }} title="끝점 1프레임 앞으로">►►</button>
-        <button style={btnBase} onClick={goToEnd} title="끝점으로 이동">►|</button>
+        <button style={btnBase} onClick={setEndToCurrent} title={t('videoEdit.setEndToCurrent')}>{t('videoEdit.endPoint')} ►</button>
+        <button style={btnBase} onClick={() => { setEndPoint(prev => { const n = Math.min(duration, prev + FRAME_STEP); setEndInput(formatTime(n)); if (videoRef.current) videoRef.current.currentTime = n; return n; }); }} title={t('videoEdit.nudgeEndForward')}>►►</button>
+        <button style={btnBase} onClick={goToEnd} title={t('videoEdit.goToEnd')}>►|</button>
       </div>
 
       {/* 2단: 구간 시각화 바 */}
@@ -493,25 +503,25 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
           style={accentBtnStyle}
           onClick={handleTrim}
           disabled={processing}
-          title="선택한 구간만 새 파일로 내보내기"
+          title={t('videoEdit.exportSelectionTitle')}
         >
-          선택 구간 내보내기
+          {t('videoEdit.exportSelection')}
         </button>
         <button
           style={accentBtnStyle}
           onClick={handleExportGif}
           disabled={processing}
-          title="선택한 구간을 GIF로 변환 (FPS 15, 폭 480px)"
+          title={t('videoEdit.exportGifTitle')}
         >
-          GIF 내보내기
+          {t('videoEdit.exportGif')}
         </button>
         <button
           style={btnBase}
           onClick={handleDeleteSegment}
           disabled={processing}
-          title="선택한 구간을 삭제하고 앞뒤를 이어붙이기"
+          title={t('videoEdit.deleteSelectionTitle')}
         >
-          선택 구간 삭제
+          {t('videoEdit.deleteSelection')}
         </button>
       </div>
 
@@ -526,7 +536,11 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         <span style={{ opacity: processing ? 1 : 0.7 }}>
           {statusText
             ? statusText
-            : `구간 선택: ${formatTime(startPoint)} ~ ${formatTime(endPoint)} (${segLabel})`}
+            : formatMessage(t('videoEdit.selectionSummary'), {
+                start: formatTime(startPoint),
+                end: formatTime(endPoint),
+                duration: segLabel,
+              })}
         </span>
       </div>
     </div>

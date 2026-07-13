@@ -13,6 +13,7 @@ interface ModalShellProps {
   saving?: boolean;
   saveLabel?: string;         // 기본 '저장'
   savingLabel?: string;       // 기본 `${saveLabel} 중...`
+  cancelLabel?: string;       // 기본 '취소'
   overlayClose?: boolean;     // 오버레이 클릭 시 닫기 (기본 false)
   zIndex?: number;            // 기본 10000
   footerBtnStyle?: React.CSSProperties; // 푸터 버튼 스타일 오버라이드
@@ -37,6 +38,7 @@ export default function ModalShell({
   saving = false,
   saveLabel = '저장',
   savingLabel,
+  cancelLabel = '취소',
   overlayClose = false,
   zIndex = 10000,
   footerBtnStyle,
@@ -105,7 +107,7 @@ export default function ModalShell({
           style={{ borderTop: `1px solid ${themeVars?.border ?? '#334155'}` }}
         >
           <button style={btnBase} onClick={onClose} disabled={saving}>
-            취소
+            {cancelLabel}
           </button>
           <button
             style={{

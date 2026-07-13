@@ -73,6 +73,7 @@ pub(super) fn list_archive_directory_resolved(
             is_dir: child.is_dir,
             size: child.size,
             modified: 0,
+            identity: format!("archive:{}:{}", resolved.archive_path.display(), name),
             file_type: if child.is_dir {
                 FileType::Directory
             } else {

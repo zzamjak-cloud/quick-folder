@@ -3,6 +3,8 @@ import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { isTauri } from '../utils/isTauri';
+import { translate } from '../utils/i18n';
+import type { TranslationKey } from '../utils/i18n';
 import { readJsonStorage, removeStorage, writeJsonStorage } from '../utils/storage';
 import { tauriCommands } from '../utils/tauriCommands';
 
@@ -65,7 +67,10 @@ function writePendingMarker(marker: PendingUpdateMarker) {
   writeJsonStorage(PENDING_UPDATE_KEY, marker);
 }
 
-export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' | 'info') => void) {
+export function useAutoUpdate(
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void,
+  t: (key: TranslationKey) => string = (key) => translate('ko', key),
+) {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ version: string; body: string } | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -151,7 +156,7 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
 
       const update = await check();
       if (update?.available) {
-        addToast('업데이트를 다운로드하고 있습니다...', 'info');
+        addToast(t('toast.updateDownloading'), 'info');
 
         // SAC 등으로 인한 조용한 실패를 다음 실행 시 감지하기 위한 마커
         writePendingMarker({
@@ -177,33 +182,33 @@ export function useAutoUpdate(addToast: (msg: string, type: 'success' | 'error' 
           }
         });
 
-        addToast('업데이트가 완료되었습니다. 앱을 재시작합니다.', 'success');
+        addToast(t('toast.updateCompleteRelaunching'), 'success');
         await relaunch();
       }
     } catch (error) {
       console.error('업데이트 실패:', error);
-      addToast('업데이트에 실패했습니다.', 'error');
+      addToast(t('toast.updateFailed'), 'error');
       clearPendingMarker();
       setIsDownloading(false);
       setIsUpdateModalOpen(false);
     }
-  }, [updateInfo, addToast, currentAppVersion]);
+  }, [updateInfo, addToast, currentAppVersion, t]);
 
   // Windows 스마트 앱 제어(SAC) 설정 페이지 바로 열기
   // — Rust ShellExecuteW로 직접 호출 (cmd /c start 가 SAC 환경에서 차단되던 이슈 대응)
   const openSacSettings = useCallback(async () => {
     if (!isTauri()) {
-      addToast('Tauri 앱에서만 설정을 열 수 있습니다.', 'info');
+      addToast(t('toast.tauriOnlySettings'), 'info');
       return;
     }
     try {
       await tauriCommands.openSacSettings();
-      addToast('설정에서 검색창에 [스마트 앱 제어]를 입력한 뒤 끄기로 변경해 주세요.', 'info');
+      addToast(t('toast.sacSettingsInstruction'), 'info');
     } catch (error) {
       console.error('SAC 설정 열기 실패:', error);
-      addToast('설정을 열 수 없습니다. Windows 설정에서 [스마트 앱 제어]를 검색해 비활성화해 주세요.', 'error');
+      addToast(t('toast.sacSettingsOpenFailed'), 'error');
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const dismissPreviousUpdateFailed = useCallback(() => {
     setPreviousUpdateFailed(null);

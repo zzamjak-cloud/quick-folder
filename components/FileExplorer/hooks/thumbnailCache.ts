@@ -8,13 +8,13 @@ import { isTauri } from '../../../utils/isTauri';
  *
  * 목적: 폴더 재방문/뒤로가기 시 IPC 호출 없이 즉시 썸네일 표시.
  * 값은 asset 프로토콜 URL(convertFileSrc 결과) 또는 빈 문자열('' = 썸네일 없음).
- * 키는 세대+경로+크기+수정시각 → 파일/표시 정책이 바뀌면 자동으로 캐시 미스가 되어 재생성.
+ * 키는 세대+경로+썸네일크기+수정시각+파일크기 → 파일/표시 정책이 바뀌면 자동으로 캐시 미스가 되어 재생성.
  *
  * 단순 LRU: Map의 삽입 순서를 이용해 접근 시 재삽입, 상한 초과 시 가장 오래된 항목 제거.
  */
 
 const MAX_ENTRIES = 4000;
-const THUMBNAIL_MEMORY_CACHE_VERSION = 'v4';
+const THUMBNAIL_MEMORY_CACHE_VERSION = 'v6';
 
 // 생성 비용이 목표 크기와 무관한 항목(PSD composite, 클라우드 이미지=전체 다운로드+디코드)은
 // 표시 크기와 무관하게 항상 이 크기로 1번만 생성·캐시하고 화면에는 CSS로 축소 표시한다.
@@ -76,8 +76,14 @@ function schedulePersist(): void {
 
 hydratePersistedCache();
 
-export function thumbKey(path: string, size: number, modified: number): string {
-  return `${THUMBNAIL_MEMORY_CACHE_VERSION}|${path}|${size}|${modified}`;
+export function fileIdentityToken(modified: number, fileSize: number, fileIdentity?: string): string {
+  const identity = fileIdentity?.trim();
+  if (identity) return identity;
+  return `mtime:${Math.trunc(modified || 0)}:size:${Math.trunc(fileSize || 0)}`;
+}
+
+export function thumbKey(path: string, size: number, modified: number, fileSize: number, fileIdentity?: string): string {
+  return `${THUMBNAIL_MEMORY_CACHE_VERSION}|${path}|${size}|${fileIdentityToken(modified, fileSize, fileIdentity)}`;
 }
 
 /** 캐시 조회. undefined=미조회(요청 필요), ''=썸네일 없음 확정, 그 외=asset URL */
@@ -148,6 +154,7 @@ export async function getPersistentThumbUrl(
   thumbnailSize: number,
   modified: number,
   fileSize: number,
+  fileIdentity?: string,
 ): Promise<string | null> {
   if (fileType !== 'image' && fileType !== 'video') return null;
   // Google Drive 등 cloud path는 Rust에서 file ID 기반 drive_thumbnails 경로를 결정한다.
@@ -158,12 +165,11 @@ export async function getPersistentThumbUrl(
 
   const isPsd = /\.(psd|psb)$/i.test(path);
   const cacheDir = isPsd ? 'psd_thumbnails' : fileType === 'image' ? 'img_thumbnails' : 'video_thumbnails';
-  const stableModified = Math.trunc(modified || 0);
+  const identity = fileIdentityToken(modified, fileSize, fileIdentity);
   const cacheKey = stableCacheKey([
-    'thumbnail-v4',
+    'thumbnail-v5',
     path,
-    String(stableModified),
-    String(Math.trunc(fileSize || 0)),
+    identity,
     String(thumbnailSize),
   ]);
   return convertFileSrc(joinCachePath(root, cacheDir, `${cacheKey}.png`));

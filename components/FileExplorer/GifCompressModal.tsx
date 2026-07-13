@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { ThemeVars } from './types';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface GifCompressModalProps {
   filePaths: string[];
@@ -9,9 +10,17 @@ interface GifCompressModalProps {
   onSuccess?: () => void;
   onError?: (error: string) => void;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 type CompressionQuality = 'high' | 'medium' | 'low';
+
+function formatMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
 
 export default function GifCompressModal({
   filePaths,
@@ -19,6 +28,7 @@ export default function GifCompressModal({
   onSuccess,
   onError,
   themeVars,
+  t,
 }: GifCompressModalProps) {
   const [quality, setQuality] = useState<CompressionQuality>('medium');
   const [reduceSize, setReduceSize] = useState(false);
@@ -33,7 +43,7 @@ export default function GifCompressModal({
     try {
       const installed = await invoke<boolean>('check_ffmpeg');
       if (!installed) {
-        setErrorText('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        setErrorText(t('gifCompress.error.ffmpegMissing'));
         return;
       }
 
@@ -92,7 +102,7 @@ export default function GifCompressModal({
             className="text-lg font-semibold"
             style={{ color: themeVars?.text ?? '#e2e8f0' }}
           >
-            GIF 압축
+            {t('gifCompress.title')}
           </h2>
           <button
             onClick={onClose}
@@ -112,8 +122,10 @@ export default function GifCompressModal({
               border: `1px solid ${themeVars?.border ?? '#334155'}`,
             }}
           >
-            대상 {filePaths.length}개
-            {isCompressing && currentIndex > 0 ? ` · ${currentIndex}/${filePaths.length}개 처리중` : ''}
+            {formatMessage(t('gifCompress.targetCount'), { count: filePaths.length })}
+            {isCompressing && currentIndex > 0
+              ? ` · ${formatMessage(t('gifCompress.progress'), { current: currentIndex, total: filePaths.length })}`
+              : ''}
             {currentFile ? (
               <span className="block truncate mt-1" title={currentFile} style={{ color: themeVars?.muted ?? '#94a3b8' }}>
                 {currentFile}
@@ -128,13 +140,13 @@ export default function GifCompressModal({
             className="block text-sm font-medium mb-3"
             style={{ color: themeVars?.text ?? '#e2e8f0' }}
           >
-            압축 품질
+            {t('gifCompress.qualityLabel')}
           </label>
           <div className="space-y-2">
             {[
-              { value: 'high' as const, label: '높음 (256색, 느린 압축)', desc: '최고 품질, 용량 약간 감소' },
-              { value: 'medium' as const, label: '보통 (128색, 보통 압축)', desc: '균형잡힌 품질, 용량 중간 감소' },
-              { value: 'low' as const, label: '낮음 (64색, 빠른 압축)', desc: '낮은 품질, 용량 많이 감소' },
+              { value: 'high' as const, label: t('gifCompress.quality.high.label'), desc: t('gifCompress.quality.high.desc') },
+              { value: 'medium' as const, label: t('gifCompress.quality.medium.label'), desc: t('gifCompress.quality.medium.desc') },
+              { value: 'low' as const, label: t('gifCompress.quality.low.label'), desc: t('gifCompress.quality.low.desc') },
             ].map((option) => (
               <label
                 key={option.value}
@@ -205,13 +217,13 @@ export default function GifCompressModal({
                 className="text-sm font-medium"
                 style={{ color: themeVars?.text ?? '#e2e8f0' }}
               >
-                크기 50% 줄이기
+                {t('gifCompress.reduceSizeLabel')}
               </div>
               <div
                 className="text-xs mt-0.5"
                 style={{ color: themeVars?.text ?? '#94a3b8', opacity: 0.7 }}
               >
-                이미지 해상도를 절반으로 축소 (용량 추가 감소)
+                {t('gifCompress.reduceSizeDesc')}
               </div>
             </div>
           </label>
@@ -243,7 +255,7 @@ export default function GifCompressModal({
               opacity: isCompressing ? 0.5 : 1,
             }}
           >
-            취소
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleCompress}
@@ -255,7 +267,7 @@ export default function GifCompressModal({
               opacity: isCompressing ? 0.7 : 1,
             }}
           >
-            {isCompressing ? '압축 중...' : '압축하기'}
+            {isCompressing ? t('gifCompress.compressing') : t('gifCompress.compress')}
           </button>
         </div>
       </div>

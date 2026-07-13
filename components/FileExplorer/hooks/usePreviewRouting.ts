@@ -3,7 +3,7 @@ import type { FileEntry } from '../../../types';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { isArchiveVirtualPath, isBrowsableArchiveFilePath } from '../../../utils/pathUtils';
 import { queuedInvokeLow } from './invokeQueue';
-import { getThumb, thumbKey, FIXED_GRID_THUMB_SIZE } from './thumbnailCache';
+import { fileIdentityToken, getThumb, thumbKey, FIXED_GRID_THUMB_SIZE } from './thumbnailCache';
 import { isCloudPath } from '../../../utils/pathUtils';
 import type { PreviewState } from './usePreview';
 
@@ -59,7 +59,8 @@ export function usePreviewRouting({
       !entry.thumbnailPath &&
       (/\.(psd|psb)$/i.test(entry.path) || (entry.file_type === 'image' && isCloudPath(entry.path)));
     const phSize = usesFixedKey ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
-    const cachedThumb = getThumb(thumbKey(entry.path, phSize, entry.modified));
+    const cacheToken = fileIdentityToken(entry.modified, entry.size, entry.identity);
+    const cachedThumb = getThumb(thumbKey(entry.path, phSize, entry.modified, entry.size, entry.identity));
     const placeholder = cachedThumb ? cachedThumb : undefined;
 
     const isVideo = entry.file_type === 'video';
@@ -77,13 +78,13 @@ export function usePreviewRouting({
       preview.setVideoPlayerPath(entry.path);
     } else if (isImage) {
       if (!preview.previewImagePath) preview.closeAllPreviews();
-      preview.handlePreviewImage(entry.path, false, placeholder);
+      preview.handlePreviewImage(entry.path, false, placeholder, cacheToken);
     } else if (isPsb) {
       preview.closeAllPreviews();
       if (isMac) {
         tauriCommands.quickLook(entry.path).catch(console.error);
       } else {
-        preview.handlePreviewImage(entry.path, false, placeholder);
+        preview.handlePreviewImage(entry.path, false, placeholder, cacheToken);
       }
     } else if (isJson) {
       if (!preview.previewJsonPath) preview.closeAllPreviews();

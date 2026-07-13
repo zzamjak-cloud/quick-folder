@@ -31,8 +31,33 @@ const queue: QueueItem[] = [];
 const lowQueue: QueueItem[] = [];
 let invokeImpl: TauriInvoke = invoke;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
 function normalizeTauriError(error: unknown): Error {
   if (error instanceof Error) return error;
+  if (isRecord(error)) {
+    const message = stringValue(error.message)
+      ?? stringValue(error.reason)
+      ?? stringValue(error.error);
+    if (message) return new Error(message);
+
+    const type = stringValue(error.type);
+    const tool = stringValue(error.tool);
+    if (type && tool) return new Error(`${type}: ${tool}`);
+    if (type) return new Error(type);
+
+    try {
+      return new Error(JSON.stringify(error));
+    } catch {
+      return new Error('알 수 없는 Tauri 오류');
+    }
+  }
   return new Error(String(error));
 }
 

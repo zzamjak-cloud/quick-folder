@@ -134,7 +134,9 @@ export function isFuzzyFilterBlocked(): boolean {
   return !!(
     document.querySelector('[data-md-preview]') ||
     document.querySelector('[data-json-preview]') ||
+    document.querySelector('[data-hwp-preview]') ||
     document.querySelector('[data-markdown-editor]') ||
-    document.querySelector('[data-audio-preview]')
+    document.querySelector('[data-audio-preview]') ||
+    document.querySelector('[role="dialog"][aria-modal="true"]')
   );
 }

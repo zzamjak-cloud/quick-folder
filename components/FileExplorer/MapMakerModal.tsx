@@ -6,6 +6,7 @@ import { getFileName } from '../../utils/pathUtils';
 import LaigterLitPreview, { LaigterLitPreviewTextures, PreviewDisplayMode } from './LaigterLitPreview';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { tauriCommands } from '../../utils/tauriCommands';
+import type { TranslationKey } from '../../utils/i18n';
 
 export interface LaigterParamsUI {
   bumpStrength: number;
@@ -117,6 +118,11 @@ interface MapMakerModalProps {
     options: { saveNormal: boolean; saveParallax: boolean; saveSpecular: boolean; saveOcclusion: boolean },
   ) => Promise<void>;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
+}
+
+function formatMessage(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key) => String(values[key] ?? ''));
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -131,10 +137,11 @@ interface SliderRowProps {
   max: number;
   step: number;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 /** 라벨은 위 한 줄, 슬라이더+숫자 입력은 아래 한 줄 (좁은 패널에서 겹침 방지) */
-function SliderRow({ label, value, onChange, min, max, step, themeVars }: SliderRowProps) {
+function SliderRow({ label, value, onChange, min, max, step, themeVars, t }: SliderRowProps) {
   const decimals = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3;
   const fmt = useCallback((v: number) => (decimals === 0 ? String(Math.round(v)) : v.toFixed(decimals)), [decimals]);
   const [draft, setDraft] = useState(() => fmt(value));
@@ -175,7 +182,7 @@ function SliderRow({ label, value, onChange, min, max, step, themeVars }: Slider
         <input
           type="text"
           inputMode="decimal"
-          aria-label={`${label} 값`}
+          aria-label={formatMessage(t('mapMaker.sliderValueAria'), { label })}
           className="w-[4.5rem] shrink-0 rounded px-1.5 py-1 text-right text-[12px] tabular-nums"
           style={{
             backgroundColor: surface,
@@ -258,7 +265,7 @@ function NonLitPreview({ base64, srcWidth, srcHeight, displayMode, pixelated, pi
   );
 }
 
-export default function MapMakerModal({ path, onClose, onExport, themeVars }: MapMakerModalProps) {
+export default function MapMakerModal({ path, onClose, onExport, themeVars, t }: MapMakerModalProps) {
   /** 마지막 사용 옵션 복원 — 모달 인스턴스 1회만 읽음 */
   const initial = useMemo(() => loadMapMakerSettings(), []);
 
@@ -334,12 +341,12 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
       const data = await tauriCommands.laigterMapsPreview<PreviewPayload>(path, params, 512);
       setPreview(data);
     } catch (e) {
-      setError(`미리보기 실패: ${e}`);
+      setError(formatMessage(t('mapMaker.error.previewFailed'), { message: String(e) }));
       setPreview(null);
     } finally {
       setLoading(false);
     }
-  }, [path, params]);
+  }, [path, params, t]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -353,7 +360,7 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
 
   const handleSave = async () => {
     if (!saveNormal && !saveParallax && !saveSpecular && !saveOcclusion) {
-      setError('저장할 맵을 하나 이상 선택하세요.');
+      setError(t('mapMaker.error.selectMap'));
       return;
     }
     setSaving(true);
@@ -367,7 +374,7 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
       });
       onClose();
     } catch (e) {
-      setError(`저장 실패: ${e}`);
+      setError(formatMessage(t('mapMaker.error.saveFailed'), { message: String(e) }));
     } finally {
       setSaving(false);
     }
@@ -442,13 +449,13 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
 
   return (
     <ModalShell
-      title={`Map Maker — ${fileName}`}
+      title={formatMessage(t('mapMaker.title'), { fileName })}
       width="min(72rem, calc(100vw - 1.5rem))"
       height="min(86vh, 820px)"
       maxHeight="94vh"
       saving={saving}
-      saveLabel="맵 저장"
-      savingLabel="저장 중..."
+      saveLabel={t('mapMaker.save')}
+      savingLabel={t('mapMaker.saving')}
       onClose={onClose}
       onSave={handleSave}
       themeVars={themeVars}
@@ -461,21 +468,21 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
             style={{ borderColor: border }}
           >
             <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
-              {tabBtn('lit', '조명')}
-              {tabBtn('diffuse', '확산')}
-              {tabBtn('normal', '노멀')}
-              {tabBtn('specular', '스펙큘러')}
-              {tabBtn('parallax', '파랄락스')}
-              {tabBtn('occlusion', '오클루전')}
+              {tabBtn('lit', t('mapMaker.tab.lit'))}
+              {tabBtn('diffuse', t('mapMaker.tab.diffuse'))}
+              {tabBtn('normal', t('mapMaker.tab.normal'))}
+              {tabBtn('specular', t('mapMaker.tab.specular'))}
+              {tabBtn('parallax', t('mapMaker.tab.parallax'))}
+              {tabBtn('occlusion', t('mapMaker.tab.occlusion'))}
             </div>
 
             {preview && (
               <div className="mb-1.5 flex flex-wrap items-center justify-center gap-1.5 text-[11px]" style={{ color: muted }}>
-                <span className="shrink-0">표시:</span>
-                {previewModeBtn('fit', '화면 맞춤')}
-                {previewModeBtn('actual', '원본 크기')}
+                <span className="shrink-0">{t('mapMaker.display')}</span>
+                {previewModeBtn('fit', t('mapMaker.previewFit'))}
+                {previewModeBtn('actual', t('mapMaker.previewActual'))}
                 <span className="hidden min-[480px]:inline shrink-0 opacity-80">
-                  (원본 크기 = 미리보기 해상도 1:1, 파일 전체는 저장 시)
+                  {t('mapMaker.previewActualHelp')}
                 </span>
               </div>
             )}
@@ -576,7 +583,7 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
             </div>
             {preview && (
               <div className="mt-2 shrink-0 text-center text-[11px]" style={{ color: muted }}>
-                미리보기 텍스처 {preview.width}×{preview.height}px · 맵 저장은 파일 원본 해상도
+                {formatMessage(t('mapMaker.previewInfo'), { width: preview.width, height: preview.height })}
               </div>
             )}
           </div>
@@ -588,28 +595,28 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
           >
             {viewTab === 'lit' ? (
               <>
-                {sectionTitle('조명 미리보기', '실시간 조명은 화면용이며 저장되지 않습니다.')}
-                {sectionTitle('씬 (Scene)')}
-                <SliderRow label="파랄락스 깊이" value={heightScale} onChange={setHeightScale} min={0.01} max={0.2} step={0.005} themeVars={themeVars} />
+                {sectionTitle(t('mapMaker.section.lightingPreview'), t('mapMaker.section.lightingPreviewDesc'))}
+                {sectionTitle(t('mapMaker.section.scene'))}
+                <SliderRow label={t('mapMaker.parallaxDepth')} value={heightScale} onChange={setHeightScale} min={0.01} max={0.2} step={0.005} themeVars={themeVars} t={t} />
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={parallaxPreview} onChange={e => setParallaxPreview(e.target.checked)} />
-                  파랄락스 샘플링 사용
+                  {t('mapMaker.useParallaxSampling')}
                 </label>
-                <SliderRow label="앰비언트" value={ambientIntensity} onChange={setAmbientIntensity} min={0} max={1.2} step={0.02} themeVars={themeVars} />
-                <SliderRow label="노멀 Z 회전 (°)" value={normalRotationDeg} onChange={setNormalRotationDeg} min={-180} max={180} step={1} themeVars={themeVars} />
+                <SliderRow label={t('mapMaker.ambient')} value={ambientIntensity} onChange={setAmbientIntensity} min={0} max={1.2} step={0.02} themeVars={themeVars} t={t} />
+                <SliderRow label={t('mapMaker.normalZRotation')} value={normalRotationDeg} onChange={setNormalRotationDeg} min={-180} max={180} step={1} themeVars={themeVars} t={t} />
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={toonShading} onChange={e => setToonShading(e.target.checked)} />
-                  툰 셰이딩
+                  {t('mapMaker.toonShading')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={pixelatedPreview} onChange={e => setPixelatedPreview(e.target.checked)} />
-                  픽셀화 적용하기
+                  {t('mapMaker.pixelatedPreview')}
                 </label>
                 {pixelatedPreview && (
-                  <SliderRow label="픽셀 그리드" value={pixelCells} onChange={v => setPixelCells(Math.round(v))} min={8} max={128} step={1} themeVars={themeVars} />
+                  <SliderRow label={t('mapMaker.pixelGrid')} value={pixelCells} onChange={v => setPixelCells(Math.round(v))} min={8} max={128} step={1} themeVars={themeVars} t={t} />
                 )}
 
-                {sectionTitle('조명', 'Light 1은 기본, Light 2는 보조 조명입니다.')}
+                {sectionTitle(t('mapMaker.section.lights'), t('mapMaker.section.lightsDesc'))}
                 <div className="mt-1 flex gap-1.5">
                   {litLightTabBtn('light1', 'Light 1')}
                   {litLightTabBtn('light2', 'Light 2')}
@@ -621,14 +628,14 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
                     style={{ border: `1px solid ${border}`, backgroundColor: themeVars?.surface2 ?? '#0f172a' }}
                   >
                     <p className="mb-2 text-[11px] leading-snug" style={{ color: muted }}>
-                      UV(0~1) 평면 위 조명 위치. Z는 깊이 방향입니다.
+                      {t('mapMaker.lightPositionHelp')}
                     </p>
-                    <SliderRow label="위치 X" value={l0.x} onChange={v => setL0(s => ({ ...s, x: v }))} min={0} max={1} step={0.01} themeVars={themeVars} />
-                    <SliderRow label="위치 Y" value={l0.y} onChange={v => setL0(s => ({ ...s, y: v }))} min={0} max={1} step={0.01} themeVars={themeVars} />
-                    <SliderRow label="위치 Z" value={l0.z} onChange={v => setL0(s => ({ ...s, z: v }))} min={0.05} max={1.5} step={0.02} themeVars={themeVars} />
-                    <SliderRow label="확산 (Diffuse)" value={l0.diff} onChange={v => setL0(s => ({ ...s, diff: v }))} min={0} max={2} step={0.05} themeVars={themeVars} />
-                    <SliderRow label="스펙큘러" value={l0.spec} onChange={v => setL0(s => ({ ...s, spec: v }))} min={0} max={2} step={0.05} themeVars={themeVars} />
-                    <SliderRow label="스펙 산란 (광택)" value={l0.scatter} onChange={v => setL0(s => ({ ...s, scatter: v }))} min={4} max={128} step={1} themeVars={themeVars} />
+                    <SliderRow label={t('mapMaker.positionX')} value={l0.x} onChange={v => setL0(s => ({ ...s, x: v }))} min={0} max={1} step={0.01} themeVars={themeVars} t={t} />
+                    <SliderRow label={t('mapMaker.positionY')} value={l0.y} onChange={v => setL0(s => ({ ...s, y: v }))} min={0} max={1} step={0.01} themeVars={themeVars} t={t} />
+                    <SliderRow label={t('mapMaker.positionZ')} value={l0.z} onChange={v => setL0(s => ({ ...s, z: v }))} min={0.05} max={1.5} step={0.02} themeVars={themeVars} t={t} />
+                    <SliderRow label={t('mapMaker.diffuse')} value={l0.diff} onChange={v => setL0(s => ({ ...s, diff: v }))} min={0} max={2} step={0.05} themeVars={themeVars} t={t} />
+                    <SliderRow label={t('mapMaker.specular')} value={l0.spec} onChange={v => setL0(s => ({ ...s, spec: v }))} min={0} max={2} step={0.05} themeVars={themeVars} t={t} />
+                    <SliderRow label={t('mapMaker.specScatter')} value={l0.scatter} onChange={v => setL0(s => ({ ...s, scatter: v }))} min={4} max={128} step={1} themeVars={themeVars} t={t} />
                   </div>
                 )}
 
@@ -639,10 +646,10 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
                   >
                     <label className="mb-2 flex cursor-pointer items-center gap-2 text-[12px]" style={{ color: text }}>
                       <input type="checkbox" checked={light2Enabled} onChange={e => setLight2Enabled(e.target.checked)} />
-                      Light 2 사용
+                      {t('mapMaker.useLight2')}
                     </label>
                     <p className="mb-2 text-[11px] leading-snug" style={{ color: muted }}>
-                      UV(0~1) 평면 위 조명 위치. Z는 깊이 방향입니다.
+                      {t('mapMaker.lightPositionHelp')}
                     </p>
                     <div
                       className="flex flex-col gap-0.5"
@@ -651,59 +658,59 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars }: Ma
                         pointerEvents: light2Enabled ? 'auto' : 'none',
                       }}
                     >
-                      <SliderRow label="위치 X" value={l1.x} onChange={v => setL1(s => ({ ...s, x: v }))} min={0} max={1} step={0.01} themeVars={themeVars} />
-                      <SliderRow label="위치 Y" value={l1.y} onChange={v => setL1(s => ({ ...s, y: v }))} min={0} max={1} step={0.01} themeVars={themeVars} />
-                      <SliderRow label="위치 Z" value={l1.z} onChange={v => setL1(s => ({ ...s, z: v }))} min={0.05} max={1.5} step={0.02} themeVars={themeVars} />
-                      <SliderRow label="확산 (Diffuse)" value={l1.diff} onChange={v => setL1(s => ({ ...s, diff: v }))} min={0} max={2} step={0.05} themeVars={themeVars} />
-                      <SliderRow label="스펙큘러" value={l1.spec} onChange={v => setL1(s => ({ ...s, spec: v }))} min={0} max={2} step={0.05} themeVars={themeVars} />
-                      <SliderRow label="스펙 산란 (광택)" value={l1.scatter} onChange={v => setL1(s => ({ ...s, scatter: v }))} min={4} max={128} step={1} themeVars={themeVars} />
+                      <SliderRow label={t('mapMaker.positionX')} value={l1.x} onChange={v => setL1(s => ({ ...s, x: v }))} min={0} max={1} step={0.01} themeVars={themeVars} t={t} />
+                      <SliderRow label={t('mapMaker.positionY')} value={l1.y} onChange={v => setL1(s => ({ ...s, y: v }))} min={0} max={1} step={0.01} themeVars={themeVars} t={t} />
+                      <SliderRow label={t('mapMaker.positionZ')} value={l1.z} onChange={v => setL1(s => ({ ...s, z: v }))} min={0.05} max={1.5} step={0.02} themeVars={themeVars} t={t} />
+                      <SliderRow label={t('mapMaker.diffuse')} value={l1.diff} onChange={v => setL1(s => ({ ...s, diff: v }))} min={0} max={2} step={0.05} themeVars={themeVars} t={t} />
+                      <SliderRow label={t('mapMaker.specular')} value={l1.spec} onChange={v => setL1(s => ({ ...s, spec: v }))} min={0} max={2} step={0.05} themeVars={themeVars} t={t} />
+                      <SliderRow label={t('mapMaker.specScatter')} value={l1.scatter} onChange={v => setL1(s => ({ ...s, scatter: v }))} min={4} max={128} step={1} themeVars={themeVars} t={t} />
                     </div>
                   </div>
                 )}
               </>
             ) : (
               <>
-                {sectionTitle('미리보기', '미리보기 설정은 저장 파일에 영향을 주지 않습니다.')}
+                {sectionTitle(t('mapMaker.section.preview'), t('mapMaker.section.previewDesc'))}
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={pixelatedPreview} onChange={e => setPixelatedPreview(e.target.checked)} />
-                  픽셀화 적용하기
+                  {t('mapMaker.pixelatedPreview')}
                 </label>
                 {pixelatedPreview && (
-                  <SliderRow label="픽셀 그리드" value={pixelCells} onChange={v => setPixelCells(Math.round(v))} min={8} max={128} step={1} themeVars={themeVars} />
+                  <SliderRow label={t('mapMaker.pixelGrid')} value={pixelCells} onChange={v => setPixelCells(Math.round(v))} min={8} max={128} step={1} themeVars={themeVars} t={t} />
                 )}
 
-                {sectionTitle('맵 생성', '슬라이더 옆 숫자는 직접 입력할 수 있습니다.')}
-                <SliderRow label="범프 강도" value={params.bumpStrength} onChange={v => setParams(p => ({ ...p, bumpStrength: v }))} min={0.2} max={6} step={0.05} themeVars={themeVars} />
-                <SliderRow label="높이 블러 σ" value={params.blurSigma} onChange={v => setParams(p => ({ ...p, blurSigma: v }))} min={0} max={4} step={0.05} themeVars={themeVars} />
-                <SliderRow label="스펙큘러 지수" value={params.specularExponent} onChange={v => setParams(p => ({ ...p, specularExponent: v }))} min={1} max={64} step={0.5} themeVars={themeVars} />
-                <SliderRow label="스펙: 명도↔기울기" value={params.specularGradientMix} onChange={v => setParams(p => ({ ...p, specularGradientMix: v }))} min={0} max={1} step={0.02} themeVars={themeVars} />
-                <SliderRow label="스펙큘러 게인" value={params.specularGain} onChange={v => setParams(p => ({ ...p, specularGain: v }))} min={0.1} max={2.5} step={0.05} themeVars={themeVars} />
-                <SliderRow label="오클루전 강도" value={params.occlusionStrength} onChange={v => setParams(p => ({ ...p, occlusionStrength: v }))} min={0} max={2} step={0.05} themeVars={themeVars} />
+                {sectionTitle(t('mapMaker.section.mapGeneration'), t('mapMaker.section.mapGenerationDesc'))}
+                <SliderRow label={t('mapMaker.bumpStrength')} value={params.bumpStrength} onChange={v => setParams(p => ({ ...p, bumpStrength: v }))} min={0.2} max={6} step={0.05} themeVars={themeVars} t={t} />
+                <SliderRow label={t('mapMaker.heightBlur')} value={params.blurSigma} onChange={v => setParams(p => ({ ...p, blurSigma: v }))} min={0} max={4} step={0.05} themeVars={themeVars} t={t} />
+                <SliderRow label={t('mapMaker.specularExponent')} value={params.specularExponent} onChange={v => setParams(p => ({ ...p, specularExponent: v }))} min={1} max={64} step={0.5} themeVars={themeVars} t={t} />
+                <SliderRow label={t('mapMaker.specBrightnessGradient')} value={params.specularGradientMix} onChange={v => setParams(p => ({ ...p, specularGradientMix: v }))} min={0} max={1} step={0.02} themeVars={themeVars} t={t} />
+                <SliderRow label={t('mapMaker.specularGain')} value={params.specularGain} onChange={v => setParams(p => ({ ...p, specularGain: v }))} min={0.1} max={2.5} step={0.05} themeVars={themeVars} t={t} />
+                <SliderRow label={t('mapMaker.occlusionStrength')} value={params.occlusionStrength} onChange={v => setParams(p => ({ ...p, occlusionStrength: v }))} min={0} max={2} step={0.05} themeVars={themeVars} t={t} />
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={params.heightInvert} onChange={e => setParams(p => ({ ...p, heightInvert: e.target.checked }))} />
-                  높이맵 반전
+                  {t('mapMaker.invertHeightMap')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={params.normalYFlip} onChange={e => setParams(p => ({ ...p, normalYFlip: e.target.checked }))} />
-                  노멀 Y 플립 (엔진 호환)
+                  {t('mapMaker.normalYFlip')}
                 </label>
 
-                {sectionTitle('저장할 파일')}
+                {sectionTitle(t('mapMaker.section.filesToSave'))}
                 <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={saveNormal} onChange={e => setSaveNormal(e.target.checked)} />
-                  노멀맵 (_normal.png)
+                  {t('mapMaker.saveNormal')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={saveParallax} onChange={e => setSaveParallax(e.target.checked)} />
-                  파랄락스 (_parallax.png)
+                  {t('mapMaker.saveParallax')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={saveSpecular} onChange={e => setSaveSpecular(e.target.checked)} />
-                  스펙큘러 (_specular.png)
+                  {t('mapMaker.saveSpecular')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 py-0.5 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={saveOcclusion} onChange={e => setSaveOcclusion(e.target.checked)} />
-                  오클루전 (_occlusion.png)
+                  {t('mapMaker.saveOcclusion')}
                 </label>
               </>
             )}

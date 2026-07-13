@@ -12,8 +12,19 @@ import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { NamingCase } from '../../../utils/caseConvert';
 import { deleteTerminalPreset, getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
 import { tauriCommands } from '../../../utils/tauriCommands';
+import { translate, type TranslationKey } from '../../../utils/i18n';
+import { fileIdentityToken } from './thumbnailCache';
 
 const RECENT_PATH = '__recent__';
+
+function formatMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
+const defaultTranslate = (key: TranslationKey) => translate('ko', key);
 
 export interface UseContextMenuBuilderConfig {
   contextMenu: { x: number; y: number; paths: string[] } | null;
@@ -59,8 +70,9 @@ export interface UseContextMenuBuilderConfig {
     setDuplicateFinderPath: (path: string | null) => void;
     setDiffViewerPaths: (paths: [string, string] | null) => void;
   };
+  t?: (key: TranslationKey) => string;
   preview: {
-    handlePreviewImage: (path: string) => void;
+    handlePreviewImage: (path: string, initialEdit?: boolean, placeholderUrl?: string, cacheToken?: string) => void;
   };
   openEntry: (entry: FileEntry) => void;
   openInOsExplorer: (path: string) => void;
@@ -82,6 +94,7 @@ export function useContextMenuBuilder({
   clipboardHook,
   fileOps,
   modals,
+  t = defaultTranslate,
   preview,
   openEntry,
   openInOsExplorer,
@@ -128,7 +141,12 @@ export function useContextMenuBuilder({
         id: 'preview',
         icon: <Eye size={13} />,
         label: '미리보기',
-        onClick: () => preview.handlePreviewImage(singlePath),
+        onClick: () => preview.handlePreviewImage(
+          singlePath,
+          false,
+          undefined,
+          fileIdentityToken(singleEntry.modified, singleEntry.size, singleEntry.identity),
+        ),
       });
     }
     if (isSingle) {
@@ -146,18 +164,18 @@ export function useContextMenuBuilder({
       openSection.items.push({
         id: 'open-terminal',
         icon: <Terminal size={13} />,
-        label: '터미널에서 열기',
+        label: t('terminalMenu.openInTerminal'),
         onClick: () => {/* 서브메뉴 */},
         submenu: [
           {
             id: 'terminal-open-folder',
             icon: undefined,
-            label: '폴더 경로 열기',
+            label: t('terminalMenu.openFolderPath'),
             onClick: async () => {
               try {
                 await tauriCommands.openTerminal(terminalTargetPath);
               } catch (e) {
-                fileOps.showCopyToast(`터미널 실행 실패: ${e}`);
+                fileOps.showCopyToast(formatMessage(t('toast.terminalOpenFailed'), { message: String(e) }));
               }
             },
           },
@@ -170,14 +188,14 @@ export function useContextMenuBuilder({
               try {
                 await tauriCommands.runTerminalCommand(terminalTargetPath, preset.command);
               } catch (e) {
-                fileOps.showCopyToast(`프리셋 실행 실패: ${e}`);
+                fileOps.showCopyToast(formatMessage(t('toast.terminalPresetFailed'), { message: String(e) }));
               }
             },
             trailingActions: [
               {
                 id: `terminal-preset-edit-${preset.id}`,
                 icon: <Edit2 size={12} />,
-                title: '프리셋 수정',
+                title: t('terminalMenu.editPreset'),
                 onClick: () => {
                   modals.setTerminalPresetEditId(preset.id);
                   modals.setTerminalPresetPath(terminalTargetPath);
@@ -186,7 +204,7 @@ export function useContextMenuBuilder({
               {
                 id: `terminal-preset-delete-${preset.id}`,
                 icon: <Trash2 size={12} />,
-                title: '프리셋 삭제',
+                title: t('terminalMenu.deletePreset'),
                 labelColor: '#f87171',
                 onClick: () => deleteTerminalPreset(terminalTargetPath, preset.id),
               },
@@ -195,7 +213,7 @@ export function useContextMenuBuilder({
           {
             id: 'terminal-add-command',
             icon: undefined,
-            label: '+ 명령어 추가',
+            label: t('terminalMenu.addCommand'),
             align: 'right',
             onClick: () => {
               modals.setTerminalPresetEditId(null);
@@ -528,7 +546,7 @@ export function useContextMenuBuilder({
             const text = names.join('\r\n');
             // Tauri 클립보드 플러그인 사용 (navigator.clipboard는 웹뷰에서 실패 가능)
             await tauriCommands.copyPath(text);
-            fileOps.showCopyToast(`${names.length}개 파일명 복사됨`);
+            fileOps.showCopyToast(formatMessage(t('toast.fileNamesCopied'), { count: names.length }));
           } catch (e) { console.error('엔트리 복제 실패:', e); }
         },
       });
@@ -550,14 +568,14 @@ export function useContextMenuBuilder({
         infoSection.items.push({
           id: 'remove-tag',
           icon: <Tag size={13} />,
-          label: '태그 해제',
+          label: t('folderTag.remove'),
           onClick: () => handleRemoveTag(singlePath),
         });
       } else {
         infoSection.items.push({
           id: 'add-tag',
           icon: <Tag size={13} />,
-          label: '태그 추가',
+          label: t('folderTag.add'),
           onClick: () => handleAddTag(singlePath),
         });
       }
@@ -582,7 +600,7 @@ export function useContextMenuBuilder({
             const sep = singlePath.includes('\\') ? '\\' : '/';
             const parentDir = singlePath.substring(0, singlePath.lastIndexOf(sep));
             const folderId = await tauriCommands.getGoogleDriveFileId(parentDir);
-            if (!folderId) { fileOps.showCopyToast('폴더 ID를 가져올 수 없습니다'); return; }
+            if (!folderId) { fileOps.showCopyToast(t('toast.folderIdMissing')); return; }
             await tauriCommands.openFolder(`https://drive.google.com/drive/folders/${folderId}`);
           } catch (e) { console.error('Google Drive 열기 실패:', e); }
         },
@@ -595,7 +613,7 @@ export function useContextMenuBuilder({
         onClick: async () => {
           try {
             const fileId = await tauriCommands.getGoogleDriveFileId(singlePath);
-            if (!fileId) { fileOps.showCopyToast('파일 ID를 가져올 수 없습니다'); return; }
+            if (!fileId) { fileOps.showCopyToast(t('toast.fileIdMissing')); return; }
             await tauriCommands.openFolder(`https://drive.google.com/file/d/${fileId}/edit?usp=sharing`);
           } catch (e) { console.error('Google Drive 공유 열기 실패:', e); }
         },
@@ -612,15 +630,15 @@ export function useContextMenuBuilder({
             if (fileId) {
               const url = `https://drive.google.com/file/d/${fileId}/view`;
               await tauriCommands.copyPath(url);
-              fileOps.showCopyToast('Drive 파일 링크 복사됨');
+              fileOps.showCopyToast(t('toast.driveFileLinkCopied'));
             } else {
               const sep = singlePath.includes('\\') ? '\\' : '/';
               const parentDir = singlePath.substring(0, singlePath.lastIndexOf(sep));
               const folderId = await tauriCommands.getGoogleDriveFileId(parentDir);
-              if (!folderId) { fileOps.showCopyToast('링크를 가져올 수 없습니다'); return; }
+              if (!folderId) { fileOps.showCopyToast(t('toast.linkUnavailable')); return; }
               const url = `https://drive.google.com/drive/folders/${folderId}`;
               await tauriCommands.copyPath(url);
-              fileOps.showCopyToast('Drive 폴더 링크 복사됨');
+              fileOps.showCopyToast(t('toast.driveFolderLinkCopied'));
             }
           } catch (e) { console.error('Drive 링크 복사 실패:', e); }
         },
@@ -633,7 +651,7 @@ export function useContextMenuBuilder({
         onClick: async () => {
           try {
             await tauriCommands.setGoogleDriveOffline(singlePath, true);
-            fileOps.showCopyToast('오프라인 사용 설정됨');
+            fileOps.showCopyToast(t('toast.driveOfflineEnabled'));
           } catch (e) { console.error('오프라인 설정 실패:', e); }
         },
       });
@@ -649,13 +667,13 @@ export function useContextMenuBuilder({
           {
             id: 'find-duplicates',
             icon: <Files size={13} />,
-            label: '중복 파일 찾기',
+            label: t('duplicateFinder.menuLabel'),
             onClick: () => modals.setDuplicateFinderPath(singlePath),
           },
           {
             id: 'folder-size-check',
             icon: <HardDrive size={13} />,
-            label: '폴더 용량 확인',
+            label: t('folderSize.menuLabel'),
             onClick: () => fileOps.handleInspectFolderSize(singlePath),
           },
         ],
@@ -695,6 +713,7 @@ export function useContextMenuBuilder({
     modals.setTerminalPresetEditId,
     modals.setDuplicateFinderPath,
     modals.setDiffViewerPaths,
+    t,
   ]);
 
   return { contextMenuSections };

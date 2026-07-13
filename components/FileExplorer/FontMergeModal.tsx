@@ -5,6 +5,7 @@ import { getInputStyle } from './ui/modalStyles';
 import { ThemeVars } from './types';
 import { getFileName, getExtension, getBaseName, getParentDir } from '../../utils/pathUtils';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 // ─────────────────────────────────────────────
 // 타입 정의
@@ -25,6 +26,14 @@ export interface FontMergeModalProps {
   /** 병합 완료 후 출력 경로 전달 콜백 */
   onApply: (outputPath: string) => void;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
+}
+
+function formatMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -36,6 +45,7 @@ export default function FontMergeModal({
   onClose,
   onApply,
   themeVars,
+  t,
 }: FontMergeModalProps) {
   // A/B 순서 상태 (교체 버튼으로 반전)
   const [order, setOrder] = useState<[string, string]>([paths[0], paths[1]]);
@@ -74,14 +84,14 @@ export default function FontMergeModal({
         const ext = getExtension(order[0]) || '.ttf';
         setOutputName(`${infoA.name}_${infoB.name}_Merged${ext}`);
       } catch (e) {
-        setError(`폰트 정보를 불러오지 못했습니다: ${e}`);
+        setError(formatMessage(t('fontMerge.error.infoLoadFailed'), { message: String(e) }));
       } finally {
         setLoading(false);
       }
     };
 
     loadFontInfos();
-  }, [order]);
+  }, [order, t]);
 
   // ─── A↔B 순서 교체 ────────────────────────────
   const handleSwap = () => {
@@ -91,7 +101,7 @@ export default function FontMergeModal({
   // ─── 병합 실행 ────────────────────────────────
   const handleMerge = async () => {
     if (!outputName.trim()) {
-      setError('출력 파일명을 입력해 주세요.');
+      setError(t('fontMerge.error.outputNameRequired'));
       return;
     }
 
@@ -109,7 +119,7 @@ export default function FontMergeModal({
           await invoke('download_fonttools');
         } catch (installErr) {
           setError(
-            `fonttools 설치에 실패했습니다: ${installErr}\n\n터미널에서 시도: python -m pip install --user fonttools`
+            formatMessage(t('fontMerge.error.fonttoolsInstallFailed'), { message: String(installErr) })
           );
           return;
         } finally {
@@ -131,14 +141,14 @@ export default function FontMergeModal({
       // Python / fonttools 미설치 안내
       if (msg.includes('python') || msg.includes('Python')) {
         setError(
-          'Python이 설치되어 있지 않습니다. https://www.python.org 에서 Python을 설치해 주세요.'
+          t('fontMerge.error.pythonMissing')
         );
       } else if (msg.includes('fonttools') || msg.includes('No module named')) {
         setError(
-          'fonttools 패키지가 필요합니다. 터미널에서 다음 명령어를 실행해 주세요:\n  pip install fonttools'
+          t('fontMerge.error.fonttoolsRequired')
         );
       } else {
-        setError(`병합 실패: ${msg}`);
+        setError(formatMessage(t('fontMerge.error.mergeFailed'), { message: msg }));
       }
     } finally {
       setMerging(false);
@@ -204,7 +214,7 @@ export default function FontMergeModal({
     if (loading) {
       return (
         <div style={cardStyle}>
-          <span style={{ fontSize: 12, color: themeVars?.muted }}>로딩 중...</span>
+          <span style={{ fontSize: 12, color: themeVars?.muted }}>{t('fontMerge.loading')}</span>
         </div>
       );
     }
@@ -221,7 +231,10 @@ export default function FontMergeModal({
           {info.name} <span style={{ fontWeight: 400, opacity: 0.7 }}>{info.style}</span>
         </div>
         <div style={subTextStyle}>
-          {info.glyph_count.toLocaleString()} 글리프 &nbsp;·&nbsp; {getFileName(pathStr)}
+          {formatMessage(t('fontMerge.glyphSummary'), {
+            count: info.glyph_count.toLocaleString(),
+            fileName: getFileName(pathStr),
+          })}
         </div>
       </div>
     );
@@ -231,11 +244,12 @@ export default function FontMergeModal({
 
   return (
     <ModalShell
-      title="폰트 병합"
+      title={t('fontMerge.title')}
       maxWidth="36rem"
       saving={merging || installingFonttools}
-      saveLabel="병합"
-      savingLabel={installingFonttools ? 'fonttools 설치 중...' : '병합 중...'}
+      saveLabel={t('fontMerge.merge')}
+      savingLabel={installingFonttools ? t('fontMerge.fonttoolsInstalling') : t('fontMerge.merging')}
+      cancelLabel={t('common.cancel')}
       onClose={onClose}
       onSave={handleMerge}
       themeVars={themeVars}
@@ -244,7 +258,7 @@ export default function FontMergeModal({
 
         {/* A 폰트 (베이스) */}
         <div>
-          <div style={labelStyle}>A 폰트 (베이스)</div>
+          <div style={labelStyle}>{t('fontMerge.baseFont')}</div>
           {renderFontCard(fontInfoA, order[0])}
         </div>
 
@@ -252,19 +266,19 @@ export default function FontMergeModal({
         <div className="flex justify-center">
           <button style={swapBtnStyle} onClick={handleSwap} disabled={loading || merging || installingFonttools}>
             <ArrowUpDown size={13} />
-            교체
+            {t('fontMerge.swap')}
           </button>
         </div>
 
         {/* B 폰트 (병합 소스) */}
         <div>
-          <div style={labelStyle}>B 폰트 (병합 소스)</div>
+          <div style={labelStyle}>{t('fontMerge.mergeSourceFont')}</div>
           {renderFontCard(fontInfoB, order[1])}
         </div>
 
         {/* 출력 파일명 */}
         <div>
-          <div style={labelStyle}>출력 파일명</div>
+          <div style={labelStyle}>{t('fontMerge.outputName')}</div>
           <input
             type="text"
             value={outputName}
@@ -272,7 +286,7 @@ export default function FontMergeModal({
             style={inputStyle}
             spellCheck={false}
             disabled={merging || installingFonttools}
-            placeholder="병합된 폰트 파일명.ttf"
+            placeholder={t('fontMerge.outputPlaceholder')}
           />
         </div>
 

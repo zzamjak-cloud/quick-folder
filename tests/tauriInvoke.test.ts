@@ -127,6 +127,34 @@ test('direct Tauri command의 문자열 reject는 Error로 정규화된다', asy
   );
 });
 
+test('direct Tauri command의 객체 reject는 message로 정규화된다', async () => {
+  __setTauriInvokeForTest((() => Promise.reject({
+    type: 'permission_denied',
+    message: 'Desktop 접근 권한이 없습니다',
+  })) as TauriInvokeMock);
+
+  await assert.rejects(
+    invokeTauriCommand('direct-failure'),
+    error => error instanceof Error && error.message === 'Desktop 접근 권한이 없습니다',
+  );
+});
+
+test('queued Tauri command의 객체 reject는 message로 정규화된다', async () => {
+  const mock = createDeferredInvoke();
+  __setTauriInvokeForTest(mock.invoke as TauriInvokeMock);
+
+  const op = queuedInvoke<string>('list_directory', { path: '/Users/me/Desktop' });
+  mock.calls[0].reject({
+    type: 'permission_denied',
+    message: 'Desktop 접근 권한이 없습니다',
+  });
+
+  await assert.rejects(
+    op.promise,
+    error => error instanceof Error && error.message === 'Desktop 접근 권한이 없습니다',
+  );
+});
+
 test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 매핑한다', async () => {
   const calls: { cmd: string; args: InvokeArgs }[] = [];
   __setTauriInvokeForTest(createResolvedInvoke(calls) as TauriInvokeMock);
@@ -144,6 +172,7 @@ test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 
   await mediaCommands.laigterMapsPreview('/tmp/image.png', { bumpStrength: 1 }, 512);
   await mediaCommands.ensureThumbnailsBatch([{ path: '/tmp/image.png', fileType: 'image' }], 160);
   await mediaCommands.ensureThumbnailsBatch([{ path: '/tmp/design.psd', fileType: 'psd' }], 160);
+  await mediaCommands.invalidateThumbnailCache(['/tmp/image.png']);
   await previewCommands.getFileIcon('/tmp/(P)QuickClipper', 128, true);
   await previewCommands.getFontInfo('/tmp/font.ttf');
   await systemCommands.startFileDrag(['/tmp/a.txt'], 'data:image/png;base64,AA==', { send: true });
@@ -157,6 +186,7 @@ test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 
     { cmd: 'laigter_maps_preview', args: { input: '/tmp/image.png', params: { bumpStrength: 1 }, maxSide: 512 } },
     { cmd: 'ensure_thumbnails_batch', args: { items: [{ path: '/tmp/image.png', fileType: 'image' }], size: 160 } },
     { cmd: 'ensure_thumbnails_batch', args: { items: [{ path: '/tmp/design.psd', fileType: 'psd' }], size: 160 } },
+    { cmd: 'invalidate_thumbnail_cache', args: { paths: ['/tmp/image.png'] } },
     { cmd: 'get_file_icon', args: { path: '/tmp/(P)QuickClipper', size: 128, isDirHint: true } },
     { cmd: 'get_font_info', args: { path: '/tmp/font.ttf' } },
     { cmd: 'plugin:drag|start_drag', args: { item: ['/tmp/a.txt'], image: 'data:image/png;base64,AA==', onEvent: { send: true } } },

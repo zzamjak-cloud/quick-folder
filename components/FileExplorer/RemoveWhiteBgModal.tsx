@@ -6,6 +6,7 @@ import { getFileName } from '../../utils/pathUtils';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Wand2 } from 'lucide-react';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 // 저장소 키
 const LS_KEY = 'qf_remove_bg_settings';
@@ -39,13 +40,13 @@ const darkCheckerboardStyle: React.CSSProperties = {
 
 // 미리보기 배경 프리셋
 const BG_PRESETS = [
-  { label: '체커', value: 'checker' },
-  { label: '검정', value: '#000000' },
-  { label: '흰색', value: '#ffffff' },
-  { label: '회색', value: '#808080' },
-  { label: '빨강', value: '#cc3333' },
-  { label: '초록', value: '#33cc33' },
-  { label: '파랑', value: '#3333cc' },
+  { labelKey: 'removeBg.previewBg.checker', value: 'checker' },
+  { labelKey: 'removeBg.previewBg.black', value: '#000000' },
+  { labelKey: 'removeBg.previewBg.white', value: '#ffffff' },
+  { labelKey: 'removeBg.previewBg.gray', value: '#808080' },
+  { labelKey: 'removeBg.previewBg.red', value: '#cc3333' },
+  { labelKey: 'removeBg.previewBg.green', value: '#33cc33' },
+  { labelKey: 'removeBg.previewBg.blue', value: '#3333cc' },
 ];
 
 interface RemoveWhiteBgModalProps {
@@ -53,10 +54,18 @@ interface RemoveWhiteBgModalProps {
   onClose: () => void;
   onApply: (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => Promise<void>;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
-export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars }: RemoveWhiteBgModalProps) {
+export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars, t }: RemoveWhiteBgModalProps) {
   const saved = useMemo(loadSettings, []);
+
+  const formatMessage = useCallback((template: string, values: Record<string, string | number>) => (
+    Object.entries(values).reduce(
+      (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+      template,
+    )
+  ), []);
 
   // 파라미터
   const [threshold, setThreshold] = useState(saved.threshold);
@@ -105,8 +114,8 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
   const isMulti = paths.length > 1;
 
   const title = isMulti
-    ? `배경 제거 — ${paths.length}개 이미지 (${previewIndex + 1}/${paths.length})`
-    : `배경 제거 — ${fileName}`;
+    ? formatMessage(t('removeBg.titleMulti'), { count: paths.length, current: previewIndex + 1, total: paths.length })
+    : formatMessage(t('removeBg.titleSingle'), { fileName });
 
   // 미리보기 배경 스타일
   const previewBgStyle: React.CSSProperties = previewBg === 'checker'
@@ -157,12 +166,12 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
       });
       setPreview(base64);
     } catch (e) {
-      setError(`미리보기 실패: ${e}`);
+      setError(formatMessage(t('removeBg.warning.previewFailed'), { message: String(e) }));
       setPreview(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [formatMessage, t]);
 
   useEffect(() => {
     fetchOriginal(currentPath);
@@ -267,7 +276,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
       await onApply(paths, threshold, feather, seedPoints, trim);
       onClose();
     } catch (e) {
-      setError(`저장 실패: ${e}`);
+      setError(formatMessage(t('removeBg.warning.saveFailed'), { message: String(e) }));
     } finally {
       setSaving(false);
       setSaveProgress('');
@@ -321,7 +330,9 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
       title={title}
       maxWidth="60rem"
       saving={saving}
-      saveLabel={saving && saveProgress ? `저장 중 (${saveProgress})` : '저장'}
+      saveLabel={saving && saveProgress
+        ? formatMessage(t('removeBg.savingProgress'), { progress: saveProgress })
+        : t('removeBg.save')}
       onClose={onClose}
       onSave={handleSave}
       themeVars={themeVars}
@@ -333,15 +344,15 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
             <button
               style={wandActive ? activeBtnStyle : smallBtnStyle}
               onClick={() => setWandActive(v => !v)}
-              title="마술봉: 클릭한 영역을 배경으로 지정"
+              title={t('removeBg.magicWandTitle')}
             >
               <Wand2 size={13} />
-              <span>마술봉</span>
+              <span>{t('removeBg.magicWand')}</span>
             </button>
             {seedPoints.length > 0 && (
-              <button style={smallBtnStyle} onClick={resetSeeds} title="선택 초기화">
+              <button style={smallBtnStyle} onClick={resetSeeds} title={t('removeBg.resetSelectionTitle')}>
                 <RotateCcw size={13} />
-                <span>초기화 ({seedPoints.length})</span>
+                <span>{formatMessage(t('removeBg.resetSelection'), { count: seedPoints.length })}</span>
               </button>
             )}
           </div>
@@ -361,12 +372,12 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
                 <div style={{ width: 8 }} />
               </>
             )}
-            <button style={smallBtnStyle} onClick={zoomOut} title="축소"><ZoomOut size={13} /></button>
+            <button style={smallBtnStyle} onClick={zoomOut} title={t('removeBg.zoomOut')}><ZoomOut size={13} /></button>
             <span className="text-[10px] w-10 text-center" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
               {Math.round(zoom * 100)}%
             </span>
-            <button style={smallBtnStyle} onClick={zoomIn} title="확대"><ZoomIn size={13} /></button>
-            <button style={smallBtnStyle} onClick={resetZoom} title="줌 초기화" className="text-[10px]">1:1</button>
+            <button style={smallBtnStyle} onClick={zoomIn} title={t('removeBg.zoomIn')}><ZoomIn size={13} /></button>
+            <button style={smallBtnStyle} onClick={resetZoom} title={t('removeBg.resetZoom')} className="text-[10px]">1:1</button>
           </div>
         </div>
 
@@ -375,7 +386,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
           {/* 원본 */}
           <div className="flex-1 flex flex-col items-center gap-1">
             <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
-              원본 {wandActive && '(클릭으로 배경 선택)'}
+              {t('removeBg.original')} {wandActive && t('removeBg.clickToSelectBackground')}
             </span>
             <div
               ref={origContainerRef}
@@ -393,7 +404,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
                   <img
                     ref={origImgRef}
                     src={`data:image/png;base64,${originalPreview}`}
-                    alt="원본"
+                    alt={t('removeBg.original')}
                     onLoad={triggerMarkerUpdate}
                     draggable={false}
                     style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', display: 'block' }}
@@ -414,7 +425,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
 
           {/* 결과 */}
           <div className="flex-1 flex flex-col items-center gap-1">
-            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>결과</span>
+            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>{t('removeBg.result')}</span>
             <div
               ref={resultContainerRef}
               className="rounded-md w-full"
@@ -435,13 +446,13 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
                 {!loading && preview && (
                   <img
                     src={`data:image/png;base64,${preview}`}
-                    alt="결과"
+                    alt={t('removeBg.result')}
                     draggable={false}
                     style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', display: 'block' }}
                   />
                 )}
                 {!loading && !preview && !error && (
-                  <span className="text-xs" style={{ color: themeVars?.muted }}>미리보기 없음</span>
+                  <span className="text-xs" style={{ color: themeVars?.muted }}>{t('removeBg.noPreview')}</span>
                 )}
               </div>
             </div>
@@ -452,7 +463,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
         <div className="flex flex-col gap-2.5">
           {/* 미리보기 배경색 */}
           <div className="flex items-center gap-3">
-            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>미리보기 배경</label>
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.previewBackground')}</label>
             <div className="flex items-center gap-1 flex-wrap">
               {BG_PRESETS.map(p => (
                 <button
@@ -468,7 +479,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
                   {p.value !== 'checker' && (
                     <span className="inline-block w-2 h-2 rounded-sm mr-0.5 align-middle" style={{ backgroundColor: p.value, border: '1px solid #555' }} />
                   )}
-                  {p.label}
+                  {t(p.labelKey as TranslationKey)}
                 </button>
               ))}
               <input
@@ -477,14 +488,14 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
                 onChange={e => setPreviewBg(e.target.value)}
                 className="w-5 h-5 rounded cursor-pointer"
                 style={{ border: `1px solid ${themeVars?.border ?? '#334155'}`, padding: 0, background: 'none' }}
-                title="직접 선택"
+                title={t('removeBg.customColor')}
               />
             </div>
           </div>
 
           {/* Threshold 슬라이더 */}
           <div className="flex items-center gap-3">
-            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>제거 범위</label>
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.threshold')}</label>
             <input
               type="range" min={0} max={100} value={threshold}
               onChange={e => setThreshold(Number(e.target.value))}
@@ -497,7 +508,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
 
           {/* Feather 슬라이더 */}
           <div className="flex items-center gap-3">
-            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>경계 부드러움</label>
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.feather')}</label>
             <input
               type="range" min={0} max={50} value={feather}
               onChange={e => setFeather(Number(e.target.value))}
@@ -510,7 +521,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
 
           {/* Trim 체크박스 */}
           <div className="flex items-center gap-3">
-            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>여백 제거</label>
+            <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.trim')}</label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -518,7 +529,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars 
                 onChange={e => setTrim(e.target.checked)}
                 style={{ accentColor: themeVars?.accent ?? '#3b82f6', width: 14, height: 14 }}
               />
-              <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>투명 영역 Trim</span>
+              <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{t('removeBg.trimTransparent')}</span>
             </label>
           </div>
         </div>

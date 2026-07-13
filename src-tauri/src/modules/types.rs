@@ -22,7 +22,43 @@ pub struct FileEntry {
     pub is_dir: bool,
     pub size: u64,
     pub modified: u64, // epoch ms
+    pub identity: String,
     pub file_type: FileType,
+}
+
+pub fn file_identity(meta: &std::fs::Metadata) -> String {
+    let created = meta
+        .created()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        return format!(
+            "unix:{}:{}:{}:{}:{}:{}:{}",
+            meta.dev(),
+            meta.ino(),
+            created,
+            meta.ctime(),
+            meta.ctime_nsec(),
+            modified,
+            meta.len()
+        );
+    }
+
+    #[cfg(not(unix))]
+    {
+        format!("portable:{}:{}:{}", created, modified, meta.len())
+    }
 }
 
 // 파일 타입 분류 헬퍼

@@ -8,6 +8,49 @@ const MENU_MAX_WIDTH = 360;
 const SUBMENU_MIN_WIDTH = 180;
 const SUBMENU_MAX_WIDTH = 360;
 
+type MenuTone = 'light' | 'dark';
+
+const READABLE_LABEL_COLORS: Record<string, Record<MenuTone, string>> = {
+  '#f87171': { light: '#991b1b', dark: '#f87171' },
+  '#60a5fa': { light: '#1e40af', dark: '#60a5fa' },
+  '#4ade80': { light: '#14532d', dark: '#4ade80' },
+  '#fbbf24': { light: '#92400e', dark: '#fbbf24' },
+};
+
+function parseHexColor(value: string): { r: number; g: number; b: number } | null {
+  const match = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) return null;
+  const hex = match[1].length === 3
+    ? match[1].split('').map(ch => ch + ch).join('')
+    : match[1];
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function relativeLuminance({ r, g, b }: { r: number; g: number; b: number }): number {
+  const toLinear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+function getMenuTone(): MenuTone {
+  if (typeof document === 'undefined') return 'dark';
+  const portalRoot = document.getElementById('qf-root') ?? document.documentElement;
+  const textColor = window.getComputedStyle(portalRoot).getPropertyValue('--qf-text').trim();
+  const textRgb = parseHexColor(textColor);
+  return textRgb && relativeLuminance(textRgb) < 0.35 ? 'light' : 'dark';
+}
+
+function getReadableLabelColor(labelColor: string | undefined, tone: MenuTone): string | undefined {
+  if (!labelColor) return undefined;
+  return READABLE_LABEL_COLORS[labelColor.toLowerCase()]?.[tone] ?? labelColor;
+}
+
 interface ContextMenuProps {
   x: number;
   y: number;
@@ -16,7 +59,7 @@ interface ContextMenuProps {
 }
 
 // 서브메뉴가 있는 항목 렌더러
-function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => void }) {
+function SubmenuItem({ item, onClose, tone }: { item: ContextMenuItem; onClose: () => void; tone: MenuTone }) {
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -65,7 +108,7 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
               >
                 <button
                   className="min-w-0 flex-1 px-3 py-1.5 text-left cursor-pointer"
-                  style={{ color: sub.labelColor ?? 'var(--qf-text)', fontWeight: sub.labelColor ? 600 : undefined }}
+                  style={{ color: getReadableLabelColor(sub.labelColor, tone) ?? 'var(--qf-text)', fontWeight: sub.labelColor ? 600 : undefined }}
                   onClick={() => { sub.onClick(); onClose(); }}
                   title={sub.label}
                 >
@@ -83,7 +126,7 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
                     className={`flex h-7 w-7 flex-shrink-0 items-center justify-center transition-colors ${
                       action.disabled ? 'cursor-not-allowed opacity-30' : 'cursor-pointer hover:bg-[var(--qf-surface-hover)]'
                     }`}
-                    style={{ color: action.labelColor ?? 'var(--qf-muted)' }}
+                    style={{ color: getReadableLabelColor(action.labelColor, tone) ?? 'var(--qf-muted)' }}
                     title={action.title}
                     disabled={action.disabled}
                     onClick={action.disabled ? undefined : (event) => {
@@ -106,6 +149,7 @@ function SubmenuItem({ item, onClose }: { item: ContextMenuItem; onClose: () => 
 
 export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const tone = getMenuTone();
 
   // 화면 밖으로 나가지 않도록 위치 조정
   const [adjustedPos, setAdjustedPos] = React.useState({ x, y });
@@ -143,8 +187,9 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
   const renderItem = (menuItem: ContextMenuItem) => {
     // 서브메뉴가 있는 경우 SubmenuItem 사용
     if (menuItem.submenu) {
-      return <SubmenuItem key={menuItem.id} item={menuItem} onClose={onClose} />;
+      return <SubmenuItem key={menuItem.id} item={menuItem} onClose={onClose} tone={tone} />;
     }
+    const labelColor = getReadableLabelColor(menuItem.labelColor, tone);
 
     return (
       <button
@@ -154,12 +199,12 @@ export default function ContextMenu({ x, y, sections, onClose }: ContextMenuProp
             ? 'opacity-30 cursor-not-allowed'
             : 'hover:bg-[var(--qf-surface-hover)] cursor-pointer'
         }`}
-        style={{ color: menuItem.labelColor ?? 'var(--qf-text)' }}
+        style={{ color: labelColor ?? 'var(--qf-text)' }}
         onClick={menuItem.disabled ? undefined : () => { menuItem.onClick(); onClose(); }}
         disabled={menuItem.disabled}
         title={menuItem.label}
       >
-        <span className="flex-shrink-0" style={{ color: menuItem.labelColor ?? 'var(--qf-muted)' }}>{menuItem.icon}</span>
+        <span className="flex-shrink-0" style={{ color: labelColor ?? 'var(--qf-muted)' }}>{menuItem.icon}</span>
         <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{menuItem.label}</span>
         {menuItem.shortcut && (
           <span className="flex-shrink-0 text-[10px] text-[var(--qf-muted)]">{menuItem.shortcut}</span>

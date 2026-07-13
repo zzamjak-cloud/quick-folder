@@ -6,6 +6,7 @@ import { checkerboardStyle, getInputStyle, Spinner } from './ui/modalStyles';
 import { getFileName, getPathSeparator } from '../../utils/pathUtils';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 // 기본 프리셋
 const DEFAULT_PRESETS = [
@@ -31,6 +32,7 @@ interface SheetPackerModalProps {
   currentPath: string;
   onClose: () => void;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 export default function SheetPackerModal({
@@ -39,8 +41,16 @@ export default function SheetPackerModal({
   currentPath,
   onClose,
   themeVars,
+  t,
 }: SheetPackerModalProps) {
   const count = imagePaths.length;
+
+  const formatMessage = useCallback((template: string, values: Record<string, string | number>) => (
+    Object.entries(values).reduce(
+      (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+      template,
+    )
+  ), []);
 
   // 행/열 계산: 기본값은 정사각형에 가깝게
   const defaultCols = Math.ceil(Math.sqrt(count));
@@ -152,12 +162,12 @@ export default function SheetPackerModal({
       });
       setPreview(base64);
     } catch (e) {
-      setError(`미리보기 실패: ${e}`);
+      setError(formatMessage(t('sheet.warning.previewFailed'), { message: String(e) }));
       setPreview(null);
     } finally {
       setLoading(false);
     }
-  }, [sortedPaths, cellWidth, cellHeight, cols, rows]);
+  }, [formatMessage, sortedPaths, cellWidth, cellHeight, cols, rows, t]);
 
   // 파라미터 변경 시 200ms 디바운스 후 미리보기 갱신 (셀 기본 크기 확정 후 시작)
   useEffect(() => {
@@ -206,7 +216,7 @@ export default function SheetPackerModal({
       // 저장 성공 알림은 onClose에서 loadDirectory로 처리
       onClose();
     } catch (e) {
-      setError(`저장 실패: ${e}`);
+      setError(formatMessage(t('sheet.warning.saveFailed'), { message: String(e) }));
     } finally {
       setSaving(false);
     }
@@ -220,7 +230,7 @@ export default function SheetPackerModal({
       || w < CELL_SIZE_MIN || h < CELL_SIZE_MIN
       || w > CELL_SIZE_MAX || h > CELL_SIZE_MAX
     ) {
-      setError(`셀 크기는 ${CELL_SIZE_MIN}~${CELL_SIZE_MAX} 사이의 정수여야 합니다`);
+      setError(formatMessage(t('sheet.warning.cellSizeRange'), { min: CELL_SIZE_MIN, max: CELL_SIZE_MAX }));
       return;
     }
     setError('');
@@ -246,10 +256,10 @@ export default function SheetPackerModal({
 
   return (
     <ModalShell
-      title={`시트 패킹 — ${defaultName} (${count}장)`}
+      title={formatMessage(t('sheetPack.title'), { fileName: defaultName, count })}
       maxWidth="52rem"
       saving={saving}
-      saveLabel="저장"
+      saveLabel={t('sheet.save')}
       onClose={onClose}
       onSave={handleSave}
       themeVars={themeVars}
@@ -260,7 +270,7 @@ export default function SheetPackerModal({
         <div className="flex gap-3">
           {/* 시트 프리뷰 */}
           <div className="flex-1 flex flex-col items-center gap-1.5">
-            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>시트 프리뷰</span>
+            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>{t('sheetPack.sheetPreview')}</span>
             <div
               className="flex items-center justify-center rounded-md overflow-hidden w-full"
               style={{
@@ -273,7 +283,7 @@ export default function SheetPackerModal({
               {!loading && preview && (
                 <img
                   src={`data:image/png;base64,${preview}`}
-                  alt="시트 프리뷰"
+                  alt={t('sheetPack.sheetPreview')}
                   style={{
                     maxWidth: '100%',
                     maxHeight: '100%',
@@ -282,7 +292,7 @@ export default function SheetPackerModal({
                 />
               )}
               {!loading && !preview && !error && (
-                <span className="text-xs" style={{ color: themeVars?.muted }}>미리보기 없음</span>
+                <span className="text-xs" style={{ color: themeVars?.muted }}>{t('sheet.noPreview')}</span>
               )}
             </div>
           </div>
@@ -290,7 +300,7 @@ export default function SheetPackerModal({
           {/* 프레임 재생 영역 */}
           <div className="flex flex-col items-center gap-1.5" style={{ width: 200 }}>
             <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
-              프레임 {currentFrame + 1}/{count}
+              {formatMessage(t('sheetPack.frameCounter'), { current: currentFrame + 1, total: count })}
             </span>
             <div
               className="flex items-center justify-center rounded-md overflow-hidden w-full"
@@ -317,7 +327,7 @@ export default function SheetPackerModal({
                   >
                     <img
                       src={`data:image/png;base64,${preview}`}
-                      alt={`프레임 ${currentFrame + 1}`}
+                      alt={formatMessage(t('sheet.frameAlt'), { index: currentFrame + 1 })}
                       style={{
                         position: 'absolute',
                         width: cols * cellWidth * scale,
@@ -364,7 +374,7 @@ export default function SheetPackerModal({
           {/* 행/열 */}
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-              열 × 행
+              {t('sheet.colsRows')}
             </label>
             <input
               type="number"
@@ -386,14 +396,14 @@ export default function SheetPackerModal({
               style={inputStyle}
             />
             <span className="text-[10px]" style={{ color: themeVars?.muted }}>
-              ({cols * rows}칸, {count}장)
+              {formatMessage(t('sheetPack.gridSummary'), { cells: cols * rows, count })}
             </span>
           </div>
 
           {/* 셀 크기 + 프리셋 */}
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-              셀 크기
+              {t('sheet.cellSize')}
             </label>
             <input
               type="number"
@@ -430,7 +440,7 @@ export default function SheetPackerModal({
               }}
               onClick={handleApplyCellSize}
             >
-              적용
+              {t('common.apply')}
             </button>
             {/* 프리셋 버튼들 */}
             <div className="flex gap-1 flex-wrap">
@@ -458,9 +468,9 @@ export default function SheetPackerModal({
                   border: `1px solid ${themeVars?.border ?? '#334155'}`,
                 }}
                 onClick={handleAddCustomPreset}
-                title="현재 크기를 프리셋으로 저장"
+                title={t('sheetPack.savePresetTitle')}
               >
-                + 저장
+                {t('sheetPack.savePreset')}
               </button>
             </div>
           </div>
@@ -468,7 +478,7 @@ export default function SheetPackerModal({
           {/* 출력 크기 정보 */}
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-              출력 크기
+              {t('sheet.outputSize')}
             </label>
             <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
               {cols * cellWidth} × {rows * cellHeight} px

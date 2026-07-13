@@ -67,15 +67,12 @@ fn thumbnail_modified_millis(meta: &std::fs::Metadata, ignore_mtime: bool) -> u1
         .unwrap_or(0)
 }
 
-fn stable_thumbnail_cache_key(path: &str, modified: u128, file_len: u64, size: u32) -> String {
-    let modified = modified.to_string();
-    let file_len = file_len.to_string();
+fn stable_thumbnail_cache_key(path: &str, identity: &str, size: u32) -> String {
     let size = size.to_string();
     stable_cache_key(&[
-        b"thumbnail-v4",
+        b"thumbnail-v5",
         path.as_bytes(),
-        modified.as_bytes(),
-        file_len.as_bytes(),
+        identity.as_bytes(),
         size.as_bytes(),
     ])
 }
@@ -163,7 +160,7 @@ fn thumbnail_cache_keys(path: &str, size: u32) -> Vec<String> {
     let Ok(meta) = std::fs::metadata(path) else {
         return Vec::new();
     };
-    let file_len = meta.len();
+    let identity = crate::modules::types::file_identity(&meta);
     let actual_modified = thumbnail_modified_millis(&meta, false);
     let mut modified_variants = vec![actual_modified];
     if actual_modified != 0 {
@@ -172,7 +169,7 @@ fn thumbnail_cache_keys(path: &str, size: u32) -> Vec<String> {
 
     let mut keys = Vec::new();
     for modified in modified_variants {
-        keys.push(stable_thumbnail_cache_key(path, modified, file_len, size));
+        keys.push(stable_thumbnail_cache_key(path, &identity, size));
         keys.push(legacy_thumbnail_cache_key(path, modified, size));
     }
     keys
@@ -431,7 +428,12 @@ where
     // ignore_mtime=true (클라우드 경로): mtime을 키에서 제외 → 재동기화로 mtime이 바뀌어도
     // 캐시 유지(불필요한 재다운로드 방지). 내용 변경은 파일 크기 변화로 대부분 감지됨.
     let modified = thumbnail_modified_millis(&meta, ignore_mtime);
-    let cache_key = stable_thumbnail_cache_key(path, modified, meta.len(), size);
+    let identity = if ignore_mtime {
+        format!("len:{}", meta.len())
+    } else {
+        crate::modules::types::file_identity(&meta)
+    };
+    let cache_key = stable_thumbnail_cache_key(path, &identity, size);
     let legacy_cache_key = legacy_thumbnail_cache_key(path, modified, size);
 
     std::fs::create_dir_all(cache_dir).ok();

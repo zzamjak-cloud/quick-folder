@@ -84,6 +84,9 @@ export const mediaCommands = {
   ensureThumbnailsBatch(items: ThumbnailBatchItem[], size: number) {
     return runLowPriorityCommand<ThumbnailBatchResult[]>('ensure_thumbnails_batch', { items, size });
   },
+  invalidateThumbnailCache(paths: string[]) {
+    return runCommand<void>('invalidate_thumbnail_cache', { paths });
+  },
   checkGhostscript() {
     return runCommand<boolean>('check_gs');
   },

@@ -15,6 +15,13 @@ import { useEscapeKey } from './hooks/useEscapeKey';
 type ModalState = ReturnType<typeof useModalStates>;
 type FolderSizeChild = NonNullable<FolderSizeDialogState['children']>[number];
 
+function formatMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
 interface ExplorerModalBridgeFileOps {
   copyToast: string | null;
   folderSizeDialog: FolderSizeDialogState | null;
@@ -127,6 +134,7 @@ export default function ExplorerModalBridge({
         <FolderSizeInfoDialog
           dialog={fileOps.folderSizeDialog}
           themeVars={themeVars}
+          t={t}
           onChildOpen={onFolderSizeChildOpen}
           onClose={fileOps.closeFolderSizeDialog}
         />
@@ -134,8 +142,8 @@ export default function ExplorerModalBridge({
 
       {fileOps.permanentDeleteConfirm && (
         <ConfirmDialog
-          message="파일을 삭제하면 되돌릴 수 없습니다. 정말 삭제하시겠습니까?"
-          confirmLabel="확인"
+          message={t('toast.confirm.permanentDelete')}
+          confirmLabel={t('common.confirm')}
           confirmColor="#ef4444"
           themeVars={themeVars}
           onCancel={() => fileOps.setPermanentDeleteConfirm(null)}
@@ -145,8 +153,8 @@ export default function ExplorerModalBridge({
 
       {fileOps.elevatedDeleteConfirm && (
         <ConfirmDialog
-          message="파일 삭제에 실패했습니다. 관리자 권한으로 삭제하시겠습니까?"
-          confirmLabel="관리자 권한으로 삭제"
+          message={t('toast.confirm.elevatedDelete')}
+          confirmLabel={t('toast.confirm.elevatedDeleteAction')}
           confirmColor="#ef4444"
           themeVars={themeVars}
           onCancel={() => fileOps.setElevatedDeleteConfirm(null)}
@@ -156,8 +164,8 @@ export default function ExplorerModalBridge({
 
       {fileOps.ungroupConfirm && (
         <ConfirmDialog
-          message="폴더를 제거하고 파일을 꺼내시겠습니까?"
-          confirmLabel="확인"
+          message={t('toast.confirm.ungroup')}
+          confirmLabel={t('common.confirm')}
           confirmColor={themeVars?.accent ?? '#3b82f6'}
           themeVars={themeVars}
           onCancel={() => fileOps.setUngroupConfirm(null)}
@@ -166,7 +174,7 @@ export default function ExplorerModalBridge({
       )}
 
       {fileOps.operationProgress && (
-        <OperationProgressToast progress={fileOps.operationProgress} themeVars={themeVars} />
+        <OperationProgressToast progress={fileOps.operationProgress} themeVars={themeVars} t={t} />
       )}
 
       <FileExplorerModalLayer
@@ -205,6 +213,7 @@ export default function ExplorerModalBridge({
         <TagInputDialog
           defaultName={modals.tagPrompt.defaultName}
           themeVars={themeVars}
+          t={t}
           onConfirm={onTagConfirm}
           onCancel={onTagCancel}
         />
@@ -329,9 +338,10 @@ function ConfirmDialog({ message, confirmLabel, confirmColor, themeVars, onCance
   );
 }
 
-function OperationProgressToast({ progress, themeVars }: {
+function OperationProgressToast({ progress, themeVars, t }: {
   progress: { type: string; current: number; total: number; itemLabel?: string };
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }) {
   return (
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2" style={{ pointerEvents: 'none' }}>
@@ -340,7 +350,7 @@ function OperationProgressToast({ progress, themeVars }: {
           <div className="animate-spin w-4 h-4 border-2 border-t-transparent rounded-full flex-shrink-0" style={{ borderColor: `${themeVars?.accent ?? '#4ade80'} transparent ${themeVars?.accent ?? '#4ade80'} ${themeVars?.accent ?? '#4ade80'}` }} />
           <div className="flex-1 min-w-0">
             <span className="text-xs font-medium block" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
-              {progress.type} 중… ({progress.total}개 항목)
+              {formatMessage(t('toast.operationProgress'), { type: progress.type, total: progress.total })}
             </span>
             {progress.itemLabel && (
               <span className="text-[11px] truncate block mt-0.5" style={{ color: themeVars?.muted ?? '#94a3b8' }} title={progress.itemLabel}>
@@ -423,9 +433,10 @@ function OverwriteConfirmDialog({ duplicates, message, description, cancelLabel,
   );
 }
 
-function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
+function FolderSizeInfoDialog({ dialog, themeVars, t, onChildOpen, onClose }: {
   dialog: FolderSizeDialogState;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
   onChildOpen: (child: FolderSizeChild) => void;
   onClose: () => void;
 }) {
@@ -442,7 +453,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="폴더 용량 정보"
+      aria-label={t('folderSize.title')}
     >
       <div
         className="w-full max-w-2xl max-h-[88vh] rounded-lg shadow-2xl overflow-hidden flex flex-col"
@@ -456,7 +467,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
           <div className="flex items-center gap-2 min-w-0">
             <HardDrive size={16} className="shrink-0" style={{ color: themeVars?.accent ?? '#3b82f6' }} />
             <span className="text-sm font-medium truncate" style={{ color: textColor }} title={dialog.folderName}>
-              폴더 용량 정보
+              {t('folderSize.title')}
             </span>
           </div>
           <button
@@ -464,7 +475,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
             className="p-1 rounded-md hover:opacity-75"
             style={{ color: mutedColor }}
             onClick={onClose}
-            aria-label="닫기"
+            aria-label={t('common.close')}
           >
             <X size={16} />
           </button>
@@ -472,7 +483,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
 
         <div className="px-4 py-4 overflow-hidden">
           <div className="mb-4 min-w-0">
-            <div className="text-xs mb-1" style={{ color: mutedColor }}>폴더</div>
+            <div className="text-xs mb-1" style={{ color: mutedColor }}>{t('folderSize.folder')}</div>
             <div className="text-sm font-medium truncate" style={{ color: textColor }} title={dialog.path}>
               {dialog.folderName}
             </div>
@@ -484,30 +495,30 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
           {dialog.status === 'loading' && (
             <div className="flex items-center gap-2 rounded-md px-3 py-3" style={{ backgroundColor: themeVars?.surface ?? '#111827', color: textColor }}>
               <Loader2 size={16} className="animate-spin shrink-0" />
-              <span className="text-sm">폴더 용량 계산 중...</span>
+              <span className="text-sm">{t('folderSize.loading')}</span>
             </div>
           )}
 
           {dialog.status === 'error' && (
             <div className="rounded-md px-3 py-3 text-sm" style={{ backgroundColor: '#7f1d1d33', color: '#fecaca', border: '1px solid #ef444455' }}>
-              폴더 용량 확인 실패: {dialog.error}
+              {formatMessage(t('folderSize.error'), { message: dialog.error ?? '' })}
             </div>
           )}
 
           {dialog.status === 'ready' && (
             <div className="grid grid-cols-1 gap-4">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <InfoPopupRow label="전체 용량" value={dialog.sizeText ?? '-'} themeVars={themeVars} />
-                <InfoPopupRow label="정확한 바이트" value={`${dialog.bytes ?? '0'} bytes`} themeVars={themeVars} />
-                <InfoPopupRow label="파일" value={`${(dialog.fileCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
-                <InfoPopupRow label="폴더" value={`${(dialog.folderCount ?? 0).toLocaleString()}개`} themeVars={themeVars} />
+                <InfoPopupRow label={t('folderSize.totalSize')} value={dialog.sizeText ?? '-'} themeVars={themeVars} />
+                <InfoPopupRow label={t('folderSize.exactBytes')} value={`${dialog.bytes ?? '0'} bytes`} themeVars={themeVars} />
+                <InfoPopupRow label={t('folderSize.files')} value={formatMessage(t('folderSize.count'), { count: (dialog.fileCount ?? 0).toLocaleString() })} themeVars={themeVars} />
+                <InfoPopupRow label={t('folderSize.folders')} value={formatMessage(t('folderSize.count'), { count: (dialog.folderCount ?? 0).toLocaleString() })} themeVars={themeVars} />
               </div>
 
               <div className="min-w-0">
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium" style={{ color: textColor }}>용량 상위 항목</span>
+                  <span className="text-xs font-medium" style={{ color: textColor }}>{t('folderSize.topItems')}</span>
                   <span className="text-[11px]" style={{ color: mutedColor }}>
-                    {(dialog.children?.length ?? 0).toLocaleString()}개
+                    {formatMessage(t('folderSize.childCount'), { count: (dialog.children?.length ?? 0).toLocaleString() })}
                   </span>
                 </div>
                 {dialog.children && dialog.children.length > 0 ? (
@@ -517,13 +528,14 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
                         key={child.path}
                         child={child}
                         themeVars={themeVars}
+                        t={t}
                         onOpen={onChildOpen}
                       />
                     ))}
                   </div>
                 ) : (
                   <div className="rounded-md px-3 py-3 text-sm" style={{ backgroundColor: themeVars?.surface ?? '#111827', color: mutedColor }}>
-                    표시할 하위 항목이 없습니다.
+                    {t('folderSize.noChildren')}
                   </div>
                 )}
               </div>
@@ -542,7 +554,7 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
             }}
             onClick={onClose}
           >
-            확인
+            {t('common.confirm')}
           </button>
         </div>
       </div>
@@ -550,9 +562,10 @@ function FolderSizeInfoDialog({ dialog, themeVars, onChildOpen, onClose }: {
   );
 }
 
-function FolderSizeChildRow({ child, themeVars, onOpen }: {
+function FolderSizeChildRow({ child, themeVars, t, onOpen }: {
   child: FolderSizeChild;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
   onOpen: (child: FolderSizeChild) => void;
 }) {
   const mutedColor = themeVars?.muted ?? '#94a3b8';
@@ -561,8 +574,11 @@ function FolderSizeChildRow({ child, themeVars, onOpen }: {
   const percentText = `${child.percent >= 10 ? child.percent.toFixed(0) : child.percent.toFixed(1)}%`;
   const barWidth = child.bytes > 0 ? Math.max(2, child.percent) : 0;
   const detail = child.isDir
-    ? `파일 ${child.fileCount.toLocaleString()}개 · 폴더 ${child.folderCount.toLocaleString()}개`
-    : '파일';
+    ? formatMessage(t('folderSize.childDetailFolder'), {
+      files: child.fileCount.toLocaleString(),
+      folders: child.folderCount.toLocaleString(),
+    })
+    : t('folderSize.childDetailFile');
 
   return (
     <button
@@ -620,9 +636,10 @@ function InfoPopupRow({ label, value, themeVars }: {
   );
 }
 
-function TagInputDialog({ defaultName, themeVars, onConfirm, onCancel }: {
+function TagInputDialog({ defaultName, themeVars, t, onConfirm, onCancel }: {
   defaultName: string;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
   onConfirm: (tag: string) => void;
   onCancel: () => void;
 }) {
@@ -641,7 +658,7 @@ function TagInputDialog({ defaultName, themeVars, onConfirm, onCancel }: {
         }}
       >
         <div className="px-4 pt-4 pb-2">
-          <p className="text-xs font-medium mb-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>프로젝트 태그 입력</p>
+          <p className="text-xs font-medium mb-2" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{t('folderTag.inputTitle')}</p>
           <input
             ref={inputRef}
             className="w-full px-2 py-1.5 text-xs rounded-md outline-none"
@@ -672,12 +689,12 @@ function TagInputDialog({ defaultName, themeVars, onConfirm, onCancel }: {
             className="px-3 py-1 text-xs rounded-md transition-colors hover:opacity-80"
             style={{ backgroundColor: themeVars?.surface ?? '#111827', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#334155'}` }}
             onClick={onCancel}
-          >취소</button>
+          >{t('common.cancel')}</button>
           <button
             className="px-3 py-1 text-xs rounded-md transition-colors hover:opacity-80"
             style={{ backgroundColor: themeVars?.accent ?? '#3b82f6', color: '#fff', border: 'none' }}
             onClick={() => value.trim() && onConfirm(value.trim())}
-          >확인</button>
+          >{t('common.confirm')}</button>
         </div>
       </div>
     </div>

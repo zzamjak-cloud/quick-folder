@@ -3,6 +3,7 @@ import { invoke, Channel } from '@tauri-apps/api/core';
 import { ArrowUpRight, GripVertical, Trash2, X } from 'lucide-react';
 import { getFileName } from '../utils/pathUtils';
 import { createFileDragImage, FileTypeIcon, iconColor } from './FileExplorer/fileUtils';
+import type { TranslationKey } from '../utils/i18n';
 
 type DragCallbackResult = {
   result: 'Dropped' | 'Cancel' | string;
@@ -14,6 +15,7 @@ interface TempFileTrayProps {
   onRemove: (paths: string[], source: 'trash' | 'drag') => void;
   onClear: () => void;
   onError?: (message: string) => void;
+  t: (key: TranslationKey) => string;
 }
 
 const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'avif']);
@@ -36,6 +38,10 @@ function getFileType(path: string) {
   if (CODE_EXTS.has(ext)) return 'code';
   if (DOC_EXTS.has(ext)) return 'document';
   return 'other';
+}
+
+function formatMessage(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_match, key) => String(values[key] ?? ''));
 }
 
 function TrayThumbnail({ path }: { path: string }) {
@@ -81,7 +87,9 @@ function TrayThumbnail({ path }: { path: string }) {
   );
 }
 
-export default function TempFileTray({ paths, onRemove, onClear, onError }: TempFileTrayProps) {
+export default function TempFileTray({ paths, onRemove, onClear, onError, t }: TempFileTrayProps) {
+  const fileCountLabel = formatMessage(t('tempTray.fileCount'), { count: paths.length });
+
   const startDrag = useCallback((e: React.MouseEvent, dragPaths: string[]) => {
     if (e.button !== 0 || dragPaths.length === 0) return;
     e.preventDefault();
@@ -117,7 +125,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
       invoke('plugin:drag|start_drag', { item: dragPaths, image, onEvent })
         .catch((err) => {
           console.error('트레이 OS 드래그 실패:', err);
-          onError?.('파일 드래그를 시작하지 못했습니다.');
+          onError?.(t('tempTray.error.dragStartFailed'));
         });
     };
 
@@ -125,7 +133,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [onError, onRemove]);
+  }, [onError, onRemove, t]);
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-[var(--qf-bg)]">
@@ -133,14 +141,14 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
         <div className="flex h-full w-full flex-col rounded-md border border-[var(--qf-border)] bg-[var(--qf-surface)] shadow-2xl">
           <div className="flex items-center justify-between border-b border-[var(--qf-border)] px-3 py-2">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-[var(--qf-text)]">임시 트레이</div>
-              <div className="text-[11px] text-[var(--qf-muted)]">{paths.length}개</div>
+              <div className="text-sm font-semibold text-[var(--qf-text)]">{t('tempTray.title')}</div>
+              <div className="text-[11px] text-[var(--qf-muted)]">{fileCountLabel}</div>
             </div>
             <button
               type="button"
               className="rounded p-1 text-[var(--qf-muted)] hover:bg-[var(--qf-surface-hover)] hover:text-[var(--qf-text)]"
               onClick={onClear}
-              title="닫기"
+              title={t('common.close')}
             >
               <X size={16} />
             </button>
@@ -149,12 +157,12 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
           <div
             className="m-3 flex cursor-grab items-center gap-2 rounded-md border border-dashed border-[var(--qf-accent-50)] bg-[var(--qf-accent-20)] px-3 py-2 active:cursor-grabbing"
             onMouseDown={(e) => startDrag(e, paths)}
-            title="전체 파일 드래그"
+            title={t('tempTray.dragAllTitle')}
           >
             <GripVertical size={16} className="shrink-0 text-[var(--qf-accent)]" />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-semibold text-[var(--qf-text)]">전체 파일</div>
-              <div className="text-[11px] text-[var(--qf-muted)]">{paths.length}개</div>
+              <div className="truncate text-xs font-semibold text-[var(--qf-text)]">{t('tempTray.allFiles')}</div>
+              <div className="text-[11px] text-[var(--qf-muted)]">{fileCountLabel}</div>
             </div>
             <ArrowUpRight size={15} className="shrink-0 text-[var(--qf-muted)]" />
           </div>
@@ -178,7 +186,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
                       className="absolute right-1 top-1 rounded bg-black/55 p-1 text-white opacity-0 hover:bg-black/75 group-hover:opacity-100"
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={() => onRemove([path], 'trash')}
-                      title="제거"
+                      title={t('common.remove')}
                     >
                       <Trash2 size={12} />
                     </button>
@@ -195,7 +203,7 @@ export default function TempFileTray({ paths, onRemove, onClear, onError }: Temp
               className="rounded border border-[var(--qf-border)] px-3 py-1.5 text-xs text-[var(--qf-muted)] hover:bg-[var(--qf-surface-hover)] hover:text-[var(--qf-text)]"
               onClick={onClear}
             >
-              취소
+              {t('common.cancel')}
             </button>
           </div>
         </div>

@@ -110,7 +110,7 @@ describe('useContextMenuBuilder', () => {
     expect(ids).toContain('remove-white-bg');
 
     previewItem?.onClick();
-    expect(config.preview.handlePreviewImage).toHaveBeenCalledWith('/work/photo.png');
+    expect(config.preview.handlePreviewImage).toHaveBeenCalledWith('/work/photo.png', false, undefined, 'mtime:0:size:0');
   });
 
   test('ZIP과 동영상 선택은 전용 도구 메뉴로 분기한다', () => {
@@ -154,5 +154,34 @@ describe('useContextMenuBuilder', () => {
       '/work/clip.mp4',
       '/work/clip-2.webm',
     ]);
+  });
+
+  test('폴더 용량 확인 메뉴는 전달된 번역 함수를 사용한다', () => {
+    const folderEntry = entry({ name: 'assets', path: '/work/assets', is_dir: true, file_type: 'directory' });
+    const config = createConfig({
+      contextMenu: { x: 10, y: 10, paths: [folderEntry.path] },
+      entries: [folderEntry],
+      t: key => (key === 'folderSize.menuLabel' ? 'Check folder size' : key),
+    });
+    const { result } = renderHook(() => useContextMenuBuilder(config));
+    const folderSizeItem = result.current.contextMenuSections
+      .flatMap(section => section.items)
+      .find(item => item.id === 'folder-size-check');
+
+    expect(folderSizeItem?.label).toBe('Check folder size');
+  });
+
+  test('폴더 용량 확인 메뉴는 기본 한글 라벨을 표시한다', () => {
+    const folderEntry = entry({ name: 'assets', path: '/work/assets', is_dir: true, file_type: 'directory' });
+    const config = createConfig({
+      contextMenu: { x: 10, y: 10, paths: [folderEntry.path] },
+      entries: [folderEntry],
+    });
+    const { result } = renderHook(() => useContextMenuBuilder(config));
+    const folderSizeItem = result.current.contextMenuSections
+      .flatMap(section => section.items)
+      .find(item => item.id === 'folder-size-check');
+
+    expect(folderSizeItem?.label).toBe('폴더 용량 확인');
   });
 });

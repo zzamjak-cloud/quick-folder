@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { Category, FolderShortcut } from '../types';
+import { translate } from '../utils/i18n';
+import type { TranslationKey } from '../utils/i18n';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { invokeTauriCommand as invoke } from '../utils/tauriInvoke';
 import { normalizeHexColor } from './useThemeManagement';
@@ -55,7 +57,10 @@ const DEFAULT_CATEGORIES: Category[] = [
   }
 ];
 
-export function useCategoryManagement(addToast: (msg: string, type: 'success' | 'error' | 'info') => void) {
+export function useCategoryManagement(
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void,
+  t: (key: TranslationKey) => string = (key) => translate('ko', key),
+) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -154,7 +159,7 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     if (!catFormTitle.trim()) return;
     const normalizedColor = normalizeHexColor(catFormColor);
     if (!normalizedColor) {
-      addToast("카테고리 색상은 #RRGGBB 형식이어야 합니다.", "error");
+      addToast(t('toast.categoryColorHexRequired'), "error");
       return;
     }
 
@@ -164,7 +169,7 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
           ? { ...c, title: catFormTitle, color: normalizedColor }
           : c
       ));
-      addToast("카테고리가 수정되었습니다.", "success");
+      addToast(t('toast.categoryUpdated'), "success");
     } else {
       const newCat: Category = {
         id: uuidv4(),
@@ -174,10 +179,10 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
         createdAt: Date.now()
       };
       setCategories(prev => [...prev, newCat]);
-      addToast("새 카테고리가 추가되었습니다.", "success");
+      addToast(t('toast.categoryAdded'), "success");
     }
     setIsCatModalOpen(false);
-  }, [catFormTitle, catFormColor, editingCategory, addToast]);
+  }, [catFormTitle, catFormColor, editingCategory, addToast, t]);
 
   // 인라인 설정 팝업용: 제목·색상 즉시 갱신
   const updateCategory = useCallback((id: string, patch: Partial<Pick<Category, 'title' | 'color'>>) => {
@@ -188,9 +193,9 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     const confirmed = await ask('정말로 이 카테고리를 삭제하시겠습니까? 포함된 모든 바로가기가 삭제됩니다.', { title: '카테고리 삭제', kind: 'warning' });
     if (confirmed) {
       setCategories(prev => prev.filter(c => c.id !== id));
-      addToast("카테고리가 삭제되었습니다.", "info");
+      addToast(t('toast.categoryDeleted'), "info");
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const toggleCollapse = useCallback((catId: string) => {
     setCategories(prev => prev.map(c =>
@@ -229,12 +234,24 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
     setIsFolderModalOpen(true);
   }, []);
 
-  const handleSaveFolder = useCallback((e: React.FormEvent) => {
+  const handleSaveFolder = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetCategoryId || !folderFormName.trim() || !folderFormPath.trim()) return;
+    const normalizedPath = folderFormPath.replace(/"/g, '').trim();
     const normalizedFolderColor = folderFormColor ? normalizeHexColor(folderFormColor) : '';
     if (folderFormColor && !normalizedFolderColor) {
-      addToast("폴더 텍스트 색상은 #RRGGBB 형식이어야 합니다.", "error");
+      addToast(t('toast.folderTextColorHexRequired'), "error");
+      return;
+    }
+    try {
+      const isDirectory = await invoke<boolean>('is_directory', { path: normalizedPath });
+      if (!isDirectory) {
+        addToast(t('toast.folderInaccessible'), "error");
+        return;
+      }
+    } catch (error) {
+      console.error("Folder path validation failed:", error);
+      addToast(t('toast.folderPathCheckFailed'), "error");
       return;
     }
 
@@ -245,19 +262,19 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
             ...c,
             shortcuts: c.shortcuts.map(s =>
               s.id === editingShortcut.id
-                ? { ...s, name: folderFormName, path: folderFormPath.replace(/"/g, ''), color: normalizedFolderColor || undefined }
+                ? { ...s, name: folderFormName, path: normalizedPath, color: normalizedFolderColor || undefined }
                 : s
             )
           };
         }
         return c;
       }));
-      addToast("바로가기가 수정되었습니다.", "success");
+      addToast(t('toast.shortcutUpdated'), "success");
     } else {
       const newShortcut: FolderShortcut = {
         id: uuidv4(),
         name: folderFormName,
-        path: folderFormPath.replace(/"/g, ''),
+        path: normalizedPath,
         color: normalizedFolderColor || undefined,
         createdAt: Date.now()
       };
@@ -267,10 +284,10 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
         }
         return c;
       }));
-      addToast("바로가기가 추가되었습니다.", "success");
+      addToast(t('toast.shortcutAdded'), "success");
     }
     setIsFolderModalOpen(false);
-  }, [targetCategoryId, folderFormName, folderFormPath, folderFormColor, editingShortcut, addToast]);
+  }, [targetCategoryId, folderFormName, folderFormPath, folderFormColor, editingShortcut, addToast, t]);
 
   const handleAddFolder = useCallback(async (catId: string, path?: string, name?: string) => {
     if (path && name) {
@@ -286,7 +303,7 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
         }
         return c;
       }));
-      addToast("폴더가 추가되었습니다.", "success");
+      addToast(t('toast.folderAdded'), "success");
       return;
     }
 
@@ -305,13 +322,13 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
           }
           return c;
         }));
-        addToast("폴더가 추가되었습니다.", "success");
+        addToast(t('toast.folderAdded'), "success");
       }
     } catch (error) {
       console.error("Folder selection failed:", error);
-      addToast("폴더 선택 중 오류가 발생했습니다.", "error");
+      addToast(t('toast.folderSelectFailed'), "error");
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const deleteShortcut = useCallback((catId: string, shortcutId: string) => {
     setCategories(prev => prev.map(c => {
@@ -320,8 +337,8 @@ export function useCategoryManagement(addToast: (msg: string, type: 'success' | 
       }
       return c;
     }));
-    addToast("바로가기가 삭제되었습니다.", "info");
-  }, [addToast]);
+    addToast(t('toast.shortcutDeleted'), "info");
+  }, [addToast, t]);
 
   return {
     categories, setCategories,

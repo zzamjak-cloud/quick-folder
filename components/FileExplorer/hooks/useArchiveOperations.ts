@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { FileEntry } from '../../../types';
+import type { TranslationKey } from '../../../utils/i18n';
 import { getFileName, getPathSeparator } from '../../../utils/pathUtils';
 import { tauriCommands } from '../../../utils/tauriCommands';
 
@@ -10,6 +11,8 @@ interface UseArchiveOperationsConfig {
   loadDirectory: (path: string) => Promise<void>;
   showCopyToast: (message: string, duration?: number) => void;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
+  t: (key: TranslationKey) => string;
+  formatToast: (key: TranslationKey, values: Record<string, string | number>) => string;
 }
 
 export function useArchiveOperations({
@@ -19,6 +22,8 @@ export function useArchiveOperations({
   loadDirectory,
   showCopyToast,
   setError,
+  t,
+  formatToast,
 }: UseArchiveOperationsConfig) {
   const [extractingZipPaths, setExtractingZipPaths] = useState<Set<string>>(() => new Set());
   const pendingExtractSelectRef = useRef<string[]>([]);
@@ -47,7 +52,9 @@ export function useArchiveOperations({
       paths.forEach(path => next.add(path));
       return next;
     });
-    showCopyToast(paths.length === 1 ? `압축 해제 중: ${getFileName(paths[0])}` : `압축 해제 중: ${paths.length}개`, 3000);
+    showCopyToast(paths.length === 1
+      ? formatToast('toast.extractingZipSingle', { fileName: getFileName(paths[0]) })
+      : formatToast('toast.extractingZipMulti', { count: paths.length }), 3000);
     try {
       const createdDirs: string[] = [];
       const existingNames = new Set(entries.map(entry => entry.name));
@@ -77,7 +84,9 @@ export function useArchiveOperations({
       }
       pendingExtractSelectRef.current = createdDirs;
       await loadDirectory(currentPath);
-      showCopyToast(totalFailed > 0 ? `압축 풀기 완료 — ${totalFailed}개 항목 실패` : '압축 풀기 완료');
+      showCopyToast(totalFailed > 0
+        ? formatToast('toast.extractZipCompleteWithFailed', { count: totalFailed })
+        : t('toast.extractZipComplete'));
     } catch (error) {
       pendingExtractSelectRef.current = [];
       console.error('압축 풀기 실패:', error);
@@ -92,7 +101,7 @@ export function useArchiveOperations({
         return changed ? next : prev;
       });
     }
-  }, [currentPath, entries, ensureWritableContext, loadDirectory, setError, showCopyToast]);
+  }, [currentPath, entries, ensureWritableContext, loadDirectory, setError, showCopyToast, formatToast, t]);
 
   return {
     handleCompressZip,

@@ -24,6 +24,7 @@ export interface FileEntry {
   is_dir: boolean;
   size: number;       // 바이트 단위 (폴더는 0)
   modified: number;   // unix timestamp (ms)
+  identity?: string;   // OS 메타 기반 파일 정체성(dev/inode/birth/ctime 등)
   file_type: FileType;
   thumbnailPath?: string; // 썸네일 소스 경로 오버라이드 (예: PSD의 동일 이름 이미지 형제)
 }

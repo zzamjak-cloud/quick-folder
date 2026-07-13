@@ -237,6 +237,7 @@ fn app_handle_commands_list_cache_rename_and_delete_items() {
             is_dir: false,
             size: 6,
             modified: 123,
+            identity: "test:cached".to_string(),
             file_type: FileType::Document,
         };
         write_cached_listing(

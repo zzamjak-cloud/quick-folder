@@ -4,12 +4,14 @@ import ModalShell from './ui/ModalShell';
 import { checkerboardStyle, getInputStyle } from './ui/modalStyles';
 import { getFileName, getBaseName } from '../../utils/pathUtils';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface SheetUnpackModalProps {
   path: string;
   currentPath: string;
   onClose: () => void;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 export default function SheetUnpackModal({
@@ -17,7 +19,15 @@ export default function SheetUnpackModal({
   currentPath,
   onClose,
   themeVars,
+  t,
 }: SheetUnpackModalProps) {
+  const formatMessage = useCallback((template: string, values: Record<string, string | number>) => (
+    Object.entries(values).reduce(
+      (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+      template,
+    )
+  ), []);
+
   // 열/행 상태
   const [cols, setCols] = useState(4);
   const [rows, setRows] = useState(4);
@@ -44,14 +54,14 @@ export default function SheetUnpackModal({
         const base64 = await invoke<string>('get_file_thumbnail', {
           path,
           size: 1024,
-        });
-        if (!cancelled) setPreview(base64);
-      } catch (e) {
-        if (!cancelled) setError(`미리보기 로드 실패: ${e}`);
+      });
+      if (!cancelled) setPreview(base64);
+    } catch (e) {
+        if (!cancelled) setError(formatMessage(t('sheet.warning.previewLoadFailed'), { message: String(e) }));
       }
     })();
     return () => { cancelled = true; };
-  }, [path]);
+  }, [formatMessage, path, t]);
 
   // 저장 처리
   const handleSave = useCallback(async () => {
@@ -67,11 +77,11 @@ export default function SheetUnpackModal({
       });
       onClose();
     } catch (e) {
-      setError(`저장 실패: ${e}`);
+      setError(formatMessage(t('sheet.warning.saveFailed'), { message: String(e) }));
     } finally {
       setSaving(false);
     }
-  }, [path, cols, rows, currentPath, baseName, onClose]);
+  }, [formatMessage, path, cols, rows, currentPath, baseName, onClose, t]);
 
   // 공통 스타일
   const inputStyle = getInputStyle(themeVars);
@@ -106,7 +116,7 @@ export default function SheetUnpackModal({
           >
             <img
               src={`data:image/png;base64,${preview}`}
-              alt={`프레임 ${idx + 1}`}
+              alt={formatMessage(t('sheet.frameAlt'), { index: idx + 1 })}
               style={{
                 position: 'absolute',
                 width: imgW,
@@ -122,14 +132,14 @@ export default function SheetUnpackModal({
       }
     }
     return frames;
-  }, [preview, cols, rows, thumbSize, themeVars?.border]);
+  }, [formatMessage, preview, cols, rows, thumbSize, themeVars?.border, t]);
 
   return (
     <ModalShell
-      title={`시트 언패킹 — ${fileName} (${cols}×${rows}프레임)`}
+      title={formatMessage(t('sheetUnpack.title'), { fileName, cols, rows })}
       maxWidth="52rem"
       saving={saving}
-      saveLabel="저장"
+      saveLabel={t('sheet.save')}
       onClose={onClose}
       onSave={handleSave}
       themeVars={themeVars}
@@ -140,7 +150,7 @@ export default function SheetUnpackModal({
         <div className="flex gap-3">
           {/* 원본 이미지 미리보기 */}
           <div className="flex-1 flex flex-col items-center gap-1.5">
-            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>원본 이미지</span>
+            <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>{t('sheetUnpack.sourceImage')}</span>
             <div
               className="flex items-center justify-center rounded-md overflow-hidden w-full"
               style={{
@@ -152,7 +162,7 @@ export default function SheetUnpackModal({
               {preview ? (
                 <img
                   src={`data:image/png;base64,${preview}`}
-                  alt="원본 이미지"
+                  alt={t('sheetUnpack.sourceImage')}
                   style={{
                     maxWidth: '100%',
                     maxHeight: 300,
@@ -177,7 +187,7 @@ export default function SheetUnpackModal({
           {/* 프레임 미리보기 그리드 */}
           <div className="flex-1 flex flex-col items-center gap-1.5">
             <span className="text-[10px] font-medium" style={{ color: themeVars?.muted }}>
-              프레임 미리보기 ({frameCount}장)
+              {formatMessage(t('sheetUnpack.framePreview'), { count: frameCount })}
             </span>
             <div
               className="rounded-md overflow-auto w-full"
@@ -202,7 +212,7 @@ export default function SheetUnpackModal({
         {/* 열/행 입력 */}
         <div className="flex items-center gap-3">
           <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-            열(cols)
+            {t('sheet.cols')}
           </label>
           <input
             type="number"
@@ -214,7 +224,7 @@ export default function SheetUnpackModal({
             style={inputStyle}
           />
           <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 56 }}>
-            행(rows)
+            {t('sheet.rows')}
           </label>
           <input
             type="number"
@@ -226,7 +236,7 @@ export default function SheetUnpackModal({
             style={inputStyle}
           />
           <span className="text-[10px]" style={{ color: themeVars?.muted }}>
-            ({frameCount}프레임)
+            {formatMessage(t('sheetUnpack.frameCount'), { count: frameCount })}
           </span>
         </div>
 

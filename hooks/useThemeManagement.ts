@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ThemeVars } from '../types';
+import { translate } from '../utils/i18n';
+import type { TranslationKey } from '../utils/i18n';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 
 // --- 타입 ---
@@ -13,6 +15,7 @@ export type Theme = {
 
 // --- 상수 ---
 const SETTINGS_KEY = 'quickfolder_widget_settings';
+const THEME_DEFAULT_VERSION = 2;
 
 export const THEME_PRESETS: Theme[] = [
   { id: 'navy', name: '기본(네이비)', nameKey: 'theme.preset.navy', bg: '#0f172a', accent: '#3b82f6' },
@@ -26,6 +29,12 @@ export const THEME_PRESETS: Theme[] = [
   { id: 'windows-light', name: 'Windows 라이트', nameKey: 'theme.preset.windowsLight', bg: '#f3f3f3', accent: '#005fb8' },
   { id: 'windows-dark', name: 'Windows 다크', nameKey: 'theme.preset.windowsDark', bg: '#202020', accent: '#60cdff' },
 ];
+
+export function getDefaultThemePreset(): Theme {
+  const isMac = navigator.platform.startsWith('Mac');
+  const defaultId = isMac ? 'macos-light' : 'windows-light';
+  return THEME_PRESETS.find(theme => theme.id === defaultId) ?? THEME_PRESETS[0];
+}
 
 type TextColorPreset = { name: string; value: string };
 
@@ -71,14 +80,6 @@ export const FOLDER_TEXT_COLORS: { name: string; value: string }[] = [
   { name: '기본(테마)', value: '' },
   ...TEXT_COLOR_PRESETS,
 ];
-
-// OS 기반 추천 테마 (신규 사용자 기본값)
-function getRecommendedThemeId(): string {
-  const isMac = navigator.platform.startsWith('Mac');
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  if (isMac) return isDark ? 'macos-dark' : 'macos-light';
-  return isDark ? 'windows-dark' : 'windows-light';
-}
 
 // --- 헬퍼 함수 ---
 export function normalizeHexColor(value: string): string | null {
@@ -207,24 +208,37 @@ function computeThemeVars(bgHex: string, accentHex: string): ThemeVars | null {
 }
 
 // --- 훅 ---
-export function useThemeManagement(addToast: (msg: string, type: 'success' | 'error' | 'info') => void) {
-  const [themeId, setThemeId] = useState<string>(getRecommendedThemeId());
-  const [customBg, setCustomBg] = useState('#0f172a');
-  const [customAccent, setCustomAccent] = useState('#3b82f6');
-  const [bgInputValue, setBgInputValue] = useState('#0f172a');
-  const [accentInputValue, setAccentInputValue] = useState('#3b82f6');
+export function useThemeManagement(
+  addToast: (msg: string, type: 'success' | 'error' | 'info') => void,
+  t: (key: TranslationKey) => string = (key) => translate('ko', key),
+) {
+  const defaultTheme = getDefaultThemePreset();
+  const [themeId, setThemeId] = useState<string>(defaultTheme.id);
+  const [customBg, setCustomBg] = useState(defaultTheme.bg);
+  const [customAccent, setCustomAccent] = useState(defaultTheme.accent);
+  const [bgInputValue, setBgInputValue] = useState(defaultTheme.bg);
+  const [accentInputValue, setAccentInputValue] = useState(defaultTheme.accent);
   const [themeVars, setThemeVars] = useState<ThemeVars | null>(null);
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [zoomPercent, setZoomPercent] = useState(80);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // 저장된 설정 복원
   useEffect(() => {
     const parsed = readJsonStorage<Record<string, unknown> | null>(SETTINGS_KEY, null);
-    if (!parsed) return;
+    if (!parsed) {
+      setSettingsLoaded(true);
+      return;
+    }
 
-    const savedThemeId = typeof parsed?.themeId === 'string' ? parsed.themeId : THEME_PRESETS[0].id;
-    const bg = typeof parsed?.customBg === 'string' ? parsed.customBg : '#0f172a';
-    const accent = typeof parsed?.customAccent === 'string' ? parsed.customAccent : '#3b82f6';
+    const fallbackTheme = getDefaultThemePreset();
+    const legacyAutoDefault = parsed?.defaultThemeVersion !== THEME_DEFAULT_VERSION
+      && (parsed?.themeId === 'navy' || parsed?.themeId === 'macos-dark' || parsed?.themeId === 'windows-dark');
+    const savedThemeId = legacyAutoDefault
+      ? fallbackTheme.id
+      : (typeof parsed?.themeId === 'string' ? parsed.themeId : fallbackTheme.id);
+    const bg = typeof parsed?.customBg === 'string' ? parsed.customBg : fallbackTheme.bg;
+    const accent = typeof parsed?.customAccent === 'string' ? parsed.customAccent : fallbackTheme.accent;
     const z = typeof parsed?.zoomPercent === 'number' ? parsed.zoomPercent : 100;
     setThemeId(savedThemeId);
     setCustomBg(bg);
@@ -232,16 +246,18 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
     setBgInputValue(bg);
     setAccentInputValue(accent);
     setZoomPercent(Math.min(150, Math.max(50, Math.round(z / 10) * 10)));
+    setSettingsLoaded(true);
   }, []);
 
   // 설정 저장
   useEffect(() => {
-    writeJsonStorage(SETTINGS_KEY, { themeId, customBg, customAccent, zoomPercent });
-  }, [themeId, customBg, customAccent, zoomPercent]);
+    if (!settingsLoaded) return;
+    writeJsonStorage(SETTINGS_KEY, { themeId, customBg, customAccent, zoomPercent, defaultThemeVersion: THEME_DEFAULT_VERSION });
+  }, [settingsLoaded, themeId, customBg, customAccent, zoomPercent]);
 
   // 테마 변수 계산
   useEffect(() => {
-    const preset = THEME_PRESETS.find(t => t.id === themeId) ?? THEME_PRESETS[0];
+    const preset = THEME_PRESETS.find(t => t.id === themeId) ?? getDefaultThemePreset();
     const bg = themeId === 'custom' ? customBg : preset.bg;
     const accent = themeId === 'custom' ? customAccent : preset.accent;
     const vars = computeThemeVars(bg, accent);
@@ -255,7 +271,7 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
     const bg = normalizeHexColor(bgValue);
     const accent = normalizeHexColor(accentValue);
     if (!bg || !accent) {
-      addToast("색상 값은 #RRGGBB 형식이어야 합니다.", "error");
+      addToast(t('toast.colorHexRequired'), "error");
       return;
     }
     setThemeId('custom');
@@ -263,8 +279,8 @@ export function useThemeManagement(addToast: (msg: string, type: 'success' | 'er
     setCustomAccent(accent);
     setBgInputValue(bg);
     setAccentInputValue(accent);
-    addToast("테마가 적용되었습니다.", "success");
-  }, [addToast]);
+    addToast(t('toast.themeApplied'), "success");
+  }, [addToast, t]);
 
   const zoomScale = zoomPercent / 100;
 

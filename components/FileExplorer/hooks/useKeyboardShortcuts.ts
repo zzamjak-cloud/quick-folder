@@ -8,6 +8,7 @@ import { getBaseName } from '../../../utils/pathUtils';
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { resolveSpaceDiffPaths, shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
 import { tauriCommands } from '../../../utils/tauriCommands';
+import { fileIdentityToken } from './thumbnailCache';
 
 // 최근항목 특수 경로 상수
 const RECENT_PATH = '__recent__';
@@ -326,7 +327,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
           }
           if (entry.file_type === 'image' || /\.(psd|psb)$/i.test(entry.name)) {
             if (!preview.previewImagePath) preview.closeAllPreviews();
-            preview.handlePreviewImage(entry.path, true);
+            preview.handlePreviewImage(entry.path, true, undefined, fileIdentityToken(entry.modified, entry.size, entry.identity));
             return;
           }
           // 코드 파일은 CodePreviewModal을 편집 모드로 열기 (구문 강조 + 검색·치환)

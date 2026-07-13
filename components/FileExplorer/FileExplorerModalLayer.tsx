@@ -112,6 +112,7 @@ export default function FileExplorerModalLayer({
             onOpenImageResize={() => {}}
             onOpenMdEditor={(path) => modals.setMarkdownEditorPath(path)}
             onFileChanged={onReloadCurrentPath}
+            t={t}
           />
         </Suspense>
       )}
@@ -133,6 +134,7 @@ export default function FileExplorerModalLayer({
             onClose={() => modals.setMapMakerPath(null)}
             onExport={onMapMakerExport}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -142,6 +144,7 @@ export default function FileExplorerModalLayer({
             onClose={() => modals.setRemoveWhiteBgPaths(null)}
             onApply={onRemoveWhiteBgApply}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -152,6 +155,7 @@ export default function FileExplorerModalLayer({
             onSuccess={onReloadCurrentPath}
             onError={(err) => console.error('GIF 압축 실패:', err)}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -160,6 +164,7 @@ export default function FileExplorerModalLayer({
             imagePaths={modals.sheetPackPaths}
             defaultName={sheetPackDefaultName}
             currentPath={currentPath}
+            t={t}
             onClose={() => {
               modals.setSheetPackPaths(null);
               onReloadCurrentPath();
@@ -172,6 +177,7 @@ export default function FileExplorerModalLayer({
           <SheetUnpackModal
             path={modals.sheetUnpackPath}
             currentPath={currentPath}
+            t={t}
             onClose={() => {
               modals.setSheetUnpackPath(null);
               onReloadCurrentPath();
@@ -199,6 +205,7 @@ export default function FileExplorerModalLayer({
               modals.setTerminalPresetEditId(null);
             }}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -228,6 +235,7 @@ export default function FileExplorerModalLayer({
             onSelect={onGlobalSearchSelect}
             onDelete={onDuplicateFileDelete}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -265,6 +273,7 @@ export default function FileExplorerModalLayer({
             path={modals.pdfPreviewPath}
             onClose={() => modals.setPdfPreviewPath(null)}
             themeVars={themeVars}
+            t={t}
           />
         )}
 
@@ -303,6 +312,7 @@ export default function FileExplorerModalLayer({
               onMergeFontsComplete(outputPath);
             }}
             themeVars={themeVars}
+            t={t}
           />
         )}
 

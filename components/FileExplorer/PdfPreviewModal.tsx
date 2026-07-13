@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { useEscapeKey } from './hooks/useEscapeKey';
+import type { TranslationKey } from '../../utils/i18n';
 
 type PdfJsLib = typeof import('pdfjs-dist');
 type PDFDocumentProxy = import('pdfjs-dist').PDFDocumentProxy;
@@ -30,6 +31,7 @@ interface PdfPreviewModalProps {
   path: string;
   onClose: () => void;
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 /**
@@ -37,7 +39,7 @@ interface PdfPreviewModalProps {
  * 플랫폼(Windows/macOS) 무관하게 동일한 UI 제공.
  * 페이지 탐색, 줌 조절, 너비/페이지 맞춤 기능 포함.
  */
-export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreviewModalProps) {
+export default function PdfPreviewModal({ path, onClose, themeVars, t }: PdfPreviewModalProps) {
   const fileName = getFileName(path);
 
   // PDF 문서 및 페이지 상태
@@ -282,6 +284,7 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
         <button
           style={{ ...toolbarBtn, fontSize: 18 }}
           onClick={onClose}
+          title={t('pdfPreview.close')}
         >
           ✕
         </button>
@@ -298,7 +301,7 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
       >
         {/* 페이지 탐색 */}
         <div className="flex items-center gap-1">
-          <button style={toolbarBtn} onClick={goToPrevPage} disabled={currentPage <= 1}>
+          <button style={toolbarBtn} onClick={goToPrevPage} disabled={currentPage <= 1} title={t('pdfPreview.prevPage')}>
             ◀
           </button>
           <input
@@ -319,7 +322,7 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
             }}
           />
           <span style={{ color: mutedColor, fontSize: 12 }}>/ {totalPages}</span>
-          <button style={toolbarBtn} onClick={goToNextPage} disabled={currentPage >= totalPages}>
+          <button style={toolbarBtn} onClick={goToNextPage} disabled={currentPage >= totalPages} title={t('pdfPreview.nextPage')}>
             ▶
           </button>
         </div>
@@ -328,11 +331,11 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
         <div style={{ width: 1, height: 18, backgroundColor: border }} />
 
         {/* 맞춤 버튼 */}
-        <button style={activeBtnStyle(fitMode === 'width')} onClick={setFitWidth}>
-          너비
+        <button style={activeBtnStyle(fitMode === 'width')} onClick={setFitWidth} title={t('pdfPreview.fitWidthTitle')}>
+          {t('pdfPreview.fitWidth')}
         </button>
-        <button style={activeBtnStyle(fitMode === 'page')} onClick={setFitPage}>
-          페이지
+        <button style={activeBtnStyle(fitMode === 'page')} onClick={setFitPage} title={t('pdfPreview.fitPageTitle')}>
+          {t('pdfPreview.fitPage')}
         </button>
 
         {/* 구분선 */}
@@ -340,11 +343,11 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
 
         {/* 줌 조절 */}
         <div className="flex items-center gap-1">
-          <button style={toolbarBtn} onClick={zoomOut}>−</button>
+          <button style={toolbarBtn} onClick={zoomOut} title={t('pdfPreview.zoomOut')}>−</button>
           <span style={{ color: mutedColor, fontSize: 12, minWidth: 36, textAlign: 'center' }}>
             {displayPercent}%
           </span>
-          <button style={toolbarBtn} onClick={zoomIn}>+</button>
+          <button style={toolbarBtn} onClick={zoomIn} title={t('pdfPreview.zoomIn')}>+</button>
         </div>
       </div>
 
@@ -361,7 +364,7 @@ export default function PdfPreviewModal({ path, onClose, themeVars }: PdfPreview
             className="flex items-center justify-center w-full h-full"
             style={{ color: mutedColor, fontSize: 14 }}
           >
-            로딩 중...
+            {t('pdfPreview.loading')}
           </div>
         ) : (
           // PDF.js Canvas 출력

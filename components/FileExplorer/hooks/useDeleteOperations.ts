@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { getFileName } from '../../../utils/pathUtils';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import type { useUndoStack } from './useUndoStack';
+import type { TranslationKey } from '../../../utils/i18n';
 
 type OperationProgress = { type: string; current: number; total: number; itemLabel?: string };
 
@@ -13,6 +14,9 @@ interface UseDeleteOperationsConfig {
   setSelectedPaths: React.Dispatch<React.SetStateAction<string[]>>;
   setOperationProgress: React.Dispatch<React.SetStateAction<OperationProgress | null>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
+  showCopyToast: (message: string, duration?: number) => void;
+  formatToast: (key: TranslationKey, values: Record<string, string | number>) => string;
+  t: (key: TranslationKey) => string;
 }
 
 function getDeleteItemLabel(paths: string[]) {
@@ -29,6 +33,9 @@ export function useDeleteOperations({
   setSelectedPaths,
   setOperationProgress,
   setError,
+  showCopyToast,
+  formatToast,
+  t,
 }: UseDeleteOperationsConfig) {
   const [permanentDeleteConfirm, setPermanentDeleteConfirm] = useState<{ paths: string[] } | null>(null);
   const [elevatedDeleteConfirm, setElevatedDeleteConfirm] = useState<{ paths: string[] } | null>(null);
@@ -42,7 +49,7 @@ export function useDeleteOperations({
     }
     try {
       setOperationProgress({
-        type: '삭제',
+        type: t('toast.operation.delete'),
         current: 0,
         total: paths.length,
         itemLabel: getDeleteItemLabel(paths),
@@ -60,10 +67,10 @@ export function useDeleteOperations({
         setElevatedDeleteConfirm({ paths: [...paths] });
       } else {
         console.error('삭제 실패:', error);
-        setError(`삭제 실패: ${error}`);
+        showCopyToast(formatToast('toast.deleteFailed', { message: String(error) }), 3000);
       }
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, setError, setOperationProgress, setSelectedPaths, undoStack]);
+  }, [currentPath, ensureWritableContext, loadDirectory, setError, setOperationProgress, setSelectedPaths, showCopyToast, formatToast, undoStack, t]);
 
   const executePermanentDelete = useCallback(async () => {
     if (!permanentDeleteConfirm) return;
@@ -75,7 +82,7 @@ export function useDeleteOperations({
     setPermanentDeleteConfirm(null);
     try {
       setOperationProgress({
-        type: '영구삭제',
+        type: t('toast.operation.permanentDelete'),
         current: 0,
         total: paths.length,
         itemLabel: getDeleteItemLabel(paths),
@@ -92,10 +99,10 @@ export function useDeleteOperations({
         setElevatedDeleteConfirm({ paths: [...paths] });
       } else {
         console.error('영구삭제 실패:', error);
-        setError(`영구삭제 실패: ${error}`);
+        showCopyToast(formatToast('toast.permanentDeleteFailed', { message: String(error) }), 3000);
       }
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, permanentDeleteConfirm, setError, setOperationProgress, setSelectedPaths]);
+  }, [currentPath, ensureWritableContext, loadDirectory, permanentDeleteConfirm, setError, setOperationProgress, setSelectedPaths, showCopyToast, formatToast, t]);
 
   const executeElevatedDelete = useCallback(async () => {
     if (!elevatedDeleteConfirm) return;
@@ -112,9 +119,9 @@ export function useDeleteOperations({
       if (currentPath) loadDirectory(currentPath);
     } catch (error) {
       console.error('관리자 권한 삭제 실패:', error);
-      setError(`관리자 권한 삭제 실패: ${error}`);
+      showCopyToast(formatToast('toast.elevatedDeleteFailed', { message: String(error) }), 3000);
     }
-  }, [currentPath, elevatedDeleteConfirm, ensureWritableContext, loadDirectory, setError, setSelectedPaths]);
+  }, [currentPath, elevatedDeleteConfirm, ensureWritableContext, loadDirectory, showCopyToast, formatToast, setSelectedPaths]);
 
   return {
     handleDelete,

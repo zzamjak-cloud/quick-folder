@@ -5,16 +5,18 @@ import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
 import VideoEditToolbar, { VideoEditToolbarHandle } from './VideoEditToolbar';
 import VideoCropOverlay from './VideoCropOverlay';
+import type { TranslationKey } from '../../utils/i18n';
 
 interface VideoPlayerProps {
   path: string;
   onClose: () => void;
   onFileChanged?: () => void; // 편집 후 파일 목록 갱신용
   themeVars: ThemeVars | null;
+  t: (key: TranslationKey) => string;
 }
 
 // 동영상 미리보기 모달 (HTML5 video + Tauri asset protocol)
-export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }: VideoPlayerProps) {
+export default function VideoPlayer({ path, onClose, onFileChanged, themeVars, t }: VideoPlayerProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -98,12 +100,12 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
       {loadError ? (
         <>
           <AlertCircle size={compact ? 22 : 28} className="text-red-300" />
-          <span className="text-sm text-red-200">동영상을 불러오지 못했습니다.</span>
+          <span className="text-sm text-red-200">{t('videoPreview.error.loadFailed')}</span>
         </>
       ) : (
         <>
           <Loader2 size={compact ? 22 : 28} className="text-white/80 animate-spin" />
-          <span className="text-sm text-white/80">로딩 중...</span>
+          <span className="text-sm text-white/80">{t('videoPreview.loading')}</span>
         </>
       )}
     </div>
@@ -254,9 +256,9 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
               fontWeight: editMode ? 600 : 500,
               border: editMode ? 'none' : `1px solid ${themeVars?.border ?? '#444'}`,
             }}
-            title={editMode ? '편집 종료 (E)' : '편집 모드 진입 (E)'}
+            title={editMode ? t('videoPreview.exitEditTitle') : t('videoPreview.enterEditTitle')}
           >
-            {editMode ? '편집 종료(E)' : '편집(E)'}
+            {editMode ? t('videoPreview.exitEdit') : t('videoPreview.edit')}
           </button>
           {/* 닫기 버튼 */}
           <button
@@ -376,6 +378,7 @@ export default function VideoPlayer({ path, onClose, onFileChanged, themeVars }:
               themeVars={themeVars}
               onFileChanged={onFileChanged}
               cropRect={cropRect}
+              t={t}
             />
           </div>
         )}

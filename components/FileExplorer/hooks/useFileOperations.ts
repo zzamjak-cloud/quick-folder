@@ -16,6 +16,7 @@ import { tauriCommands } from '../../../utils/tauriCommands';
 import { useArchiveOperations } from './useArchiveOperations';
 import { useDeleteOperations } from './useDeleteOperations';
 import { useFolderSizeOperations } from './useFolderSizeOperations';
+import { translate, type TranslationKey } from '../../../utils/i18n';
 export type { FolderSizeDialogState } from './useFolderSizeOperations';
 
 export interface UseFileOperationsConfig {
@@ -37,7 +38,10 @@ export interface UseFileOperationsConfig {
   setContextMenu: React.Dispatch<React.SetStateAction<{ x: number; y: number; paths: string[] } | null>>;
   setRenamingPath: React.Dispatch<React.SetStateAction<string | null>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
+  t?: (key: TranslationKey) => string;
 }
+
+const defaultTranslate = (key: TranslationKey) => translate('ko', key);
 
 /**
  * 파일 조작 핸들러를 모아 관리하는 훅.
@@ -53,6 +57,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     setBulkRenamePaths, setSheetPackPaths,
     setContextMenu, setRenamingPath,
     setError,
+    t = defaultTranslate,
   } = config;
 
   // 복사 피드백 토스트
@@ -79,7 +84,18 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
   // 폴더 해제 확인 다이얼로그
   const [ungroupConfirm, setUngroupConfirm] = useState<{ path: string } | null>(null);
-  const archiveReadonlyMessage = '압축 내부는 읽기 전용입니다. 파일을 밖으로 꺼내서 사용하세요.';
+  const archiveReadonlyMessage = t('toast.archiveReadonly');
+
+  const formatMessage = useCallback((template: string, values: Record<string, string | number>) => (
+    Object.entries(values).reduce(
+      (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+      template,
+    )
+  ), []);
+
+  const formatToast = useCallback((key: TranslationKey, values: Record<string, string | number>) => (
+    formatMessage(t(key), values)
+  ), [formatMessage, t]);
 
   // 토스트 표시 헬퍼
   const showCopyToast = useCallback((msg: string, duration = 1500) => {
@@ -117,6 +133,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     setSelectedPaths,
     setOperationProgress,
     setError,
+    showCopyToast,
+    formatToast,
+    t,
   });
 
   // --- 복제 ---
@@ -125,7 +144,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (!ensureWritableContext(selectedPaths)) return;
     try {
       setOperationProgress({
-        type: '복제',
+        type: t('toast.operation.duplicate'),
         current: 0,
         total: selectedPaths.length,
         itemLabel: selectedPaths.length === 1
@@ -141,7 +160,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       pendingDuplicateSelectRef.current = [];
       console.error('복제 실패:', e);
     }
-  }, [selectedPaths, currentPath, ensureWritableContext, loadDirectory]);
+  }, [selectedPaths, currentPath, ensureWritableContext, loadDirectory, t]);
 
   // --- 폴더 생성 ---
   const handleCreateDirectory = useCallback(async () => {
@@ -202,15 +221,15 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       if (savedPath) {
         await loadDirectory(currentPath);
         setSelectedPaths([savedPath]);
-        showCopyToast(`스크린샷 저장: ${getFileName(savedPath)}`);
+        showCopyToast(formatToast('toast.screenshotSaved', { fileName: getFileName(savedPath) }));
       } else {
-        showCopyToast('클립보드에 이미지가 없습니다');
+        showCopyToast(t('toast.clipboardImageMissing'));
       }
     } catch (e) {
       console.error('클립보드 이미지 저장 실패:', e);
       setError(`클립보드 이미지 저장 실패: ${e}`);
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, setSelectedPaths, showCopyToast, setError]);
+  }, [currentPath, ensureWritableContext, loadDirectory, setSelectedPaths, showCopyToast, setError, formatToast, t]);
 
   // --- 폰트 병합 완료 처리 ---
   const handleMergeFontsComplete = useCallback(async (outputPath: string) => {
@@ -218,8 +237,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       await loadDirectory(currentPath);
       setSelectedPaths([outputPath]);
     }
-    showCopyToast(`폰트 병합 완료: ${getFileName(outputPath)}`);
-  }, [currentPath, loadDirectory, setSelectedPaths, showCopyToast]);
+    showCopyToast(formatToast('toast.fontMergeComplete', { fileName: getFileName(outputPath) }));
+  }, [currentPath, loadDirectory, setSelectedPaths, showCopyToast, formatToast]);
 
   // --- 인라인 이름변경 시작 ---
   const handleRenameStart = useCallback((path: string) => {
@@ -278,9 +297,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
     if (plans.length === 0) {
       if (skipped.length > 0) {
-        showCopyToast(`변환 불가: ${skipped.length}개`);
+        showCopyToast(formatToast('toast.caseConvertUnavailable', { count: skipped.length }));
       } else {
-        showCopyToast('이미 적용된 규칙입니다');
+        showCopyToast(t('toast.caseConvertAlreadyApplied'));
       }
       return;
     }
@@ -321,7 +340,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       }
     } catch (e) {
       console.error('케이스 변환 실패:', e);
-      showCopyToast('일부 파일 변환에 실패했습니다');
+      showCopyToast(t('toast.caseConvertPartialFailed'));
     }
 
     if (renamed.length > 0) {
@@ -344,12 +363,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       }
 
       const msg = skipped.length > 0
-        ? `${renamed.length}개 변환, ${skipped.length}개 건너뜀`
-        : `${renamed.length}개 변환 완료`;
+        ? formatToast('toast.caseConvertCompleteWithSkipped', { converted: renamed.length, skipped: skipped.length })
+        : formatToast('toast.caseConvertComplete', { count: renamed.length });
       showCopyToast(msg);
     }
     setContextMenu(null);
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast, formatToast, t]);
 
   // --- URL 인코딩 파일명 복구 ---
   const handleRecoverFileNames = useCallback(async (paths: string[]) => {
@@ -414,11 +433,13 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
 
     const msg = renamed.length > 0
-      ? (skipped > 0 ? `${renamed.length}개 복구, ${skipped}개 건너뜀` : `${renamed.length}개 복구 완료`)
-      : '복구할 파일명이 없습니다';
+      ? (skipped > 0
+        ? formatToast('toast.filenameRecoverCompleteWithSkipped', { recovered: renamed.length, skipped })
+        : formatToast('toast.filenameRecoverComplete', { count: renamed.length }))
+      : t('toast.filenameRecoverNothing');
     showCopyToast(msg);
     setContextMenu(null);
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast, formatToast, t]);
 
   // --- 이름변경 커밋 ---
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
@@ -496,7 +517,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       const errMsg = String(e);
       if (errMsg.includes('동일한 이름의 파일이 존재합니다')) {
-        showCopyToast('동일한 이름의 파일이 존재합니다.');
+        showCopyToast(t('toast.sameNameExists'));
       } else {
         console.error('이름 변경 실패:', e);
       }
@@ -506,7 +527,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         setEntries(sortEntries(result, sortBy, sortDir));
       }
     }
-  }, [currentPath, entries, selectedPaths, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex]);
+  }, [currentPath, entries, selectedPaths, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex, t]);
 
   // --- 선택된 파일들을 새 폴더로 그룹화 (Ctrl+G) ---
   const handleGroupIntoFolder = useCallback(async () => {
@@ -536,9 +557,9 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setSelectedPaths([newPath]);
       setRenamingPath(newPath);
     } catch (e) {
-      showCopyToast(`그룹화 실패: ${e}`);
+      showCopyToast(formatToast('toast.groupFailed', { message: String(e) }));
     }
-  }, [currentPath, selectedPaths, ensureWritableContext, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath]);
+  }, [currentPath, selectedPaths, ensureWritableContext, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath, formatToast]);
 
   // --- 폴더 해제 요청 (확인 다이얼로그 표시) ---
   const handleUngroupFolder = useCallback((path: string) => {
@@ -565,12 +586,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       // 빈 폴더 삭제
       await tauriCommands.deleteItems([folderPath], true);
       await loadDirectory(currentPath);
-      showCopyToast(`폴더 해제 완료: ${getFileName(folderPath)}`);
+      showCopyToast(formatToast('toast.ungroupComplete', { fileName: getFileName(folderPath) }));
     } catch (e) {
       console.error('폴더 해제 실패:', e);
       setError(`폴더 해제 실패: ${e}`);
     }
-  }, [ungroupConfirm, ensureWritableContext, currentPath, loadDirectory, showCopyToast, setError]);
+  }, [ungroupConfirm, ensureWritableContext, currentPath, loadDirectory, showCopyToast, setError, formatToast]);
 
   const {
     handleCompressZip,
@@ -584,6 +605,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     loadDirectory,
     showCopyToast,
     setError,
+    t,
+    formatToast,
   });
 
   // --- Map Maker (Laigter 스타일 맵)보내기 ---
@@ -601,8 +624,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       const result = await tauriCommands.listDirectory(currentPath);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
-    showCopyToast(`맵 저장 완료: ${outputs.length}개 파일`);
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, undoStack]);
+    showCopyToast(formatToast('toast.mapSaveComplete', { count: outputs.length }));
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, undoStack, formatToast]);
 
   // --- 픽셀화 적용 ---
   const handlePixelateApply = useCallback(async (path: string, pixelSize: number, scale: number, maxColors: number) => {
@@ -612,8 +635,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       const result = await tauriCommands.listDirectory(currentPath);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
-    showCopyToast(`픽셀화 완료: ${getFileName(output)}`);
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
+    showCopyToast(formatToast('toast.pixelateComplete', { fileName: getFileName(output) }));
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, formatToast]);
 
   // --- 흰색 배경 제거 적용 ---
   const handleRemoveWhiteBgApply = useCallback(async (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => {
@@ -624,11 +647,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     if (outputs.length === 1) {
-      showCopyToast(`배경 제거 완료: ${getFileName(outputs[0])}`);
+      showCopyToast(formatToast('toast.removeBgCompleteSingle', { fileName: getFileName(outputs[0]) }));
     } else {
-      showCopyToast(`배경 제거 완료: ${outputs.length}개 파일`);
+      showCopyToast(formatToast('toast.removeBgCompleteMulti', { count: outputs.length }));
     }
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries]);
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, formatToast]);
 
   // --- 스프라이트 시트 패킹 ---
   const handleSpritePack = useCallback(async (paths: string[]) => {
@@ -638,12 +661,12 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       const result = await tauriCommands.listDirectory(paths[0]);
       const imageExts = /\.(png|jpe?g|gif|webp|bmp)$/i;
       const imgs = result.filter(e => !e.is_dir && imageExts.test(e.name)).map(e => e.path);
-      if (imgs.length === 0) { showCopyToast('이미지 파일이 없습니다'); return; }
+      if (imgs.length === 0) { showCopyToast(t('toast.noImageFiles')); return; }
       setSheetPackPaths(imgs);
     } else {
       setSheetPackPaths(paths);
     }
-  }, [ensureWritableContext, showCopyToast, setSheetPackPaths]);
+  }, [ensureWritableContext, showCopyToast, setSheetPackPaths, t]);
 
   // 시트 패킹 기본 파일명
   const sheetPackDefaultName = useMemo(() => {
@@ -673,7 +696,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       // 1. ffmpeg 설치 확인
       const installed = await tauriCommands.checkFfmpeg();
       if (!installed) {
-        showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        showCopyToast(t('toast.ffmpegMissing'));
         return;
       }
 
@@ -700,19 +723,21 @@ export function useFileOperations(config: UseFileOperationsConfig) {
           }
         };
 
-        setVideoCompression({ fileName, percent: 0, speed: '준비 중...', current, total: paths.length });
+        setVideoCompression({ fileName, percent: 0, speed: t('toast.preparing'), current, total: paths.length });
         await tauriCommands.compressVideo(path, quality, onProgress);
         successCount += 1;
       }
 
       setVideoCompression(null);
       if (currentPath) loadDirectory(currentPath);
-      showCopyToast(paths.length > 1 ? `동영상 압축 완료: ${successCount}/${paths.length}개` : '동영상 압축 완료');
+      showCopyToast(paths.length > 1
+        ? formatToast('toast.videoCompressCompleteMulti', { success: successCount, total: paths.length })
+        : t('toast.videoCompressComplete'));
     } catch (e) {
       setVideoCompression(null);
-      showCopyToast(`압축 실패: ${e}`);
+      showCopyToast(formatToast('toast.compressFailed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
 
   // --- GIF → MP4 변환 ---
   const handleGifToMp4 = useCallback(async (paths: string[]) => {
@@ -721,25 +746,25 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     try {
       const installed = await tauriCommands.checkFfmpeg();
       if (!installed) {
-        showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        showCopyToast(t('toast.ffmpegMissing'));
         return;
       }
 
       let successCount = 0;
       for (let i = 0; i < paths.length; i += 1) {
-        setOperationProgress({ type: 'GIF → MP4 변환', current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
+        setOperationProgress({ type: t('toast.operation.gifToMp4'), current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
         await tauriCommands.gifToMp4(paths[i]);
         successCount += 1;
       }
 
       setOperationProgress(null);
       if (currentPath) loadDirectory(currentPath);
-      showCopyToast(`GIF → MP4 완료: ${successCount}/${paths.length}개`);
+      showCopyToast(formatToast('toast.gifToMp4Complete', { success: successCount, total: paths.length }));
     } catch (e) {
       setOperationProgress(null);
-      showCopyToast(`GIF → MP4 실패: ${e}`);
+      showCopyToast(formatToast('toast.gifToMp4Failed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
 
   // --- 동영상 → GIF 변환 ---
   const handleVideoToGif = useCallback(async (paths: string[]) => {
@@ -748,26 +773,26 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     try {
       const installed = await tauriCommands.checkFfmpeg();
       if (!installed) {
-        showCopyToast('FFmpeg를 찾을 수 없습니다. 앱 업데이트 또는 설치 상태를 확인해주세요.');
+        showCopyToast(t('toast.ffmpegMissing'));
         return;
       }
 
       let successCount = 0;
       for (let i = 0; i < paths.length; i += 1) {
         const progress = new Channel<{ percent: number; speed: string; fps: number }>();
-        setOperationProgress({ type: 'GIF 변환', current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
+        setOperationProgress({ type: t('toast.operation.videoToGif'), current: i + 1, total: paths.length, itemLabel: getFileName(paths[i]) });
         await tauriCommands.videoToGif(paths[i], progress);
         successCount += 1;
       }
 
       setOperationProgress(null);
       if (currentPath) loadDirectory(currentPath);
-      showCopyToast(`GIF 변환 완료: ${successCount}/${paths.length}개`);
+      showCopyToast(formatToast('toast.videoToGifComplete', { success: successCount, total: paths.length }));
     } catch (e) {
       setOperationProgress(null);
-      showCopyToast(`GIF 변환 실패: ${e}`);
+      showCopyToast(formatToast('toast.videoToGifFailed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
 
   // --- PDF 압축 ---
   const handleCompressPdf = useCallback(async (path: string) => {
@@ -780,22 +805,22 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         setGsSetup({ fileName });
         try {
           await tauriCommands.downloadGhostscript();
-          showCopyToast('Ghostscript 설치 완료');
+          showCopyToast(t('toast.ghostscriptInstallComplete'));
         } catch (installErr) {
-          showCopyToast(`Ghostscript 설치 실패: ${installErr}`);
+          showCopyToast(formatToast('toast.ghostscriptInstallFailed', { message: String(installErr) }));
           return;
         } finally {
           setGsSetup(null);
         }
       }
-      showCopyToast(`PDF 압축 중: ${fileName}`);
+      showCopyToast(formatToast('toast.pdfCompressing', { fileName }));
       const output = await tauriCommands.compressPdf(path);
       if (currentPath) loadDirectory(currentPath);
-      showCopyToast(`PDF 압축 완료: ${getFileName(output)}`);
+      showCopyToast(formatToast('toast.pdfCompressComplete', { fileName: getFileName(output) }));
     } catch (e) {
-      showCopyToast(`PDF 압축 실패: ${e}`);
+      showCopyToast(formatToast('toast.pdfCompressFailed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
 
   const {
     folderSizeDialog,
@@ -811,11 +836,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleCopyPath = useCallback(async (path: string) => {
     try {
       await tauriCommands.copyPath(path);
-      showCopyToast('경로가 복사되었습니다');
+      showCopyToast(t('toast.pathCopied'));
     } catch (e) {
       console.error('경로 복사 실패:', e);
     }
-  }, [showCopyToast]);
+  }, [showCopyToast, t]);
 
   // --- 실행취소 (Ctrl+Z / Cmd+Z) ---
   const handleUndo = useCallback(async () => {
@@ -825,10 +850,10 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     try {
       if (action.type === 'delete') {
         await tauriCommands.restoreTrashItems(action.paths);
-        showCopyToast('삭제 취소됨');
+        showCopyToast(t('toast.undoDelete'));
       } else if (action.type === 'rename') {
         await tauriCommands.renameItem(action.oldPath, action.newPath);
-        showCopyToast('이름 변경 취소됨');
+        showCopyToast(t('toast.undoRename'));
       } else if (action.type === 'move_group') {
         // 새 폴더 안의 파일들을 원래 디렉토리로 이동
         const innerFiles = await tauriCommands.listDirectory(action.createdDir);
@@ -838,22 +863,22 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         }
         // 빈 폴더 삭제
         await tauriCommands.deleteItems([action.createdDir], false);
-        showCopyToast('그룹화 취소됨');
+        showCopyToast(t('toast.undoGroup'));
       } else if (action.type === 'create_file') {
         await tauriCommands.deleteItems([action.path], true);
-        showCopyToast('파일 생성 취소됨');
+        showCopyToast(t('toast.undoCreateFile'));
       } else if (action.type === 'export_maps' && action.paths.length > 0) {
         await tauriCommands.deleteItems(action.paths, true);
-        showCopyToast('맵보내기 취소됨');
+        showCopyToast(t('toast.undoExportMaps'));
       }
       if (currentPath) {
         loadDirectory(currentPath);
       }
     } catch (e) {
       console.error('실행취소 실패:', e);
-      showCopyToast('실행취소 실패');
+      showCopyToast(t('toast.undoFailed'));
     }
-  }, [undoStack, currentPath, loadDirectory, showCopyToast]);
+  }, [undoStack, currentPath, loadDirectory, showCopyToast, t]);
 
   return {
     // 핸들러

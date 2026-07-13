@@ -13,7 +13,7 @@ export interface PreviewState {
   previewLoading: boolean;
   /** 편집 모드 요청 토큰 — 같은 이미지로 Enter 재진입 시에도 편집 모드로 전환 */
   previewImageEditRequest: number;
-  handlePreviewImage: (path: string, initialEdit?: boolean, placeholderUrl?: string) => void;
+  handlePreviewImage: (path: string, initialEdit?: boolean, placeholderUrl?: string, cacheToken?: string) => void;
   closeImagePreview: () => void;
   // 텍스트
   previewTextPath: string | null;
@@ -62,6 +62,7 @@ export function usePreview(): PreviewState {
   const [previewImageData, setPreviewImageData] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewImageEditRequest, setPreviewImageEditRequest] = useState(0);
+  const imagePreviewKeyRef = useRef<string | null>(null);
   // 이미지/PSD 미리보기 요청 토큰 — 점진적 렌더(임베드→전체)·빠른 전환 시 오래된 응답 무시
   const imageLoadRequestRef = useRef(0);
 
@@ -98,11 +99,13 @@ export function usePreview(): PreviewState {
   // HWP/HWPX 미리보기
   const [hwpPreviewPath, setHwpPreviewPath] = useState<string | null>(null);
 
-  const handlePreviewImage = useCallback(async (path: string, initialEdit = false, placeholderUrl?: string) => {
+  const handlePreviewImage = useCallback(async (path: string, initialEdit = false, placeholderUrl?: string, cacheToken = '') => {
     if (initialEdit) setPreviewImageEditRequest(n => n + 1);
+    const previewKey = `${path}|${cacheToken}`;
     // 같은 파일이면 리로드 안 함 (깜빡임 방지)
-    if (path === previewImagePath) return;
+    if (previewKey === imagePreviewKeyRef.current) return;
     const reqId = ++imageLoadRequestRef.current;
+    imagePreviewKeyRef.current = previewKey;
     setPreviewImagePath(path);
     const isPsd = /\.(psd|psb)$/i.test(path);
     const isIcns = /\.icns$/i.test(path);
@@ -135,16 +138,18 @@ export function usePreview(): PreviewState {
         }
       } else {
         // 일반 이미지 (PNG, JPG, ICO 등): asset 프로토콜로 직접 로딩
-        setPreviewImageData(convertFileSrc(path));
+        const assetUrl = convertFileSrc(path);
+        setPreviewImageData(cacheToken ? `${assetUrl}?qf=${encodeURIComponent(cacheToken)}` : assetUrl);
       }
     } catch {
       // 미리보기 생성 실패
     } finally {
       if (reqId === imageLoadRequestRef.current) setPreviewLoading(false);
     }
-  }, [previewImagePath]);
+  }, []);
 
   const closeImagePreview = useCallback(() => {
+    imagePreviewKeyRef.current = null;
     setPreviewImagePath(null);
     setPreviewImageData(null);
   }, []);

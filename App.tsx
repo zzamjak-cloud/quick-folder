@@ -141,9 +141,9 @@ export default function App() {
   const t = useCallback((key: TranslationKey) => translate(language, key), [language]);
 
   // --- 커스텀 훅 ---
-  const theme = useThemeManagement(addToast);
-  const catMgmt = useCategoryManagement(addToast);
-  const autoUpdate = useAutoUpdate(addToast);
+  const theme = useThemeManagement(addToast, t);
+  const catMgmt = useCategoryManagement(addToast, t);
+  const autoUpdate = useAutoUpdate(addToast, t);
   useWindowState();
 
   const { themeVars } = theme;
@@ -591,21 +591,34 @@ export default function App() {
   const handleCopyPath = useCallback(async (path: string) => {
     try {
       await tauriCommands.copyPath(path);
-      addToast("경로가 클립보드에 복사되었습니다!", "success");
+      addToast(t('toast.pathCopiedToClipboard'), "success");
     } catch (error) {
       console.error(error);
-      addToast("복사에 실패했습니다.", "error");
+      addToast(t('toast.copyFailed'), "error");
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const handleOpenFolder = useCallback(async (path: string) => {
     try {
       await tauriCommands.openFolder(path);
     } catch (error) {
       console.error(error);
-      addToast("폴더를 열 수 없습니다.", "error");
+      addToast(t('toast.folderOpenFailed'), "error");
     }
-  }, [addToast]);
+  }, [addToast, t]);
+
+  const ensureDirectoryAvailable = useCallback(async (path: string) => {
+    if (path === RECENT_PATH || path === SYSTEM_ROOT_PATH) return true;
+    try {
+      const isDirectory = await tauriCommands.isDirectory(path);
+      if (isDirectory) return true;
+      addToast(t('toast.folderUnavailable'), "error");
+    } catch (error) {
+      console.error(error);
+      addToast(t('toast.folderCheckFailed'), "error");
+    }
+    return false;
+  }, [addToast, t]);
 
   // 최근항목 버튼 클릭 → 탐색기에서 최근항목 탭 열기
   const handleOpenRecent = useCallback(() => {
@@ -623,14 +636,15 @@ export default function App() {
     downloadDir().then(setDownloadPath).catch(console.error);
   }, []);
 
-  const handleOpenDownloads = useCallback(() => {
+  const handleOpenDownloads = useCallback(async () => {
     if (!downloadPath) return;
+    if (!(await ensureDirectoryAvailable(downloadPath))) return;
     if (splitMode === 'single' || focusedPane === 0) {
       setExplorerPath(downloadPath);
     } else {
       setExplorerPath2(downloadPath);
     }
-  }, [splitMode, focusedPane, downloadPath]);
+  }, [ensureDirectoryAvailable, splitMode, focusedPane, downloadPath]);
 
   // 데스크탑 폴더 경로
   const [desktopPath, setDesktopPath] = useState<string | null>(null);
@@ -639,23 +653,25 @@ export default function App() {
     desktopDir().then(setDesktopPath).catch(console.error);
   }, []);
 
-  const handleOpenDesktop = useCallback(() => {
+  const handleOpenDesktop = useCallback(async () => {
     if (!desktopPath) return;
+    if (!(await ensureDirectoryAvailable(desktopPath))) return;
     if (splitMode === 'single' || focusedPane === 0) {
       setExplorerPath(desktopPath);
     } else {
       setExplorerPath2(desktopPath);
     }
-  }, [splitMode, focusedPane, desktopPath]);
+  }, [ensureDirectoryAvailable, splitMode, focusedPane, desktopPath]);
 
-  const openPathInFocusedPane = useCallback((path: string) => {
+  const openPathInFocusedPane = useCallback(async (path: string) => {
     if (!path) return;
+    if (!(await ensureDirectoryAvailable(path))) return;
     if (splitMode === 'single' || focusedPane === 0) {
       setExplorerPath(path);
     } else {
       setExplorerPath2(path);
     }
-  }, [splitMode, focusedPane, setExplorerPath, setExplorerPath2]);
+  }, [ensureDirectoryAvailable, splitMode, focusedPane, setExplorerPath, setExplorerPath2]);
 
   const handleOpenSystemRoot = useCallback(() => {
     openPathInFocusedPane(SYSTEM_ROOT_PATH);
@@ -705,17 +721,19 @@ export default function App() {
   );
 
   // Ctrl(Cmd)+클릭 시 새 탭에서 열기
-  const handleOpenInNewTab = useCallback((path: string) => {
+  const handleOpenInNewTab = useCallback(async (path: string) => {
+    if (!(await ensureDirectoryAvailable(path))) return;
     window.dispatchEvent(new CustomEvent('qf-open-new-tab', { detail: { path } }));
-  }, []);
+  }, [ensureDirectoryAvailable]);
 
-  const handleOpenInExplorer = useCallback((path: string) => {
+  const handleOpenInExplorer = useCallback(async (path: string) => {
+    if (!(await ensureDirectoryAvailable(path))) return;
     if (splitMode === 'single' || focusedPane === 0) {
       setExplorerPath(path);
     } else {
       setExplorerPath2(path);
     }
-  }, [splitMode, focusedPane]);
+  }, [ensureDirectoryAvailable, splitMode, focusedPane]);
 
   const collapsedSessionBadges = useMemo(() => {
     const firstLetters = categories.map(category => Array.from(category.title.trim())[0]?.toUpperCase() || '?');
@@ -782,7 +800,7 @@ export default function App() {
   const handleLanguageChange = useCallback((nextLanguage: AppLanguage) => {
     writeStorage(LANGUAGE_STORAGE_KEY, nextLanguage);
     if (nextLanguage === language) return;
-    window.location.reload();
+    setLanguage(nextLanguage);
   }, [language]);
 
   const settingsMenuSections = useMemo<ContextMenuSection[]>(() => [{
@@ -817,11 +835,11 @@ export default function App() {
 
   const handleAddFavoriteFromExplorer = useCallback((path: string, name: string) => {
     if (categories.length === 0) {
-      addToast('즐겨찾기에 추가하려면 먼저 카테고리를 만들어 주세요.', 'error');
+      addToast(t('toast.favoriteNeedsCategory'), 'error');
       return;
     }
     catMgmt.handleAddFolder(categories[0].id, path, name);
-  }, [categories, catMgmt.handleAddFolder, addToast]);
+  }, [categories, catMgmt.handleAddFolder, addToast, t]);
 
   // 분할 패널 드래그 핸들러
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
@@ -1091,6 +1109,7 @@ export default function App() {
           onRemove={handleRemoveTrayFiles}
           onClear={handleClearTray}
           onError={(message) => addToast(message, 'error')}
+          t={t}
         />
       )}
       <div className={`flex flex-1 overflow-hidden${tempTrayPaths.length > 0 ? ' hidden' : ''}`}>

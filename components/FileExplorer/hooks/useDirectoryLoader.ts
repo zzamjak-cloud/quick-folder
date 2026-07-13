@@ -104,26 +104,26 @@ export function useDirectoryLoader({
         // 동일 이름 이미지 형제가 있는 PSD는 그 이미지를 표시 크기로 가볍게 워밍(키도 표시 크기)
         if (entry.thumbnailPath) {
           items.push({ path: entry.thumbnailPath, fileType: 'image' });
-          targetKeys.push(thumbKey(entry.path, size, entry.modified));
+          targetKeys.push(thumbKey(entry.path, size, entry.modified, entry.size, entry.identity));
           count++;
           continue;
         }
         const lower = entry.name.toLowerCase();
         if (lower.endsWith('.psd') || lower.endsWith('.psb')) {
           fixedItems.push({ path: entry.path, fileType: 'psd' });
-          fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified));
+          fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified, entry.size, entry.identity));
           count++;
           continue;
         }
         if (entry.file_type === 'image' && isCloudPath(entry.path)) {
           fixedItems.push({ path: entry.path, fileType: 'image' });
-          fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified));
+          fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified, entry.size, entry.identity));
           count++;
           continue;
         }
         if (entry.file_type === 'image' || entry.file_type === 'video') {
           items.push({ path: entry.path, fileType: entry.file_type });
-          targetKeys.push(thumbKey(entry.path, size, entry.modified));
+          targetKeys.push(thumbKey(entry.path, size, entry.modified, entry.size, entry.identity));
         } else continue;
         count++;
       }

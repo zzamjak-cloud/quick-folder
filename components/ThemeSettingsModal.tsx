@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { THEME_PRESETS, normalizeHexColor } from '../hooks/useThemeManagement';
+import { THEME_PRESETS, getDefaultThemePreset, normalizeHexColor } from '../hooks/useThemeManagement';
 import type { TranslationKey } from '../utils/i18n';
 
 interface ThemeSettingsModalProps {
@@ -65,7 +65,7 @@ export function ThemeSettingsModal({ isOpen, onClose, theme, t }: ThemeSettingsM
         </div>
 
         <div className="pt-2 flex justify-between items-center">
-          <Button type="button" variant="ghost" onClick={() => { theme.setThemeId(THEME_PRESETS[0].id); theme.setBgInputValue(THEME_PRESETS[0].bg); theme.setAccentInputValue(THEME_PRESETS[0].accent); }}>{t('theme.resetDefault')}</Button>
+          <Button type="button" variant="ghost" onClick={() => { const preset = getDefaultThemePreset(); theme.setThemeId(preset.id); theme.setBgInputValue(preset.bg); theme.setAccentInputValue(preset.accent); }}>{t('theme.resetDefault')}</Button>
           <Button type="button" variant="ghost" onClick={onClose}>{t('theme.close')}</Button>
         </div>
       </div>

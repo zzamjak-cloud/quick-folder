@@ -54,7 +54,7 @@ import {
   writeNumberStorage,
   writeStorage,
 } from '../../utils/storage';
-import type { TranslationKey } from '../../utils/i18n';
+import { translate, type TranslationKey } from '../../utils/i18n';
 
 interface FileExplorerProps {
   instanceId?: string;   // 분할 뷰 시 저장소 키 분리용 (기본: 'default')
@@ -75,10 +75,19 @@ interface FileExplorerProps {
   onTrayDragStateChange?: (dragging: boolean, trayActive: boolean) => void;
   // 최근항목 조회 시 사용할 즐겨찾기 폴더 경로 목록
   recentRoots?: string[];
-  t: (key: TranslationKey) => string;
+  t?: (key: TranslationKey) => string;
 }
 
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
+
+const defaultTranslate = (key: TranslationKey) => translate('ko', key);
+
+function formatMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
 
 export default function FileExplorer({
   instanceId = 'default',
@@ -95,7 +104,7 @@ export default function FileExplorer({
   onStageFilesToTray,
   onTrayDragStateChange,
   recentRoots = [],
-  t,
+  t = defaultTranslate,
   initialPathKey = 0,
 }: FileExplorerProps) {
   // --- 상태 ---
@@ -249,6 +258,7 @@ export default function FileExplorer({
     setSheetPackPaths: modals.setSheetPackPaths,
     setContextMenu, setRenamingPath: modals.setRenamingPath,
     setError,
+    t,
   });
 
   const fileOperationPendingSet = useMemo(() => {
@@ -495,8 +505,32 @@ export default function FileExplorer({
     requestAnimationFrame(() => fuzzyFilterInputRef.current?.focus({ preventScroll: true }));
   }, [searchFilter.setSearchQuery, searchFilter.setIsSearchActive, deselectAll]);
 
+  const isPopupOpen = Boolean(
+    preview.isAnyPreviewOpen ||
+    modals.pixelatePath ||
+    modals.mapMakerPath ||
+    modals.sheetPackPaths ||
+    modals.sheetUnpackPath ||
+    modals.bulkRenamePaths ||
+    modals.isGoToFolderOpen ||
+    modals.isGlobalSearchOpen ||
+    modals.duplicateFinderPath ||
+    modals.diffViewerPaths ||
+    modals.tagPrompt ||
+    modals.markdownEditorPath ||
+    modals.removeWhiteBgPaths ||
+    modals.fontMergePaths ||
+    modals.fontPreviewPath ||
+    modals.pdfPreviewPath ||
+    modals.gifCompressPaths ||
+    modals.audioPreviewPath ||
+    modals.terminalPresetPath ||
+    modals.folderMergeRequest
+  );
+
   const fuzzyFilterInputEnabled = isFocused
     && !modals.renamingPath
+    && !isPopupOpen
     && !searchFilter.isSearchActive
     && !isFuzzyFilterBlocked();
 
@@ -640,6 +674,7 @@ export default function FileExplorer({
     clipboardHook,
     fileOps,
     modals,
+    t,
     preview,
     openEntry,
     openInOsExplorer,
@@ -934,10 +969,10 @@ export default function FileExplorer({
   }, [currentPath, loadDirectory]);
 
   const handlePreviewCropSave = useCallback((outputPath: string) => {
-    fileOps.showCopyToast(`크롭 저장 완료: ${getFileName(outputPath)}`);
+    fileOps.showCopyToast(formatMessage(t('toast.cropSaveComplete'), { fileName: getFileName(outputPath) }));
     pendingSelectRef.current = outputPath;
     reloadCurrentPath();
-  }, [fileOps.showCopyToast, reloadCurrentPath]);
+  }, [fileOps.showCopyToast, reloadCurrentPath, t]);
 
   const handleNavigationSortChange = useCallback((by: 'name' | 'size' | 'modified' | 'type', dir: 'asc' | 'desc') => {
     setSortBy(by);

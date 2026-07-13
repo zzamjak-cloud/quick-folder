@@ -83,7 +83,7 @@ describe('usePreviewRouting', () => {
       imageHook.result.current.previewFile(entry({ name: 'photo.png', path: '/tmp/photo.png', file_type: 'image' }));
     });
     expect(imagePreview.closeAllPreviews).toHaveBeenCalledOnce();
-    expect(imagePreview.handlePreviewImage).toHaveBeenCalledWith('/tmp/photo.png', false, undefined);
+    expect(imagePreview.handlePreviewImage).toHaveBeenCalledWith('/tmp/photo.png', false, undefined, 'mtime:0:size:0');
 
     const fbxPreview = createPreview();
     const fbxHook = renderRouting(fbxPreview);

@@ -4,7 +4,7 @@
 use super::super::constants::{
     DUPLICATE_SCAN_MAX_DEPTH, MAX_DUPLICATE_GROUPS, MAX_DUPLICATE_SCAN_FILES, SEARCH_MAX_DEPTH,
 };
-use super::super::types::{classify_file, FileEntry, FileType};
+use super::super::types::{classify_file, file_identity, FileEntry, FileType};
 use crate::helpers::{is_hidden_file, is_system_filename};
 
 #[cfg(target_os = "windows")]
@@ -83,6 +83,7 @@ pub async fn get_recent_files(roots: Vec<String>, days: u32) -> Result<Vec<FileE
                     is_dir: false,
                     size: meta.len(),
                     modified,
+                    identity: file_identity(&meta),
                     file_type,
                     name,
                 });
@@ -200,6 +201,7 @@ fn search_with_mdfind(
             is_dir,
             size: if is_dir { 0 } else { meta.len() },
             modified,
+            identity: file_identity(&meta),
             file_type,
             name,
         });
@@ -307,6 +309,7 @@ fn search_with_windows_index(
             is_dir,
             size: if is_dir { 0 } else { meta.len() },
             modified,
+            identity: file_identity(&meta),
             file_type,
             name,
         });
@@ -386,6 +389,7 @@ fn search_with_walkdir(
             is_dir,
             size: if is_dir { 0 } else { meta.len() },
             modified,
+            identity: file_identity(&meta),
             file_type,
             name,
         });
@@ -489,6 +493,7 @@ fn find_duplicates_blocking(root: &str) -> Result<Vec<DuplicateGroup>, String> {
             is_dir: false,
             size,
             modified,
+            identity: file_identity(&meta),
             file_type,
             name,
         };
