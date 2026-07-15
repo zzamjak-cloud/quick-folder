@@ -6,7 +6,7 @@ import { useColumnView } from './useColumnView';
 import { Tab } from '../types';
 import { getBaseName } from '../../../utils/pathUtils';
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
-import { resolveSpaceDiffPaths, shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
+import { isSpaceKey, resolveSpaceDiffPaths, shouldSuppressDeleteLikeExplorerShortcut } from '../../../utils/keyboardShortcuts';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { fileIdentityToken } from './thumbnailCache';
 
@@ -366,7 +366,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       }
 
       // --- Quick Look / 미리보기 (Spacebar 토글) ---
-      if (e.key === ' ') {
+      if (isSpaceKey(e.key, e.code)) {
         e.preventDefault();
         // 컬럼뷰에서는 이미 미리보기 패널이 있으므로 스페이스바 미리보기 비활성화
         if (viewMode === 'columns') return;

@@ -42,6 +42,7 @@ import { useContextMenuBuilder } from './hooks/useContextMenuBuilder';
 import { useDirectoryLoader } from './hooks/useDirectoryLoader';
 import { useExplorerSelection } from './hooks/useExplorerSelection';
 import { usePreviewAutoRefresh, usePreviewPrewarm, usePreviewRouting } from './hooks/usePreviewRouting';
+import { deleteThumbsForPaths } from './hooks/thumbnailCache';
 import { tauriCommands } from '../../utils/tauriCommands';
 import { RECENT_PATH, SYSTEM_ROOT_PATH } from './constants';
 import { sortEntries } from './entrySorting';
@@ -81,6 +82,36 @@ interface FileExplorerProps {
 const THUMBNAIL_SIZES: ThumbnailSize[] = [40, 60, 80, 100, 120, 160, 200, 240, 280, 320];
 
 const defaultTranslate = (key: TranslationKey) => translate('ko', key);
+
+function isThumbnailRefreshCandidate(entry: FileEntry): boolean {
+  if (entry.is_dir) return false;
+  if (entry.file_type === 'image' || entry.file_type === 'video') return true;
+  return /\.(psd|psb)$/i.test(entry.name);
+}
+
+function isSameEntrySnapshot(prev: FileEntry, next: FileEntry): boolean {
+  return prev.path === next.path
+    && prev.modified === next.modified
+    && prev.size === next.size
+    && (prev.identity ?? '') === (next.identity ?? '')
+    && (prev.thumbnailPath ?? '') === (next.thumbnailPath ?? '');
+}
+
+function isSameListingSnapshot(prev: FileEntry[], next: FileEntry[]): boolean {
+  return prev.length === next.length
+    && prev.every((entry, index) => isSameEntrySnapshot(entry, next[index]));
+}
+
+function collectChangedThumbnailPaths(prev: FileEntry[], next: FileEntry[]): string[] {
+  const prevByPath = new Map(prev.map(entry => [entry.path, entry]));
+  const changed = new Set<string>();
+  for (const entry of next) {
+    const before = prevByPath.get(entry.path);
+    if (!before || !isThumbnailRefreshCandidate(entry) || isSameEntrySnapshot(before, entry)) continue;
+    changed.add(entry.path);
+  }
+  return Array.from(changed);
+}
 
 function formatMessage(template: string, values: Record<string, string | number>) {
   return Object.entries(values).reduce(
@@ -755,27 +786,66 @@ export default function FileExplorer({
   // 파일이 변경되지 않았으면 리렌더링 하지 않아 깜빡임 방지
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+
+  const refreshCurrentPathIfChanged = useCallback(async () => {
+    if (
+      !currentPath ||
+      modals.renamingPath ||
+      currentPath === RECENT_PATH ||
+      currentPath === SYSTEM_ROOT_PATH ||
+      isArchiveVirtualPath(currentPath)
+    ) return;
+
+    const result = await tauriCommands.listDirectory(currentPath);
+    const sorted = sortEntries(result, sortBy, sortDir);
+    const prev = entriesRef.current;
+    const changedThumbnailPaths = collectChangedThumbnailPaths(prev, sorted);
+    if (changedThumbnailPaths.length > 0) {
+      deleteThumbsForPaths(changedThumbnailPaths);
+      await tauriCommands.invalidateThumbnailCache(changedThumbnailPaths).catch(() => {});
+    }
+    if (isSameListingSnapshot(prev, sorted)) return;
+    setEntries(sorted);
+  }, [currentPath, modals.renamingPath, sortBy, sortDir]);
+
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     const handleFocus = () => {
-      if (!currentPath || modals.renamingPath) return;
       clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
         try {
-          const result = await tauriCommands.listDirectory(currentPath);
-          const sorted = sortEntries(result, sortBy, sortDir);
-          const prev = entriesRef.current;
-          // 파일 목록이 동일하면 업데이트 스킵 (깜빡임 방지)
-          if (prev.length === sorted.length && prev.every((e, i) =>
-            e.path === sorted[i].path && e.modified === sorted[i].modified && e.size === sorted[i].size
-          )) return;
-          setEntries(sorted);
+          await refreshCurrentPathIfChanged();
         } catch { /* 무시 */ }
       }, 300);
     };
     window.addEventListener('focus', handleFocus);
     return () => { window.removeEventListener('focus', handleFocus); clearTimeout(timeoutId); };
-  }, [currentPath, modals.renamingPath, sortBy, sortDir]);
+  }, [refreshCurrentPathIfChanged]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    if (
+      !currentPath ||
+      currentPath === RECENT_PATH ||
+      currentPath === SYSTEM_ROOT_PATH ||
+      isArchiveVirtualPath(currentPath)
+    ) return;
+
+    let cancelled = false;
+    let inFlight = false;
+    const timer = window.setInterval(() => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      refreshCurrentPathIfChanged().catch(() => {}).finally(() => {
+        inFlight = false;
+      });
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentPath, isFocused, refreshCurrentPathIfChanged]);
 
   // --- 다른 패널에서 파일 이동 시 새로고침 ---
   useEffect(() => {

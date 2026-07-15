@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  isSpaceKey,
   resolveSpaceDiffPaths,
   shouldForwardFuzzyFilterKeyToExplorer,
   shouldSuppressDeleteLikeExplorerShortcut,
@@ -44,6 +45,20 @@ test('Space는 검색어가 있어도 hidden fuzzy input에서 미리보기 shor
   assert.equal(
     shouldForwardFuzzyFilterKeyToExplorer({
       key: ' ',
+      query: 'abc',
+      isMac: false,
+    }),
+    true,
+  );
+});
+
+test('Spacebar 표기와 Space code도 미리보기 shortcut으로 해석한다', () => {
+  assert.equal(isSpaceKey('Spacebar'), true);
+  assert.equal(isSpaceKey('', 'Space'), true);
+  assert.equal(
+    shouldForwardFuzzyFilterKeyToExplorer({
+      key: 'Spacebar',
+      code: 'Space',
       query: 'abc',
       isMac: false,
     }),

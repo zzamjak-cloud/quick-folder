@@ -44,6 +44,7 @@ const InlineFuzzyFilterInput = memo(forwardRef<HTMLInputElement, InlineFuzzyFilt
 
       if (shouldForwardFuzzyFilterKeyToExplorer({
         key: e.key,
+        code: e.code,
         query: innerValue,
         isMac,
         isComposing: e.nativeEvent.isComposing,

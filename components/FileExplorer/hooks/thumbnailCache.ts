@@ -111,6 +111,19 @@ export function deleteThumb(key: string): void {
   if (cache.delete(key)) schedulePersist();
 }
 
+export function deleteThumbsForPaths(paths: string[]): void {
+  if (paths.length === 0) return;
+  const prefixes = paths.map(path => `${THUMBNAIL_MEMORY_CACHE_VERSION}|${path}|`);
+  let changed = false;
+  for (const key of Array.from(cache.keys())) {
+    if (prefixes.some(prefix => key.startsWith(prefix))) {
+      cache.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) schedulePersist();
+}
+
 function getAppCacheDir(): Promise<string | null> {
   if (!isTauri()) return Promise.resolve(null);
   if (!appCacheDirPromise) {

@@ -10,6 +10,7 @@ const FUZZY_FILTER_FORWARD_KEYS = new Set([
 
 export interface FuzzyFilterForwardOptions {
   key: string;
+  code?: string;
   query: string;
   isMac: boolean;
   isComposing?: boolean;
@@ -19,9 +20,14 @@ export interface FuzzyFilterForwardOptions {
   altKey?: boolean;
 }
 
+export function isSpaceKey(key: string, code?: string): boolean {
+  return key === ' ' || key === 'Spacebar' || code === 'Space';
+}
+
 /** hidden input 포커스 중 탐색기 전역 단축키로 다시 전달할 키인지 판단한다. */
 export function shouldForwardFuzzyFilterKeyToExplorer({
   key,
+  code,
   query,
   isMac,
   isComposing = false,
@@ -35,7 +41,7 @@ export function shouldForwardFuzzyFilterKeyToExplorer({
   if (FUZZY_FILTER_FORWARD_KEYS.has(key)) return true;
   if (key === 'Delete') return true;
   if (key === 'Backspace') return isMac && query.length === 0;
-  if (key === ' ') return true;
+  if (isSpaceKey(key, code)) return true;
   return false;
 }
 

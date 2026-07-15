@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import InlineFuzzyFilterInput from '../../components/FileExplorer/InlineFuzzyFilterInput';
 import { isFuzzyFilterBlocked } from '../../components/FileExplorer/hooks/useInlineFuzzyFilter';
@@ -38,6 +38,34 @@ describe('InlineFuzzyFilterInput', () => {
     expect(input).toHaveValue('abc');
     expect(onChange).toHaveBeenCalledWith('abc');
     expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  test('Spacebar 입력은 탐색기 전역 shortcut으로 재전달한다', async () => {
+    const onExplorerKeyDown = vi.fn();
+    window.addEventListener('keydown', onExplorerKeyDown);
+
+    try {
+      const { container } = render(
+        <InlineFuzzyFilterInput
+          value="abc"
+          enabled
+          isMac={false}
+          onChange={vi.fn()}
+          onClear={vi.fn()}
+        />,
+      );
+
+      const input = container.querySelector('[data-fuzzy-filter-input]') as HTMLInputElement;
+      expect(input).toBeTruthy();
+      fireEvent.keyDown(input, { key: 'Spacebar', code: 'Space' });
+
+      await waitFor(() => expect(onExplorerKeyDown).toHaveBeenCalledTimes(1));
+      const event = onExplorerKeyDown.mock.calls[0][0] as KeyboardEvent;
+      expect(event.key).toBe('Spacebar');
+      expect(event.code).toBe('Space');
+    } finally {
+      window.removeEventListener('keydown', onExplorerKeyDown);
+    }
   });
 
   test('aria modal dialog가 열려 있으면 퍼지 필터를 차단한다', () => {

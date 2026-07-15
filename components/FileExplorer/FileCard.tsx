@@ -66,10 +66,11 @@ export default memo(function FileCard({
   const useFixedRenderSize =
     !entry.thumbnailPath && (isPsd || (entry.file_type === 'image' && isCloudEntry));
   const renderSize: number = useFixedRenderSize ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
+  const thumbnailCacheKey = thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity);
 
   // 초기값을 전역 캐시에서 동기 조회 → 재방문 시 깜빡임 없이 즉시 표시
   const [thumbnail, setThumbnail] = useState<string | null>(() => {
-    const cached = getThumb(thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity));
+    const cached = getThumb(thumbnailCacheKey);
     return cached ? cached : null;
   });
   const [thumbnailReloadSeq, setThumbnailReloadSeq] = useState(0);
@@ -125,13 +126,13 @@ export default memo(function FileCard({
     const ft = entry.file_type;
     if (ft !== 'image' && ft !== 'video') return;
 
-    const key = thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity);
-    const cached = getThumb(key);
+    const cached = getThumb(thumbnailCacheKey);
     if (cached !== undefined) {
       // '' = 썸네일 없음 확정 → 아이콘 폴백
       setThumbnail(cached ? cached : null);
       return;
     }
+    setThumbnail(null);
 
     // PSD에 동일 이름 이미지 형제가 있으면 그 이미지를 썸네일 소스로 사용
     const thumbSourcePath = entry.thumbnailPath ?? entry.path;
@@ -143,7 +144,7 @@ export default memo(function FileCard({
       getPersistentThumbUrl(entry.path, ft, renderSize, entry.modified, entry.size, entry.identity)
         .then(url => {
           if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
-          if (getThumb(key) === undefined) setThumbnail(prev => prev ?? url);
+          if (getThumb(thumbnailCacheKey) === undefined) setThumbnail(prev => prev ?? url);
         })
         .catch(() => {});
     }
@@ -166,7 +167,7 @@ export default memo(function FileCard({
       promise
         .then(p => {
           const url = p ? convertFileSrc(p) : '';
-          setThumb(key, url); // '' 도 캐시 → 불필요한 재요청 방지
+          setThumb(thumbnailCacheKey, url); // '' 도 캐시 → 불필요한 재요청 방지
           setThumbnail(url ? url : null);
         })
         .catch(() => {/* 취소 또는 실패 무시 (실패는 캐시하지 않음) */});
@@ -177,20 +178,20 @@ export default memo(function FileCard({
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.thumbnailPath, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.thumbnailPath, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd, thumbnailCacheKey]);
 
   const handleThumbnailLoad = useCallback(() => {
     if (!thumbnail) return;
     failedThumbnailUrlsRef.current.delete(thumbnail);
-    setThumb(thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity), thumbnail);
-  }, [thumbnail, entry.path, entry.modified, entry.size, entry.identity, renderSize]);
+    setThumb(thumbnailCacheKey, thumbnail);
+  }, [thumbnail, thumbnailCacheKey]);
 
   const handleThumbnailError = useCallback(() => {
     if (thumbnail) failedThumbnailUrlsRef.current.add(thumbnail);
-    deleteThumb(thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity));
+    deleteThumb(thumbnailCacheKey);
     setThumbnail(null);
     setThumbnailReloadSeq(n => n + 1);
-  }, [thumbnail, entry.path, entry.modified, entry.size, entry.identity, renderSize]);
+  }, [thumbnail, thumbnailCacheKey]);
 
   // 이미지 규격 조회 (보조 정보). 썸네일이 먼저 표시된 뒤에만 요청해
   // 초기 진입 시 썸네일 요청과 저우선 큐를 두 배로 점유하지 않게 한다(가시 카드 우선).
