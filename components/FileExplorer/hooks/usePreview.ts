@@ -150,8 +150,10 @@ export function usePreview(): PreviewState {
 
   const closeImagePreview = useCallback(() => {
     imagePreviewKeyRef.current = null;
+    imageLoadRequestRef.current++;
     setPreviewImagePath(null);
     setPreviewImageData(null);
+    setPreviewLoading(false);
   }, []);
 
   const handlePreviewText = useCallback(async (path: string) => {
@@ -245,8 +247,11 @@ export function usePreview(): PreviewState {
   }, []);
 
   const closeAllPreviews = useCallback(() => {
+    imagePreviewKeyRef.current = null;
+    imageLoadRequestRef.current++;
     setPreviewImagePath(null);
     setPreviewImageData(null);
+    setPreviewLoading(false);
     setVideoPlayerPath(null);
     setPreviewTextPath(null);
     setPreviewTextContent(null);
