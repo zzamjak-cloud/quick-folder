@@ -92,6 +92,8 @@ export const koAppTranslations = {
   'toast.preparing': '준비 중...',
   'toast.videoCompressCompleteMulti': '동영상 압축 완료: {success}/{total}개',
   'toast.videoCompressComplete': '동영상 압축 완료',
+  'videoCompress.scaleSize': '크기',
+  'videoCompress.scaleOriginal': '원본 (100%)',
   'toast.compressFailed': '압축 실패: {message}',
   'toast.gifToMp4Complete': 'GIF → MP4 완료: {success}/{total}개',
   'toast.gifToMp4Failed': 'GIF → MP4 실패: {message}',

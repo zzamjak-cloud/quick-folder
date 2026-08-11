@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileEntry } from '../../../types';
 import { ContextMenuSection } from '../types';
 import {
@@ -104,6 +104,10 @@ export function useContextMenuBuilder({
   loadDirectory,
   currentPath,
 }: UseContextMenuBuilderConfig) {
+  // 동영상 압축 크기(%) — 메뉴가 새로 열릴 때마다 원본(100%)으로 초기화
+  const [compressScale, setCompressScale] = useState(100);
+  useEffect(() => { setCompressScale(100); }, [contextMenu]);
+
   const contextMenuSections = useMemo((): ContextMenuSection[] => {
     if (!contextMenu) return [];
     const { paths } = contextMenu;
@@ -345,12 +349,38 @@ export function useContextMenuBuilder({
       toolSection.items.push({
         id: 'compress-video',
         icon: <Film size={13} />,
-        label: '동영상 압축',
+        label: t('동영상 압축'),
         onClick: () => {}, // 부모 항목 클릭 없음 (서브메뉴 전용)
         submenu: [
-          { id: 'quality-low', icon: undefined, label: '보통 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'low') },
-          { id: 'quality-medium', icon: undefined, label: '좋은 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'medium') },
-          { id: 'quality-high', icon: undefined, label: '최고 화질', onClick: () => fileOps.handleCompressVideo(videoPaths, 'high') },
+          {
+            id: 'compress-scale',
+            icon: undefined,
+            label: '',
+            onClick: () => {},
+            // 크기 드롭다운: 선택만 하고 메뉴는 유지, 이후 화질 클릭 시 함께 적용
+            custom: (
+              <div
+                className="flex items-center gap-2 px-3 py-1.5 text-xs"
+                style={{ color: 'var(--qf-text)', borderBottom: '1px solid var(--qf-border)' }}
+              >
+                <span className="flex-shrink-0" style={{ color: 'var(--qf-muted)' }}>{t('videoCompress.scaleSize')}</span>
+                <select
+                  value={compressScale}
+                  onChange={e => setCompressScale(Number(e.target.value))}
+                  className="flex-1 min-w-0 rounded px-1 py-0.5 text-xs cursor-pointer outline-none"
+                  style={{ backgroundColor: 'var(--qf-surface-2)', color: 'var(--qf-text)', border: '1px solid var(--qf-border)' }}
+                >
+                  <option value={100}>{t('videoCompress.scaleOriginal')}</option>
+                  <option value={75}>75%</option>
+                  <option value={50}>50%</option>
+                  <option value={25}>25%</option>
+                </select>
+              </div>
+            ),
+          },
+          { id: 'quality-low', icon: undefined, label: t('보통 화질'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'low', compressScale) },
+          { id: 'quality-medium', icon: undefined, label: t('좋은 화질'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'medium', compressScale) },
+          { id: 'quality-high', icon: undefined, label: t('최고 화질'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'high', compressScale) },
         ],
       });
       toolSection.items.push({
@@ -714,6 +744,7 @@ export function useContextMenuBuilder({
     modals.setDuplicateFinderPath,
     modals.setDiffViewerPaths,
     t,
+    compressScale,
   ]);
 
   return { contextMenuSections };

@@ -101,7 +101,12 @@ function SubmenuItem({ item, onClose, tone }: { item: ContextMenuItem; onClose: 
           onMouseLeave={handleLeave}
         >
           <div className="py-1">
-            {item.submenu.map(sub => (
+            {item.submenu.map(sub => sub.custom ? (
+              // 커스텀 노드 항목: 클릭해도 메뉴를 닫지 않는다 (드롭다운 등 인라인 컨트롤용)
+              <div key={sub.id} onClick={e => e.stopPropagation()}>
+                {sub.custom}
+              </div>
+            ) : (
               <div
                 key={sub.id}
                 className="w-full flex items-center text-xs transition-colors hover:bg-[var(--qf-surface-hover)]"

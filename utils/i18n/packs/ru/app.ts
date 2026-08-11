@@ -92,6 +92,8 @@ export const ruAppTranslations = {
   'toast.preparing': 'Подготовка...',
   'toast.videoCompressCompleteMulti': 'Сжатие видео завершено: {success}/{total}',
   'toast.videoCompressComplete': 'Сжатие видео завершено',
+  'videoCompress.scaleSize': 'Размер',
+  'videoCompress.scaleOriginal': 'Оригинал (100%)',
   'toast.compressFailed': 'Не удалось сжать: {message}',
   'toast.gifToMp4Complete': 'GIF → MP4 завершено: {success}/{total}',
   'toast.gifToMp4Failed': 'GIF → MP4 не удалось: {message}',

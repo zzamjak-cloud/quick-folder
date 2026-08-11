@@ -26,6 +26,7 @@ interface ContextMenuItem {
   labelColor?: string
   align?: 'left' | 'right'
   trailingActions?: ContextMenuTrailingAction[]
+  custom?: ReactNode  // 버튼 대신 렌더링할 커스텀 노드 — 클릭해도 메뉴가 닫히지 않음 (서브메뉴 전용, 예: 동영상 압축 크기 드롭다운)
 }
 interface ContextMenuTrailingAction {
   id: string
@@ -103,9 +104,11 @@ interface ContextMenuTrailingAction {
 
 | id | 라벨 | 조건 | 동작 |
 |----|------|------|------|
-| `compress-video` | 동영상 압축 | 동영상 1개 이상 선택 | 품질 하위 메뉴 → `handleCompressVideo(videoPaths, quality)` |
+| `compress-video` | 동영상 압축 | 동영상 1개 이상 선택 | 크기 드롭다운 + 품질 하위 메뉴 → `handleCompressVideo(videoPaths, quality, scalePercent)` |
 | `video-to-gif` | GIF 변환 | 동영상 1개 이상 선택 | `handleVideoToGif(videoPaths)` |
 
 - 다중 선택 우클릭은 `contextMenu.paths` 전체에서 동영상 경로만 필터링한다.
+- 압축 하위 메뉴 첫 줄은 크기 드롭다운(`custom` 항목): 원본(100%)·75%·50%·25%. 기본값은 원본이고 메뉴가 열릴 때마다 초기화된다(`useContextMenuBuilder`의 `compressScale` state). 드롭다운 선택은 메뉴를 닫지 않으며, 이후 화질 항목 클릭 시 크기가 함께 적용된다.
+- 크기 축소는 Rust `compress_video`의 `scale_percent: Option<u32>` 파라미터 → `-vf scale=trunc(iw*f/2)*2:trunc(ih*f/2)*2:flags=lanczos` (짝수 해상도 보정). 100 또는 미지정이면 필터 없음.
 - `handleVideoToGif`는 FFmpeg 확인 후 선택된 동영상을 순차 처리하고, 완료 후 현재 폴더를 갱신한다.
 - 우클릭 `GIF 변환`과 편집 툴바의 구간 `GIF 내보내기`는 모두 원본 해상도를 유지한다.

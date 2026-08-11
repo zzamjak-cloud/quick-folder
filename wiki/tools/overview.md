@@ -9,7 +9,9 @@
 ### 위치
 `src-tauri/src/modules/tool_ops/ffmpeg.rs`  
 번들 경로: `binaries/ffmpeg-dist/ffmpeg(.exe)` → 앱 리소스 (macOS: `Contents/Resources/binaries/ffmpeg-dist/`)  
-번들 준비: `release.yml`이 evermeet.cx(macOS) / gyan.dev(Windows)에서 다운로드해 `ffmpeg-dist/`에 배치.
+번들 준비: `release.yml`이 다운로드해 `ffmpeg-dist/`에 배치.
+- macOS: arm64 네이티브(martin-riedl.de) + x86_64(evermeet.cx)를 `lipo`로 universal 결합 — x86_64 단독이면 Apple Silicon에서 Rosetta 에뮬레이션으로 압축이 크게 느려진다. arm64 확보 실패 시 x86_64 단독 폴백.
+- Windows: gyan.dev essentials (네이티브 x64).
 
 런타임 다운로드 폴백(번들 손상 등 예외 상황, 사용자 동의 필요):
 `dirs::data_dir()/QuickFolder Widget/ffmpeg_portable`, URL 상수 `constants.rs` — 폴백 체인:
@@ -21,6 +23,9 @@
 
 ### 인코더 정책 (`media_ops/video/compress.rs`)
 LGPL 빌드(libx264 없음)에서도 동작하도록 인코더 후보 체인으로 동작 (번들 GPL 빌드에서는 libx264 폴백도 사용 가능):
+
+동영상 압축은 디코딩도 하드웨어를 사용한다(macOS `-hwaccel videotoolbox`, Windows `-hwaccel d3d11va`) —
+HW 디코드 초기화 실패 환경을 위해 각 인코더 후보를 HW → SW 디코드 순으로 재시도한다.
 - macOS: `hevc_videotoolbox` → `h264_videotoolbox` → `libx265`(GPL ffmpeg 폴백)
 - Windows: `h264_mf` → `libx264`(GPL ffmpeg 폴백) → `mpeg4`
 

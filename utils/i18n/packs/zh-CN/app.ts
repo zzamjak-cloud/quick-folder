@@ -92,6 +92,8 @@ export const zhCNAppTranslations = {
   'toast.preparing': '准备中...',
   'toast.videoCompressCompleteMulti': '视频压缩完成：{success}/{total}个',
   'toast.videoCompressComplete': '视频压缩完成',
+  'videoCompress.scaleSize': '尺寸',
+  'videoCompress.scaleOriginal': '原始 (100%)',
   'toast.compressFailed': '压缩失败：{message}',
   'toast.gifToMp4Complete': 'GIF → MP4 完成：{success}/{total}个',
   'toast.gifToMp4Failed': 'GIF → MP4 失败：{message}',

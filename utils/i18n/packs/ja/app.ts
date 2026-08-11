@@ -92,6 +92,8 @@ export const jaAppTranslations = {
   'toast.preparing': '準備中...',
   'toast.videoCompressCompleteMulti': '動画圧縮完了: {success}/{total}個',
   'toast.videoCompressComplete': '動画圧縮完了',
+  'videoCompress.scaleSize': 'サイズ',
+  'videoCompress.scaleOriginal': '元のサイズ (100%)',
   'toast.compressFailed': '圧縮に失敗: {message}',
   'toast.gifToMp4Complete': 'GIF → MP4 完了: {success}/{total}個',
   'toast.gifToMp4Failed': 'GIF → MP4 失敗: {message}',

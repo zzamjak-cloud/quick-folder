@@ -92,6 +92,8 @@ export const enAppTranslations = {
   'toast.preparing': 'Preparing...',
   'toast.videoCompressCompleteMulti': 'Video compression complete: {success}/{total}',
   'toast.videoCompressComplete': 'Video compression complete',
+  'videoCompress.scaleSize': 'Size',
+  'videoCompress.scaleOriginal': 'Original (100%)',
   'toast.compressFailed': 'Compression failed: {message}',
   'toast.gifToMp4Complete': 'GIF → MP4 complete: {success}/{total}',
   'toast.gifToMp4Failed': 'GIF → MP4 failed: {message}',

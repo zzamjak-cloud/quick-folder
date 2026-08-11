@@ -24,6 +24,7 @@ export interface ContextMenuItem {
   labelColor?: string;  // 라벨 텍스트 색상 (예: 파일명 규칙 변환 서브메뉴)
   align?: 'left' | 'right';  // 라벨 정렬 (예: 하위 메뉴의 추가 액션)
   trailingActions?: ContextMenuTrailingAction[];
+  custom?: React.ReactNode;  // 버튼 대신 렌더링할 커스텀 노드 (클릭해도 메뉴가 닫히지 않음, 예: 동영상 압축 크기 드롭다운)
 }
 
 // 컨텍스트 메뉴 섹션 (구분선으로 나뉘는 항목 그룹)

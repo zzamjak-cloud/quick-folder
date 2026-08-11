@@ -130,10 +130,13 @@ describe('useContextMenuBuilder', () => {
       .find(item => item.id === 'compress-video');
 
     expect(compressVideo?.submenu?.map(item => item.id)).toEqual([
+      'compress-scale',
       'quality-low',
       'quality-medium',
       'quality-high',
     ]);
+    // 크기 드롭다운은 custom 노드 항목이어야 한다 (클릭 시 메뉴 유지)
+    expect(compressVideo?.submenu?.find(item => item.id === 'compress-scale')?.custom).toBeTruthy();
     expect(itemIds(createConfig({
       contextMenu: { x: 10, y: 10, paths: [videoEntry.path] },
       entries: [videoEntry],

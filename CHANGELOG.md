@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.65] - 2026-08-11
+
+### Added
+- 동영상 우클릭 압축 메뉴에 크기 드롭다운 추가 (원본 100% / 75% / 50% / 25%) — 크기 선택 후 화질을 클릭하면 함께 적용
+
+### Changed
+- 동영상 압축 속도 개선: 하드웨어 디코딩 사용 (macOS VideoToolbox, Windows D3D11VA), 미지원 환경은 소프트웨어 디코드로 자동 재시도
+- macOS 번들 FFmpeg를 arm64 네이티브 + x86_64 universal로 변경 — Apple Silicon에서 Rosetta 에뮬레이션 없이 동작해 압축이 빨라짐
+
+### Fixed
+- 동영상 압축 하위 메뉴가 표시 언어와 무관하게 항상 한국어로 나오던 문제 수정
+
 ## [1.27.64] - 2026-08-11
 
 ### Added

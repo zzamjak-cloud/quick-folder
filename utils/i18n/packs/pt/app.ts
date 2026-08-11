@@ -92,6 +92,8 @@ export const ptAppTranslations = {
   'toast.preparing': 'Preparando...',
   'toast.videoCompressCompleteMulti': 'Compactação de vídeo concluída: {success}/{total}',
   'toast.videoCompressComplete': 'Compactação de vídeo concluída',
+  'videoCompress.scaleSize': 'Tamanho',
+  'videoCompress.scaleOriginal': 'Original (100%)',
   'toast.compressFailed': 'Falha na compactação: {message}',
   'toast.gifToMp4Complete': 'GIF → MP4 concluído: {success}/{total}',
   'toast.gifToMp4Failed': 'Falha em GIF → MP4: {message}',

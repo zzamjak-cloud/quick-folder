@@ -709,7 +709,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   }, [showCopyToast, formatToast, t]);
 
   // --- 동영상 압축 ---
-  const handleCompressVideo = useCallback(async (targetPaths: string | string[], quality: 'low' | 'medium' | 'high' = 'medium') => {
+  const handleCompressVideo = useCallback(async (targetPaths: string | string[], quality: 'low' | 'medium' | 'high' = 'medium', scalePercent: number = 100) => {
     const paths = Array.isArray(targetPaths) ? targetPaths : [targetPaths];
     if (paths.length === 0) return;
     if (!ensureWritableContext(paths)) return;
@@ -741,7 +741,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         };
 
         setVideoCompression({ fileName, percent: 0, speed: t('toast.preparing'), current, total: paths.length });
-        await tauriCommands.compressVideo(path, quality, onProgress);
+        await tauriCommands.compressVideo(path, quality, scalePercent, onProgress);
         successCount += 1;
       }
 

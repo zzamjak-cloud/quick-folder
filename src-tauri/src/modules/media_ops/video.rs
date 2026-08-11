@@ -20,9 +20,10 @@ pub struct VideoProgress {
 pub async fn compress_video(
     input: String,
     quality: String,
+    scale_percent: Option<u32>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
-    compress::compress_video(input, quality, on_progress).await
+    compress::compress_video(input, quality, scale_percent, on_progress).await
 }
 
 #[tauri::command]

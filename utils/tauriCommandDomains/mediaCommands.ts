@@ -65,8 +65,8 @@ export const mediaCommands = {
   downloadFfmpeg() {
     return runCommand<void>('download_ffmpeg');
   },
-  compressVideo(input: string, quality: 'low' | 'medium' | 'high', onProgress: unknown) {
-    return runCommand<string>('compress_video', { input, quality, onProgress });
+  compressVideo(input: string, quality: 'low' | 'medium' | 'high', scalePercent: number, onProgress: unknown) {
+    return runCommand<string>('compress_video', { input, quality, scalePercent, onProgress });
   },
   videoToGif(input: string, onProgress: unknown) {
     return runCommand<string>('video_to_gif', {

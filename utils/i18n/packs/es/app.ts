@@ -92,6 +92,8 @@ export const esAppTranslations = {
   'toast.preparing': 'Preparando...',
   'toast.videoCompressCompleteMulti': 'Compresión de video completada: {success}/{total}',
   'toast.videoCompressComplete': 'Compresión de video completada',
+  'videoCompress.scaleSize': 'Tamaño',
+  'videoCompress.scaleOriginal': 'Original (100%)',
   'toast.compressFailed': 'Error al comprimir: {message}',
   'toast.gifToMp4Complete': 'GIF → MP4 completado: {success}/{total}',
   'toast.gifToMp4Failed': 'Error de GIF → MP4: {message}',

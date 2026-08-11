@@ -122,11 +122,14 @@ fn run_encode_attempt(
     input: &str,
     output_str: &str,
     output_path: &std::path::Path,
+    hwaccel_args: &[String],
     video_args: &[String],
     on_progress: &tauri::ipc::Channel<VideoProgress>,
 ) -> std::result::Result<(), String> {
     let mut cmd = std::process::Command::new(ffmpeg_path);
-    cmd.args(["-y", "-i", input]);
+    cmd.arg("-y");
+    cmd.args(hwaccel_args); // 입력 옵션이므로 -i 앞에 위치해야 함
+    cmd.args(["-i", input]);
     cmd.args(video_args);
     cmd.args(["-c:a", "aac", "-b:a", "128k"]);
     cmd.args(["-progress", "pipe:1"]);
@@ -219,6 +222,7 @@ fn run_encode_attempt(
 pub async fn compress_video(
     input: String,
     quality: String,
+    scale_percent: Option<u32>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     // 출력 파일명: {이름}_comp.{확장자}, 충돌 시 _comp_2, _comp_3 ...
@@ -235,21 +239,50 @@ pub async fn compress_video(
         tool: "FFmpeg".to_string(),
     })?;
 
+    // 크기 축소 필터: 100% 미만일 때만 적용, 인코더 호환을 위해 짝수 해상도로 보정
+    let scale_filter: Option<String> = match scale_percent {
+        Some(p) if p > 0 && p < 100 => {
+            let factor = p as f64 / 100.0;
+            Some(format!(
+                "scale=trunc(iw*{factor}/2)*2:trunc(ih*{factor}/2)*2:flags=lanczos"
+            ))
+        }
+        _ => None,
+    };
+
+    // 하드웨어 디코딩 인자 — 디코드가 CPU(특히 Rosetta 환경)에서 병목이 되는 것을 방지.
+    // 인코더와 독립적으로 동작하며, HW 디코드 초기화가 불가능한 환경을 위해 실패 시 SW 디코드로 재시도한다.
+    #[cfg(target_os = "macos")]
+    let hw_args: Vec<String> = vec!["-hwaccel".into(), "videotoolbox".into()];
+    #[cfg(not(target_os = "macos"))]
+    let hw_args: Vec<String> = vec!["-hwaccel".into(), "d3d11va".into()];
+    let no_hw_args: Vec<String> = Vec::new();
+
     // 인코더 후보를 순서대로 시도 — 앞 순서 실패(빌드에 인코더 없음 등) 시 다음 후보로 폴백
     let mut errors: Vec<String> = Vec::new();
     for attempt in encoder_candidates(&quality) {
-        match run_encode_attempt(
-            &ffmpeg_path,
-            &input,
-            &output_str,
-            &output_path,
-            &attempt.video_args,
-            &on_progress,
-        ) {
-            Ok(()) => return Ok(output_str),
-            Err(e) => {
-                eprintln!("⚠️ 인코더 {} 실패: {e}", attempt.label);
-                errors.push(format!("[{}] {e}", attempt.label));
+        let mut video_args = attempt.video_args.clone();
+        if let Some(vf) = &scale_filter {
+            video_args.push("-vf".into());
+            video_args.push(vf.clone());
+        }
+        // HW 디코드 우선, 실패 시 같은 인코더로 SW 디코드 재시도
+        for hwaccel_args in [&hw_args, &no_hw_args] {
+            match run_encode_attempt(
+                &ffmpeg_path,
+                &input,
+                &output_str,
+                &output_path,
+                hwaccel_args,
+                &video_args,
+                &on_progress,
+            ) {
+                Ok(()) => return Ok(output_str),
+                Err(e) => {
+                    let mode = if hwaccel_args.is_empty() { "sw" } else { "hw" };
+                    eprintln!("⚠️ 인코더 {} ({mode} 디코드) 실패: {e}", attempt.label);
+                    errors.push(format!("[{}/{mode}] {e}", attempt.label));
+                }
             }
         }
     }
