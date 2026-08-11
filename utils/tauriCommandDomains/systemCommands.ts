@@ -16,6 +16,9 @@ export const systemCommands = {
   openSacSettings() {
     return runDirectCommand<void>('open_sac_settings');
   },
+  openExternalUrl(url: string) {
+    return runDirectCommand<void>('open_external_url', { url });
+  },
   writeFilesToClipboard(paths: string[]) {
     return runDirectCommand<void>('write_files_to_clipboard', { paths });
   },

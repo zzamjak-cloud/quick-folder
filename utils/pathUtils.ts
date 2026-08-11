@@ -139,6 +139,54 @@ function normalizePathLower(path: string): string {
   return path.toLowerCase().replace(/\\/g, '/');
 }
 
+/**
+ * 세그먼트 비교용 정규화: NFC + 소문자.
+ * macOS 파일시스템은 한글 경로를 NFD(자모 분해형)로 반환하므로,
+ * 소스의 NFC 리터럴('내 드라이브' 등)과 단순 toLowerCase 비교하면 절대 매칭되지 않는다.
+ */
+function normalizeSegmentForCompare(segment: string): string {
+  return segment.normalize('NFC').toLowerCase();
+}
+
+/**
+ * 구글 드라이브 특수 폴더의 언어별 실제 폴더명 그룹.
+ * 드라이브는 마운트 생성 시점의 시스템 언어로 폴더명을 정하므로,
+ * 언어 변경 후 재로그인하면 저장된 경로의 해당 세그먼트가 깨진다.
+ */
+const GOOGLE_DRIVE_LOCALIZED_FOLDER_GROUPS: readonly (readonly string[])[] = [
+  ['My Drive', '내 드라이브'],
+  ['Shared drives', '공유 드라이브'],
+  ['Other computers', '다른 컴퓨터', 'Computers'],
+];
+
+/**
+ * 존재하지 않는 구글 드라이브 경로에 대해, 언어가 다른 폴더명으로
+ * 세그먼트를 치환한 후보 경로 목록을 반환한다. (세그먼트 하나씩만 치환)
+ * 후보의 실제 존재 여부는 호출 측에서 검증해야 한다.
+ */
+export function getGoogleDriveLocalizedVariants(path: string): string[] {
+  if (!isGoogleDrivePath(path)) return [];
+  // 캡처 그룹으로 분리해 구분자(/, \)를 홀수 인덱스에 보존
+  const segments = path.split(/([\\/])/);
+  const variants = new Set<string>();
+  segments.forEach((segment, i) => {
+    if (i % 2 !== 0) return;
+    const normalizedSegment = normalizeSegmentForCompare(segment);
+    const group = GOOGLE_DRIVE_LOCALIZED_FOLDER_GROUPS.find(g =>
+      g.some(name => normalizeSegmentForCompare(name) === normalizedSegment)
+    );
+    if (!group) return;
+    for (const alt of group) {
+      if (normalizeSegmentForCompare(alt) === normalizedSegment) continue;
+      const copy = segments.slice();
+      copy[i] = alt;
+      variants.add(copy.join(''));
+    }
+  });
+  variants.delete(path);
+  return [...variants];
+}
+
 /** Windows 가상 드라이브(G:\My Drive 등) 최상위 폴더명 */
 function getVirtualDriveRoot(normalizedLower: string): string | null {
   const match = normalizedLower.match(/^[a-z]:\/([^/]+)/);
@@ -147,7 +195,8 @@ function getVirtualDriveRoot(normalizedLower: string): string | null {
 
 function isGoogleDriveVirtualMount(normalizedLower: string): boolean {
   const root = getVirtualDriveRoot(normalizedLower);
-  return root != null && (GOOGLE_DRIVE_VIRTUAL_ROOTS as readonly string[]).includes(root);
+  // NFD 경로도 매칭되도록 NFC 정규화 후 비교
+  return root != null && (GOOGLE_DRIVE_VIRTUAL_ROOTS as readonly string[]).includes(root.normalize('NFC'));
 }
 
 /** Windows 사용자 폴더 내 Google Drive - email@... 미러 경로 */

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
-import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, X } from 'lucide-react';
+import { Edit3, Eraser, Film, Maximize2, Minimize2, Save, Square, X } from 'lucide-react';
 import ImageCropOverlay from './ImageCropOverlay';
 import { tauriCommands } from '../../utils/tauriCommands';
 import DrawingCanvas, { DrawingCanvasHandle } from './DrawingCanvas';
@@ -44,6 +44,8 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
   const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
   const drawingCanvasRef = useRef<DrawingCanvasHandle>(null);
   const [actionMode, setActionMode] = useState<'none' | 'compress' | 'resize'>('none');
+  // GIF 미리보기 아웃라인 표시 (투명 배경 GIF의 경계 확인용)
+  const [showOutline, setShowOutline] = useState(false);
   const [compressQuality, setCompressQuality] = useState<'low' | 'medium' | 'high'>('medium');
   const [resizeWidth, setResizeWidth] = useState('');
   const [resizeHeight, setResizeHeight] = useState('');
@@ -174,6 +176,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     setHasDrawStrokes(false);
     setImageDims(null);
     setActionMode('none');
+    setShowOutline(false);
     preview.closeImagePreview();
   }, [preview]);
 
@@ -365,6 +368,15 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
               <div className="flex items-center gap-1.5">
                 {canCompressInHeader && preview.previewImagePath && (
                   <>
+                    <PreviewIconActionButton
+                      label="아웃라인 표시"
+                      buttonStyle={iconButtonStyle({ active: showOutline })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowOutline(v => !v);
+                      }}
+                      icon={<Square size={15} />}
+                    />
                     <PreviewIconActionButton
                       label="GIF 압축"
                       buttonStyle={iconButtonStyle()}
@@ -584,6 +596,9 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
                     src={preview.previewImageData}
                     alt="미리보기"
                     className="max-w-[85vw] max-h-[80vh] object-contain"
+                    style={isGifPreview && showOutline
+                      ? { outline: `1px solid ${themeVars?.accent ?? '#4ade80'}`, outlineOffset: '-1px' }
+                      : undefined}
                     onLoad={handleImageLoad}
                     onLoadCapture={(e) => {
                       const target = e.currentTarget as HTMLImageElement;

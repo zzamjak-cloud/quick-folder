@@ -41,14 +41,19 @@ export function detectOsLanguage(): AppLanguage {
 
   for (const locale of localeCandidates) {
     const normalized = locale.toLowerCase();
-    const matched = LANGUAGE_OPTIONS.find(option =>
-      option.localePrefixes.some(prefix =>
-        normalized === prefix ||
-        normalized.startsWith(`${prefix}-`) ||
-        normalized.startsWith(`${prefix}_`)
-      )
-    );
-    if (matched) return matched.code;
+    // zh(간체)와 zh-tw(번체)처럼 접두사가 겹치는 언어가 있으므로 가장 긴 접두사 매칭을 우선한다.
+    let bestMatch: { code: AppLanguage; prefixLength: number } | null = null;
+    for (const option of LANGUAGE_OPTIONS) {
+      for (const prefix of option.localePrefixes) {
+        const matches = normalized === prefix ||
+          normalized.startsWith(`${prefix}-`) ||
+          normalized.startsWith(`${prefix}_`);
+        if (matches && (!bestMatch || prefix.length > bestMatch.prefixLength)) {
+          bestMatch = { code: option.code, prefixLength: prefix.length };
+        }
+      }
+    }
+    if (bestMatch) return bestMatch.code;
   }
 
   return DEFAULT_LANGUAGE;

@@ -251,6 +251,15 @@ impl From<zip::result::ZipError> for AppError {
     }
 }
 
+/// `lopdf::Error` → `AppError::PdfProcessing` 자동 변환
+///
+/// PDF 로드/저장/파싱 오류를 PdfProcessing으로 변환합니다.
+impl From<lopdf::Error> for AppError {
+    fn from(e: lopdf::Error) -> Self {
+        Self::PdfProcessing(e.to_string())
+    }
+}
+
 // ===== Result 타입 별칭 =====
 
 /// 애플리케이션 전용 Result 타입

@@ -1,0 +1,38 @@
+QuickFolder — Free Software License
+
+Copyright (c) 2026 zzamjak-cloud.
+
+이 소프트웨어와 관련 문서(이하 "소프트웨어")는 무료 소프트웨어입니다.
+누구나 개인적·업무적 목적으로 소프트웨어를 무료로 설치·사용할 수 있으며,
+라이선스 키나 사용 기한 제한이 없습니다.
+
+공식 릴리스 채널(https://github.com/zzamjak-cloud/quick-folder)을
+통해 배포된 바이너리를 자유롭게 다운로드하여 사용할 수 있습니다.
+
+소스 코드는 참고 목적으로 공개되어 있습니다. 소스 코드의 재판매 또는
+소프트웨어를 자신의 제품인 것처럼 재배포하는 행위는 저작권자의 사전 서면
+허가 없이 금지됩니다.
+
+이 소프트웨어에 포함되거나 이 소프트웨어가 사용하는 제3자 구성 요소의
+라이선스 고지는 THIRD-PARTY-NOTICES.md를 참조하십시오.
+번들된 FFmpeg는 공식 배포 채널(gyan.dev / evermeet.cx)의 빌드이며,
+해당 소스는 원 배포처 및 https://ffmpeg.org/releases/ 에서 제공됩니다.
+
+---
+
+This software and associated documentation (the "Software") are free software.
+Anyone may install and use the Software free of charge for personal or
+business purposes, with no license key and no time limit.
+
+Binaries distributed via the official release channel
+(https://github.com/zzamjak-cloud/quick-folder) may be freely
+downloaded and used.
+
+The source code is published for reference. Reselling the source code or
+redistributing the Software as your own product is prohibited without prior
+written permission from the copyright holder.
+
+For license notices of third-party components included in or used by this
+Software, see THIRD-PARTY-NOTICES.md. The bundled FFmpeg is an official
+distribution build (gyan.dev / evermeet.cx); its source code is available
+from the original distributors and https://ffmpeg.org/releases/.

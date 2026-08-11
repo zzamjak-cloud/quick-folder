@@ -24,6 +24,7 @@ fn last_ffmpeg_error(stderr: &str, fallback: &str) -> String {
             line.contains("Error")
                 || line.contains("error")
                 || line.contains("Invalid")
+                || line.contains("Unknown")
                 || line.contains("not found")
         })
         .last()
@@ -109,48 +110,40 @@ pub async fn gif_to_mp4(path: String) -> Result<String> {
             tool: "FFmpeg".to_string(),
         })?;
 
-        let mut cmd = std::process::Command::new(&ffmpeg_path);
-        cmd.args([
-            "-y",
-            "-i",
-            &path,
-            "-movflags",
-            "+faststart",
-            "-pix_fmt",
-            "yuv420p",
-            "-vf",
-            "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "23",
-            "-preset",
-            "medium",
-        ]);
-        cmd.arg(&output_path);
-        apply_no_window(&mut cmd);
+        // 인코더 후보를 순서대로 시도 — 번들 LGPL FFmpeg에는 libx264가 없어 OS 인코더 우선
+        let mut errors: Vec<String> = Vec::new();
+        for attempt in super::video::encoders::h264_encoder_candidates(23) {
+            let mut cmd = std::process::Command::new(&ffmpeg_path);
+            cmd.args([
+                "-y",
+                "-i",
+                &path,
+                "-movflags",
+                "+faststart",
+                "-vf",
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            ]);
+            cmd.args(&attempt.video_args);
+            cmd.arg(&output_path);
+            apply_no_window(&mut cmd);
 
-        let output = cmd.output().map_err(|e| AppError::ToolExecution {
-            tool: "FFmpeg".to_string(),
-            reason: e.to_string(),
-        })?;
+            let output = cmd.output().map_err(|e| AppError::ToolExecution {
+                tool: "FFmpeg".to_string(),
+                reason: e.to_string(),
+            })?;
 
-        if !output.status.success() {
+            if output.status.success() && output_path.exists() {
+                return Ok(output_path.to_string_lossy().to_string());
+            }
+
             let _ = std::fs::remove_file(&output_path);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::VideoProcessing(last_ffmpeg_error(
-                &stderr,
-                "GIF → MP4 변환 실패",
-            )));
+            let err_msg = last_ffmpeg_error(&stderr, "GIF → MP4 변환 실패");
+            eprintln!("⚠️ 인코더 {} 실패: {}", attempt.label, err_msg);
+            errors.push(format!("[{}] {}", attempt.label, err_msg));
         }
 
-        if !output_path.exists() {
-            return Err(AppError::VideoProcessing(
-                "ffmpeg가 MP4 파일을 생성하지 않았습니다.".to_string(),
-            ));
-        }
-
-        Ok(output_path.to_string_lossy().to_string())
+        Err(AppError::VideoProcessing(errors.join(" / ")))
     })
     .await
     .map_err(|e| AppError::Internal(format!("작업 실패: {}", e)))?

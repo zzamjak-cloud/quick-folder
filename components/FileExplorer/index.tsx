@@ -26,6 +26,7 @@ import {
   getParentDir,
   isArchiveVirtualPath,
   isBrowsableArchiveFilePath,
+  isCloudPath,
   normalizeFsPath,
   sameVolume,
   shouldOpenArchiveInCurrentPane,
@@ -93,13 +94,32 @@ function isSameEntrySnapshot(prev: FileEntry, next: FileEntry): boolean {
   return prev.path === next.path
     && prev.modified === next.modified
     && prev.size === next.size
-    && (prev.identity ?? '') === (next.identity ?? '')
-    && (prev.thumbnailPath ?? '') === (next.thumbnailPath ?? '');
+    && (prev.identity ?? '') === (next.identity ?? '');
 }
 
 function isSameListingSnapshot(prev: FileEntry[], next: FileEntry[]): boolean {
   return prev.length === next.length
     && prev.every((entry, index) => isSameEntrySnapshot(entry, next[index]));
+}
+
+// 클라우드(File Provider)는 materialize/evict만으로 ctime(→identity)이 바뀐다(실측: mtime·size는 보존).
+// identity(ctime 포함)를 빼고 mtime+size만 비교해, 단순 다운로드가 썸네일 무효화·엔트리 교체로
+// 번지지 않으면서 실제 원격 수정(mtime/size 변경)은 감지한다.
+function isSameCloudEntrySnapshot(prev: FileEntry, next: FileEntry): boolean {
+  return prev.path === next.path
+    && prev.is_dir === next.is_dir
+    && prev.modified === next.modified
+    && prev.size === next.size;
+}
+
+// 클라우드 폴더 재검사 시 메타데이터만 바뀐 항목은 이전 엔트리 객체를 유지한다.
+// → thumbKey(identity 포함)가 안정되어 표시 중인 썸네일이 스피너로 리셋되지 않는다.
+function stabilizeCloudEntries(prev: FileEntry[], next: FileEntry[]): FileEntry[] {
+  const prevByPath = new Map(prev.map(entry => [entry.path, entry]));
+  return next.map(entry => {
+    const before = prevByPath.get(entry.path);
+    return before && isSameCloudEntrySnapshot(before, entry) ? before : entry;
+  });
 }
 
 function collectChangedThumbnailPaths(prev: FileEntry[], next: FileEntry[]): string[] {
@@ -799,13 +819,14 @@ export default function FileExplorer({
     const result = await tauriCommands.listDirectory(currentPath);
     const sorted = sortEntries(result, sortBy, sortDir);
     const prev = entriesRef.current;
-    const changedThumbnailPaths = collectChangedThumbnailPaths(prev, sorted);
+    const next = isCloudPath(currentPath) ? stabilizeCloudEntries(prev, sorted) : sorted;
+    const changedThumbnailPaths = collectChangedThumbnailPaths(prev, next);
     if (changedThumbnailPaths.length > 0) {
       deleteThumbsForPaths(changedThumbnailPaths);
       await tauriCommands.invalidateThumbnailCache(changedThumbnailPaths).catch(() => {});
     }
-    if (isSameListingSnapshot(prev, sorted)) return;
-    setEntries(sorted);
+    if (isSameListingSnapshot(prev, next)) return;
+    setEntries(next);
   }, [currentPath, modals.renamingPath, sortBy, sortDir]);
 
   useEffect(() => {
@@ -1207,7 +1228,7 @@ export default function FileExplorer({
         onFuzzyFilterClear={handleFuzzyFilterClear}
         onFilterInputFocus={focusFilterInput}
         videoCompression={fileOps.videoCompression}
-        gsSetup={fileOps.gsSetup}
+        ffmpegSetup={fileOps.ffmpegSetup}
         t={t}
       />
 

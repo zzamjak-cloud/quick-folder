@@ -211,7 +211,7 @@ const PREVIEW_SECTIONS = [
     title: '특수 포맷',
     bullets: [
       'PSD/PSB — Photoshop 미리보기 썸네일 (디스크 캐시)',
-      'PDF — Ghostscript 미리보기, 페이지 탐색',
+      'PDF — 미리보기, 페이지 탐색',
       'HWP/HWPX — 한글 파일 텍스트 추출 미리보기',
       'FBX — 메쉬·텍스처 정보 표시',
       '폰트(TTF/OTF) — 글자 샘플 미리보기 + Space로 폰트 테스트 팝업',
@@ -302,10 +302,10 @@ const MEDIA_SECTIONS = [
     ],
   },
   {
-    title: 'PDF 압축 (Ghostscript)',
+    title: 'PDF 압축',
     bullets: [
-      'PDF 우클릭 → PDF 압축. Ghostscript 자동 설치 (Windows/macOS)',
-      'screen / ebook / printer / prepress 4단계 품질 옵션',
+      'PDF 우클릭 → PDF 압축 (내장 엔진 — 별도 설치 불필요)',
+      '내부 이미지 재압축으로 용량 절감. 이미 최적화된 PDF는 안내 후 건너뜀',
     ],
   },
   {
@@ -474,7 +474,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
           <div>
             <h3 className="text-lg font-semibold text-[var(--qf-text)]">도움말</h3>
             <p className="text-xs text-[var(--qf-muted)] mt-0.5">
-              퀵폴더 위젯의 주요 기능과 단축키를 한눈에 확인하세요.
+              퀵폴더의 주요 기능과 단축키를 한눈에 확인하세요.
             </p>
           </div>
           <button

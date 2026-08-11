@@ -4,11 +4,12 @@
   --color-background: #0f172a;
   --color-surface: #1e293b;
   --color-primary: #3b82f6;
-  --font-sans: 'Inter', sans-serif;
+  /* CDN 폰트 제거 — 오프라인 동작을 위해 시스템 폰트 스택 사용 (Inter는 설치된 경우에만) */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   background-color: #0f172a;
   color: #f8fafc;
 }

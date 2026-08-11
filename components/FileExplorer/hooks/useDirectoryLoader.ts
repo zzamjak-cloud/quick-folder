@@ -9,30 +9,6 @@ import { cancelAllQueued, queuedInvokeLow } from './invokeQueue';
 import { thumbKey, getThumb, setThumb, FIXED_GRID_THUMB_SIZE } from './thumbnailCache';
 import { isCloudPath } from '../../../utils/pathUtils';
 
-// PSD/PSB와 동일 이름의 이미지 형제가 있으면 그 이미지를 PSD 썸네일 소스로 지정한다.
-// 임베드 썸네일이 없는 PSD도 형제 이미지로 즉시 표시 → QuickLook/원본 파싱 회피.
-function attachPsdThumbnailSiblings(list: FileEntry[]): FileEntry[] {
-  const imageByStem = new Map<string, string>();
-  for (const e of list) {
-    if (e.is_dir) continue;
-    const m = /^(.*)\.(jpe?g|png|gif|webp|bmp)$/i.exec(e.name);
-    if (m) imageByStem.set(m[1].toLowerCase(), e.path);
-  }
-  if (imageByStem.size === 0) return list;
-
-  let changed = false;
-  const out = list.map(e => {
-    if (e.is_dir) return e;
-    const pm = /^(.*)\.(psd|psb)$/i.exec(e.name);
-    if (!pm) return e;
-    const sibling = imageByStem.get(pm[1].toLowerCase());
-    if (!sibling) return e;
-    changed = true;
-    return { ...e, thumbnailPath: sibling };
-  });
-  return changed ? out : list;
-}
-
 interface UseDirectoryLoaderOptions {
   gridRef: RefObject<HTMLDivElement | null>;
   scrollPositionRef: MutableRefObject<Map<string, number>>;
@@ -89,7 +65,7 @@ export function useDirectoryLoader({
   const prewarmThumbnails = useCallback((list: FileEntry[]) => {
     const size = thumbnailSizeRef.current;
     const run = () => {
-      // 표시 크기 배치: 로컬 이미지/비디오 + PSD-형제(생성이 싸므로 표시 크기 그대로).
+      // 표시 크기 배치: 로컬 이미지/비디오(생성이 싸므로 표시 크기 그대로).
       const items: { path: string; fileType: 'image' | 'video' | 'psd' }[] = [];
       const targetKeys: string[] = [];
       // 고정 320 배치: PSD(형제 없음) + 클라우드 이미지(전체 다운로드+디코드 → 크기 무관).
@@ -101,13 +77,6 @@ export function useDirectoryLoader({
       for (const entry of list) {
         if (count >= 200) break;
         if (entry.is_dir) continue;
-        // 동일 이름 이미지 형제가 있는 PSD는 그 이미지를 표시 크기로 가볍게 워밍(키도 표시 크기)
-        if (entry.thumbnailPath) {
-          items.push({ path: entry.thumbnailPath, fileType: 'image' });
-          targetKeys.push(thumbKey(entry.path, size, entry.modified, entry.size, entry.identity));
-          count++;
-          continue;
-        }
         const lower = entry.name.toLowerCase();
         if (lower.endsWith('.psd') || lower.endsWith('.psb')) {
           fixedItems.push({ path: entry.path, fileType: 'psd' });
@@ -175,7 +144,7 @@ export function useDirectoryLoader({
         .then(diskCached => {
           if (requestId !== loadRequestRef.current || freshArrived) return;
           if (!diskCached || diskCached.length === 0) return;
-          setEntries(sortEntries(attachPsdThumbnailSiblings(diskCached), sortBy, sortDir));
+          setEntries(sortEntries(diskCached, sortBy, sortDir));
         })
         .catch(() => {});
     }
@@ -188,12 +157,11 @@ export function useDirectoryLoader({
           : await tauriCommands.listDirectory(path);
       if (requestId !== loadRequestRef.current) return;
       freshArrived = true;
-      const augmented = (isRecent || isSystemRoot) ? result : attachPsdThumbnailSiblings(result);
       if (!isRecent && !isSystemRoot) {
-        cacheEntries(path, augmented);
+        cacheEntries(path, result);
         tauriCommands.writeCachedListing(path, result).catch(() => {});
       }
-      const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(augmented, sortBy, sortDir);
+      const sortedResult = (isRecent || isSystemRoot) ? result : sortEntries(result, sortBy, sortDir);
       setEntries(sortedResult);
       if (!isRecent && !isSystemRoot) prewarmThumbnails(sortedResult);
       if (!cached) {

@@ -1,7 +1,11 @@
 import React from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { Download, X, AlertTriangle, Shield } from 'lucide-react';
+import { Download, X, AlertTriangle, Shield, ExternalLink } from 'lucide-react';
+
+// 릴리즈 페이지는 설치 안내(releaseBody)가 본문이라 변경 내역 확인엔 부적합 → CHANGELOG로 연결
+const RELEASE_NOTES_URL = 'https://github.com/zzamjak-cloud/quick-folder/blob/main/CHANGELOG.md';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -9,7 +13,6 @@ interface UpdateModalProps {
   onUpdate: () => void;
   version: string;
   currentVersion: string;
-  releaseNotes: string;
   isDownloading: boolean;
   downloadProgress?: number;
   isWindows?: boolean;
@@ -22,7 +25,6 @@ export function UpdateModal({
   onUpdate,
   version,
   currentVersion,
-  releaseNotes,
   isDownloading,
   downloadProgress,
   isWindows = false,
@@ -83,53 +85,16 @@ export function UpdateModal({
           </div>
         )}
 
-        {/* 변경사항 */}
+        {/* 릴리즈 노트 링크 */}
         <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-300 mb-2">
-            변경사항
-          </h3>
-          <div className="bg-slate-800/50 rounded-lg p-4 max-h-64 overflow-y-auto">
-            {releaseNotes ? (
-              <div className="prose prose-invert prose-sm max-w-none">
-                {releaseNotes.split('\n').map((line, index) => {
-                  // 헤딩 처리
-                  if (line.startsWith('### ')) {
-                    return (
-                      <h4
-                        key={index}
-                        className="text-sm font-semibold text-blue-400 mt-3 mb-1"
-                      >
-                        {line.replace('### ', '')}
-                      </h4>
-                    );
-                  }
-                  // 리스트 아이템 처리
-                  if (line.startsWith('- ')) {
-                    return (
-                      <li key={index} className="text-gray-300 text-sm ml-4">
-                        {line.replace('- ', '')}
-                      </li>
-                    );
-                  }
-                  // 빈 줄
-                  if (line.trim() === '') {
-                    return <br key={index} />;
-                  }
-                  // 일반 텍스트
-                  return (
-                    <p key={index} className="text-gray-300 text-sm">
-                      {line}
-                    </p>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-gray-400 text-sm">
-                새로운 버전이 출시되었습니다. 업데이트하여 최신 기능을
-                사용하세요.
-              </p>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => { void openUrl(RELEASE_NOTES_URL); }}
+            className="inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            <ExternalLink size={14} />
+            릴리즈 노트 보기
+          </button>
         </div>
 
         {/* 다운로드 진행률 */}

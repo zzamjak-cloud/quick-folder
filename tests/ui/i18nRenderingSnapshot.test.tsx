@@ -28,7 +28,7 @@ describe('i18n rendering snapshot', () => {
     ).toMatchInlineSnapshot(`
       [
         "Help",
-        "Review QuickFolder Widget features and shortcuts at a glance.",
+        "Review QuickFolder features and shortcuts at a glance.",
         "Shortcuts",
         "File Explorer",
         "Preview & Edit",

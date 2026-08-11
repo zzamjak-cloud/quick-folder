@@ -3,6 +3,7 @@
 mod compress;
 mod concat;
 mod edit;
+pub(crate) mod encoders;
 mod gif;
 mod progress;
 
@@ -33,6 +34,8 @@ pub async fn trim_video(
     crop_y: Option<i32>,
     crop_w: Option<i32>,
     crop_h: Option<i32>,
+    scale_width: Option<i32>,
+    speed: Option<f64>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     edit::trim_video(
@@ -43,6 +46,8 @@ pub async fn trim_video(
         crop_y,
         crop_w,
         crop_h,
+        scale_width,
+        speed,
         on_progress,
     )
     .await
@@ -76,6 +81,7 @@ pub async fn video_to_gif(
     crop_w: Option<i32>,
     crop_h: Option<i32>,
     scale_width: Option<i32>,
+    speed: Option<f64>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     gif::video_to_gif(
@@ -87,6 +93,7 @@ pub async fn video_to_gif(
         crop_w,
         crop_h,
         scale_width,
+        speed,
         on_progress,
     )
     .await

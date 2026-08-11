@@ -87,7 +87,7 @@ pub async fn get_video_thumbnail_path(
         let resolved_path = materialize_archive_path_in_cache(&app, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
-        // 클라우드 경로: OS 썸네일 우선(풀 다운로드 회피) + mtime 무시 캐시 키
+        // 클라우드 경로: OS 썸네일 우선(풀 다운로드 회피) + mtime-len 시그니처 캐시 키
         let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
         if is_cloud {
             if let Some(cache_path) =

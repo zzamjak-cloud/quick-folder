@@ -1,0 +1,106 @@
+name: "Warm Build Cache"
+
+# 릴리스(release.yml)의 Rust 캐시(Windows + macOS)를 기본 브랜치에 시딩한다.
+# 배경: GitHub Actions 캐시는 "현재 ref 또는 기본 브랜치"에서만 복원 가능한데,
+#       release.yml은 태그 ref에서 실행되므로 태그끼리는 캐시를 공유할 수 없다.
+#       → 기본 브랜치(main)에 만들어 둔 캐시를 모든 태그 릴리스가 복원하게 한다.
+# 트리거: 의존성이 바뀔 때(Cargo.lock/Cargo.toml)만 실행.
+# 주의: 기본 브랜치가 main이므로 캐시는 반드시 main ref에서 만들어야 태그 릴리스가 복원할 수 있다.
+#       → 릴리스 절차에서 develop과 함께 main도 fast-forward 푸시한다 (wiki/infra/release.md).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/Cargo.toml'
+      - 'package-lock.json'
+
+jobs:
+  warm-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # release.yml과 동일한 shared-key — 여기서 저장(save)하고 릴리스에서 복원(restore)한다
+      # cache-on-failure: 앱 크레이트 빌드가 실패해도 의존성 컴파일 캐시는 저장
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: "release-windows"
+          cache-on-failure: "true"
+
+      # tauri 빌드 스크립트가 bundle.resources 글롭(binaries/python-fonttools-*, ffmpeg-dist/*)의
+      # 존재를 요구하므로 캐시 워밍에는 플레이스홀더로 충분
+      - name: prepare resource placeholders
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries/ffmpeg-dist | Out-Null
+          New-Item -ItemType File -Force -Path src-tauri/binaries/python-fonttools-placeholder | Out-Null
+          New-Item -ItemType File -Force -Path src-tauri/binaries/ffmpeg-dist/placeholder | Out-Null
+
+      - name: install frontend dependencies
+        run: npm install
+
+      # tauri::generate_context!가 frontendDist(dist/)를 요구하므로 프론트 빌드 후 cargo 빌드
+      - name: build frontend
+        run: npm run build
+
+      - name: build Rust (release, 캐시 시딩용)
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+  # macOS universal 빌드용 캐시 시딩 (release.yml의 shared-key: release-macos와 동일)
+  warm-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: install Rust targets for macOS
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: "release-macos"
+          cache-on-failure: "true"
+
+      # tauri 빌드 스크립트가 bundle.resources 글롭의 존재를 요구하므로 플레이스홀더로 충분
+      - name: prepare resource placeholders
+        run: |
+          mkdir -p src-tauri/binaries/ffmpeg-dist
+          touch src-tauri/binaries/python-fonttools-placeholder
+          touch src-tauri/binaries/ffmpeg-dist/placeholder
+
+      - name: install frontend dependencies
+        run: npm install
+
+      # tauri::generate_context!가 frontendDist(dist/)를 요구하므로 프론트 빌드 후 cargo 빌드
+      - name: build frontend
+        run: npm run build
+
+      # universal 릴리스가 두 타겟을 모두 빌드하므로 둘 다 시딩
+      - name: build Rust (release, 캐시 시딩용)
+        run: |
+          cargo build --release --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
+          cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin

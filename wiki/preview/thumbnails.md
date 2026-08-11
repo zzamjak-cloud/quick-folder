@@ -14,7 +14,11 @@
          app_cache_dir/drive_thumbnails/  ← Google Drive file ID 기반 이미지·비디오
          app_cache_dir/file_icons/        ← OS 네이티브 아이콘
    키: 썸네일은 생성 세대 + 파일경로 + 수정시각 + 파일크기 + 표시크기 해시
-       Google Drive는 fileId + 표시크기 + 생성 세대
+       Google Drive는 fileId + 표시크기 + 내용 시그니처(mtime-len) + 생성 세대(v7)
+       — fileId는 원격 수정 후에도 동일하므로 시그니처가 없으면 수정 전 썸네일이 영구 서빙됨(회귀 주의)
+       클라우드 경로의 path 기반 폴백(fileId 없음)도 identity 대신 mtime-len 시그니처 키 사용
+       (ensure_cached_thumbnail cloud_signature_key) — inode/ctime은 materialize 노이즈라 제외하되
+       mtime은 반드시 포함. 과거 len만 쓰던 키는 같은 크기 수정에서 영구 stale이었음(회귀 주의)
        아이콘은 platform + ext/folder + 표시크기 해시
    pruning: 전체 10GB 초과 시 mtime이 오래된 PNG부터 삭제
             캐시 hit 때 mtime을 갱신해 최근 사용 항목을 보존
@@ -66,7 +70,7 @@
 
 ## Google Drive file ID 캐시
 
-Google Drive 경로는 `get_google_drive_file_id`와 같은 ID 추출 로직을 내부에서 재사용한다. 파일 ID를 얻으면 `app_cache_dir/drive_thumbnails/{fileId}_{size}_v3.png`를 먼저 조회하고, 없을 때만 OS/File Provider 썸네일을 먼저 요청한다. OS 썸네일이 없을 때만 일반 이미지 디코딩으로 폴백한다. 파일 ID를 얻지 못하면 기존 path 기반 `img_thumbnails`/`video_thumbnails` 캐시로 폴백한다.
+Google Drive 경로는 `get_google_drive_file_id`와 같은 ID 추출 로직을 내부에서 재사용한다. 파일 ID를 얻으면 `app_cache_dir/drive_thumbnails/{fileId}_{size}_{mtime-len}_v7.png`를 먼저 조회하고, 없을 때만 OS/File Provider 썸네일을 먼저 요청한다. 캐시 미스 시 같은 fileId+size의 이전 시그니처·구세대(v6 이하) 파일을 `remove_google_drive_thumbnail_cache_variants`로 정리한다(무효화 IPC도 동일 함수 사용). OS 썸네일이 없을 때만 일반 이미지 디코딩으로 폴백한다. 파일 ID를 얻지 못하면 기존 path 기반 `img_thumbnails`/`video_thumbnails` 캐시로 폴백한다.
 `_v5` 세대는 QuickLook(정사각 잘림/왜곡)을 쓰던 잘린 캐시(`_v4` 이하)를 자동 미스 처리해 디코딩/임베드 기반 비율 보존 썸네일로 다시 생성하기 위한 버전이다. 캐시 무효화 시 현재 세대와 기존 세대 파일을 같이 제거한다.
 
 ### 클라우드 이미지 비율 보존 (절대 잘림 금지) + 메모리 가드
@@ -80,9 +84,9 @@ PSD/PSB는 그리드에서 `get_psd_thumbnail_path`를 사용한다.
 
 ### 그리드 렌더 크기 320 고정 (크기당 1회 → 줌 재생성·재다운로드 없음)
 **생성 비용이 목표 크기와 무관한 항목**은 표시 크기와 무관하게 **항상 320px로 1번만 생성·캐시**하고 화면에는 `<img>`를 CSS로 축소 표시한다. 대상:
-- **PSD/PSB(형제 없음)**: composite 디코드는 캔버스 전체를 디코드 → 목표 크기 무관.
-- **클라우드 이미지(형제 없음, `file_type==='image'` && `isCloudPath`)**: 크기와 무관하게 **전체 파일을 다운로드+디코드**(`generate_cloud_image_thumbnail_bytes`) → 목표 크기 무관. 줌 시 재다운로드 제거가 핵심 이득.
-- **제외**: 형제 이미지를 쓰는 PSD, **로컬 이미지/비디오**(생성이 싸고 작은 표시엔 작은 썸네일이 메모리/디스크에 유리), 클라우드 비디오(이번 범위 외).
+- **PSD/PSB**: composite 디코드는 캔버스 전체를 디코드 → 목표 크기 무관.
+- **클라우드 이미지(`file_type==='image'` && `isCloudPath`)**: 크기와 무관하게 **전체 파일을 다운로드+디코드**(`generate_cloud_image_thumbnail_bytes`) → 목표 크기 무관. 줌 시 재다운로드 제거가 핵심 이득.
+- **제외**: **로컬 이미지/비디오**(생성이 싸고 작은 표시엔 작은 썸네일이 메모리/디스크에 유리), 클라우드 비디오(이번 범위 외).
 
 세부:
 - 상수 `FIXED_GRID_THUMB_SIZE = 320`(`thumbnailCache.ts`). 그리드 최대값과 일치해야 함.
@@ -140,8 +144,8 @@ PSD/PSB는 그리드에서 `get_psd_thumbnail_path`를 사용한다.
 - **로컬 PSD 그리드 캐시(`psd_thumbnails`)는 1회 마이그레이션으로 정리**한다: 앱 시작 시 `migrate_psd_local_cache_once`(lib.rs `setup`에서 백그라운드 스레드)가 마커(`.composite_migrated_v1`)가 없으면 `psd_thumbnails` 내 파일을 비워 다음 표시 때 composite로 재생성되게 한다(공유 키 `thumbnail-v4`를 올리면 이미지 썸네일까지 무효화되므로 디렉터리 정리 방식 채택). 마커는 .png가 아니라 프루닝 대상 아님.
 - **composite 디코드 최적화**: `extract_psd_merged_composite`는 픽셀별 `put_pixel` 대신 RGBA 버퍼를 직접 구성(`from_raw`)해 대용량 캔버스 디코드를 가속한다.
 
-### 동일 이름 이미지 형제
-`useDirectoryLoader`의 `attachPsdThumbnailSiblings`가 PSD와 동일 이름 이미지(png/jpg/…)를 찾으면 `FileEntry.thumbnailPath`로 지정한다. FileCard는 이 경우 PSD 대신 형제 이미지를 `get_file_thumbnail_path`로 썸네일링한다(QuickLook/원본 파싱 회피). 단, 형제가 PSD와 다른 내용이면 부정확할 수 있는 휴리스틱.
+### 동일 이름 이미지 형제 — 제거됨 (재도입 금지)
+과거 `attachPsdThumbnailSiblings`(useDirectoryLoader)가 PSD와 동일 이름 이미지(`hero.psd`+`hero.png`)를 찾으면 `FileEntry.thumbnailPath`로 형제를 썸네일 소스로 치환했다. **캐시 키는 PSD 기준·내용은 형제 기준**이라는 비대칭 때문에 PSD를 수정해도 썸네일이 영원히 형제 그림으로 남는 미갱신 버그의 원인이었고, composite 부분 읽기 도입으로 성능 사유도 사라져 **v1.0.11에서 전면 제거**했다(`FileEntry.thumbnailPath` 필드 자체 삭제). PSD는 항상 자기 내용(composite)으로 썸네일을 만든다 — 파일 수정 시 identity/mtime 변화로 자동 갱신된다.
 
 ### 동시성 레인 / 중복 다운로드 제거
 - 일반 우선순위(`MAX_CONCURRENT=6`)와 저우선(썸네일, `MAX_LOW_CONCURRENT=32`)을 **독립 레인**으로 처리한다(`tauriInvoke.ts`). 배치 워밍 `BATCH_CONCURRENCY=16`(`media_ops/thumbnail.rs`). 클라우드는 네트워크 대기형이라 동시성이 곧 처리량 — 단 File Provider 과부하 가능성이 있어 추가 상향은 측정 후 조정(튜닝 포인트). 클라우드 썸네일은 파일당 File Provider 네트워크 왕복이 지배적이라 동시 다운로드 수가 곧 처리량 — 네트워크 대기형이므로 높여도 안전(CPU 합성은 Rust heavy-op 퍼밋이 별도 제한). `ensure_thumbnails_batch`는 청크(12) 병렬.
@@ -158,13 +162,19 @@ FileCard는 실제 그리드 스크롤 컨테이너를 `IntersectionObserver.roo
 
 ## 사전 로딩 (prewarmThumbnails)
 `useDirectoryLoader` — `loadDirectory` 완료 후 앞쪽 최대 200개(= Rust `MAX_BATCH_ITEMS`) 이미지/비디오/PSD 항목을 `ensure_thumbnails_batch` 1회로 묶어 Rust에서 캐시를 보장한다(클라우드 포함). 개별 카드의 lazy 로딩은 그대로라 batch 실패 시 단건 요청으로 폴백된다.
-- **결과를 메모리 캐시에 주입**: `ensure_thumbnails_batch`는 입력과 **1:1 순서**로 `cachedPath`를 반환하고(Rust에서 join 실패 시에도 순서·개수 보장), prewarm이 이를 카드의 `thumbKey(entry.path, size, modified)`로 `setThumb`한다. → prewarm된 항목은 카드가 마운트/스크롤 진입 시 `getThumb` 동기 HIT로 **IPC 없이 즉시 표시**(특히 cloud는 카드가 경로를 동기적으로 알 다른 방법이 없어 효과 큼). PSD-형제 항목은 요청 경로(형제 이미지)와 무관하게 **원래 PSD 엔트리 키**로 주입한다.
+- **결과를 메모리 캐시에 주입**: `ensure_thumbnails_batch`는 입력과 **1:1 순서**로 `cachedPath`를 반환하고(Rust에서 join 실패 시에도 순서·개수 보장), prewarm이 이를 카드의 `thumbKey(entry.path, size, modified)`로 `setThumb`한다. → prewarm된 항목은 카드가 마운트/스크롤 진입 시 `getThumb` 동기 HIT로 **IPC 없이 즉시 표시**(특히 cloud는 카드가 경로를 동기적으로 알 다른 방법이 없어 효과 큼).
 - 최초 화면의 첫 페인트는 카드가 즉시 발사하는 단건 요청이 담당하므로, 주입의 이득은 주로 스크롤 진입 항목 + 저우선 레인 여유에 있다.
 
 ## 가시 카드 우선순위 / 큐 오버플로우 주의
 - 저우선 큐가 가득 차면 **가장 오래된(=먼저 보인 상단) 항목부터 제거**된다(`tauriInvoke.ts`). 한 폴더의 가시 카드가 한꺼번에 요청하면 상단 요청이 버려져 "하단부터 뜨는" 증상이 생긴다. → `MAX_LOW_QUEUE_SIZE`는 가시 카드 수+프리페치 마진을 넉넉히 수용해야 한다(현재 512).
 - 이미지 카드는 가시화 시 썸네일 외에 `get_image_dimensions`도 요청한다. 이를 **썸네일 표시 이후로 지연**해(FileCard, `thumbnail` 의존) 초기 진입 시 큐를 2배로 점유하지 않게 한다. 안 그러면 카드당 2요청 → 큐 오버플로우 → 상단 썸네일 누락.
 - 카드는 프리페치 마진(`rootMargin`, 클라우드 1800px)을 벗어나면 pending 요청을 스스로 취소하므로, 스크롤 staleness는 취소가 처리한다. 큐 제거는 안전판일 뿐 평상시엔 발생하지 않아야 한다.
+
+## 폴링 재검사와 클라우드 materialize (회귀 주의)
+
+`FileExplorer/index.tsx`의 1.5초 폴링(`refreshCurrentPathIfChanged`)은 변경된 항목의 메모리·디스크 썸네일 캐시를 무효화하고 `setEntries`한다. 클라우드(File Provider) 파일은 **materialize만으로 mtime/ctime(→identity)이 바뀌므로**, 그대로 비교하면 진입 직후 "썸네일 표시 → 캐시 삭제 → 스피너 복귀 → in-flight 취소 반복 → 영구 스피너"가 된다.
+- **실측**: materialize/evict는 **ctime만** 바꾸고 mtime·size는 보존한다. 따라서 클라우드 경로는 `stabilizeCloudEntries`가 **identity(ctime 포함)를 빼고 mtime+size만 비교**(`isSameCloudEntrySnapshot`)해, 단순 다운로드로 메타데이터만 바뀐 항목은 이전 엔트리 객체를 유지(→ thumbKey 안정)하면서 실제 원격 수정(mtime/size 변경)은 감지·무효화한다.
+- FileCard 썸네일 요청이 **외부에서 취소**(`cancelAllQueued` 등)됐고 effect가 살아 있으면 `thumbnailReloadSeq`를 올려 재시도한다 — 재시도 없이는 스피너 상태에 재요청 트리거가 없다(img onError는 스피너에선 미발화).
 
 ## 주의사항
 - 썸네일은 반드시 **`queuedInvokeLow`** 사용. 일반 `invoke` 사용 시 폴더 전환 시 이전 요청이 취소되지 않아 UI 오염.

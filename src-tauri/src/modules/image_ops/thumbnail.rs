@@ -17,7 +17,7 @@ pub(crate) const THUMBNAIL_CACHE_DIR_NAMES: [&str; 4] = [
     "drive_thumbnails",
 ];
 const THUMBNAIL_CACHE_PRUNE_INTERVAL_MS: u64 = 60_000;
-const GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION: &str = "v6";
+const GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION: &str = "v7";
 static LAST_THUMBNAIL_CACHE_PRUNE_MS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn thumbnail_cache_root<R: tauri::Runtime>(
@@ -55,11 +55,7 @@ pub(crate) fn migrate_psd_local_cache_once<R: tauri::Runtime>(app: &tauri::AppHa
     let _ = std::fs::write(&marker, b"1");
 }
 
-fn thumbnail_modified_millis(meta: &std::fs::Metadata, ignore_mtime: bool) -> u128 {
-    if ignore_mtime {
-        return 0;
-    }
-
+fn thumbnail_modified_millis(meta: &std::fs::Metadata) -> u128 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -97,36 +93,64 @@ fn safe_google_drive_file_id(file_id: &str) -> Option<String> {
     )
 }
 
+// 드라이브 썸네일 내용 시그니처 (mtime+len).
+// fileId는 원격 수정 후에도 동일하므로 시그니처 없이는 수정 전 썸네일이 영구히 서빙된다.
+// materialize/evict는 ctime만 바꾸고 mtime·len은 보존됨(실측) → 시그니처는 실제 내용 변경에만 반응.
+fn google_drive_content_signature(path: &str) -> String {
+    std::fs::metadata(path)
+        .map(|meta| format!("{}-{}", thumbnail_modified_millis(&meta), meta.len()))
+        .unwrap_or_else(|_| "0-0".to_string())
+}
+
 fn google_drive_thumbnail_cache_file(
     app_cache: &Path,
     file_id: &str,
     size: u32,
+    signature: &str,
 ) -> Option<PathBuf> {
     let safe_file_id = safe_google_drive_file_id(file_id)?;
     let cache_dir = app_cache.join("drive_thumbnails");
     std::fs::create_dir_all(&cache_dir).ok()?;
     Some(cache_dir.join(format!(
-        "{}_{}_{}.png",
-        safe_file_id, size, GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION
+        "{}_{}_{}_{}.png",
+        safe_file_id, size, signature, GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION
     )))
 }
 
-fn previous_google_drive_thumbnail_cache_files(
+// 같은 fileId+size의 모든 캐시 변형(다른 시그니처, 구세대 v6 이하, .none 포함)을 제거한다.
+// `keep`이 주어지면 해당 파일과 그 .none sentinel은 남긴다.
+fn remove_google_drive_thumbnail_cache_variants(
     app_cache: &Path,
     file_id: &str,
     size: u32,
-) -> Vec<PathBuf> {
+    keep: Option<&Path>,
+) {
     let Some(safe_file_id) = safe_google_drive_file_id(file_id) else {
-        return Vec::new();
+        return;
     };
     let cache_dir = app_cache.join("drive_thumbnails");
-    vec![
-        cache_dir.join(format!("{}_{}_v5.png", safe_file_id, size)),
-        cache_dir.join(format!("{}_{}_v4.png", safe_file_id, size)),
-        cache_dir.join(format!("{}_{}_v3.png", safe_file_id, size)),
-        cache_dir.join(format!("{}_{}_v2.png", safe_file_id, size)),
-        cache_dir.join(format!("{}_{}.png", safe_file_id, size)),
-    ]
+    let prefix = format!("{}_{}", safe_file_id, size);
+    let Ok(entries) = std::fs::read_dir(&cache_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(rest) = name.strip_prefix(&prefix) else {
+            continue;
+        };
+        // "_시그니처_v7.png" / "_v6.png" / ".png"(레거시) / ".none" 형태만 대상 (크기 1600 vs 160 오매칭 방지)
+        if !(rest.starts_with('_') || rest.starts_with('.')) {
+            continue;
+        }
+        let path = entry.path();
+        if let Some(keep) = keep {
+            if path == keep || path == negative_thumbnail_cache_file(keep) {
+                continue;
+            }
+        }
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 fn negative_thumbnail_cache_file(cache_file: &Path) -> PathBuf {
@@ -161,15 +185,18 @@ fn thumbnail_cache_keys(path: &str, size: u32) -> Vec<String> {
         return Vec::new();
     };
     let identity = crate::modules::types::file_identity(&meta);
-    let actual_modified = thumbnail_modified_millis(&meta, false);
+    let actual_modified = thumbnail_modified_millis(&meta);
     let mut modified_variants = vec![actual_modified];
     if actual_modified != 0 {
         modified_variants.push(0);
     }
 
     let mut keys = Vec::new();
+    keys.push(stable_thumbnail_cache_key(path, &identity, size));
+    // 클라우드 경로의 mtime-len 시그니처 키 (.none sentinel 제거용)
+    let cloud_identity = format!("sig:{}-{}", actual_modified, meta.len());
+    keys.push(stable_thumbnail_cache_key(path, &cloud_identity, size));
     for modified in modified_variants {
-        keys.push(stable_thumbnail_cache_key(path, &identity, size));
         keys.push(legacy_thumbnail_cache_key(path, modified, size));
     }
     keys
@@ -220,18 +247,7 @@ pub(crate) fn invalidate_thumbnail_cache_paths_in_root(app_cache: &Path, paths: 
             crate::modules::system_ops::get_google_drive_file_id_for_path(&source_path)
         {
             for size in THUMBNAIL_CACHE_SIZES {
-                if let Some(cache_file) =
-                    google_drive_thumbnail_cache_file(app_cache, &file_id, size)
-                {
-                    let _ = std::fs::remove_file(&cache_file);
-                    remove_negative_thumbnail_cache(&cache_file);
-                }
-                for cache_file in
-                    previous_google_drive_thumbnail_cache_files(app_cache, &file_id, size)
-                {
-                    let _ = std::fs::remove_file(&cache_file);
-                    remove_negative_thumbnail_cache(&cache_file);
-                }
+                remove_google_drive_thumbnail_cache_variants(app_cache, &file_id, size, None);
             }
         }
     }
@@ -362,7 +378,9 @@ where
     else {
         return Ok(None);
     };
-    let Some(cache_file) = google_drive_thumbnail_cache_file(app_cache, &file_id, size) else {
+    let signature = google_drive_content_signature(path);
+    let Some(cache_file) = google_drive_thumbnail_cache_file(app_cache, &file_id, size, &signature)
+    else {
         return Ok(None);
     };
 
@@ -392,6 +410,9 @@ where
         return Ok(None);
     }
 
+    // 캐시 미스 = 내용이 바뀌었거나 신규 → 이전 시그니처·구세대(v6 이하) 잔재를 정리
+    remove_google_drive_thumbnail_cache_variants(app_cache, &file_id, size, Some(&cache_file));
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(generate));
     match result {
         Ok(Ok(Some(bytes))) => {
@@ -418,18 +439,20 @@ pub(crate) fn ensure_cached_thumbnail<F>(
     path: &str,
     size: u32,
     use_heavy_op: bool,
-    ignore_mtime: bool,
+    cloud_signature_key: bool,
     generate: F,
 ) -> Result<Option<PathBuf>>
 where
     F: FnOnce() -> Result<Option<Vec<u8>>>,
 {
     let meta = std::fs::metadata(path)?;
-    // ignore_mtime=true (클라우드 경로): mtime을 키에서 제외 → 재동기화로 mtime이 바뀌어도
-    // 캐시 유지(불필요한 재다운로드 방지). 내용 변경은 파일 크기 변화로 대부분 감지됨.
-    let modified = thumbnail_modified_millis(&meta, ignore_mtime);
-    let identity = if ignore_mtime {
-        format!("len:{}", meta.len())
+    let modified = thumbnail_modified_millis(&meta);
+    let identity = if cloud_signature_key {
+        // 클라우드 경로: inode/ctime은 materialize/evict만으로 바뀌는 노이즈라 full identity를
+        // 쓰지 않는다. mtime·len은 실제 내용 변경에만 바뀜(실측, google_drive_content_signature와
+        // 동일 근거) → mtime을 반드시 포함해야 같은 크기로 수정된 파일도 감지된다.
+        // (과거 len만 쓰던 키는 크기가 안 변하는 수정에서 영구 stale — 회귀 주의)
+        format!("sig:{}-{}", modified, meta.len())
     } else {
         crate::modules::types::file_identity(&meta)
     };
@@ -1271,9 +1294,9 @@ pub async fn get_psd_thumbnail_path(
 mod tests {
     use super::{
         ensure_cached_thumbnail, ensure_google_drive_thumbnail,
-        generate_cloud_image_thumbnail_bytes, google_drive_thumbnail_cache_file,
-        invalidate_thumbnail_cache_paths_in_root, negative_thumbnail_cache_file,
-        safe_google_drive_file_id,
+        generate_cloud_image_thumbnail_bytes, google_drive_content_signature,
+        google_drive_thumbnail_cache_file, invalidate_thumbnail_cache_paths_in_root,
+        negative_thumbnail_cache_file, safe_google_drive_file_id,
     };
 
     fn unique_test_dir(name: &str) -> std::path::PathBuf {
@@ -1299,10 +1322,10 @@ mod tests {
     #[test]
     fn drive_thumbnail_cache_file_uses_safe_file_id_and_size() {
         let root = unique_test_dir("path");
-        let cache_file = google_drive_thumbnail_cache_file(&root, "drive:id/123", 128)
+        let cache_file = google_drive_thumbnail_cache_file(&root, "drive:id/123", 128, "111-222")
             .expect("drive thumbnail cache path");
 
-        assert!(cache_file.ends_with("drive_thumbnails/drive_id_123_128_v5.png"));
+        assert!(cache_file.ends_with("drive_thumbnails/drive_id_123_128_111-222_v7.png"));
         std::fs::remove_dir_all(root).ok();
     }
 
@@ -1326,7 +1349,9 @@ mod tests {
             .expect("drive thumbnail cache")
             .expect("cache file");
 
-        assert!(cache_file.ends_with("drive_thumbnails/drive_file_123_160_v5.png"));
+        let name = cache_file.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with("drive_file_123_160_"));
+        assert!(name.ends_with("_v7.png"));
         assert_eq!(std::fs::read(&cache_file).unwrap(), bytes);
 
         let hit =
@@ -1336,6 +1361,38 @@ mod tests {
             .expect("drive thumbnail cache hit")
             .expect("cache hit file");
         assert_eq!(hit, cache_file);
+
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn ensure_google_drive_thumbnail_regenerates_after_source_change() {
+        let root = unique_test_dir("drive_edit");
+        std::fs::create_dir_all(&root).unwrap();
+        let service_file = root.join("sample.gdoc");
+        std::fs::write(&service_file, r#"{"doc_id":"drive_edit_123"}"#).unwrap();
+
+        let old_cache =
+            ensure_google_drive_thumbnail(&root, &service_file.to_string_lossy(), 160, || {
+                Ok(Some(b"old".to_vec()))
+            })
+            .expect("drive thumbnail cache")
+            .expect("cache file");
+
+        // 원격 수정 시뮬레이션: 내용(길이) 변경 → 시그니처 변경
+        std::fs::write(&service_file, r#"{"doc_id":"drive_edit_123","rev":2}"#).unwrap();
+
+        let new_cache =
+            ensure_google_drive_thumbnail(&root, &service_file.to_string_lossy(), 160, || {
+                Ok(Some(b"new".to_vec()))
+            })
+            .expect("drive thumbnail cache after edit")
+            .expect("cache file after edit");
+
+        assert_ne!(new_cache, old_cache);
+        assert_eq!(std::fs::read(&new_cache).unwrap(), b"new");
+        // 이전 시그니처 캐시는 재생성 시 정리되어야 한다
+        assert!(!old_cache.exists());
 
         std::fs::remove_dir_all(root).ok();
     }
@@ -1525,7 +1582,9 @@ mod tests {
                 .expect("drive negative thumbnail cache");
         assert_eq!(miss, None);
 
-        let cache_file = google_drive_thumbnail_cache_file(&root, "drive_none_123", 160).unwrap();
+        let signature = google_drive_content_signature(&service_file.to_string_lossy());
+        let cache_file =
+            google_drive_thumbnail_cache_file(&root, "drive_none_123", 160, &signature).unwrap();
         let none_file = negative_thumbnail_cache_file(&cache_file);
         assert!(none_file.exists());
 

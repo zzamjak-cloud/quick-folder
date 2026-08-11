@@ -14,6 +14,8 @@ pub fn run() {
         .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
             open_folder,
+            get_app_pid_under_cursor,
+            activate_app_by_pid,
             open_terminal,
             run_terminal_command,
             open_sac_settings,
@@ -67,6 +69,8 @@ pub fn run() {
             search_files,
             find_duplicate_files,
             check_ffmpeg,
+            download_ffmpeg,
+            install_ffmpeg,
             compress_video,
             trim_video,
             cut_video,
@@ -90,9 +94,6 @@ pub fn run() {
             compress_image,
             resize_image,
             compress_pdf,
-            check_gs,
-            download_gs,
-            install_gs,
             get_font_info,
             read_font_bytes,
             check_fonttools,

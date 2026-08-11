@@ -90,7 +90,7 @@ interface ExplorerContentProps {
     current?: number;
     total?: number;
   } | null;
-  gsSetup: { fileName: string } | null;
+  ffmpegSetup: boolean;
   t: (key: TranslationKey) => string;
 }
 
@@ -164,7 +164,7 @@ export default function ExplorerContent({
   onFuzzyFilterClear,
   onFilterInputFocus,
   videoCompression,
-  gsSetup,
+  ffmpegSetup,
   t,
 }: ExplorerContentProps) {
   return (
@@ -296,12 +296,12 @@ export default function ExplorerContent({
             </div>
           )}
 
-          {gsSetup && (
+          {ffmpegSetup && (
             <div
               className="flex items-center gap-2 px-3 py-1.5 text-xs"
               style={{ backgroundColor: 'var(--qf-surface-2)', color: 'var(--qf-text)', borderTop: '1px solid var(--qf-border)' }}
             >
-              <span>⏳ Ghostscript 다운로드/설치 중... {gsSetup.fileName}</span>
+              <span>⏳ FFmpeg 다운로드/설치 중...</span>
             </div>
           )}
 

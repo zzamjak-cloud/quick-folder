@@ -26,7 +26,6 @@ export interface FileEntry {
   modified: number;   // unix timestamp (ms)
   identity?: string;   // OS 메타 기반 파일 정체성(dev/inode/birth/ctime 등)
   file_type: FileType;
-  thumbnailPath?: string; // 썸네일 소스 경로 오버라이드 (예: PSD의 동일 이름 이미지 형제)
 }
 
 /** 중복 파일 탐색 결과 그룹 */

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "QuickFolder Widget",
-  "version": "1.27.63",
+  "version": "1.27.64",
   "identifier": "com.quickfolder.widget",
   "build": {
     "frontendDist": "../dist",
@@ -49,12 +49,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/ffmpeg",
-      "binaries/gs"
-    ],
     "resources": [
-      "binaries/python-fonttools-*"
+      "binaries/python-fonttools-*",
+      "binaries/ffmpeg-dist/*",
+      "../THIRD-PARTY-NOTICES.md"
     ],
     "macOS": {
       "entitlements": "entitlements.plist",

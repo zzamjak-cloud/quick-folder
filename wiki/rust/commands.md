@@ -96,6 +96,8 @@ struct ExtractResult {
 | `quick_look` | `path: String` | macOS QuickLook |
 | `open_with_app` | `path, app: String` | 특정 앱으로 열기 |
 | `open_in_photoshop` | `path: String` | Photoshop으로 열기 |
+| `get_app_pid_under_cursor` | `point: Option<(f64, f64)>` | 지정 좌표(CG top-left, 미지정 시 현재 커서) 아래 최상위 창의 소유 PID. 자기 창이 최상위면 `None` (macOS 전용, 그 외 `None`) |
+| `activate_app_by_pid` | `pid: i32` | 해당 PID 앱을 전면 활성화 (macOS 전용, 트레이 drag-out 후 드롭 대상 앱 유지용) |
 
 ## 캐시 & 검색
 
@@ -157,8 +159,8 @@ struct DuplicateGroup {
 | `concat_videos` | 이어붙이기 |
 | `video_to_gif` | GIF 변환 |
 | `gif_to_mp4` | MP4 변환 |
-| `compress_gif` | GIF 압축 (Ghostscript) |
-| `compress_pdf` | PDF 압축 (Ghostscript) |
+| `compress_gif` | GIF 압축 |
+| `compress_pdf` | PDF 압축 (순수 Rust: lopdf + image, `media_ops/pdf.rs`) |
 
 ## 스프라이트 & 맵
 
@@ -183,7 +185,6 @@ struct DuplicateGroup {
 | 명령 | 설명 |
 |------|------|
 | `check_ffmpeg` / `download_ffmpeg` / `install_ffmpeg` | FFmpeg |
-| `check_gs` / `download_gs` / `install_gs` | Ghostscript |
 | `check_fonttools` / `download_fonttools` / `install_fonttools` | FontTools |
 
 ## 기타

@@ -20,6 +20,10 @@ dist-ssr
 # Tauri 번들링 바이너리 (CI에서 다운로드)
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
+# ffmpeg-dist: placeholder만 추적 (리소스 글롭 매칭용), 실제 바이너리는 CI에서 다운로드
+!src-tauri/binaries/ffmpeg-dist/
+src-tauri/binaries/ffmpeg-dist/*
+!src-tauri/binaries/ffmpeg-dist/placeholder
 
 # Editor directories and files
 .vscode/*

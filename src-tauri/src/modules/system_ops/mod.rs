@@ -9,6 +9,7 @@ pub struct FolderSelection {
 }
 
 // 서브모듈
+mod app_activation;
 mod clipboard;
 mod file_explorer;
 mod file_icon;
@@ -16,6 +17,7 @@ mod file_search;
 mod google_drive;
 
 // Re-export all public functions
+pub use app_activation::*;
 pub use clipboard::*;
 pub use file_explorer::*;
 pub use file_icon::*;

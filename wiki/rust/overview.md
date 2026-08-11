@@ -51,6 +51,7 @@ src-tauri/src/
     │   │   ├── media_ops/video/gif.rs
     │   │   └── media_ops/video/progress.rs
     │   ├── media_ops/gif.rs
+    │   ├── media_ops/pdf.rs          ← compress_pdf (순수 Rust: lopdf + image)
     │   └── media_ops/thumbnail.rs
     ├── hwp_ops.rs
     ├── laigter_maps.rs
@@ -68,13 +69,6 @@ src-tauri/src/
     │   └── google_drive.rs
     └── tool_ops/
         ├── ffmpeg.rs
-        ├── ghostscript.rs           ← gs command facade
-        │   ├── ghostscript/download.rs
-        │   ├── ghostscript/install.rs
-        │   ├── ghostscript/path.rs
-        │   ├── ghostscript/pdf.rs
-        │   ├── ghostscript/macos.rs
-        │   └── ghostscript/windows.rs
         └── fonttools.rs             ← fonttools command facade
             ├── fonttools/archive.rs
             ├── fonttools/install.rs
@@ -88,7 +82,6 @@ src-tauri/src/
 | facade | 하위 모듈 역할 |
 |--------|----------------|
 | `media_ops/video.rs` | 압축, 편집, 이어붙이기, GIF 변환, 진행률 파싱 |
-| `tool_ops/ghostscript.rs` | 다운로드, 설치, 경로 탐색, PDF 압축, 플랫폼별 설치 |
 | `tool_ops/fonttools.rs` | 번들 압축 해제, 설치, 병합, 경로, Python 실행 |
 | `system_ops/file_icon.rs` | 메모리·디스크 아이콘 캐시, 텍스트 아이콘, macOS/Windows/fallback 네이티브 아이콘 |
 
@@ -152,6 +145,7 @@ await queuedInvoke('get_thumbnail', { path, size });
 |---------|------|
 | `tauri` v2.10 | 앱 프레임워크 |
 | `image` 0.25 | 이미지 처리 (jpg, png, gif, webp, bmp, ico) |
+| `lopdf` 0.36 | PDF 파싱·재저장 (compress_pdf 자체 구현) |
 | `psd` 0.3 | Photoshop 파일 |
 | `ffmpeg-sidecar` 2.0 | 비디오 처리 |
 | `zip` 2.0 | ZIP 압축·해제·내부 목록 읽기 |

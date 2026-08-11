@@ -39,8 +39,7 @@ cargo test            # Rust 테스트 (command_boundary 포함)
   "bundle": {
     "targets": ["app", "dmg", "nsis"],
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/ffmpeg", "binaries/gs"],
-    "resources": ["binaries/python-fonttools-*"]
+    "resources": ["binaries/python-fonttools-*", "binaries/ffmpeg-dist/*", "../THIRD-PARTY-NOTICES.md"]
   },
   "plugins": {
     "updater": {

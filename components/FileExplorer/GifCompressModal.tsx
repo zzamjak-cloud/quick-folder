@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { ThemeVars } from './types';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import { ensureFfmpeg } from '../../utils/ffmpegSetup';
 import type { TranslationKey } from '../../utils/i18n';
 
 interface GifCompressModalProps {
@@ -41,8 +42,13 @@ export default function GifCompressModal({
     setIsCompressing(true);
     setErrorText(null);
     try {
-      const installed = await invoke<boolean>('check_ffmpeg');
-      if (!installed) {
+      // FFmpeg 미설치 시 사용자 동의 후 원 배포처에서 다운로드 (라이선스 정책상 번들하지 않음)
+      try {
+        if (!(await ensureFfmpeg(t, setCurrentFile))) {
+          setErrorText(t('ffmpeg.declined'));
+          return;
+        }
+      } catch {
         setErrorText(t('gifCompress.error.ffmpegMissing'));
         return;
       }

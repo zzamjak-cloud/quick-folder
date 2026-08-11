@@ -153,7 +153,6 @@ export function AppModals({
           onUpdate={autoUpdate.handleUpdate}
           version={autoUpdate.updateInfo.version}
           currentVersion={autoUpdate.currentAppVersion}
-          releaseNotes={autoUpdate.updateInfo.body}
           isDownloading={autoUpdate.isDownloading}
           downloadProgress={autoUpdate.downloadProgress}
           isWindows={autoUpdate.isWindows}

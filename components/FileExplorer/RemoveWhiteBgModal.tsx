@@ -157,13 +157,13 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
   }, []);
 
   // 결과 미리보기 요청
-  // 파라미터명이 i18n `t` 함수를 가리지 않도록 명시적 이름 사용 (catch에서 t() 호출 오류 방지)
-  const fetchPreview = useCallback(async (path: string, threshold: number, feather: number, seeds: [number, number][]) => {
+  // 매개변수명이 번역 함수 t를 가리지 않도록 주의 (섀도잉 시 catch 블록에서 크래시)
+  const fetchPreview = useCallback(async (path: string, thresholdVal: number, featherVal: number, seedsVal: [number, number][]) => {
     setLoading(true);
     setError('');
     try {
       const base64 = await invoke<string>('remove_white_bg_preview', {
-        input: path, threshold, feather, seeds,
+        input: path, threshold: thresholdVal, feather: featherVal, seeds: seedsVal,
       });
       setPreview(base64);
     } catch (e) {

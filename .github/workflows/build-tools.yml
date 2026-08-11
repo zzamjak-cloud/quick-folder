@@ -1,5 +1,8 @@
 name: Build Portable Tools
 
+# 라이선스 정책: FFmpeg(GPL)·Ghostscript(AGPL)는 재호스팅(재배포)하지 않는다.
+# 이 워크플로우는 permissive 라이선스인 Python(PSF) + fonttools(MIT)만 패키징한다.
+
 on:
   workflow_dispatch:
 
@@ -13,82 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # ── Ghostscript 포터블 패키지 ──────────────────────────────────
-      # NSIS 설치 프로그램을 실행하지 않고 7-zip으로 직접 추출 (설치 프로그램 hang 방지)
-      - name: Download Ghostscript NSIS installer
-        shell: pwsh
-        run: |
-          Invoke-WebRequest `
-            -Uri "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10070/gs10070w64.exe" `
-            -OutFile gs_installer.exe
-          Write-Host "Downloaded: $((Get-Item gs_installer.exe).Length / 1MB) MB"
-
-      - name: Extract Ghostscript binaries with 7-zip
-        shell: pwsh
-        run: |
-          # 7-zip은 GitHub Actions Windows 러너에 기본 설치됨
-          7z x gs_installer.exe -o"./gs_extracted" -y | Out-Null
-
-          # gswin64c.exe 위치 탐색
-          $exe = Get-ChildItem -Path "./gs_extracted" -Filter "gswin64c.exe" -Recurse -ErrorAction SilentlyContinue |
-                 Select-Object -First 1
-          if (-not $exe) {
-            Write-Error "gswin64c.exe not found. Extraction contents:"
-            Get-ChildItem ./gs_extracted -Recurse | Select-Object -ExpandProperty FullName | Select-Object -First 50
-            exit 1
-          }
-          Write-Host "Found gswin64c.exe: $($exe.FullName)"
-
-          $binDir = $exe.DirectoryName
-          $gsRoot = Split-Path -Parent $binDir
-
-          # 포터블 구조 생성 (bin/ + 리소스 디렉터리)
-          New-Item -ItemType Directory -Force -Path ./gs_portable/bin | Out-Null
-          Copy-Item "$binDir\*" ./gs_portable/bin/ -Force
-
-          foreach ($dir in @("lib", "Resource", "iccprofiles")) {
-            $src = Join-Path $gsRoot $dir
-            if (Test-Path $src) {
-              Copy-Item $src "./gs_portable/$dir" -Recurse -Force
-            }
-          }
-
-          Compress-Archive -Path "./gs_portable/*" -DestinationPath "ghostscript-portable-win64.zip" -Force
-          $sizeMB = [math]::Round((Get-Item ghostscript-portable-win64.zip).Length / 1MB, 1)
-          Write-Host "ghostscript-portable-win64.zip: ${sizeMB}MB"
-
-      # ── FFmpeg 포터블 패키지 ──────────────────────────────────────
-      - name: Download FFmpeg full build (gyan.dev)
-        shell: pwsh
-        run: |
-          # gyan.dev의 최신 full build (GPL, 모든 코덱 포함)
-          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
-          Write-Host "Downloaded: $((Get-Item ffmpeg.zip).Length / 1MB) MB"
-
-      - name: Extract FFmpeg binaries
-        shell: pwsh
-        run: |
-          Expand-Archive -Path ffmpeg.zip -DestinationPath ./ffmpeg_temp -Force
-
-          # bin 폴더 찾기 (ffmpeg-x.x.x-essentials_build/bin/)
-          $binDir = Get-ChildItem -Path ./ffmpeg_temp -Filter "bin" -Recurse -Directory | Select-Object -First 1
-          if (-not $binDir) {
-            Write-Error "bin directory not found"
-            exit 1
-          }
-
-          Write-Host "Found bin: $($binDir.FullName)"
-
-          # ffmpeg.exe, ffprobe.exe만 추출 (용량 축소)
-          New-Item -ItemType Directory -Force -Path ./ffmpeg_portable | Out-Null
-          Copy-Item "$($binDir.FullName)\ffmpeg.exe" ./ffmpeg_portable/ -Force
-          Copy-Item "$($binDir.FullName)\ffprobe.exe" ./ffmpeg_portable/ -Force
-
-          Compress-Archive -Path "./ffmpeg_portable/*" -DestinationPath "ffmpeg-portable-win64.zip" -Force
-          $sizeMB = [math]::Round((Get-Item ffmpeg-portable-win64.zip).Length / 1MB, 1)
-          Write-Host "ffmpeg-portable-win64.zip: ${sizeMB}MB"
 
       # ── fonttools 포터블 패키지 ────────────────────────────────────
       # macOS와 동일하게 python-build-standalone 사용 (actions/setup-python은 비포터블)
@@ -116,14 +43,11 @@ jobs:
           $sizeMB = [math]::Round((Get-Item python-fonttools-win64.zip).Length / 1MB, 1)
           Write-Host "python-fonttools-win64.zip: ${sizeMB}MB"
 
-      # ── Windows 에셋 업로드 (임시 아티팩트) ────────────────────────
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-tools
           path: |
-            ghostscript-portable-win64.zip
-            ffmpeg-portable-win64.zip
             python-fonttools-win64.zip
 
   # ═══════════════════════════════════════════════════════════════════
@@ -135,73 +59,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # ── Ghostscript 포터블 패키지 (ARM64) ──────────────────────────
-      - name: Build Ghostscript portable (arm64)
-        run: |
-          set -e
-          brew install ghostscript
-
-          GS_PREFIX=$(brew --prefix ghostscript)
-          echo "Ghostscript prefix: $GS_PREFIX"
-
-          mkdir -p gs_portable/bin gs_portable/lib gs_portable/share
-
-          # gs 바이너리 복사
-          cp "$GS_PREFIX/bin/gs" gs_portable/bin/
-
-          # Ghostscript 리소스 복사 (PDF 처리에 필요)
-          cp -R "$GS_PREFIX/share/ghostscript" gs_portable/share/
-
-          # brew deps로 모든 의존성의 dylib를 확실하게 수집
-          echo "Collecting all dependency dylibs via brew deps..."
-          ALL_DEPS=$(brew deps --installed ghostscript)
-          echo "Dependencies: $ALL_DEPS"
-
-          for dep in $ALL_DEPS ghostscript; do
-            dep_prefix=$(brew --prefix "$dep" 2>/dev/null || true)
-            if [ -d "$dep_prefix/lib" ]; then
-              cp "$dep_prefix/lib/"*.dylib gs_portable/lib/ 2>/dev/null || true
-            fi
-          done
-
-          echo "Collected $(ls gs_portable/lib/*.dylib 2>/dev/null | wc -l | tr -d ' ') dylibs"
-
-          # gs 바이너리의 dylib 참조를 @rpath로 변경
-          otool -L gs_portable/bin/gs | grep -v '/usr/lib' | grep '\.dylib' | awk '{print $1}' | while read lib; do
-            lib_name=$(basename "$lib")
-            install_name_tool -change "$lib" "@rpath/$lib_name" gs_portable/bin/gs 2>/dev/null || true
-          done
-
-          # 모든 복사된 dylib의 참조도 @rpath로 변경
-          for dylib in gs_portable/lib/*.dylib; do
-            [ -f "$dylib" ] || continue
-            install_name_tool -id "@rpath/$(basename "$dylib")" "$dylib" 2>/dev/null || true
-            otool -L "$dylib" | grep -v '/usr/lib' | grep '\.dylib' | awk '{print $1}' | while read lib; do
-              lib_name=$(basename "$lib")
-              install_name_tool -change "$lib" "@rpath/$lib_name" "$dylib" 2>/dev/null || true
-            done
-          done
-
-          # rpath 추가
-          install_name_tool -add_rpath @executable_path/../lib gs_portable/bin/gs 2>/dev/null || true
-          chmod +x gs_portable/bin/gs
-
-          # install_name_tool로 서명이 깨졌으므로 ad-hoc 재서명
-          echo "Re-signing all binaries..."
-          for dylib in gs_portable/lib/*.dylib; do
-            [ -f "$dylib" ] && codesign --force --sign - "$dylib" 2>/dev/null || true
-          done
-          codesign --force --sign - gs_portable/bin/gs
-
-          # 테스트
-          echo "Testing portable gs..."
-          GS_LIB=gs_portable/share/ghostscript/Resource/Init:gs_portable/share/ghostscript/lib \
-            DYLD_LIBRARY_PATH=gs_portable/lib \
-            gs_portable/bin/gs --version && echo "✅ gs works!" || echo "⚠️ gs test failed"
-
-          tar czf ghostscript-portable-macos-arm64.tar.gz -C gs_portable .
-          echo "ghostscript-portable-macos-arm64.tar.gz: $(du -h ghostscript-portable-macos-arm64.tar.gz | cut -f1)"
 
       # ── Python + fonttools 포터블 패키지 (ARM64) ────────────────────
       - name: Build Python+fonttools portable (arm64)
@@ -228,11 +85,10 @@ jobs:
         with:
           name: macos-arm64-tools
           path: |
-            ghostscript-portable-macos-arm64.tar.gz
             python-fonttools-macos-arm64.tar.gz
 
   # ═══════════════════════════════════════════════════════════════════
-  # macOS x86_64 fonttools (Ghostscript x86_64는 Homebrew bottle 미제공 → 런타임 brew 폴백)
+  # macOS x86_64 fonttools
   # ═══════════════════════════════════════════════════════════════════
   build-macos-x86_64-tools:
     runs-on: macos-latest  # ARM64 러너에서 x86_64 tarball 다운로드만 (실행 불필요)
@@ -242,8 +98,6 @@ jobs:
         uses: actions/checkout@v4
 
       # ── Python + fonttools 포터블 패키지 (x86_64) ───────────────────
-      # Ghostscript x86_64: Homebrew가 더 이상 Intel bottle을 제공하지 않음
-      # → Intel Mac 사용자는 런타임에 brew install ghostscript 폴백 사용
       - name: Build Python+fonttools portable (x86_64)
         run: |
           set -e
@@ -284,22 +138,18 @@ jobs:
       - name: List all assets
         run: ls -lh *.zip *.tar.gz
 
-      - name: Delete existing release if present
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete portable-tools-v1 --yes --cleanup-tag -R ${{ github.repository }} 2>/dev/null || true
-
-      - name: Create release and upload assets
+      # 주의: 기존 릴리스를 삭제하지 않는다 — 구버전 앱이 런타임 다운로드로 사용하는
+      # ffmpeg/ghostscript 포터블 zip이 이 릴리스에 남아 있어야 한다. fonttools 자산만 갱신한다.
+      - name: Ensure release exists and upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create portable-tools-v1 \
-            --title "Portable Tools v1 (Windows + macOS)" \
-            --notes "포터블 빌드: FFmpeg + Ghostscript + Python+fonttools (Windows x64, macOS ARM64, macOS x86_64 fonttools)" \
-            --repo ${{ github.repository }} \
-            ghostscript-portable-win64.zip \
-            ffmpeg-portable-win64.zip \
+          gh release view portable-tools-v1 --repo ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create portable-tools-v1 \
+              --title "Portable Tools v1 (Windows + macOS)" \
+              --notes "포터블 빌드: Python+fonttools (Windows x64, macOS ARM64, macOS x86_64)" \
+              --repo ${{ github.repository }}
+          gh release upload portable-tools-v1 --clobber --repo ${{ github.repository }} \
             python-fonttools-win64.zip \
-            ghostscript-portable-macos-arm64.tar.gz \
             python-fonttools-macos-arm64.tar.gz \
             python-fonttools-macos-x86_64.tar.gz

@@ -13,6 +13,7 @@ import {
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
 import { tauriCommands } from '../../../utils/tauriCommands';
+import { ensureFfmpeg as ensureFfmpegWithConsent } from '../../../utils/ffmpegSetup';
 import { useArchiveOperations } from './useArchiveOperations';
 import { useDeleteOperations } from './useDeleteOperations';
 import { useFolderSizeOperations } from './useFolderSizeOperations';
@@ -73,8 +74,8 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     total?: number;
   } | null>(null);
 
-  /** PDF 압축: Ghostscript 자동 설치 중 */
-  const [gsSetup, setGsSetup] = useState<{ fileName: string } | null>(null);
+  /** 비디오 기능: FFmpeg 다운로드 폴백 진행 중 (번들 LGPL 빌드가 없을 때만) */
+  const [ffmpegSetup, setFfmpegSetup] = useState<boolean>(false);
 
   // 파일 작업 진행 상태 (삭제/복제 중 오버레이 표시용)
   const [operationProgress, setOperationProgress] = useState<{ type: string; current: number; total: number; itemLabel?: string } | null>(null);
@@ -168,7 +169,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (!ensureWritableContext()) return;
     const sep = getPathSeparator(currentPath);
     // 중복 방지: "새 폴더", "새 폴더 2", "새 폴더 3"...
-    let base = '새 폴더';
+    let base = t('explorer.newFolderName');
     let candidate = base;
     let counter = 2;
     const existingNames = new Set(entries.map(e => e.name));
@@ -185,14 +186,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       console.error('폴더 생성 실패:', e);
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, entries, setRenamingPath, setSelectedPaths]);
+  }, [currentPath, ensureWritableContext, loadDirectory, entries, setRenamingPath, setSelectedPaths, t]);
 
   // --- 마크다운 파일 생성 ---
   const handleCreateMarkdown = useCallback(async () => {
     if (!currentPath) return;
     if (!ensureWritableContext()) return;
     const sep = getPathSeparator(currentPath);
-    let base = '새 문서';
+    let base = t('explorer.newDocumentName');
     let candidate = `${base}.md`;
     let counter = 2;
     const existingNames = new Set(entries.map(e => e.name));
@@ -210,7 +211,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       console.error('마크다운 파일 생성 실패:', e);
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, entries, undoStack, setRenamingPath, setSelectedPaths]);
+  }, [currentPath, ensureWritableContext, loadDirectory, entries, undoStack, setRenamingPath, setSelectedPaths, t]);
 
   // --- 클립보드 이미지 PNG 저장 ---
   const handlePasteImageFromClipboard = useCallback(async () => {
@@ -483,7 +484,6 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         ...entry,
         name: getFileName(nextPath),
         path: nextPath,
-        thumbnailPath: entry.thumbnailPath === entry.path ? nextPath : entry.thumbnailPath,
       };
     }), sortBy, sortDir);
     setEntries(optimistic);
@@ -535,7 +535,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     if (!ensureWritableContext(selectedPaths)) return;
     const sep = getPathSeparator(currentPath);
     // 중복 방지: "새 폴더", "새 폴더 2"...
-    let base = '새 폴더';
+    let base = t('explorer.newFolderName');
     let candidate = base;
     let counter = 2;
     const existingNames = new Set(entries.map(e => e.name));
@@ -559,7 +559,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       showCopyToast(formatToast('toast.groupFailed', { message: String(e) }));
     }
-  }, [currentPath, selectedPaths, ensureWritableContext, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath, formatToast]);
+  }, [currentPath, selectedPaths, ensureWritableContext, entries, loadDirectory, showCopyToast, undoStack, setSelectedPaths, setRenamingPath, formatToast, t]);
 
   // --- 폴더 해제 요청 (확인 다이얼로그 표시) ---
   const handleUngroupFolder = useCallback((path: string) => {
@@ -687,18 +687,35 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     return 'sprite';
   }, [sheetPackPaths]);
 
+  // --- FFmpeg 확보 (미설치 시 원 배포처에서 자동 다운로드) ---
+  const ensureFfmpeg = useCallback(async (): Promise<boolean> => {
+    const installed = await tauriCommands.checkFfmpeg();
+    if (installed) return true;
+    try {
+      // 사용자 동의 후 다운로드 (동의 다이얼로그 표시 중에는 설치 UI를 띄우지 않음)
+      const ready = await ensureFfmpegWithConsent(t, () => setFfmpegSetup(true));
+      if (!ready) {
+        showCopyToast(t('ffmpeg.declined'));
+        return false;
+      }
+      showCopyToast(t('toast.ffmpegInstallComplete'));
+      return true;
+    } catch (installErr) {
+      showCopyToast(formatToast('toast.ffmpegInstallFailed', { message: String(installErr) }));
+      return false;
+    } finally {
+      setFfmpegSetup(false);
+    }
+  }, [showCopyToast, formatToast, t]);
+
   // --- 동영상 압축 ---
   const handleCompressVideo = useCallback(async (targetPaths: string | string[], quality: 'low' | 'medium' | 'high' = 'medium') => {
     const paths = Array.isArray(targetPaths) ? targetPaths : [targetPaths];
     if (paths.length === 0) return;
     if (!ensureWritableContext(paths)) return;
     try {
-      // 1. ffmpeg 설치 확인
-      const installed = await tauriCommands.checkFfmpeg();
-      if (!installed) {
-        showCopyToast(t('toast.ffmpegMissing'));
-        return;
-      }
+      // 1. ffmpeg 확보
+      if (!(await ensureFfmpeg())) return;
 
       let successCount = 0;
       for (let i = 0; i < paths.length; i += 1) {
@@ -737,18 +754,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setVideoCompression(null);
       showCopyToast(formatToast('toast.compressFailed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
+  }, [currentPath, ensureWritableContext, ensureFfmpeg, loadDirectory, showCopyToast, formatToast, t]);
 
   // --- GIF → MP4 변환 ---
   const handleGifToMp4 = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return;
     if (!ensureWritableContext(paths)) return;
     try {
-      const installed = await tauriCommands.checkFfmpeg();
-      if (!installed) {
-        showCopyToast(t('toast.ffmpegMissing'));
-        return;
-      }
+      if (!(await ensureFfmpeg())) return;
 
       let successCount = 0;
       for (let i = 0; i < paths.length; i += 1) {
@@ -764,18 +777,14 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setOperationProgress(null);
       showCopyToast(formatToast('toast.gifToMp4Failed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
+  }, [currentPath, ensureWritableContext, ensureFfmpeg, loadDirectory, showCopyToast, formatToast, t]);
 
   // --- 동영상 → GIF 변환 ---
   const handleVideoToGif = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return;
     if (!ensureWritableContext(paths)) return;
     try {
-      const installed = await tauriCommands.checkFfmpeg();
-      if (!installed) {
-        showCopyToast(t('toast.ffmpegMissing'));
-        return;
-      }
+      if (!(await ensureFfmpeg())) return;
 
       let successCount = 0;
       for (let i = 0; i < paths.length; i += 1) {
@@ -792,27 +801,13 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       setOperationProgress(null);
       showCopyToast(formatToast('toast.videoToGifFailed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
+  }, [currentPath, ensureWritableContext, ensureFfmpeg, loadDirectory, showCopyToast, formatToast, t]);
 
   // --- PDF 압축 ---
   const handleCompressPdf = useCallback(async (path: string) => {
     if (!ensureWritableContext([path])) return;
     const fileName = getFileName(path);
     try {
-      // Ghostscript 설치 확인
-      const gsInstalled = await tauriCommands.checkGhostscript();
-      if (!gsInstalled) {
-        setGsSetup({ fileName });
-        try {
-          await tauriCommands.downloadGhostscript();
-          showCopyToast(t('toast.ghostscriptInstallComplete'));
-        } catch (installErr) {
-          showCopyToast(formatToast('toast.ghostscriptInstallFailed', { message: String(installErr) }));
-          return;
-        } finally {
-          setGsSetup(null);
-        }
-      }
       showCopyToast(formatToast('toast.pdfCompressing', { fileName }));
       const output = await tauriCommands.compressPdf(path);
       if (currentPath) loadDirectory(currentPath);
@@ -820,7 +815,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     } catch (e) {
       showCopyToast(formatToast('toast.pdfCompressFailed', { message: String(e) }));
     }
-  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast, t]);
+  }, [currentPath, ensureWritableContext, loadDirectory, showCopyToast, formatToast]);
 
   const {
     folderSizeDialog,
@@ -919,7 +914,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     operationProgress,
     extractingZipPaths,
     videoCompression,
-    gsSetup,
+    ffmpegSetup,
     sheetPackDefaultName,
     permanentDeleteConfirm,
     setPermanentDeleteConfirm,

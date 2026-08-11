@@ -14,8 +14,10 @@ jobs:
       matrix:
         include:
           - platform: "macos-latest" # Mac 빌드용
+            os: "macos"
             args: "--target universal-apple-darwin" # Intel/M1 통합 바이너리
           - platform: "windows-latest" # Windows 빌드용
+            os: "windows"
             args: ""
 
     runs-on: ${{ matrix.platform }}
@@ -35,85 +37,69 @@ jobs:
 
       # 2-1. macOS universal binary를 위한 Rust 타겟 추가
       - name: install Rust targets for macOS
-        if: matrix.platform == 'macos-latest'
+        if: matrix.os == 'macos'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      # 3. Rust 빌드 캐시 (빌드 속도 향상)
+      # 3. Rust 빌드 캐시 — warm-cache.yml이 기본 브랜치에 시딩한 것을 복원한다
+      #    (태그 ref 캐시는 태그 간 공유 불가 → 기본 브랜치 캐시 복원)
+      #    save-if: false — 태그별 중복 저장(수백 MB×태그 수) 방지.
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         continue-on-error: true
         with:
           workspaces: './src-tauri -> target'
+          shared-key: "release-${{ matrix.os }}"
+          save-if: "false"
 
       # 4. 프론트엔드 의존성 설치
       - name: install frontend dependencies
         run: npm install
 
-      # 4-1. 번들링할 외부 도구 다운로드
-      # macOS: FFmpeg만 번들 (static binary). GS/fonttools는 런타임에 포터블 패키지 자동 다운로드.
-      # GS: Homebrew 바이너리는 dylib 의존성 때문에 단독 번들 불가 → portable-tools-v1 릴리스에서 다운로드
-      # fonttools: Python 환경이 필요 → portable-tools-v1 릴리스에서 다운로드
-      - name: Download external tools for macOS
-        if: matrix.platform == 'macos-latest'
+      # 4-1. 번들링할 외부 도구 준비
+      # - FFmpeg: 공개 배포 빌드(evermeet.cx / gyan.dev)를 ffmpeg-dist 리소스로 번들
+      # - Ghostscript: 번들 중단 (PDF 압축은 Rust 자체 구현으로 대체됨)
+      # - fonttools(MIT)+Python(PSF): 리소스로 번들
+      - name: Prepare bundled resources for macOS
+        if: matrix.os == 'macos'
         run: |
           mkdir -p src-tauri/binaries
-
-          # FFmpeg (evermeet.cx static universal binary)
-          echo "📦 FFmpeg 다운로드 중..."
-          curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
-          unzip -q ffmpeg.zip
-          cp ffmpeg src-tauri/binaries/ffmpeg-aarch64-apple-darwin
-          cp ffmpeg src-tauri/binaries/ffmpeg-x86_64-apple-darwin
-          cp ffmpeg src-tauri/binaries/ffmpeg-universal-apple-darwin
-          chmod +x src-tauri/binaries/ffmpeg-*-apple-darwin
-
-          # GS placeholder (Tauri externalBin은 파일이 없으면 빌드 실패 → 빈 스텁 생성)
-          echo '#!/bin/sh' > src-tauri/binaries/gs-aarch64-apple-darwin
-          echo 'echo "stub: use portable-tools-v1 package"' >> src-tauri/binaries/gs-aarch64-apple-darwin
-          cp src-tauri/binaries/gs-aarch64-apple-darwin src-tauri/binaries/gs-x86_64-apple-darwin
-          cp src-tauri/binaries/gs-aarch64-apple-darwin src-tauri/binaries/gs-universal-apple-darwin
-          chmod +x src-tauri/binaries/gs-*-apple-darwin
 
           # fonttools placeholder (Tauri resources 패턴 매칭용)
           touch src-tauri/binaries/python-fonttools-placeholder
 
-          echo "✅ macOS 도구 준비 완료"
-          ls -lh src-tauri/binaries/
+          # FFmpeg (evermeet.cx static binary — x86_64, Apple Silicon은 Rosetta로 동작)
+          echo "📦 FFmpeg 다운로드 중..."
+          mkdir -p src-tauri/binaries/ffmpeg-dist
+          curl -fL "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg.zip
+          unzip -q ffmpeg.zip
+          cp ffmpeg src-tauri/binaries/ffmpeg-dist/ffmpeg
+          chmod +x src-tauri/binaries/ffmpeg-dist/ffmpeg
+          src-tauri/binaries/ffmpeg-dist/ffmpeg -version | head -2
 
-      - name: Download external tools for Windows
-        if: matrix.platform == 'windows-latest'
+          echo "✅ macOS 리소스 준비 완료"
+          ls -lh src-tauri/binaries/ src-tauri/binaries/ffmpeg-dist/
+
+      - name: Prepare bundled resources for Windows
+        if: matrix.os == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
 
           # FFmpeg (gyan.dev essentials)
           Write-Host "📦 FFmpeg 다운로드 중..."
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries/ffmpeg-dist | Out-Null
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
             -OutFile ffmpeg.zip
           Expand-Archive -Path ffmpeg.zip -DestinationPath ./ffmpeg_temp -Force
           $ffmpegExe = Get-ChildItem -Path ./ffmpeg_temp -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
-          Copy-Item $ffmpegExe.FullName src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe
+          Copy-Item $ffmpegExe.FullName src-tauri/binaries/ffmpeg-dist/ffmpeg.exe
+          & src-tauri/binaries/ffmpeg-dist/ffmpeg.exe -version | Select-Object -First 2
 
-          # Ghostscript (공식 릴리스)
-          Write-Host "📦 Ghostscript 다운로드 중..."
+          # Python + fonttools — build-tools.yml이 미리 패키징해 둔 포터블 zip 재사용
+          # (매 릴리스마다 python-build-standalone 다운로드 + pip install 하던 3~5분 제거)
           Invoke-WebRequest `
-            -Uri "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10070/gs10070w64.exe" `
-            -OutFile gs_installer.exe
-          7z x gs_installer.exe -o"./gs_extracted" -y | Out-Null
-          $gsExe = Get-ChildItem -Path "./gs_extracted" -Filter "gswin64c.exe" -Recurse | Select-Object -First 1
-          Copy-Item $gsExe.FullName src-tauri/binaries/gs-x86_64-pc-windows-msvc.exe
-
-          # Python + fonttools (python-build-standalone — 포터블, 재배치 가능)
-          Write-Host "📦 Python + fonttools 패키징 중..."
-          Invoke-WebRequest `
-            -Uri "https://github.com/indygreg/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-x86_64-pc-windows-msvc-install_only.tar.gz" `
-            -OutFile cpython-win64.tar.gz
-          New-Item -ItemType Directory -Force -Path ./fonttools_build | Out-Null
-          tar -xzf cpython-win64.tar.gz -C ./fonttools_build
-          & ./fonttools_build/python/python.exe -m pip install --upgrade pip fonttools 2>&1 | Select-Object -Last 3
-          & ./fonttools_build/python/python.exe -c "import fontTools; print('fontTools OK:', fontTools.version)"
-          Compress-Archive -Path "./fonttools_build/python" `
-            -DestinationPath src-tauri/binaries/python-fonttools-x86_64-pc-windows-msvc.zip
+            -Uri "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/python-fonttools-win64.zip" `
+            -OutFile src-tauri/binaries/python-fonttools-x86_64-pc-windows-msvc.zip
 
           Write-Host "✅ Windows 도구 준비 완료"
           Get-ChildItem src-tauri/binaries/ | Format-Table Name, Length
@@ -133,7 +119,64 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "QuickFolder Widget v__VERSION__"
-          releaseBody: "See the assets to download and install this version."
+          # 코드 서명 인증서 없이 배포하므로, 최초 설치 1회에 필요한 사용자 허용 절차를 릴리스 본문에 안내한다.
+          # (설치 후 업데이트는 앱 내 자동 업데이트로 진행되어 경고가 다시 뜨지 않음)
+          releaseBody: |
+            ## 설치 방법 (한국어)
+
+            > QuickFolder는 코드 서명 인증서 없이 배포됩니다. **최초 설치 시 한 번만** 아래 절차로 허용해 주세요.
+            > 설치 후에는 앱 내 자동 업데이트로 진행되어 이 절차가 다시 필요하지 않습니다.
+
+            ### macOS — 방법 A (권장): 터미널 한 줄 설치
+            **터미널**(Spotlight에서 "터미널" 검색)을 열고 아래 한 줄을 붙여넣은 뒤 Enter를 누르세요.
+            경고 없이 바로 설치되고 자동으로 실행됩니다.
+            ```
+            curl -fsSL https://github.com/zzamjak-cloud/quick-folder/releases/latest/download/install.sh | sh
+            ```
+
+            ### macOS — 방법 B: DMG 수동 설치
+            1. DMG를 열고 **QuickFolder Widget**을 응용 프로그램(Applications) 폴더로 드래그합니다.
+            2. QuickFolder를 실행하면 "확인되지 않은 개발자" 경고가 표시됩니다. **취소(완료)** 를 누릅니다.
+            3. **시스템 설정 → 개인정보 보호 및 보안** 으로 이동해 하단의 **"그래도 열기(Open Anyway)"** 를 클릭합니다.
+               - macOS 14(Sonoma) 이하: Finder에서 앱을 **우클릭(Control+클릭) → 열기** 로도 허용할 수 있습니다.
+            4. "손상되었기 때문에 열 수 없습니다" 메시지가 뜨는 경우, 터미널에서 아래 명령을 실행한 뒤 다시 여세요.
+               ```
+               xattr -cr "/Applications/QuickFolder Widget.app"
+               ```
+
+            ### Windows (설치 파일 .exe)
+            1. 브라우저가 다운로드를 차단하면 **유지(Keep)** 를 선택합니다.
+            2. 설치 파일 실행 시 SmartScreen 경고("Windows의 PC 보호")가 표시되면 **추가 정보 → 실행** 을 클릭합니다.
+            3. 이후 설치를 정상적으로 진행하면 됩니다.
+
+            ---
+
+            ## How to Install (English)
+
+            > QuickFolder is distributed without a code signing certificate. Please approve it **once during the first install** using the steps below.
+            > After that, updates are delivered automatically in-app and no further approval is needed.
+
+            ### macOS — Option A (recommended): one-line install via Terminal
+            Open **Terminal** (search "Terminal" in Spotlight), paste the line below, and press Enter.
+            The app installs and launches immediately, with no warnings.
+            ```
+            curl -fsSL https://github.com/zzamjak-cloud/quick-folder/releases/latest/download/install.sh | sh
+            ```
+
+            ### macOS — Option B: manual install from DMG
+            1. Open the DMG and drag **QuickFolder Widget** into the Applications folder.
+            2. Launch QuickFolder — a warning saying the developer cannot be verified will appear. Click **Done (Cancel)**.
+            3. Go to **System Settings → Privacy & Security** and click **"Open Anyway"** at the bottom.
+               - On macOS 14 (Sonoma) or earlier, you can also **right-click (Control-click) the app → Open**.
+            4. If you see a message saying the app "is damaged and can't be opened", run the command below in Terminal and try again.
+               ```
+               xattr -cr "/Applications/QuickFolder Widget.app"
+               ```
+
+            ### Windows (installer .exe)
+            1. If your browser blocks the download, choose **Keep**.
+            2. When the SmartScreen warning ("Windows protected your PC") appears, click **More info → Run anyway**.
+            3. Proceed with the installation as usual.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
@@ -156,11 +199,11 @@ jobs:
             exit 1
           fi
           echo "Using updater metadata: $F"
-          cp "$F" "updater-fragment-${{ matrix.platform }}.json"
+          cp "$F" "updater-fragment-${{ matrix.os }}.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: updater-fragment-${{ matrix.platform }}
-          path: updater-fragment-${{ matrix.platform }}.json
+          name: updater-fragment-${{ matrix.os }}
+          path: updater-fragment-${{ matrix.os }}.json
           if-no-files-found: error
 
   # 매트릭스가 각각 올린 latest.json 중 마지막 것만 남는 문제 보정: 플랫폼 맵을 jq 로 병합 후 재업로드
@@ -207,3 +250,15 @@ jobs:
           echo "--- merged latest.json (platform keys) ---"
           jq '.platforms | keys' latest.json
           gh release upload "${{ github.ref_name }}" latest.json --clobber --repo "${{ github.repository }}"
+
+      # macOS 원라인 설치 스크립트 업로드 (curl 다운로드는 quarantine이 없어 Gatekeeper 경고 없이 설치됨)
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Upload macOS install script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cp source/scripts/install-macos.sh install.sh
+          gh release upload "${{ github.ref_name }}" install.sh --clobber --repo "${{ github.repository }}"

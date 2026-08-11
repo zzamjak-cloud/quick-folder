@@ -46,14 +46,30 @@ pub mod windows {
 // ===== 외부 도구 다운로드 URL =====
 
 pub mod download_urls {
-    /// Ghostscript Portable (Windows 64bit)
-    #[cfg(target_os = "windows")]
-    pub const GHOSTSCRIPT_WIN64: &str =
-        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-win64.zip";
+    // 라이선스 정책:
+    // - FFmpeg는 자체 LGPL 빌드를 번들한다 (build-ffmpeg-lgpl.yml).
+    //   아래 GPL 빌드 URL들은 번들이 없거나 손상된 예외 상황의 런타임 다운로드 폴백 전용 —
+    //   GPL 빌드는 절대 번들·재호스팅 금지, 원 배포처에서 사용자 기기로 직접 다운로드만 허용.
+    // - Ghostscript(AGPL-3.0)는 의존 제거됨 (PDF 압축은 Rust 자체 구현)
 
-    /// Ghostscript ZIP 파일명
+    /// FFmpeg (Windows 64bit, gyan.dev 공식 빌드 — 원 배포처 직접 다운로드)
     #[cfg(target_os = "windows")]
-    pub const GHOSTSCRIPT_ZIP_NAME: &str = "ghostscript-portable-win64.zip";
+    pub const FFMPEG_WIN64: &str =
+        "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+
+    /// FFmpeg (Windows 64bit 미러, BtbN GitHub 공식 빌드 — gyan.dev 장애 시 폴백)
+    #[cfg(target_os = "windows")]
+    pub const FFMPEG_WIN64_MIRROR: &str =
+        "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip";
+
+    /// FFmpeg (macOS, evermeet.cx 공식 정적 빌드 — x86_64 전용, Apple Silicon은 Rosetta 필요)
+    #[cfg(target_os = "macos")]
+    pub const FFMPEG_MACOS: &str = "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip";
+
+    /// FFmpeg (macOS, martin-riedl.de 공식 빌드 인덱스 — arm64 네이티브 빌드 제공.
+    /// 최신 버전 경로는 런타임에 이 인덱스 페이지에서 파싱한다)
+    #[cfg(target_os = "macos")]
+    pub const FFMPEG_MACOS_RIEDL_INDEX: &str = "https://ffmpeg.martin-riedl.de/";
 
     /// Python fonttools (Windows 64bit)
     #[cfg(target_os = "windows")]
@@ -65,15 +81,6 @@ pub mod download_urls {
     pub const PYTHON_FONTTOOLS_ZIP_NAME: &str = "python-fonttools-win64.zip";
 
     // ── macOS 포터블 패키지 ──────────────────────────────────────────
-
-    /// Ghostscript Portable (macOS ARM64)
-    pub const GHOSTSCRIPT_MACOS_ARM64: &str =
-        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-arm64.tar.gz";
-
-    /// Ghostscript Portable (macOS x86_64)
-    /// x86_64 Homebrew bottle 미제공 → ARM64 패키지 사용 시도 (실패 시 brew 폴백)
-    pub const GHOSTSCRIPT_MACOS_X86_64: &str =
-        "https://github.com/zzamjak-cloud/quick-folder/releases/download/portable-tools-v1/ghostscript-portable-macos-arm64.tar.gz";
 
     /// Python fonttools (macOS ARM64)
     pub const PYTHON_FONTTOOLS_MACOS_ARM64: &str =

@@ -7,12 +7,13 @@ import type { TranslationKey } from '../utils/i18n';
 
 type DragCallbackResult = {
   result: 'Dropped' | 'Cancel' | string;
-  cursorPos?: unknown;
+  // CG 글로벌 top-left 좌표계의 드롭 지점 (drag 플러그인이 변환해서 전달)
+  cursorPos?: { x: number; y: number };
 };
 
 interface TempFileTrayProps {
   paths: string[];
-  onRemove: (paths: string[], source: 'trash' | 'drag') => void;
+  onRemove: (paths: string[], source: 'trash' | 'drag', dropTargetPid?: number | null) => void;
   onClear: () => void;
   onError?: (message: string) => void;
   t: (key: TranslationKey) => string;
@@ -116,9 +117,23 @@ export default function TempFileTray({ paths, onRemove, onClear, onError, t }: T
       cleanup();
 
       const onEvent = new Channel<DragCallbackResult>((event) => {
-        if (event.result === 'Dropped') {
-          onRemove(dragPaths, 'drag');
-        }
+        void (async () => {
+          // 드롭 대상 앱이 operation을 보고하지 않으면 macOS가 Cancel로 판정하므로,
+          // 드롭 지점에 다른 앱 창이 있으면 배출 성공으로 간주한다.
+          // 커서를 던지듯 옮겨도 정확하도록 조회 시점 커서가 아닌 드롭 좌표를 사용한다.
+          let dropTargetPid: number | null = null;
+          try {
+            const pos = event.cursorPos;
+            dropTargetPid = await invoke<number | null>('get_app_pid_under_cursor', {
+              point: typeof pos?.x === 'number' && typeof pos?.y === 'number' ? [pos.x, pos.y] : null,
+            });
+          } catch {
+            dropTargetPid = null;
+          }
+          if (event.result === 'Dropped' || dropTargetPid !== null) {
+            onRemove(dragPaths, 'drag', dropTargetPid);
+          }
+        })();
       });
       const image = createFileDragImage(dragPaths, sourceElement);
 

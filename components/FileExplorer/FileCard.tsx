@@ -6,7 +6,7 @@ import { Play, RefreshCw } from 'lucide-react';
 import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
-import { queuedInvokeLow } from './hooks/invokeQueue';
+import { queuedInvokeLow, isTauriCommandCancelled } from './hooks/invokeQueue';
 import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl, FIXED_GRID_THUMB_SIZE } from './hooks/thumbnailCache';
 import { isCloudPath } from '../../utils/pathUtils';
 import FuzzyHighlightedName from './FuzzyHighlightedName';
@@ -60,11 +60,10 @@ export default memo(function FileCard({
 }: FileCardProps) {
   // 생성이 무거운/네트워크 항목(PSD, 클라우드 이미지)은 표시 크기와 무관하게 320으로 1번만 생성·캐시.
   // 화면에는 그리드 레이아웃이 <img>를 CSS로 축소 표시 → 줌/크기변경 시 재생성·재다운로드 없음.
-  // 형제 이미지를 쓰는 PSD, 로컬 이미지/비디오는 표시 크기 그대로 생성(생성이 싸므로).
+  // 로컬 이미지/비디오는 표시 크기 그대로 생성(생성이 싸므로).
   const isPsd = /\.(psd|psb)$/i.test(entry.name);
   const isCloudEntry = isCloudPath(entry.path);
-  const useFixedRenderSize =
-    !entry.thumbnailPath && (isPsd || (entry.file_type === 'image' && isCloudEntry));
+  const useFixedRenderSize = isPsd || (entry.file_type === 'image' && isCloudEntry);
   const renderSize: number = useFixedRenderSize ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
   const thumbnailCacheKey = thumbKey(entry.path, renderSize, entry.modified, entry.size, entry.identity);
 
@@ -134,20 +133,16 @@ export default memo(function FileCard({
     }
     setThumbnail(null);
 
-    // PSD에 동일 이름 이미지 형제가 있으면 그 이미지를 썸네일 소스로 사용
-    const thumbSourcePath = entry.thumbnailPath ?? entry.path;
-    const useImageThumb = !!entry.thumbnailPath || (!isPsd && ft === 'image');
+    const thumbSourcePath = entry.path;
+    const useImageThumb = !isPsd && ft === 'image';
 
     let cancelled = false;
-    // 형제 이미지를 쓰는 경우 path/modified/size가 달라 persistent URL 추측이 빗나가므로 건너뛴다.
-    if (!entry.thumbnailPath) {
-      getPersistentThumbUrl(entry.path, ft, renderSize, entry.modified, entry.size, entry.identity)
-        .then(url => {
-          if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
-          if (getThumb(thumbnailCacheKey) === undefined) setThumbnail(prev => prev ?? url);
-        })
-        .catch(() => {});
-    }
+    getPersistentThumbUrl(entry.path, ft, renderSize, entry.modified, entry.size, entry.identity)
+      .then(url => {
+        if (cancelled || !url || failedThumbnailUrlsRef.current.has(url)) return;
+        if (getThumb(thumbnailCacheKey) === undefined) setThumbnail(prev => prev ?? url);
+      })
+      .catch(() => {});
 
     const sizeChanged = lastThumbnailSizeRef.current && lastThumbnailSizeRef.current !== renderSize;
     lastThumbnailSizeRef.current = renderSize;
@@ -170,7 +165,13 @@ export default memo(function FileCard({
           setThumb(thumbnailCacheKey, url); // '' 도 캐시 → 불필요한 재요청 방지
           setThumbnail(url ? url : null);
         })
-        .catch(() => {/* 취소 또는 실패 무시 (실패는 캐시하지 않음) */});
+        .catch(err => {
+          // 실패는 캐시하지 않음. 단 effect가 살아 있는데 외부(cancelAllQueued 등)에서
+          // 취소된 경우엔 재요청 트리거가 없어 스피너로 영구 고정되므로 스스로 재시도한다.
+          if (!cancelled && isTauriCommandCancelled(err)) {
+            setThumbnailReloadSeq(seq => seq + 1);
+          }
+        });
     }, delay);
 
     return () => {
@@ -178,7 +179,7 @@ export default memo(function FileCard({
       clearTimeout(timer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.thumbnailPath, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd, thumbnailCacheKey]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd, thumbnailCacheKey]);
 
   const handleThumbnailLoad = useCallback(() => {
     if (!thumbnail) return;

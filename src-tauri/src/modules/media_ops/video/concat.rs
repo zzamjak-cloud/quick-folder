@@ -1,3 +1,4 @@
+use super::encoders::h264_encoder_candidates;
 use super::VideoProgress;
 use crate::helpers::find_unique_path;
 use crate::modules::error::{AppError, Result};
@@ -63,31 +64,55 @@ pub async fn concat_videos(
         n
     );
 
-    let mut cmd = std::process::Command::new(&ffmpeg_path);
-    let mut args: Vec<String> = vec!["-y".to_string()];
-    args.extend(input_args);
-    args.extend([
-        "-filter_complex".to_string(),
-        filter_str,
-        "-map".to_string(),
-        "[outv]".to_string(),
-        "-map".to_string(),
-        "[outa]".to_string(),
-        "-c:v".to_string(),
-        "libx264".to_string(),
-        "-crf".to_string(),
-        "18".to_string(),
-        "-preset".to_string(),
-        "medium".to_string(),
-        "-c:a".to_string(),
-        "aac".to_string(),
-        "-b:a".to_string(),
-        "128k".to_string(),
-        "-progress".to_string(),
-        "pipe:1".to_string(),
-        output_str.clone(),
-    ]);
-    cmd.args(&args);
+    // 인코더 후보를 순서대로 시도 — 번들 LGPL FFmpeg에 없는 인코더는 다음 후보로 폴백
+    let mut errors: Vec<String> = Vec::new();
+    for attempt in h264_encoder_candidates(18) {
+        let mut args: Vec<String> = vec!["-y".to_string()];
+        args.extend(input_args.iter().cloned());
+        args.extend([
+            "-filter_complex".to_string(),
+            filter_str.clone(),
+            "-map".to_string(),
+            "[outv]".to_string(),
+            "-map".to_string(),
+            "[outa]".to_string(),
+        ]);
+        args.extend(attempt.video_args.iter().cloned());
+        args.extend([
+            "-c:a".to_string(),
+            "aac".to_string(),
+            "-b:a".to_string(),
+            "128k".to_string(),
+            "-progress".to_string(),
+            "pipe:1".to_string(),
+            output_str.clone(),
+        ]);
+
+        match run_concat_attempt(&ffmpeg_path, &args, &output_path, &on_progress) {
+            Ok(()) => {
+                let _ = std::fs::remove_dir_all(&tmp_dir);
+                return Ok(output_str);
+            }
+            Err(e) => {
+                eprintln!("⚠️ 인코더 {} 실패: {e}", attempt.label);
+                errors.push(format!("[{}] {e}", attempt.label));
+            }
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    Err(AppError::VideoProcessing(errors.join(" / ")))
+}
+
+/// 단일 인코더로 concat 인코딩 시도. 실패 시 stderr 요약을 Err로 반환.
+fn run_concat_attempt(
+    ffmpeg_path: &std::path::Path,
+    args: &[String],
+    output_path: &std::path::Path,
+    on_progress: &tauri::ipc::Channel<VideoProgress>,
+) -> std::result::Result<(), String> {
+    let mut cmd = std::process::Command::new(ffmpeg_path);
+    cmd.args(args);
 
     // Windows: 콘솔 창 숨기기
     #[cfg(target_os = "windows")]
@@ -100,10 +125,7 @@ pub async fn concat_videos(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| AppError::ToolExecution {
-            tool: "FFmpeg".to_string(),
-            reason: e.to_string(),
-        })?;
+        .map_err(|e| format!("실행 실패: {e}"))?;
 
     let stdout = child.stdout.take();
     let on_progress_clone = on_progress.clone();
@@ -143,32 +165,29 @@ pub async fn concat_videos(
         output
     });
 
-    let status = child.wait().map_err(|e| AppError::ToolExecution {
-        tool: "FFmpeg".to_string(),
-        reason: format!("대기 실패: {}", e),
-    })?;
+    let status = child.wait().map_err(|e| format!("대기 실패: {}", e))?;
     let _ = progress_thread.join();
     let stderr_output = stderr_thread.join().unwrap_or_default();
 
-    // 임시 파일 정리
-    let _ = std::fs::remove_dir_all(&tmp_dir);
-
     if !status.success() {
-        let _ = std::fs::remove_file(&output_path);
+        let _ = std::fs::remove_file(output_path);
         let err_msg = stderr_output
             .lines()
-            .filter(|l| l.contains("Error") || l.contains("error") || l.contains("not found"))
+            .filter(|l| {
+                l.contains("Error")
+                    || l.contains("error")
+                    || l.contains("Unknown")
+                    || l.contains("not found")
+            })
             .last()
             .unwrap_or("ffmpeg concat 실패")
             .to_string();
-        return Err(AppError::VideoProcessing(err_msg));
+        return Err(err_msg);
     }
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing(
-            "ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string(),
-        ));
+        return Err("ffmpeg가 출력 파일을 생성하지 않았습니다.".to_string());
     }
 
-    Ok(output_str)
+    Ok(())
 }

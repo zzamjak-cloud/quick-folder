@@ -1,10 +1,12 @@
 //! 미디어 처리 모듈 (비디오/오디오 변환, 썸네일, 압축)
 
 mod gif;
+mod pdf;
 mod thumbnail;
 mod video;
 
 pub use gif::{compress_gif, gif_to_mp4};
+pub use pdf::compress_pdf;
 pub(crate) use thumbnail::get_os_thumbnail;
 pub use thumbnail::{
     ensure_thumbnails_batch, get_video_thumbnail, get_video_thumbnail_path,

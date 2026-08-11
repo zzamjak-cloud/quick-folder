@@ -58,7 +58,7 @@ function normalizeDuplicateGroups(value: unknown): DuplicateFileGroup[] {
 function getThumbnailKind(entry: FileEntry): 'image' | 'video' | 'psd' | null {
   const name = entry.name.toLowerCase();
   if (/\.(psd|psb)$/.test(name)) return 'psd';
-  if (entry.thumbnailPath || entry.file_type === 'image' || /\.(jpe?g|png|gif|webp|bmp|ico|icns|tiff?)$/.test(name)) {
+  if (entry.file_type === 'image' || /\.(jpe?g|png|gif|webp|bmp|ico|icns|tiff?)$/.test(name)) {
     return 'image';
   }
   if (entry.file_type === 'video' || /\.(mp4|mov|avi|mkv|webm)$/.test(name)) return 'video';
@@ -127,7 +127,7 @@ function DuplicateThumb({
     }
     if (cached === '') deleteThumb(key);
 
-    const thumbSourcePath = entry.thumbnailPath ?? entry.path;
+    const thumbSourcePath = entry.path;
     const thumbCommand = thumbKind === 'image'
       ? 'get_file_thumbnail_path'
       : thumbKind === 'psd'
@@ -146,7 +146,7 @@ function DuplicateThumb({
       return promise;
     };
 
-    if (!entry.thumbnailPath && thumbKind !== 'psd') {
+    if (thumbKind !== 'psd') {
       getPersistentThumbUrl(entry.path, thumbKind, thumbSize, entry.modified, entry.size, entry.identity)
         .then(url => {
           if (cancelled || !url) return;

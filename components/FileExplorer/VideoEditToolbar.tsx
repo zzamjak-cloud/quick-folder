@@ -3,6 +3,7 @@ import { Channel } from '@tauri-apps/api/core';
 import { ThemeVars } from './types';
 import { getFileName } from '../../utils/pathUtils';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
+import { ensureFfmpeg } from '../../utils/ffmpegSetup';
 import type { TranslationKey } from '../../utils/i18n';
 
 interface VideoEditToolbarProps {
@@ -130,6 +131,20 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
   const [processing, setProcessing] = useState(false);
   const [statusText, setStatusText] = useState('');
 
+  // 내보내기 해상도 비율 (100 = 원본). 비율 유지 축소만 지원
+  const [scalePct, setScalePct] = useState(100);
+
+  // 내보내기 배속 (1 = 원본). 배속 시 영상 길이가 줄어 파일 크기도 감소
+  const [speedRate, setSpeedRate] = useState(1);
+
+  // 선택 비율 → 출력 폭(px). 크롭이 있으면 크롭 폭 기준. 원본(100%)이면 null
+  const computeScaleWidth = useCallback((): number | null => {
+    if (scalePct >= 100) return null;
+    const sourceWidth = cropRect?.w ?? videoRef.current?.videoWidth ?? 0;
+    if (sourceWidth <= 0) return null;
+    return Math.max(2, Math.round((sourceWidth * scalePct) / 100));
+  }, [scalePct, cropRect, videoRef]);
+
   // 시간 입력 필드 상태
   const [startInput, setStartInput] = useState(formatTime(0));
   const [endInput, setEndInput] = useState(formatTime(duration || 0));
@@ -245,6 +260,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
     setProcessing(true);
     setStatusText(t('videoEdit.status.exporting'));
     try {
+      if (!(await ensureFfmpeg(t, setStatusText))) {
+        setStatusText(t('ffmpeg.declined'));
+        return;
+      }
       const progress = new Channel<VideoProgress>();
       progress.onmessage = (msg) => {
         setStatusText(formatMessage(t('videoEdit.status.processingPercent'), { percent: msg.percent.toFixed(0) }));
@@ -257,6 +276,8 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         cropY: cropRect?.y ?? null,
         cropW: cropRect?.w ?? null,
         cropH: cropRect?.h ?? null,
+        scaleWidth: computeScaleWidth(),
+        speed: speedRate > 1 ? speedRate : null,
         onProgress: progress,
       });
       setStatusText(formatMessage(t('videoEdit.status.exportComplete'), { fileName: getFileName(output) }));
@@ -274,6 +295,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
     setProcessing(true);
     setStatusText(t('videoEdit.status.deletingSegment'));
     try {
+      if (!(await ensureFfmpeg(t, setStatusText))) {
+        setStatusText(t('ffmpeg.declined'));
+        return;
+      }
       const progress = new Channel<VideoProgress>();
       progress.onmessage = (msg) => {
         setStatusText(formatMessage(t('videoEdit.status.processingPercent'), { percent: msg.percent.toFixed(0) }));
@@ -299,6 +324,10 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
     setProcessing(true);
     setStatusText(t('videoEdit.status.gifConverting'));
     try {
+      if (!(await ensureFfmpeg(t, setStatusText))) {
+        setStatusText(t('ffmpeg.declined'));
+        return;
+      }
       const progress = new Channel<VideoProgress>();
       progress.onmessage = (msg) => {
         setStatusText(formatMessage(t('videoEdit.status.gifConvertingPercent'), { percent: msg.percent.toFixed(0) }));
@@ -311,7 +340,8 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
         cropY: cropRect?.y ?? null,
         cropW: cropRect?.w ?? null,
         cropH: cropRect?.h ?? null,
-        scaleWidth: null,
+        scaleWidth: computeScaleWidth(),
+        speed: speedRate > 1 ? speedRate : null,
         onProgress: progress,
       });
       setStatusText(formatMessage(t('videoEdit.status.gifComplete'), { fileName: getFileName(output) }));
@@ -499,6 +529,51 @@ const VideoEditToolbar = forwardRef<VideoEditToolbarHandle, VideoEditToolbarProp
 
       {/* 3단: 액션 버튼 */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* 내보내기 해상도 선택 (비율 유지 축소) */}
+        <label className="flex items-center gap-1 text-xs" style={{ color: themeVars?.text ?? '#9ca3af' }} title={t('videoEdit.scaleTitle')}>
+          {t('videoEdit.scaleLabel')}
+          <select
+            value={scalePct}
+            onChange={e => setScalePct(Number(e.target.value))}
+            disabled={processing}
+            className="text-xs rounded"
+            style={{
+              padding: '0.3rem 0.25rem',
+              background: themeVars?.bg ?? '#111',
+              color: themeVars?.text ?? '#e5e7eb',
+              border: `1px solid ${themeVars?.border ?? '#444'}`,
+              cursor: processing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <option value={100}>{t('videoEdit.scaleOriginal')} (100%)</option>
+            <option value={75}>75%</option>
+            <option value={50}>50%</option>
+            <option value={25}>25%</option>
+          </select>
+        </label>
+        {/* 내보내기 배속 선택 */}
+        <label className="flex items-center gap-1 text-xs" style={{ color: themeVars?.text ?? '#9ca3af' }} title={t('videoEdit.speedTitle')}>
+          {t('videoEdit.speedLabel')}
+          <select
+            value={speedRate}
+            onChange={e => setSpeedRate(Number(e.target.value))}
+            disabled={processing}
+            className="text-xs rounded"
+            style={{
+              padding: '0.3rem 0.25rem',
+              background: themeVars?.bg ?? '#111',
+              color: themeVars?.text ?? '#e5e7eb',
+              border: `1px solid ${themeVars?.border ?? '#444'}`,
+              cursor: processing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <option value={1}>{t('videoEdit.scaleOriginal')} (x1)</option>
+            <option value={1.2}>x1.2</option>
+            <option value={1.5}>x1.5</option>
+            <option value={2}>x2.0</option>
+            <option value={3}>x3.0</option>
+          </select>
+        </label>
         <button
           style={accentBtnStyle}
           onClick={handleTrim}

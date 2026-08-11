@@ -34,28 +34,8 @@ export const LEGACY_BG_CLASS_TO_HEX: Record<string, string> = {
   'bg-slate-500': '#e5e7eb',
 };
 
-const DEFAULT_CATEGORIES: Category[] = [
-  {
-    id: '1',
-    title: '작업 공간',
-    color: '#60a5fa',
-    createdAt: Date.now(),
-    shortcuts: [
-      { id: '101', name: '프로젝트 A', path: 'D:\\Projects\\ProjectA', createdAt: Date.now() },
-      { id: '102', name: '디자인 리소스', path: 'D:\\Assets\\Design', createdAt: Date.now() },
-    ]
-  },
-  {
-    id: '2',
-    title: '다운로드 & 문서',
-    color: '#34d399',
-    createdAt: Date.now(),
-    shortcuts: [
-      { id: '201', name: 'Downloads', path: 'C:\\Users\\User\\Downloads', createdAt: Date.now() },
-      { id: '202', name: 'Documents', path: 'C:\\Users\\User\\Documents', createdAt: Date.now() },
-    ]
-  }
-];
+// 최초 설치 시 기본 카테고리 없이 빈 상태로 시작
+const DEFAULT_CATEGORIES: Category[] = [];
 
 export function useCategoryManagement(
   addToast: (msg: string, type: 'success' | 'error' | 'info') => void,

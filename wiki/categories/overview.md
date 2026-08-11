@@ -71,6 +71,21 @@ onAddToCategory(path, catId)     // 특정 카테고리에 추가
 ```
 우클릭 메뉴 → "즐겨찾기에 추가" 로 트리거.
 
+## 구글 드라이브 경로 자가 치유
+즐겨찾기 클릭 시 `App.tsx`의 `resolveAvailableDirectory`가 경로 존재를 확인한다.
+경로가 없고 구글 드라이브 경로라면 `utils/pathUtils.ts`의
+`getGoogleDriveLocalizedVariants`로 언어별 폴더명(`My Drive` ↔ `내 드라이브`,
+`Shared drives` ↔ `공유 드라이브` 등)을 치환한 후보를 검사해 복구한다.
+- 배경: 드라이브는 재로그인 시 그 시점의 시스템 언어로 마운트 폴더명을 새로 만든다.
+  시스템 언어를 바꾼 뒤 재로그인하면 저장된 절대 경로의 해당 세그먼트가 깨진다.
+- 복구 성공 시 치환된 세그먼트까지의 접두사를 공유하는 **모든 즐겨찾기 경로를
+  일괄 마이그레이션**한다(`migrateShortcutPaths`). 사용자 지정 이름은 유지.
+- 새 언어 폴더명을 지원하려면 `GOOGLE_DRIVE_LOCALIZED_FOLDER_GROUPS`에 추가.
+- **유니코드 정규화 필수**: macOS 파일시스템은 한글 경로를 NFD(자모 분해형)로 반환하므로,
+  세그먼트 비교는 반드시 `normalizeSegmentForCompare`(NFC + 소문자)를 거쳐야 한다.
+  NFC 리터럴과 `toLowerCase()`만으로 비교하면 실기기에서 매칭이 전혀 안 된다. (v1.0.7 회귀)
+- 테스트: `tests/googleDriveLocalizedVariants.test.ts`
+
 ## 레거시 색상 변환
 ```typescript
 LEGACY_TEXT_CLASS_TO_HEX   // Tailwind 텍스트 클래스 → Hex

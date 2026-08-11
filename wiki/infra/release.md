@@ -18,7 +18,8 @@ git add — 버전 파일 + CHANGELOG + 변경 소스만
   ↓
 git commit (HEREDOC, Co-Authored-By)
   ↓
-git push origin main
+git push origin develop && git push origin develop:main
+  (main은 기본 브랜치 — warm-cache 캐시·워크플로우 등록이 main 기준이므로 함께 fast-forward 필수)
   ↓
 git tag -a v{version} → git push origin v{version}
 ```
@@ -75,6 +76,21 @@ git push origin v{version}
 - `latest.json` 자동 생성·업로드
 - `releaseDraft: false` 필수 (draft URL은 인증 필요)
 - 환경변수: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+## 빌드 속도 구조 (레포 Public — 호스티드 러너 무료)
+레포가 Public이라 GitHub 호스티드 러너는 무료·무제한이다.
+- **macOS 잡은 `macos-latest`(호스티드 ARM64)** 를 사용한다.
+- **Rust 캐시는 Windows·macOS 모두 기본 브랜치(main)에 시딩** (`warm-cache.yml`) — GitHub 캐시는 "현재 ref 또는 기본 브랜치"에서만 복원되므로 태그 ref끼리는 캐시 공유가 안 된다. main 푸시 중 `Cargo.lock`/`Cargo.toml`/`package-lock.json` 변경 시에만 자동 실행(수동 `workflow_dispatch`도 가능). release.yml은 같은 `shared-key: release-{os}`로 복원만 하고 저장 안 함(`save-if: false`). **릴리스 때 main fast-forward 푸시를 빼먹으면 캐시가 낡아 릴리스가 느려진다.**
+- **Windows Python+fonttools는 `portable-tools-v1` 릴리스 자산 재사용** — 매 릴리스 다운로드+pip install(3~5분) 제거. Python 버전 갱신 시 `build-tools.yml` 수동 실행으로 자산 재게시.
+
+## 코드 서명 정책 (무서명 배포)
+OS 코드 서명 인증서(Apple Developer ID, Windows Authenticode)는 **비용 문제로 도입하지 않는다**.
+- macOS: `APPLE_SIGNING_IDENTITY: "-"` (ad-hoc 서명)만 유지. Gatekeeper 경고는 최초 설치 1회 사용자 허용으로 통과.
+- Windows: 무서명 NSIS. SmartScreen 경고는 "추가 정보 → 실행"으로 통과.
+- 사용자 안내는 `release.yml`의 `releaseBody`에 내장되어 릴리스 페이지에 자동 게시된다.
+- macOS 권장 설치는 원라인 스크립트: `scripts/install-macos.sh` → 릴리스 자산 `install.sh`로 업로드.
+  curl 다운로드에는 quarantine이 붙지 않아 Gatekeeper 경고 없이 설치된다.
+- 최초 설치 이후에는 앱 내 자동 업데이트(Tauri updater, minisign 서명)로 진행되어 OS 경고가 재발하지 않는다.
 
 ## macOS Universal Binary 주의
 `tauri-action`이 `darwin-aarch64` / `darwin-x86_64` 키로 `latest.json` 등록.  

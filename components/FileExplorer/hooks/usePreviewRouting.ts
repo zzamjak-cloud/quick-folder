@@ -53,11 +53,10 @@ export function usePreviewRouting({
     if (entry.is_dir) return;
 
     // 그리드에 이미 로드된 썸네일(메모리 캐시)을 미리보기 즉시 placeholder로 사용 → '로딩중' 제거.
-    // 그리드가 320 고정 키로 캐시하는 항목(PSD·클라우드 이미지, 형제 없음)은 같은 크기로 조회해야 HIT.
+    // 그리드가 320 고정 키로 캐시하는 항목(PSD·클라우드 이미지)은 같은 크기로 조회해야 HIT.
     // '' = 썸네일 없음 확정이므로 제외. 없으면 undefined → 기존 동작.
     const usesFixedKey =
-      !entry.thumbnailPath &&
-      (/\.(psd|psb)$/i.test(entry.path) || (entry.file_type === 'image' && isCloudPath(entry.path)));
+      /\.(psd|psb)$/i.test(entry.path) || (entry.file_type === 'image' && isCloudPath(entry.path));
     const phSize = usesFixedKey ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
     const cacheToken = fileIdentityToken(entry.modified, entry.size, entry.identity);
     const cachedThumb = getThumb(thumbKey(entry.path, phSize, entry.modified, entry.size, entry.identity));

@@ -23,6 +23,7 @@ import { Category, FolderShortcut, ToastMessage, ClipboardData } from './types';
 import FileExplorer from './components/FileExplorer';
 import TempFileTray from './components/TempFileTray';
 import { downloadDir, desktopDir } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, LogicalSize, LogicalPosition, availableMonitors } from '@tauri-apps/api/window';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauri } from './utils/isTauri';
@@ -55,6 +56,7 @@ import {
   writeStorage,
 } from './utils/storage';
 import { tauriCommands } from './utils/tauriCommands';
+import { getGoogleDriveLocalizedVariants } from './utils/pathUtils';
 
 // 커스텀 훅
 import {
@@ -335,6 +337,8 @@ export default function App() {
   const tempTrayWindowAppliedRef = useRef(false);
   // 트레이 종료 시 창 뎁스: 닫기/취소는 전면, OS 드래그로 비우면 배경
   const trayRestoreDepthRef = useRef<'foreground' | 'background'>('foreground');
+  // 드롭 직후 커서 아래 앱 PID (탐색기 창 복원 후 해당 앱을 전면으로 되돌림)
+  const dropTargetPidRef = useRef<number | null>(null);
 
   useEffect(() => {
     writeJsonStorage(storageKeys.tempTrayPaths, tempTrayPaths);
@@ -344,7 +348,11 @@ export default function App() {
     setTempTrayPaths(prev => mergeUniquePaths(prev, paths));
   }, []);
 
-  const handleRemoveTrayFiles = useCallback((paths: string[], source: 'trash' | 'drag' = 'trash') => {
+  const handleRemoveTrayFiles = useCallback((paths: string[], source: 'trash' | 'drag' = 'trash', dropTargetPid: number | null = null) => {
+    if (source === 'drag') {
+      // 드롭 시점에 트레이가 캡처한 대상 앱 PID (창 복원 후 전면 활성화용)
+      dropTargetPidRef.current = dropTargetPid;
+    }
     setTempTrayPaths((prev) => {
       const next = prev.filter(path => !paths.includes(path));
       if (next.length === 0) {
@@ -465,6 +473,12 @@ export default function App() {
           // 드롭 대상 앱이 전면에 남도록 포커스·Z-order를 내림
           await appWindow.setFocusable(false);
           await appWindow.setFocusable(true);
+          // macOS는 드래그 소스 앱이 활성 상태로 유지되므로, 캡처해둔 드롭 대상 앱을 명시적으로 전면 활성화
+          const dropPid = dropTargetPidRef.current;
+          dropTargetPidRef.current = null;
+          if (dropPid) {
+            await invoke('activate_app_by_pid', { pid: dropPid });
+          }
         }
       } catch (err) {
         console.error('탐색기 창 뎁스 복원 실패:', err);
@@ -607,18 +621,48 @@ export default function App() {
     }
   }, [addToast, t]);
 
-  const ensureDirectoryAvailable = useCallback(async (path: string) => {
-    if (path === RECENT_PATH || path === SYSTEM_ROOT_PATH) return true;
+  // 자가 치유된 경로를 즐겨찾기에 반영 (사용자 지정 이름은 유지)
+  const migrateShortcutPaths = useCallback((oldPrefix: string, newPrefix: string) => {
+    setCategories(prev => prev.map(cat => ({
+      ...cat,
+      shortcuts: cat.shortcuts.map(s => {
+        if (s.path === oldPrefix) return { ...s, path: newPrefix };
+        if (s.path.startsWith(oldPrefix + '/') || s.path.startsWith(oldPrefix + '\\')) {
+          return { ...s, path: newPrefix + s.path.slice(oldPrefix.length) };
+        }
+        return s;
+      }),
+    })));
+  }, [setCategories]);
+
+  // 존재하지 않는 경로를 확인하고, 구글 드라이브 폴더명 언어 변경으로 깨진 경우 복구된 경로를 반환
+  const resolveAvailableDirectory = useCallback(async (path: string): Promise<string | null> => {
+    if (path === RECENT_PATH || path === SYSTEM_ROOT_PATH) return path;
     try {
-      const isDirectory = await tauriCommands.isDirectory(path);
-      if (isDirectory) return true;
+      if (await tauriCommands.isDirectory(path)) return path;
+      // 시스템 언어 변경 후 재로그인하면 마운트의 'My Drive' ↔ '내 드라이브' 등 폴더명이 바뀐다
+      for (const candidate of getGoogleDriveLocalizedVariants(path)) {
+        try {
+          if (!(await tauriCommands.isDirectory(candidate))) continue;
+        } catch {
+          continue;
+        }
+        // 치환된 세그먼트까지의 접두사를 구해, 같은 접두사를 공유하는 즐겨찾기를 한 번에 마이그레이션
+        const oldSegs = path.split(/([\\/])/);
+        const newSegs = candidate.split(/([\\/])/);
+        const diffIdx = oldSegs.findIndex((seg, i) => seg !== newSegs[i]);
+        if (diffIdx >= 0) {
+          migrateShortcutPaths(oldSegs.slice(0, diffIdx + 1).join(''), newSegs.slice(0, diffIdx + 1).join(''));
+        }
+        return candidate;
+      }
       addToast(t('toast.folderUnavailable'), "error");
     } catch (error) {
       console.error(error);
       addToast(t('toast.folderCheckFailed'), "error");
     }
-    return false;
-  }, [addToast, t]);
+    return null;
+  }, [addToast, t, migrateShortcutPaths]);
 
   // 최근항목 버튼 클릭 → 탐색기에서 최근항목 탭 열기
   const handleOpenRecent = useCallback(() => {
@@ -638,13 +682,13 @@ export default function App() {
 
   const handleOpenDownloads = useCallback(async () => {
     if (!downloadPath) return;
-    if (!(await ensureDirectoryAvailable(downloadPath))) return;
+    if (!(await resolveAvailableDirectory(downloadPath))) return;
     if (splitMode === 'single' || focusedPane === 0) {
       setExplorerPath(downloadPath);
     } else {
       setExplorerPath2(downloadPath);
     }
-  }, [ensureDirectoryAvailable, splitMode, focusedPane, downloadPath]);
+  }, [resolveAvailableDirectory, splitMode, focusedPane, downloadPath]);
 
   // 데스크탑 폴더 경로
   const [desktopPath, setDesktopPath] = useState<string | null>(null);
@@ -655,23 +699,24 @@ export default function App() {
 
   const handleOpenDesktop = useCallback(async () => {
     if (!desktopPath) return;
-    if (!(await ensureDirectoryAvailable(desktopPath))) return;
+    if (!(await resolveAvailableDirectory(desktopPath))) return;
     if (splitMode === 'single' || focusedPane === 0) {
       setExplorerPath(desktopPath);
     } else {
       setExplorerPath2(desktopPath);
     }
-  }, [ensureDirectoryAvailable, splitMode, focusedPane, desktopPath]);
+  }, [resolveAvailableDirectory, splitMode, focusedPane, desktopPath]);
 
   const openPathInFocusedPane = useCallback(async (path: string) => {
     if (!path) return;
-    if (!(await ensureDirectoryAvailable(path))) return;
+    const resolved = await resolveAvailableDirectory(path);
+    if (!resolved) return;
     if (splitMode === 'single' || focusedPane === 0) {
-      setExplorerPath(path);
+      setExplorerPath(resolved);
     } else {
-      setExplorerPath2(path);
+      setExplorerPath2(resolved);
     }
-  }, [ensureDirectoryAvailable, splitMode, focusedPane, setExplorerPath, setExplorerPath2]);
+  }, [resolveAvailableDirectory, splitMode, focusedPane, setExplorerPath, setExplorerPath2]);
 
   const handleOpenSystemRoot = useCallback(() => {
     openPathInFocusedPane(SYSTEM_ROOT_PATH);
@@ -722,18 +767,20 @@ export default function App() {
 
   // Ctrl(Cmd)+클릭 시 새 탭에서 열기
   const handleOpenInNewTab = useCallback(async (path: string) => {
-    if (!(await ensureDirectoryAvailable(path))) return;
-    window.dispatchEvent(new CustomEvent('qf-open-new-tab', { detail: { path } }));
-  }, [ensureDirectoryAvailable]);
+    const resolved = await resolveAvailableDirectory(path);
+    if (!resolved) return;
+    window.dispatchEvent(new CustomEvent('qf-open-new-tab', { detail: { path: resolved } }));
+  }, [resolveAvailableDirectory]);
 
   const handleOpenInExplorer = useCallback(async (path: string) => {
-    if (!(await ensureDirectoryAvailable(path))) return;
+    const resolved = await resolveAvailableDirectory(path);
+    if (!resolved) return;
     if (splitMode === 'single' || focusedPane === 0) {
-      setExplorerPath(path);
+      setExplorerPath(resolved);
     } else {
-      setExplorerPath2(path);
+      setExplorerPath2(resolved);
     }
-  }, [ensureDirectoryAvailable, splitMode, focusedPane]);
+  }, [resolveAvailableDirectory, splitMode, focusedPane]);
 
   const collapsedSessionBadges = useMemo(() => {
     const firstLetters = categories.map(category => Array.from(category.title.trim())[0]?.toUpperCase() || '?');

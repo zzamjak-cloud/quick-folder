@@ -62,6 +62,9 @@ export const mediaCommands = {
   checkFfmpeg() {
     return runCommand<boolean>('check_ffmpeg');
   },
+  downloadFfmpeg() {
+    return runCommand<void>('download_ffmpeg');
+  },
   compressVideo(input: string, quality: 'low' | 'medium' | 'high', onProgress: unknown) {
     return runCommand<string>('compress_video', { input, quality, onProgress });
   },
@@ -75,6 +78,7 @@ export const mediaCommands = {
       cropW: null,
       cropH: null,
       scaleWidth: null,
+      speed: null,
       onProgress,
     });
   },
@@ -86,12 +90,6 @@ export const mediaCommands = {
   },
   invalidateThumbnailCache(paths: string[]) {
     return runCommand<void>('invalidate_thumbnail_cache', { paths });
-  },
-  checkGhostscript() {
-    return runCommand<boolean>('check_gs');
-  },
-  downloadGhostscript() {
-    return runCommand<void>('download_gs');
   },
   compressPdf(input: string) {
     return runCommand<string>('compress_pdf', { input });

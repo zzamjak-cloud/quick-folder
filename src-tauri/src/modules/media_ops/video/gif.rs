@@ -13,6 +13,7 @@ pub async fn video_to_gif(
     crop_w: Option<i32>,
     crop_h: Option<i32>,
     scale_width: Option<i32>,
+    speed: Option<f64>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
@@ -30,8 +31,9 @@ pub async fn video_to_gif(
         tool: "FFmpeg".to_string(),
     })?;
 
-    // 구간 길이
-    let duration = (end_sec - start_sec).max(0.001) as f32;
+    // 구간 길이 — 배속 시 출력 길이가 짧아지므로 진행률 기준도 나눠준다
+    let speed_rate = super::edit::normalize_speed(speed).unwrap_or(1.0);
+    let duration = ((end_sec - start_sec) / speed_rate).max(0.001) as f32;
 
     // 팔레트 생성 → GIF 인코딩 2단계 프로세스로 고품질 GIF 생성
     let pid = std::process::id();
@@ -45,6 +47,11 @@ pub async fn video_to_gif(
     // 크롭 필터 (지정된 경우)
     if let (Some(x), Some(y), Some(w), Some(h)) = (crop_x, crop_y, crop_w, crop_h) {
         filters.push(format!("crop={}:{}:{}:{}", w, h, x, y));
+    }
+
+    // 배속 (fps=15 앞에 적용해 프레임이 알맞게 솎아지도록)
+    if speed_rate > 1.0 {
+        filters.push(format!("setpts=PTS/{}", speed_rate));
     }
 
     // FPS 제한. 해상도 축소는 호출자가 명시한 경우에만 적용한다.

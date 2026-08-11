@@ -3,79 +3,147 @@ use crate::helpers::find_unique_path;
 use crate::modules::error::{AppError, Result};
 use crate::modules::tool_ops::find_ffmpeg_path;
 
-pub async fn compress_video(
-    input: String,
-    quality: String,
-    on_progress: tauri::ipc::Channel<VideoProgress>,
-) -> Result<String> {
-    // 출력 파일명: {이름}_comp.{확장자}, 충돌 시 _comp_2, _comp_3 ...
-    let input_path = std::path::Path::new(&input);
-    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy();
-    let ext = input_path.extension().unwrap_or_default().to_string_lossy();
-    let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+/// 인코더 후보 (라벨은 에러 메시지용)
+struct EncoderAttempt {
+    label: &'static str,
+    video_args: Vec<String>,
+}
 
-    let output_path = find_unique_path(parent, &stem, "_comp", &format!(".{}", ext));
-    let output_str = output_path.to_string_lossy().to_string();
+/// 품질별 인코더 후보 체인 구성.
+/// 번들 FFmpeg는 LGPL 빌드(libx264/libx265 미포함)이므로 OS 하드웨어 인코더를 1순위로 사용하고,
+/// GPL 인코더는 시스템/다운로드 ffmpeg(GPL 빌드)가 잡혔을 때를 위한 폴백으로 둔다.
+fn encoder_candidates(quality: &str) -> Vec<EncoderAttempt> {
+    let mut list: Vec<EncoderAttempt> = Vec::new();
 
-    // ffmpeg 경로 결정 (sidecar → 시스템 PATH 순)
-    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
-        tool: "FFmpeg".to_string(),
-    })?;
-
-    // 품질별 CRF 설정: low(보통)=높은CRF, medium(좋은)=중간CRF, high(최고)=낮은CRF
-    // macOS: H.265(HEVC), Windows: H.264(AVC) — WebView2 HEVC 미지원
-    let codec_args: Vec<String> = {
-        #[cfg(target_os = "macos")]
-        let (codec, tag_args, crf) = match quality.as_str() {
-            "low" => ("libx265", vec!["-tag:v", "hvc1"], "32"),
-            "high" => ("libx265", vec!["-tag:v", "hvc1"], "22"),
-            _ => ("libx265", vec!["-tag:v", "hvc1"], "28"), // medium (기본)
+    #[cfg(target_os = "macos")]
+    {
+        // VideoToolbox 품질 파라미터: Apple Silicon은 상수 품질(-q:v, 1~100 높을수록 좋음),
+        // Intel HW는 -q:v 미지원이라 비트레이트로 지정
+        let (qv, bv) = match quality {
+            "low" => ("40", "2M"),
+            "high" => ("65", "8M"),
+            _ => ("55", "4M"), // medium (기본)
         };
-        #[cfg(not(target_os = "macos"))]
-        let (codec, tag_args, crf) = match quality.as_str() {
-            "low" => ("libx264", vec![] as Vec<&str>, "28"),
-            "high" => ("libx264", vec![] as Vec<&str>, "18"),
-            _ => ("libx264", vec![] as Vec<&str>, "23"), // medium (기본)
+        let rate_args: Vec<String> = if cfg!(target_arch = "aarch64") {
+            vec!["-q:v".into(), qv.into()]
+        } else {
+            vec!["-b:v".into(), bv.into()]
         };
-        let mut args = vec![
-            "-c:v".to_string(),
-            codec.to_string(),
-            "-crf".to_string(),
-            crf.to_string(),
-            "-preset".to_string(),
-            "medium".to_string(),
-            "-c:a".to_string(),
-            "aac".to_string(),
-            "-b:a".to_string(),
-            "128k".to_string(),
-        ];
-        for t in tag_args {
-            args.push(t.to_string());
-        }
-        args
-    };
 
-    let mut cmd = std::process::Command::new(&ffmpeg_path);
-    cmd.args(&["-y", "-i", &input]);
-    cmd.args(&codec_args);
-    cmd.args(&["-progress", "pipe:1"]);
-    cmd.arg(&output_str);
+        // 1순위: HEVC HW 인코딩 (기존과 동일하게 macOS는 H.265 유지)
+        let mut hevc: Vec<String> = vec!["-c:v".into(), "hevc_videotoolbox".into()];
+        hevc.extend(rate_args.iter().cloned());
+        hevc.extend(["-tag:v".into(), "hvc1".into()]);
+        list.push(EncoderAttempt {
+            label: "hevc_videotoolbox",
+            video_args: hevc,
+        });
+
+        // 2순위: H.264 HW 인코딩
+        let mut h264: Vec<String> = vec!["-c:v".into(), "h264_videotoolbox".into()];
+        h264.extend(rate_args);
+        list.push(EncoderAttempt {
+            label: "h264_videotoolbox",
+            video_args: h264,
+        });
+
+        // 3순위: libx265 (GPL 빌드 ffmpeg가 잡힌 경우만 동작)
+        let crf = match quality {
+            "low" => "32",
+            "high" => "22",
+            _ => "28",
+        };
+        list.push(EncoderAttempt {
+            label: "libx265",
+            video_args: vec![
+                "-c:v".into(),
+                "libx265".into(),
+                "-crf".into(),
+                crf.into(),
+                "-preset".into(),
+                "medium".into(),
+                "-tag:v".into(),
+                "hvc1".into(),
+            ],
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Windows: WebView2가 HEVC 미지원이므로 H.264 유지
+        let bv = match quality {
+            "low" => "2M",
+            "high" => "8M",
+            _ => "4M", // medium (기본)
+        };
+
+        // 1순위: Media Foundation HW/OS 인코더 (LGPL 빌드 포함, 특허는 OS 벤더 라이선스)
+        list.push(EncoderAttempt {
+            label: "h264_mf",
+            video_args: vec!["-c:v".into(), "h264_mf".into(), "-b:v".into(), bv.into()],
+        });
+
+        // 2순위: libx264 (GPL 빌드 ffmpeg가 잡힌 경우만 동작)
+        let crf = match quality {
+            "low" => "28",
+            "high" => "18",
+            _ => "23",
+        };
+        list.push(EncoderAttempt {
+            label: "libx264",
+            video_args: vec![
+                "-c:v".into(),
+                "libx264".into(),
+                "-crf".into(),
+                crf.into(),
+                "-preset".into(),
+                "medium".into(),
+            ],
+        });
+
+        // 3순위: mpeg4 (모든 빌드에 존재하는 최후 폴백)
+        let qv = match quality {
+            "low" => "8",
+            "high" => "3",
+            _ => "5",
+        };
+        list.push(EncoderAttempt {
+            label: "mpeg4",
+            video_args: vec!["-c:v".into(), "mpeg4".into(), "-q:v".into(), qv.into()],
+        });
+    }
+
+    list
+}
+
+/// 단일 인코더로 인코딩 시도. 실패 시 stderr 요약을 Err로 반환.
+fn run_encode_attempt(
+    ffmpeg_path: &std::path::Path,
+    input: &str,
+    output_str: &str,
+    output_path: &std::path::Path,
+    video_args: &[String],
+    on_progress: &tauri::ipc::Channel<VideoProgress>,
+) -> std::result::Result<(), String> {
+    let mut cmd = std::process::Command::new(ffmpeg_path);
+    cmd.args(["-y", "-i", input]);
+    cmd.args(video_args);
+    cmd.args(["-c:a", "aac", "-b:a", "128k"]);
+    cmd.args(["-progress", "pipe:1"]);
+    cmd.arg(output_str);
 
     // Windows: 콘솔 창 숨기기 (CREATE_NO_WINDOW)
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(0x08000000);
     }
 
     let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| AppError::ToolExecution {
-            tool: "FFmpeg".to_string(),
-            reason: e.to_string(),
-        })?;
+        .map_err(|e| format!("실행 실패: {e}"))?;
 
     // stdout에서 -progress 출력 파싱 (별도 스레드)
     let stdout = child.stdout.take();
@@ -118,16 +186,12 @@ pub async fn compress_video(
         output
     });
 
-    let status = child.wait().map_err(|e| AppError::ToolExecution {
-        tool: "FFmpeg".to_string(),
-        reason: format!("대기 실패: {}", e),
-    })?;
+    let status = child.wait().map_err(|e| format!("대기 실패: {e}"))?;
     let _ = progress_thread.join();
     let stderr_output = stderr_thread.join().unwrap_or_default();
 
     if !status.success() {
-        let _ = std::fs::remove_file(&output_path);
-        // stderr에서 의미있는 에러 추출
+        let _ = std::fs::remove_file(output_path);
         let err_msg = stderr_output
             .lines()
             .filter(|l| {
@@ -139,15 +203,56 @@ pub async fn compress_video(
             .last()
             .unwrap_or("ffmpeg 인코딩 실패")
             .to_string();
-        return Err(AppError::VideoProcessing(err_msg));
+        return Err(err_msg);
     }
 
     if !output_path.exists() {
-        return Err(AppError::VideoProcessing(format!(
+        return Err(format!(
             "ffmpeg가 출력 파일을 생성하지 않았습니다. stderr: {}",
             stderr_output.lines().last().unwrap_or("(없음)")
-        )));
+        ));
     }
 
-    Ok(output_str)
+    Ok(())
+}
+
+pub async fn compress_video(
+    input: String,
+    quality: String,
+    on_progress: tauri::ipc::Channel<VideoProgress>,
+) -> Result<String> {
+    // 출력 파일명: {이름}_comp.{확장자}, 충돌 시 _comp_2, _comp_3 ...
+    let input_path = std::path::Path::new(&input);
+    let stem = input_path.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = input_path.extension().unwrap_or_default().to_string_lossy();
+    let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
+
+    let output_path = find_unique_path(parent, &stem, "_comp", &format!(".{}", ext));
+    let output_str = output_path.to_string_lossy().to_string();
+
+    // ffmpeg 경로 결정 (번들 → 다운로드본 → 패키지 관리자 → 시스템 PATH)
+    let ffmpeg_path = find_ffmpeg_path().ok_or_else(|| AppError::ToolNotFound {
+        tool: "FFmpeg".to_string(),
+    })?;
+
+    // 인코더 후보를 순서대로 시도 — 앞 순서 실패(빌드에 인코더 없음 등) 시 다음 후보로 폴백
+    let mut errors: Vec<String> = Vec::new();
+    for attempt in encoder_candidates(&quality) {
+        match run_encode_attempt(
+            &ffmpeg_path,
+            &input,
+            &output_str,
+            &output_path,
+            &attempt.video_args,
+            &on_progress,
+        ) {
+            Ok(()) => return Ok(output_str),
+            Err(e) => {
+                eprintln!("⚠️ 인코더 {} 실패: {e}", attempt.label);
+                errors.push(format!("[{}] {e}", attempt.label));
+            }
+        }
+    }
+
+    Err(AppError::VideoProcessing(errors.join(" / ")))
 }
