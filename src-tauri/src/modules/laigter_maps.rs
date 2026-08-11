@@ -24,6 +24,14 @@ pub struct LaigterParams {
     pub specular_gradient_mix: f32,
     pub specular_gain: f32,
     pub occlusion_strength: f32,
+    /// 타일링 텍스처 여부 — 켜면 경계를 wrap(주기) 샘플링해 이음새 없는 맵 생성
+    #[serde(default = "default_tile")]
+    pub tile: bool,
+}
+
+/// 구버전 설정에 tile 필드가 없을 때 기본값 (타일링 켜짐)
+fn default_tile() -> bool {
+    true
 }
 
 impl Default for LaigterParams {
@@ -37,6 +45,7 @@ impl Default for LaigterParams {
             specular_gradient_mix: 0.45,
             specular_gain: 1.0,
             occlusion_strength: 0.85,
+            tile: true,
         }
     }
 }
@@ -102,7 +111,23 @@ fn gaussian_kernel_1d(sigma: f32) -> Vec<f32> {
     k
 }
 
-fn blur_separable(buf: &[f32], width: usize, height: usize, kernel: &[f32]) -> Vec<f32> {
+/// 경계 밖 좌표 처리 — 타일링이면 wrap(주기 반복), 아니면 가장자리 clamp
+#[inline]
+fn edge_index(pos: isize, len: usize, tile: bool) -> usize {
+    if tile {
+        pos.rem_euclid(len as isize) as usize
+    } else {
+        pos.clamp(0, len as isize - 1) as usize
+    }
+}
+
+fn blur_separable(
+    buf: &[f32],
+    width: usize,
+    height: usize,
+    kernel: &[f32],
+    tile: bool,
+) -> Vec<f32> {
     if kernel.len() <= 1 {
         return buf.to_vec();
     }
@@ -115,7 +140,7 @@ fn blur_separable(buf: &[f32], width: usize, height: usize, kernel: &[f32]) -> V
             let mut s = 0f32;
             for (ki, &kv) in kernel.iter().enumerate() {
                 let ox = x as isize + ki as isize - r as isize;
-                let cx = ox.clamp(0, width as isize - 1) as usize;
+                let cx = edge_index(ox, width, tile);
                 s += kv * buf[y * width + cx];
             }
             tmp[y * width + x] = s;
@@ -127,7 +152,7 @@ fn blur_separable(buf: &[f32], width: usize, height: usize, kernel: &[f32]) -> V
             let mut s = 0f32;
             for (ki, &kv) in kernel.iter().enumerate() {
                 let oy = y as isize + ki as isize - r as isize;
-                let cy = oy.clamp(0, height as isize - 1) as usize;
+                let cy = edge_index(oy, height, tile);
                 s += kv * tmp[cy * width + x];
             }
             out[y * width + x] = s;
@@ -136,18 +161,16 @@ fn blur_separable(buf: &[f32], width: usize, height: usize, kernel: &[f32]) -> V
     out
 }
 
-fn sobel_gradients(h: &[f32], width: usize, height: usize) -> (Vec<f32>, Vec<f32>) {
+fn sobel_gradients(h: &[f32], width: usize, height: usize, tile: bool) -> (Vec<f32>, Vec<f32>) {
     let mut gx = vec![0f32; width * height];
     let mut gy = vec![0f32; width * height];
     for y in 0..height {
         for x in 0..width {
             let idx = y * width + x;
-            if x == 0 || x + 1 == width || y == 0 || y + 1 == height {
-                continue;
-            }
+            // 가장자리도 건너뛰지 않고 wrap/clamp 샘플링으로 기울기 계산 (외곽 단색·타일링 이음새 방지)
             let hm1 = |dx: isize, dy: isize| -> f32 {
-                let nx = (x as isize + dx).clamp(0, width as isize - 1) as usize;
-                let ny = (y as isize + dy).clamp(0, height as isize - 1) as usize;
+                let nx = edge_index(x as isize + dx, width, tile);
+                let ny = edge_index(y as isize + dy, height, tile);
                 h[ny * width + nx]
             };
             gx[idx] = -hm1(-1, -1) + hm1(1, -1) - 2.0 * hm1(-1, 0) + 2.0 * hm1(1, 0) - hm1(-1, 1)
@@ -181,9 +204,9 @@ fn generate_maps_from_rgba(
 
     let mut h = rgba_to_height(img, params.height_invert);
     let kernel = gaussian_kernel_1d(params.blur_sigma.max(0.0));
-    h = blur_separable(&h, width, height, &kernel);
+    h = blur_separable(&h, width, height, &kernel, params.tile);
 
-    let (gx, gy) = sobel_gradients(&h, width, height);
+    let (gx, gy) = sobel_gradients(&h, width, height, params.tile);
 
     let bump = params.bump_strength.max(0.01);
     let y_sign = if params.normal_y_flip {
@@ -208,20 +231,16 @@ fn generate_maps_from_rgba(
             let p = *img.get_pixel(x as u32, y as u32);
             let lum = luminance_rgba(&p);
 
-            let (nx, ny, nz) = if x == 0 || x + 1 == width || y == 0 || y + 1 == height {
-                (0.0_f32, 0.0_f32, 1.0_f32)
-            } else {
-                let sx = gx[idx] * bump;
-                let sy = gy[idx] * bump * y_sign;
-                let mut nx = -sx;
-                let mut ny = -sy;
-                let mut nz = 1.0_f32;
-                let len = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-6);
-                nx /= len;
-                ny /= len;
-                nz /= len;
-                (nx, ny, nz)
-            };
+            // 가장자리 평면 노멀 강제 제거 — 모든 픽셀에서 기울기로 노멀 계산
+            let sx = gx[idx] * bump;
+            let sy = gy[idx] * bump * y_sign;
+            let mut nx = -sx;
+            let mut ny = -sy;
+            let mut nz = 1.0_f32;
+            let len = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-6);
+            nx /= len;
+            ny /= len;
+            nz /= len;
 
             let r = ((nx * 0.5 + 0.5).clamp(0.0, 1.0) * 255.0) as u8;
             let g = ((ny * 0.5 + 0.5).clamp(0.0, 1.0) * 255.0) as u8;
@@ -245,8 +264,8 @@ fn generate_maps_from_rgba(
                     if dx == 0 && dy == 0 {
                         continue;
                     }
-                    let nx = (x as i32 + dx).clamp(0, width as i32 - 1) as usize;
-                    let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                    let nx = edge_index(x as isize + dx as isize, width, params.tile);
+                    let ny = edge_index(y as isize + dy as isize, height, params.tile);
                     let hn = h[ny * width + nx];
                     occ_acc += (hn - hc).max(0.0);
                 }
@@ -369,4 +388,106 @@ pub async fn laigter_maps_export(
     })
     .await
     .map_err(|e| AppError::Internal(format!("맵보내기 실패: {}", e)))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 가로·세로 모두 정확히 한 주기인 사인 패턴 이미지 생성 (완전 타일링 가능)
+    fn periodic_image(w: u32, h: u32) -> RgbaImage {
+        let mut img = RgbaImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let fx = x as f32 / w as f32 * std::f32::consts::TAU;
+                let fy = y as f32 / h as f32 * std::f32::consts::TAU;
+                let v = ((fx.sin() * 0.5 + 0.5) * 0.6 + (fy.cos() * 0.5 + 0.5) * 0.4) * 255.0;
+                let v = v.round().clamp(0.0, 255.0) as u8;
+                img.put_pixel(x, y, Rgba([v, v, v, 255]));
+            }
+        }
+        img
+    }
+
+    /// 이미지를 (dx, dy)만큼 순환 이동 (타일링 등가 이미지 생성)
+    fn rolled(img: &RgbaImage, dx: u32, dy: u32) -> RgbaImage {
+        let (w, h) = (img.width(), img.height());
+        let mut out = RgbaImage::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                out.put_pixel((x + dx) % w, (y + dy) % h, *img.get_pixel(x, y));
+            }
+        }
+        out
+    }
+
+    /// 두 이미지의 채널별 최대 오차 허용 비교
+    fn assert_images_close(a: &RgbaImage, b: &RgbaImage, tol: u8, label: &str) {
+        assert_eq!(a.dimensions(), b.dimensions());
+        for (pa, pb) in a.pixels().zip(b.pixels()) {
+            for c in 0..3 {
+                let d = (pa[c] as i16 - pb[c] as i16).unsigned_abs();
+                assert!(
+                    d <= tol as u16,
+                    "{}: 채널 오차 {} > 허용치 {}",
+                    label,
+                    d,
+                    tol
+                );
+            }
+        }
+    }
+
+    /// 타일링 텍스처는 순환 이동해도 같은 노멀맵이 나와야 함 (경계 이음새 없음)
+    #[test]
+    fn normal_map_is_seamless_for_tiling_texture() {
+        let img = periodic_image(16, 16);
+        let params = LaigterParams::default();
+
+        let (n1, _, _, _) = generate_maps_from_rgba(&img, &params).unwrap();
+        let (n2, _, _, _) = generate_maps_from_rgba(&rolled(&img, 5, 3), &params).unwrap();
+
+        // 원본 노멀맵을 같은 양만큼 이동시킨 결과와 일치해야 함
+        assert_images_close(&rolled(&n1, 5, 3), &n2, 1, "노멀맵 이동 불변성");
+    }
+
+    /// x=0 열의 (R,G) 종류 수 — 1이면 가장자리 전체가 단색(평면 노멀 강제) 상태
+    fn border_color_variety(normal: &RgbaImage) -> usize {
+        let mut colors = std::collections::HashSet::new();
+        for y in 0..normal.height() {
+            let p = normal.get_pixel(0, y);
+            colors.insert((p[0], p[1]));
+        }
+        colors.len()
+    }
+
+    /// 가장자리 픽셀이 평면 노멀 단색으로 강제되지 않아야 함
+    #[test]
+    fn border_normals_are_not_forced_flat() {
+        let img = periodic_image(16, 16);
+        let params = LaigterParams::default();
+        let (normal, _, _, _) = generate_maps_from_rgba(&img, &params).unwrap();
+
+        // 주기 패턴이므로 x=0 열에도 y에 따라 변하는 기울기가 존재해야 함
+        assert!(
+            border_color_variety(&normal) > 1,
+            "x=0 열 전체가 단색으로 처리됨 (외곽 단색 버그)"
+        );
+    }
+
+    /// 타일링 꺼짐(clamp 샘플링)에서도 가장자리가 평면 단색으로 강제되지 않아야 함
+    #[test]
+    fn border_normals_not_flat_without_tiling() {
+        let img = periodic_image(16, 16);
+        let params = LaigterParams {
+            tile: false,
+            ..LaigterParams::default()
+        };
+        let (normal, _, _, _) = generate_maps_from_rgba(&img, &params).unwrap();
+
+        assert!(
+            border_color_variety(&normal) > 1,
+            "tile=false에서도 외곽이 단색으로 처리됨"
+        );
+    }
 }

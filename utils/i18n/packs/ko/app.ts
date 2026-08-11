@@ -339,6 +339,7 @@ export const koAppTranslations = {
   'mapMaker.occlusionStrength': '오클루전 강도',
   'mapMaker.invertHeightMap': '높이맵 반전',
   'mapMaker.normalYFlip': '노멀 Y 플립 (엔진 호환)',
+  'mapMaker.tileTexture': '타일링 텍스처 (경계 이어짐)',
   'mapMaker.section.filesToSave': '저장할 파일',
   'mapMaker.saveNormal': '노멀맵 (_normal.png)',
   'mapMaker.saveParallax': '파랄락스 (_parallax.png)',

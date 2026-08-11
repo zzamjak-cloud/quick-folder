@@ -41,3 +41,11 @@
 | `laigter_maps_export` | `path, dest_dir` | 맵 파일 내보내기 |
 
 `.laigter` 파일 선택 후 Space 키로 `LaigterLitPreview` 열림.
+
+### 경계 처리 (회귀 방지)
+`LaigterParams.tile` (기본 `true`, serde default로 구버전 설정 호환):
+- `true`: 블러·소벨·오클루전 모두 wrap(주기) 샘플링 → 타일링 텍스처에 이음새 없는 맵
+- `false`: clamp 샘플링 (비타일링 스프라이트용)
+
+**주의**: 가장자리 픽셀을 평면 노멀 `(0,0,1)` 단색으로 강제하면 안 된다 — 외곽 1px 단색 라인이 생겨 타일링이 깨진다.
+회귀 테스트: `laigter_maps.rs`의 `#[cfg(test)]` (순환 이동 불변성 + 외곽 단색 검사).

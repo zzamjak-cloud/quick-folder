@@ -339,6 +339,7 @@ export const enAppTranslations = {
   'mapMaker.occlusionStrength': 'Occlusion strength',
   'mapMaker.invertHeightMap': 'Invert height map',
   'mapMaker.normalYFlip': 'Normal Y flip (engine compatibility)',
+  'mapMaker.tileTexture': 'Tiling texture (seamless edges)',
   'mapMaker.section.filesToSave': 'Files to save',
   'mapMaker.saveNormal': 'Normal map (_normal.png)',
   'mapMaker.saveParallax': 'Parallax (_parallax.png)',

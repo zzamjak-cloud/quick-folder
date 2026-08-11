@@ -17,6 +17,8 @@ export interface LaigterParamsUI {
   specularGradientMix: number;
   specularGain: number;
   occlusionStrength: number;
+  /** 타일링 텍스처 — 경계를 wrap 샘플링해 이음새 없는 맵 생성 */
+  tile: boolean;
 }
 
 interface PreviewPayload extends LaigterLitPreviewTextures {
@@ -33,6 +35,7 @@ const DEFAULT_PARAMS: LaigterParamsUI = {
   specularGradientMix: 0.45,
   specularGain: 1,
   occlusionStrength: 0.85,
+  tile: true,
 };
 
 type ViewTab = 'diffuse' | 'normal' | 'parallax' | 'specular' | 'occlusion' | 'lit';
@@ -693,6 +696,10 @@ export default function MapMakerModal({ path, onClose, onExport, themeVars, t }:
                 <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
                   <input type="checkbox" checked={params.normalYFlip} onChange={e => setParams(p => ({ ...p, normalYFlip: e.target.checked }))} />
                   {t('mapMaker.normalYFlip')}
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 py-1 text-[12px]" style={{ color: text }}>
+                  <input type="checkbox" checked={params.tile} onChange={e => setParams(p => ({ ...p, tile: e.target.checked }))} />
+                  {t('mapMaker.tileTexture')}
                 </label>
 
                 {sectionTitle(t('mapMaker.section.filesToSave'))}
