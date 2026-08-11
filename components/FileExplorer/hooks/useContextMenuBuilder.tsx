@@ -349,7 +349,7 @@ export function useContextMenuBuilder({
       toolSection.items.push({
         id: 'compress-video',
         icon: <Film size={13} />,
-        label: t('동영상 압축'),
+        label: t('videoCompress.menu'),
         onClick: () => {}, // 부모 항목 클릭 없음 (서브메뉴 전용)
         submenu: [
           {
@@ -378,9 +378,9 @@ export function useContextMenuBuilder({
               </div>
             ),
           },
-          { id: 'quality-low', icon: undefined, label: t('보통 화질'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'low', compressScale) },
-          { id: 'quality-medium', icon: undefined, label: t('좋은 화질'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'medium', compressScale) },
-          { id: 'quality-high', icon: undefined, label: t('최고 화질'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'high', compressScale) },
+          { id: 'quality-low', icon: undefined, label: t('videoCompress.qualityLow'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'low', compressScale) },
+          { id: 'quality-medium', icon: undefined, label: t('videoCompress.qualityMedium'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'medium', compressScale) },
+          { id: 'quality-high', icon: undefined, label: t('videoCompress.qualityHigh'), onClick: () => fileOps.handleCompressVideo(videoPaths, 'high', compressScale) },
         ],
       });
       toolSection.items.push({

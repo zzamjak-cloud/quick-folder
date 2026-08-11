@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.66] - 2026-08-11
+
+### Fixed
+- 동영상 압축 메뉴와 화질 하위 메뉴 라벨이 표시되지 않던 문제 수정 (v1.27.65 회귀)
+
 ## [1.27.65] - 2026-08-11
 
 ### Added
