@@ -627,7 +627,10 @@ fn get_native_video_thumbnail(_path: &str, _size: u32) -> Result<Option<Vec<u8>>
     Ok(None)
 }
 
+// spawn_blocking: 파일당 수백 회 syscall이 발생할 수 있어 IPC(메인)/워커 스레드 차단 방지
 #[tauri::command]
-pub fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
-    invalidate_thumbnail_cache_paths(&app, &paths)
+pub async fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || invalidate_thumbnail_cache_paths(&app, &paths))
+        .await
+        .map_err(|e| AppError::Internal(format!("썸네일 캐시 무효화 실패: {}", e)))?
 }

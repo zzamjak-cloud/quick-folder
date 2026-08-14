@@ -27,7 +27,8 @@ export const mediaCommands = {
     params: unknown,
     options: { saveNormal: boolean; saveParallax: boolean; saveSpecular: boolean; saveOcclusion: boolean },
   ) {
-    return runCommand<string[]>('laigter_maps_export', { input, params, options });
+    // 노멀맵 일괄 내보내기 — 오래 걸릴 수 있어 일반 레인 점유 방지
+    return runDirectCommand<string[]>('laigter_maps_export', { input, params, options });
   },
   pixelateImage(input: string, pixelSize: number, scale: number, maxColors: number) {
     return runCommand<string>('pixelate_image', { input, pixelSize, scale, maxColors });
@@ -57,19 +58,22 @@ export const mediaCommands = {
     seeds: [number, number][],
     trim: boolean,
   ) {
-    return runCommand<string[]>('remove_white_bg_save', { inputs, threshold, feather, seeds, trim });
+    // 다중 이미지 일괄 처리로 오래 걸릴 수 있음 — 일반 레인 점유 방지
+    return runDirectCommand<string[]>('remove_white_bg_save', { inputs, threshold, feather, seeds, trim });
   },
   checkFfmpeg() {
     return runCommand<boolean>('check_ffmpeg');
   },
+  // ffmpeg 다운로드/인코딩: 분 단위 작업 — UI 조작용 일반 레인(6슬롯)을 점유하면
+  // 이후 rename/list 등 모든 파일 조작이 대기하는 먹통이 되므로 direct로 분리
   downloadFfmpeg() {
-    return runCommand<void>('download_ffmpeg');
+    return runDirectCommand<void>('download_ffmpeg');
   },
   compressVideo(input: string, quality: 'low' | 'medium' | 'high', scalePercent: number, onProgress: unknown) {
-    return runCommand<string>('compress_video', { input, quality, scalePercent, onProgress });
+    return runDirectCommand<string>('compress_video', { input, quality, scalePercent, onProgress });
   },
   videoToGif(input: string, onProgress: unknown) {
-    return runCommand<string>('video_to_gif', {
+    return runDirectCommand<string>('video_to_gif', {
       input,
       startSec: 0,
       endSec: 31_536_000,
@@ -83,16 +87,17 @@ export const mediaCommands = {
     });
   },
   gifToMp4(path: string) {
-    return runCommand<string>('gif_to_mp4', { path });
+    return runDirectCommand<string>('gif_to_mp4', { path });
   },
   ensureThumbnailsBatch(items: ThumbnailBatchItem[], size: number) {
     return runLowPriorityCommand<ThumbnailBatchResult[]>('ensure_thumbnails_batch', { items, size });
   },
   invalidateThumbnailCache(paths: string[]) {
-    return runCommand<void>('invalidate_thumbnail_cache', { paths });
+    // 폴링이 호출하는 유지보수 작업 — 일반 레인 점유 방지
+    return runDirectCommand<void>('invalidate_thumbnail_cache', { paths });
   },
   compressPdf(input: string) {
-    return runCommand<string>('compress_pdf', { input });
+    return runDirectCommand<string>('compress_pdf', { input });
   },
   openInPhotoshop(paths: string[]) {
     return runDirectCommand<void>('open_in_photoshop', { paths });

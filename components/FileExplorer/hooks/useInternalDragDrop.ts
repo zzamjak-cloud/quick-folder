@@ -4,6 +4,7 @@ import { getFileName, isArchiveVirtualPath, sameVolume } from '../../../utils/pa
 import { createFileDragImage } from '../fileUtils';
 import { runTransferWithProgress } from './runTransferWithProgress';
 import { tauriCommands } from '../../../utils/tauriCommands';
+import { dispatchFilesChanged } from './filesChangedEvent';
 
 const TRAY_STAGE_WIDTH = 96;
 const EXTERNAL_DRAG_EDGE_PX = 2;
@@ -22,6 +23,8 @@ export interface PendingDrop {
 }
 
 interface UseInternalDragDropOptions {
+  /** 패널 인스턴스 ID — qf-files-changed 자기 수신 차단용 (자기 패널은 onMoveComplete가 갱신) */
+  instanceId?: string;
   selectedPaths: string[];
   currentPath: string;
   onMoveComplete: () => void;
@@ -100,7 +103,7 @@ function getSourceElement(path: string): HTMLElement | null {
  * 리스너를 handleMouseDown에서 동기적으로 등록하여
  * useEffect 재실행 의존 문제를 회피.
  */
-export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError }: UseInternalDragDropOptions) {
+export function useInternalDragDrop({ instanceId, selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError }: UseInternalDragDropOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const [isTrayTargetActive, setIsTrayTargetActive] = useState(false);
@@ -381,8 +384,8 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
             label,
           );
           onMoveComplete();
-          // 모든 패널에 새로고침 이벤트 전파
-          window.dispatchEvent(new CustomEvent('qf-files-changed'));
+          // 다른 패널에 새로고침 이벤트 전파 (자기 패널은 onMoveComplete가 갱신)
+          dispatchFilesChanged(instanceId);
         } catch (err) {
           console.error('파일 이동/복사 실패:', err);
           onError?.(`파일을 이동/복사하지 못했습니다: ${formatDragError(err)}`);
@@ -413,7 +416,7 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
     window.addEventListener('pointercancel', onCancelDrag);
     document.addEventListener('mouseleave', onMouseLeave);
     document.addEventListener('visibilitychange', onVisibilityChange);
-  }, [selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError]);
+  }, [instanceId, selectedPaths, currentPath, onMoveComplete, onAddToCategory, onStageFilesToTray, onDuplicateDetected, onError]);
 
   /**
    * 중복 확인 다이얼로그 이후 덮어쓰기 또는 스킵으로 재실행.
@@ -428,12 +431,12 @@ export function useInternalDragDrop({ selectedPaths, currentPath, onMoveComplete
         : `${getFileName(sources[0])} 외 ${sources.length - 1}개`;
       await runTransferWithProgress(action, sources, dest, overwrite, label);
       onMoveComplete();
-      window.dispatchEvent(new CustomEvent('qf-files-changed'));
+      dispatchFilesChanged(instanceId);
     } catch (err) {
       console.error('파일 이동/복사 실패:', err);
       onError?.(`파일을 이동/복사하지 못했습니다: ${formatDragError(err)}`);
     }
-  }, [onMoveComplete, onError]);
+  }, [instanceId, onMoveComplete, onError]);
 
   return {
     isDragging,

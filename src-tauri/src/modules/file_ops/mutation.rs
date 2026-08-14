@@ -1,6 +1,9 @@
 use crate::modules::archive_ops::materialize_archive_path_in_cache;
 use crate::modules::error::{AppError, Result};
-use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
+use crate::modules::image_ops::{
+    invalidate_thumbnail_cache_paths_in_root, migrate_thumbnail_cache_for_rename,
+    thumbnail_cache_root,
+};
 
 // ===== 파일/디렉토리 생성 =====
 
@@ -56,24 +59,30 @@ pub async fn write_text_file(path: String, content: String) -> Result<()> {
 
 // ===== 이름 변경 =====
 
+// spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 pub(super) async fn rename_item_impl(
     old_path: String,
     new_path: String,
-    app_cache: Option<&std::path::Path>,
+    app_cache: Option<std::path::PathBuf>,
 ) -> Result<()> {
-    if old_path == new_path {
-        return Ok(());
-    }
-    if std::path::Path::new(&new_path).exists() {
-        return Err(AppError::AlreadyExists(
-            "동일한 이름의 파일이 존재합니다.".to_string(),
-        ));
-    }
-    if let Some(app_cache) = app_cache {
-        invalidate_thumbnail_cache_paths_in_root(app_cache, std::slice::from_ref(&old_path));
-    }
-    std::fs::rename(&old_path, &new_path)?;
-    Ok(())
+    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+        if old_path == new_path {
+            return Ok(());
+        }
+        if std::path::Path::new(&new_path).exists() {
+            return Err(AppError::AlreadyExists(
+                "동일한 이름의 파일이 존재합니다.".to_string(),
+            ));
+        }
+        // 삭제 대신 키 이관 — 이름만 바뀐 파일의 썸네일을 재생성 없이 재사용한다
+        if let Some(app_cache) = app_cache {
+            migrate_thumbnail_cache_for_rename(&app_cache, &old_path, &new_path);
+        }
+        std::fs::rename(&old_path, &new_path)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("이름 변경 작업 실패: {}", e)))?
 }
 
 // 이름 바꾸기 (대상 경로에 동일 이름 파일 존재 시 에러)
@@ -84,7 +93,7 @@ pub async fn rename_item<R: tauri::Runtime>(
     new_path: String,
 ) -> Result<()> {
     let app_cache = thumbnail_cache_root(&app)?;
-    rename_item_impl(old_path, new_path, Some(&app_cache)).await
+    rename_item_impl(old_path, new_path, Some(app_cache)).await
 }
 
 // ===== 삭제 =====

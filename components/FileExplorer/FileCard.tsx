@@ -78,6 +78,8 @@ export default memo(function FileCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const lastThumbnailSizeRef = useRef<number>(0);
   const failedThumbnailUrlsRef = useRef<Set<string>>(new Set());
+  // 일시 실패(이름 변경 직후 경로 미존재 창 등) 자동 복구용 — 키당 1회만 지연 재시도
+  const thumbnailErrorRetriedKeyRef = useRef<string | null>(null);
 
   const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns)$/i.test(entry.name);
 
@@ -149,6 +151,7 @@ export default memo(function FileCard({
     const delay = sizeChanged ? 300 : 0;
 
     let cancelFn: (() => void) | null = null;
+    let errorRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const timer = setTimeout(() => {
       const cmd = useImageThumb
         ? 'get_file_thumbnail_path'
@@ -168,8 +171,18 @@ export default memo(function FileCard({
         .catch(err => {
           // 실패는 캐시하지 않음. 단 effect가 살아 있는데 외부(cancelAllQueued 등)에서
           // 취소된 경우엔 재요청 트리거가 없어 스피너로 영구 고정되므로 스스로 재시도한다.
-          if (!cancelled && isTauriCommandCancelled(err)) {
+          if (cancelled) return;
+          if (isTauriCommandCancelled(err)) {
             setThumbnailReloadSeq(seq => seq + 1);
+            return;
+          }
+          // 이름 변경 직후 새 경로가 아직 없는 창 등 일시 오류 복구 — 키당 1회만 지연 재시도
+          // (identity가 rename에 안정이라 재시도 없이는 키 변화로 인한 재트리거가 없다)
+          if (thumbnailErrorRetriedKeyRef.current !== thumbnailCacheKey) {
+            thumbnailErrorRetriedKeyRef.current = thumbnailCacheKey;
+            errorRetryTimer = setTimeout(() => {
+              if (!cancelled) setThumbnailReloadSeq(seq => seq + 1);
+            }, 800);
           }
         });
     }, delay);
@@ -177,6 +190,7 @@ export default memo(function FileCard({
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      if (errorRetryTimer) clearTimeout(errorRetryTimer);
       if (cancelFn) cancelFn();
     };
   }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd, thumbnailCacheKey]);

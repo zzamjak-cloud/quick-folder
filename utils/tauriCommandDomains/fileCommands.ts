@@ -37,7 +37,8 @@ export const fileCommands = {
     return runDirectCommand<FileEntry[]>('list_system_roots');
   },
   getRecentFiles(roots: string[], days: number) {
-    return runCommand<FileEntry[]>('get_recent_files', { roots, days });
+    // 여러 루트 전체 스캔이라 느릴 수 있음 — 일반 레인 점유 방지
+    return runDirectCommand<FileEntry[]>('get_recent_files', { roots, days });
   },
   readCachedListing(path: string) {
     return runDirectCommand<FileEntry[] | null>('read_cached_listing', { path });
@@ -54,14 +55,15 @@ export const fileCommands = {
   materializeArchivePaths(paths: string[]) {
     return runCommand<string[]>('materialize_archive_paths', { paths });
   },
+  // 압축/해제/폴더크기: 수 초~분 단위 작업이라 UI 조작용 일반 레인(6슬롯)을 점유하지 않게 direct
   compressToZip(paths: string[], dest: string) {
-    return runCommand<void>('compress_to_zip', { paths, dest });
+    return runDirectCommand<void>('compress_to_zip', { paths, dest });
   },
   extractZip(zipPath: string, destDir: string) {
-    return runCommand<ExtractZipResult>('extract_zip', { zipPath, destDir });
+    return runDirectCommand<ExtractZipResult>('extract_zip', { zipPath, destDir });
   },
   calculateFolderSize<T>(path: string) {
-    return runCommand<T>('calculate_folder_size', { path });
+    return runDirectCommand<T>('calculate_folder_size', { path });
   },
   restoreTrashItems(originalPaths: string[]) {
     return runCommand<void>('restore_trash_items', { originalPaths });

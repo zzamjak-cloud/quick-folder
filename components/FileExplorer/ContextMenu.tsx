@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight } from 'lucide-react';
 import { ContextMenuItem, ContextMenuSection } from './types';
@@ -62,9 +62,36 @@ interface ContextMenuProps {
 function SubmenuItem({ item, onClose, tone }: { item: ContextMenuItem; onClose: () => void; tone: MenuTone }) {
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+  // 부모 메뉴처럼 서브메뉴도 화면 밖으로 나가지 않게 보정:
+  // 오른쪽 공간이 부족하면 부모 왼쪽으로 플립, 아래로 넘치면 위로 밀어 올린다.
+  const [placement, setPlacement] = useState<{ openLeft: boolean; offsetY: number }>({ openLeft: false, offsetY: 0 });
 
   const handleEnter = () => { clearTimeout(timerRef.current); setOpen(true); };
   const handleLeave = () => { timerRef.current = setTimeout(() => setOpen(false), 150); };
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement({ openLeft: false, offsetY: 0 });
+      return;
+    }
+    const wrapper = wrapperRef.current;
+    const submenu = submenuRef.current;
+    if (!wrapper || !submenu) return;
+    const parentRect = wrapper.getBoundingClientRect();
+    const menuRect = submenu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // 좌우: 양쪽 다 부족하면 더 넓은 쪽을 선택
+    const spaceRight = vw - parentRect.right - 8;
+    const spaceLeft = parentRect.left - 8;
+    const openLeft = menuRect.width > spaceRight && spaceLeft > spaceRight;
+    // 상하: 아래로 넘치는 만큼 위로 이동 (단 화면 상단 8px 아래까지만)
+    const bottomOverflow = parentRect.top + menuRect.height - (vh - 8);
+    const offsetY = bottomOverflow > 0 ? -Math.min(bottomOverflow, Math.max(0, parentRect.top - 8)) : 0;
+    setPlacement({ openLeft, offsetY });
+  }, [open]);
 
   const labelStyle: React.CSSProperties = {
     minWidth: 0,
@@ -75,6 +102,7 @@ function SubmenuItem({ item, onClose, tone }: { item: ContextMenuItem; onClose: 
 
   return (
     <div
+      ref={wrapperRef}
       className="relative"
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
@@ -89,13 +117,16 @@ function SubmenuItem({ item, onClose, tone }: { item: ContextMenuItem; onClose: 
       </button>
       {open && item.submenu && (
         <div
-          className="absolute left-full top-0 rounded-lg shadow-2xl overflow-hidden z-[10000]"
+          ref={submenuRef}
+          className="absolute rounded-lg shadow-2xl overflow-hidden z-[10000]"
           style={{
             backgroundColor: 'var(--qf-surface-2)',
             border: '1px solid var(--qf-border)',
             width: 'max-content',
             minWidth: SUBMENU_MIN_WIDTH,
             maxWidth: `min(${SUBMENU_MAX_WIDTH}px, calc(100vw - 16px))`,
+            ...(placement.openLeft ? { right: '100%' } : { left: '100%' }),
+            top: placement.offsetY,
           }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}

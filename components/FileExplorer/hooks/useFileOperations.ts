@@ -14,6 +14,8 @@ import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { ensureFfmpeg as ensureFfmpegWithConsent } from '../../../utils/ffmpegSetup';
+import { remapThumbsForRename, rewriteThumbUrlsForRenamedPath } from './thumbnailCache';
+import { dispatchFilesChanged } from './filesChangedEvent';
 import { useArchiveOperations } from './useArchiveOperations';
 import { useDeleteOperations } from './useDeleteOperations';
 import { useFolderSizeOperations } from './useFolderSizeOperations';
@@ -21,6 +23,8 @@ import { translate, type TranslationKey } from '../../../utils/i18n';
 export type { FolderSizeDialogState } from './useFolderSizeOperations';
 
 export interface UseFileOperationsConfig {
+  /** 패널 인스턴스 ID — qf-files-changed 자기 수신 차단용 */
+  instanceId: string;
   currentPath: string | null;
   entries: FileEntry[];
   selectedPaths: string[];
@@ -28,6 +32,8 @@ export interface UseFileOperationsConfig {
   setEntries: React.Dispatch<React.SetStateAction<FileEntry[]>>;
   setFocusedIndex: React.Dispatch<React.SetStateAction<number>>;
   loadDirectory: (path: string) => Promise<void>;
+  /** 수동 listDirectory 결과를 메모리 목록 캐시에 반영 (없으면 생략) */
+  cacheListing?: (path: string, list: FileEntry[]) => void;
   undoStack: ReturnType<typeof useUndoStack>;
   sortBy: string;
   sortDir: string;
@@ -44,15 +50,31 @@ export interface UseFileOperationsConfig {
 
 const defaultTranslate = (key: TranslationKey) => translate('ko', key);
 
+// 이름 변경 + 썸네일 메모리 캐시 키 이관.
+// rename "전"에 키를 이관해 낙관적 업데이트로 재마운트된 카드가 즉시 캐시 HIT 하게 하고
+// (기존 PNG가 아직 디스크에 있어 즉시 표시), 성공 후 URL의 해시 파일명을 새 키로 치환한다
+// (Rust가 디스크 캐시를 새 키로 이관하므로). 실패 시 키를 원복한다.
+async function renameItemWithThumbCache(oldPath: string, newPath: string): Promise<void> {
+  remapThumbsForRename(oldPath, newPath);
+  try {
+    await tauriCommands.renameItem(oldPath, newPath);
+  } catch (e) {
+    remapThumbsForRename(newPath, oldPath);
+    throw e;
+  }
+  rewriteThumbUrlsForRenamedPath(oldPath, newPath);
+}
+
 /**
  * 파일 조작 핸들러를 모아 관리하는 훅.
  * 삭제, 복제, 폴더 생성, 그룹화, ZIP 압축, 이름변경, 픽셀화, 스프라이트 패킹, 동영상 압축, 실행취소 등.
  */
 export function useFileOperations(config: UseFileOperationsConfig) {
   const {
+    instanceId,
     currentPath, entries, selectedPaths,
     setSelectedPaths, setEntries, setFocusedIndex,
-    loadDirectory, undoStack,
+    loadDirectory, cacheListing, undoStack,
     sortBy, sortDir, sortEntries,
     sheetPackPaths,
     setBulkRenamePaths, setSheetPackPaths,
@@ -258,15 +280,16 @@ export function useFileOperations(config: UseFileOperationsConfig) {
   const handleBulkRenameApply = useCallback(async (renames: { oldPath: string; newPath: string }[]) => {
     if (!ensureWritableContext(renames.flatMap(({ oldPath, newPath }) => [oldPath, newPath]))) return;
     for (const { oldPath, newPath } of renames) {
-      await tauriCommands.renameItem(oldPath, newPath);
+      await renameItemWithThumbCache(oldPath, newPath);
     }
     if (currentPath) {
       const result = await tauriCommands.listDirectory(currentPath);
+      cacheListing?.(currentPath, result);
       setEntries(sortEntries(result, sortBy, sortDir));
     }
     setSelectedPaths([]);
-    window.dispatchEvent(new Event('qf-files-changed'));
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, setEntries, setSelectedPaths]);
+    dispatchFilesChanged(instanceId);
+  }, [cacheListing, currentPath, ensureWritableContext, instanceId, sortBy, sortDir, sortEntries, setEntries, setSelectedPaths]);
 
   // --- 파일명 명명 규칙 변환 (PascalCase / camelCase / snake_case) ---
   // 선택된 파일/폴더의 베이스명만 변환하고 확장자는 유지.
@@ -330,11 +353,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         const dir = getParentDir(pl.oldPath);
         const sep = getPathSeparator(pl.oldPath);
         const tempPath = dir + sep + tempName;
-        await tauriCommands.renameItem(pl.oldPath, tempPath);
+        await renameItemWithThumbCache(pl.oldPath, tempPath);
         tempPaths.push({ tempPath, finalPath: pl.newPath });
       }
       for (const t of tempPaths) {
-        await tauriCommands.renameItem(t.tempPath, t.finalPath);
+        await renameItemWithThumbCache(t.tempPath, t.finalPath);
       }
       for (const pl of finalPlans) {
         renamed.push({ oldPath: pl.oldPath, newPath: pl.newPath });
@@ -353,10 +376,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       for (const r of renamed) {
         window.dispatchEvent(new CustomEvent('qf-tab-rename', { detail: { oldPath: r.oldPath, newPath: r.newPath } }));
       }
-      window.dispatchEvent(new Event('qf-files-changed'));
+      dispatchFilesChanged(instanceId);
 
       if (currentPath) {
         const result = await tauriCommands.listDirectory(currentPath);
+        cacheListing?.(currentPath, result);
         const sorted = sortEntries(result, sortBy, sortDir);
         setEntries(sorted);
         const newPaths = renamed.map(r => r.newPath);
@@ -369,7 +393,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       showCopyToast(msg);
     }
     setContextMenu(null);
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast, formatToast, t]);
+  }, [cacheListing, currentPath, ensureWritableContext, instanceId, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast, formatToast, t]);
 
   // --- URL 인코딩 파일명 복구 ---
   const handleRecoverFileNames = useCallback(async (paths: string[]) => {
@@ -409,7 +433,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         continue;
       }
       try {
-        await tauriCommands.renameItem(oldPath, newPath);
+        await renameItemWithThumbCache(oldPath, newPath);
         renamed.push({ oldPath, newPath });
       } catch (e) {
         console.error('파일명 복구 실패:', e);
@@ -424,10 +448,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       for (const r of renamed) {
         window.dispatchEvent(new CustomEvent('qf-tab-rename', { detail: { oldPath: r.oldPath, newPath: r.newPath } }));
       }
-      window.dispatchEvent(new Event('qf-files-changed'));
+      dispatchFilesChanged(instanceId);
 
       if (currentPath) {
         const result = await tauriCommands.listDirectory(currentPath);
+        cacheListing?.(currentPath, result);
         setEntries(sortEntries(result, sortBy, sortDir));
         setSelectedPaths(renamed.map(r => r.newPath));
       }
@@ -440,7 +465,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       : t('toast.filenameRecoverNothing');
     showCopyToast(msg);
     setContextMenu(null);
-  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast, formatToast, t]);
+  }, [cacheListing, currentPath, ensureWritableContext, instanceId, sortBy, sortDir, sortEntries, undoStack, setEntries, setSelectedPaths, setContextMenu, showCopyToast, formatToast, t]);
 
   // --- 이름변경 커밋 ---
   const handleRenameCommit = useCallback(async (oldPath: string, newName: string) => {
@@ -493,7 +518,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
     try {
       for (const r of undoRenames) {
-        await tauriCommands.renameItem(r.oldPath, r.newPath);
+        await renameItemWithThumbCache(r.oldPath, r.newPath);
       }
       // undo 스택에 역순으로 push (마지막 rename부터 되돌리기)
       for (const r of [...undoRenames].reverse()) {
@@ -504,10 +529,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         window.dispatchEvent(new CustomEvent('qf-tab-rename', { detail: { oldPath: r.oldPath, newPath: r.newPath } }));
       }
       // 다른 패널에서도 파일 목록 갱신
-      window.dispatchEvent(new Event('qf-files-changed'));
+      dispatchFilesChanged(instanceId);
 
       // 이름 변경 후 디렉토리 재로드
       const result = await tauriCommands.listDirectory(currentPath);
+      cacheListing?.(currentPath, result);
       const sorted = sortEntries(result, sortBy, sortDir);
       tauriCommands.writeCachedListing(currentPath, result).catch(() => {});
       setEntries(sorted);
@@ -524,10 +550,11 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       // 실패 시 디렉토리 재로드하여 원래 이름 복원
       if (currentPath) {
         const result = await tauriCommands.listDirectory(currentPath);
+        cacheListing?.(currentPath, result);
         setEntries(sortEntries(result, sortBy, sortDir));
       }
     }
-  }, [currentPath, entries, selectedPaths, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex, t]);
+  }, [cacheListing, currentPath, entries, selectedPaths, ensureWritableContext, instanceId, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex, t]);
 
   // --- 선택된 파일들을 새 폴더로 그룹화 (Ctrl+G) ---
   const handleGroupIntoFolder = useCallback(async () => {
@@ -847,7 +874,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
         await tauriCommands.restoreTrashItems(action.paths);
         showCopyToast(t('toast.undoDelete'));
       } else if (action.type === 'rename') {
-        await tauriCommands.renameItem(action.oldPath, action.newPath);
+        await renameItemWithThumbCache(action.oldPath, action.newPath);
         showCopyToast(t('toast.undoRename'));
       } else if (action.type === 'move_group') {
         // 새 폴더 안의 파일들을 원래 디렉토리로 이동

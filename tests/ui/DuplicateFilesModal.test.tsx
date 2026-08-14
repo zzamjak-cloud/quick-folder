@@ -185,7 +185,7 @@ describe('DuplicateFilesModal', () => {
     expect(image).toHaveAttribute('src', 'asset:///tmp/qf-stale-thumb.png');
     expect(mocks.invokeTauriCommand).toHaveBeenCalledWith('invalidate_thumbnail_cache', {
       paths: ['/work/stale.jpg'],
-    }, { priority: 'normal' });
+    }, { priority: 'direct' });
   });
 
   test('중복 탐색 응답이 배열이 아니면 빈 결과로 처리한다', async () => {

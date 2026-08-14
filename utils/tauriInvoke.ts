@@ -14,7 +14,12 @@ interface QueueItem {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   cancelled: boolean;
+  enqueuedAt: number;
 }
+
+// 레인 슬롯을 오래 잡는 커맨드 진단용 — 먹통(슬롯 고갈) 발생 시 어떤 커맨드가 범인인지 콘솔로 노출
+const SLOW_WAIT_WARN_MS = 5000;
+const SLOW_RUN_WARN_MS = 15000;
 
 const MAX_CONCURRENT = 6;
 // 저우선(썸네일)은 별도 레인. 동시 IPC가 너무 많으면 WebView와 파일 공급자에 압력이 커져
@@ -72,6 +77,14 @@ export function isTauriCommandCancelled(error: unknown): boolean {
 function startItem(item: QueueItem, isLow: boolean) {
   if (isLow) lowRunning++;
   else running++;
+  const lane = isLow ? 'low' : 'normal';
+  const waitedMs = Date.now() - item.enqueuedAt;
+  if (waitedMs > SLOW_WAIT_WARN_MS) {
+    console.warn(`[tauriInvoke] '${item.cmd}' ${Math.round(waitedMs / 1000)}s 대기 후 시작 (${lane} 레인 정체: running=${running}/${lowRunning}, queued=${queue.length}/${lowQueue.length})`);
+  }
+  const slowRunTimer = setTimeout(() => {
+    console.warn(`[tauriInvoke] '${item.cmd}' ${SLOW_RUN_WARN_MS / 1000}s 이상 실행 중 — ${lane} 레인 슬롯 점유 (running=${running}/${lowRunning}, queued=${queue.length}/${lowQueue.length})`);
+  }, SLOW_RUN_WARN_MS);
   invokeImpl(item.cmd, item.args)
     .then(result => {
       if (!item.cancelled) item.resolve(result);
@@ -81,6 +94,7 @@ function startItem(item: QueueItem, isLow: boolean) {
       item.reject(normalizeTauriError(error));
     })
     .finally(() => {
+      clearTimeout(slowRunTimer);
       if (isLow) lowRunning--;
       else running--;
       processNext();
@@ -120,6 +134,7 @@ function enqueueTauriCommand<T>(
     resolve: () => {},
     reject: () => {},
     cancelled: false,
+    enqueuedAt: Date.now(),
   };
 
   const promise = new Promise<T>((resolve, reject) => {

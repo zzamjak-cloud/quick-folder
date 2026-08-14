@@ -13,6 +13,7 @@ import { useInternalDragDrop, type PendingDrop } from './hooks/useInternalDragDr
 import { usePreview } from './hooks/usePreview';
 import { useTabManagement } from './hooks/useTabManagement';
 import { cancelAllQueued } from './hooks/invokeQueue';
+import { dispatchFilesChanged, filesChangedSourceId } from './hooks/filesChangedEvent';
 import { runTransferWithProgress } from './hooks/runTransferWithProgress';
 import { detectFolderMergeScenario } from '../../utils/folderMerge';
 import { useColumnView } from './hooks/useColumnView';
@@ -214,7 +215,7 @@ export default function FileExplorer({
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const fuzzyFilterInputRef = useRef<HTMLInputElement>(null);
-  const { loadDirectory, prefetchDirectory, lastVisitedChildRef } = useDirectoryLoader({
+  const { loadDirectory, prefetchDirectory, lastVisitedChildRef, cacheEntries } = useDirectoryLoader({
     gridRef,
     scrollPositionRef,
     viewModeRef,
@@ -286,6 +287,7 @@ export default function FileExplorer({
 
   // --- 클립보드 (커스텀 훅) ---
   const clipboardHook = useClipboard({
+    instanceId,
     selectedPaths,
     currentPath,
     loadDirectory,
@@ -300,9 +302,10 @@ export default function FileExplorer({
 
   // --- 파일 조작 (커스텀 훅) ---
   const fileOps = useFileOperations({
+    instanceId,
     currentPath, entries, selectedPaths,
     setSelectedPaths, setEntries, setFocusedIndex,
-    loadDirectory, undoStack,
+    loadDirectory, cacheListing: cacheEntries, undoStack,
     sortBy, sortDir, sortEntries,
     sheetPackPaths: modals.sheetPackPaths,
     setBulkRenamePaths: modals.setBulkRenamePaths,
@@ -869,17 +872,24 @@ export default function FileExplorer({
   }, [currentPath, isFocused, refreshCurrentPathIfChanged]);
 
   // --- 다른 패널에서 파일 이동 시 새로고침 ---
+  // 자기 자신이 쏜 이벤트는 무시한다 — 각 작업 흐름이 자기 패널 재로딩을 이미 수행하며,
+  // 중복 재로딩은 대기 중 썸네일 요청을 몰살시켜 카드들이 일제히 스피너로 복귀하는 원인이었다.
   useEffect(() => {
-    const handler = async () => {
+    const handler = async (event: Event) => {
       if (!currentPath) return;
-      await loadDirectory(currentPath, { skipCache: true });
+      const isSelf = filesChangedSourceId(event) === instanceId;
+      // 자기 패널의 그리드 재로딩은 각 작업 흐름이 직접 수행하므로 생략
+      if (!isSelf) {
+        await loadDirectory(currentPath, { skipCache: true });
+      }
+      // 컬럼뷰는 작업 흐름이 갱신하지 않으므로 자기 이벤트에서도 새로고침 유지
       if (viewMode === 'columns') {
         await columnView.refreshOpenColumns();
       }
     };
     window.addEventListener('qf-files-changed', handler);
     return () => window.removeEventListener('qf-files-changed', handler);
-  }, [currentPath, loadDirectory, viewMode, columnView.refreshOpenColumns]);
+  }, [currentPath, instanceId, loadDirectory, viewMode, columnView.refreshOpenColumns]);
 
   // --- Ctrl+마우스 휠 썸네일 확대/축소 ---
   useEffect(() => {
@@ -923,8 +933,8 @@ export default function FileExplorer({
       clipboardHook.setClipboard(null);
     }
     loadDirectory(currentPath);
-    window.dispatchEvent(new Event('qf-files-changed'));
-  }, [modals.folderMergeRequest, modals.setFolderMergeRequest, clipboardHook, currentPath, loadDirectory]);
+    dispatchFilesChanged(instanceId);
+  }, [modals.folderMergeRequest, modals.setFolderMergeRequest, clipboardHook, currentPath, instanceId, loadDirectory]);
 
   // --- 내부 드래그 → 폴더 이동 / 사이드바 즐겨찾기 등록 ---
   const {
@@ -935,6 +945,7 @@ export default function FileExplorer({
     handleDragMouseDown,
     executeDrop,
   } = useInternalDragDrop({
+    instanceId,
     selectedPaths,
     currentPath,
     onMoveComplete: () => loadDirectory(currentPath),
@@ -1021,7 +1032,7 @@ export default function FileExplorer({
           dropLabel,
         );
         loadDirectory(currentPath);
-        window.dispatchEvent(new Event('qf-files-changed'));
+        dispatchFilesChanged(instanceId);
       } catch (err) {
         console.error('파일 드롭 처리 실패:', err);
       }

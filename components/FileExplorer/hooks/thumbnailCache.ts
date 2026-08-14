@@ -14,7 +14,8 @@ import { isTauri } from '../../../utils/isTauri';
  */
 
 const MAX_ENTRIES = 4000;
-const THUMBNAIL_MEMORY_CACHE_VERSION = 'v6';
+// v7: Rust file_identity에서 ctime 제외(이름 변경에 안정) — identity 포맷 변경으로 버전 상향
+const THUMBNAIL_MEMORY_CACHE_VERSION = 'v7';
 
 // 생성 비용이 목표 크기와 무관한 항목(PSD composite, 클라우드 이미지=전체 다운로드+디코드)은
 // 표시 크기와 무관하게 항상 이 크기로 1번만 생성·캐시하고 화면에는 CSS로 축소 표시한다.
@@ -109,6 +110,56 @@ export function setThumb(key: string, url: string): void {
 
 export function deleteThumb(key: string): void {
   if (cache.delete(key)) schedulePersist();
+}
+
+/**
+ * 이름 변경 시 메모리 캐시 키를 새 경로로 이관한다 — 재요청 없이 썸네일을 즉시 유지.
+ * identity는 ctime을 포함하지 않아 rename 후에도 동일 → 키의 identity 부분은 그대로 유지.
+ * 값(asset URL)은 건드리지 않는다: rename "전"에 호출해 낙관적 업데이트로 재마운트된 카드가
+ * 아직 디스크에 남아 있는 기존 PNG로 즉시 캐시 HIT 하게 한다(스피너·IPC 없음).
+ * rename 성공 후 rewriteThumbUrlsForRenamedPath로 URL의 해시 파일명을 새 키로 치환할 것.
+ */
+export function remapThumbsForRename(oldPath: string, newPath: string): void {
+  if (!oldPath || !newPath || oldPath === newPath) return;
+  const prefix = `${THUMBNAIL_MEMORY_CACHE_VERSION}|${oldPath}|`;
+  let changed = false;
+  for (const key of Array.from(cache.keys())) {
+    if (!key.startsWith(prefix)) continue;
+    const value = cache.get(key);
+    cache.delete(key);
+    if (value === undefined) continue;
+    cache.set(`${THUMBNAIL_MEMORY_CACHE_VERSION}|${newPath}|${key.slice(prefix.length)}`, value);
+    changed = true;
+  }
+  if (changed) schedulePersist();
+}
+
+/**
+ * rename 성공 후 호출 — newPath 키 아래 값(asset URL)에 남아 있는 옛 경로 해시 파일명을
+ * 새 경로 해시로 치환한다. Rust(migrate_thumbnail_cache_for_rename)가 디스크 PNG를 새 키로
+ * rename하므로 옛 URL은 곧 죽은 링크가 된다(이미 표시된 <img>는 영향 없음).
+ * (Google Drive 등 fileId 기반 URL은 해시가 불일치하므로 값이 그대로 유지됨)
+ */
+export function rewriteThumbUrlsForRenamedPath(oldPath: string, newPath: string): void {
+  if (!oldPath || !newPath || oldPath === newPath) return;
+  const prefix = `${THUMBNAIL_MEMORY_CACHE_VERSION}|${newPath}|`;
+  let changed = false;
+  for (const key of Array.from(cache.keys())) {
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length); // `${size}|${identityToken}`
+    const sepIdx = rest.indexOf('|');
+    if (sepIdx < 0) continue;
+    const size = rest.slice(0, sepIdx);
+    const identity = rest.slice(sepIdx + 1);
+    const value = cache.get(key);
+    if (!value) continue;
+    const oldHash = stableCacheKey(['thumbnail-v5', oldPath, identity, size]);
+    if (!value.includes(oldHash)) continue;
+    const newHash = stableCacheKey(['thumbnail-v5', newPath, identity, size]);
+    cache.set(key, value.replace(oldHash, newHash));
+    changed = true;
+  }
+  if (changed) schedulePersist();
 }
 
 export function deleteThumbsForPaths(paths: string[]): void {

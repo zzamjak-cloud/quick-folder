@@ -4,8 +4,11 @@
 
 ```
 1. 메모리 캐시 (thumbnailCache.ts)
-   키: thumbKey(path, size, modified) = `v4|${path}|${size}|${modified}`
+   키: thumbKey(path, size, modified, fileSize, identity) = `v7|${path}|${size}|${identityToken}`
    값: asset URL 또는 base64 data URL
+   identity(Rust file_identity)는 **ctime을 포함하지 않는다**(dev:ino:created:mtime:len) —
+   ctime은 rename/xattr/클라우드 materialize 등 내용과 무관한 변경으로 바뀌어
+   캐시가 불필요하게 무효화되던 원인(회귀 주의: ctime 재도입 금지)
 
 2. 디스크 캐시 (Rust)
    위치: app_cache_dir/img_thumbnails/    ← 이미지
@@ -34,9 +37,19 @@
 ### exports
 | 함수 | 설명 |
 |------|------|
-| `thumbKey(path, size)` | 캐시 키 생성 |
-| `getThumb(path, size)` | 메모리 캐시 조회 (없으면 `undefined`) |
-| `setThumb(path, size, dataUrl)` | 메모리 캐시 저장 |
+| `thumbKey(path, size, ...)` | 캐시 키 생성 |
+| `getThumb(key)` | 메모리 캐시 조회 (없으면 `undefined`) |
+| `setThumb(key, url)` | 메모리 캐시 저장 |
+| `remapThumbsForRename(old, new)` | 이름 변경 시 키·URL을 새 경로로 이관 (재요청 없이 즉시 표시 유지) |
+
+### 이름 변경 시 캐시 이관 (재생성 금지 — 회귀 주의)
+파일명만 바뀐 파일의 썸네일은 **삭제·재생성하지 않고 키를 이관**한다.
+- Rust `rename_item` → `migrate_thumbnail_cache_for_rename`: 디스크 캐시 PNG/.none을
+  구 키(경로 포함 해시) → 새 키로 `fs::rename`. identity가 ctime 제외로 rename에 안정이라
+  rename 전에 새 키를 계산할 수 있다. 디렉토리는 하위 키 전체 이관 비용이 커서 재생성에 맡김.
+- 프론트 `renameItemWithThumbCache`(useFileOperations): rename 성공 후
+  `remapThumbsForRename`으로 메모리 키 이관 + 값(asset URL)의 해시 파일명 치환.
+- 과거에는 rename이 옛 경로 캐시를 **삭제**해서 내용이 같은데도 풀 재생성 + 스피너가 발생했다.
 
 ### 세션 간 영속화 (앱 재시작 즉시 표시)
 메모리 캐시(키→asset URL)를 **localStorage(`qf.thumbcache.{버전}`)에 디바운스(2s) 저장**하고, 모듈 로드 시 hydrate한다. 디스크 캐시 PNG는 이미 영속이라 URL만 보존하면 됨. 프루닝으로 파일이 사라진 항목은 `<img>` onError→`deleteThumb`로 자가 치유. quota 초과 시 1회 비우고 재시도(실패 시 포기). 버전 접미사로 포맷 변경 시 자동 무효화. (테스트/비브라우저 환경은 `safeLocalStorage` 가드로 무시)
@@ -178,6 +191,14 @@ FileCard는 실제 그리드 스크롤 컨테이너를 `IntersectionObserver.roo
 
 ## 주의사항
 - 썸네일은 반드시 **`queuedInvokeLow`** 사용. 일반 `invoke` 사용 시 폴더 전환 시 이전 요청이 취소되지 않아 UI 오염.
-- 폴더 이동 시 `cancelAllQueued()` 호출 필수 (FileExplorer/index.tsx에서 처리).
+- `cancelAllQueued()`는 **폴더 "이동"일 때만** 호출한다(useDirectoryLoader가 이전 경로와 비교).
+  같은 경로 재로딩(`qf-files-changed` 새로고침 등)에서 취소하면 아직 onLoad 전인 카드들의
+  썸네일 요청이 몰살되어 일제히 스피너로 복귀한다(회귀 주의).
+- `qf-files-changed`는 `dispatchFilesChanged(instanceId)`로 발신하고 리스너는 자기 instanceId면
+  무시한다 — 자기 패널 재로딩은 각 작업 흐름이 직접 수행하며, 자기 수신은 중복 재로딩의 원인.
+- 장시간 커맨드(compress_video, download_ffmpeg, extract_zip, calculate_folder_size 등)는
+  `runDirectCommand`(direct 레인) 사용 — 일반 레인(6슬롯)을 점유하면 rename/list가 전부 대기하는
+  먹통이 된다. 동기 블로킹 Rust 커맨드는 반드시 `spawn_blocking`으로 감쌀 것(rename_item 누락이
+  tokio 워커 고갈 프리즈의 원인이었다).
 - `ThumbnailSize` 타입: `40|60|80|100|120|160|200|240|280|320` — 이 값 외 사용 금지.
 - 네이티브 아이콘 캐시는 파일 내용이 아니라 OS/확장자/폴더 타입 기준이다. 파일별 커스텀 아이콘을 정확히 보여야 하는 기능에서는 별도 키 정책이 필요하다.

@@ -4,8 +4,11 @@ import { getFileName, getPathSeparator, normalizeFsPath } from '../../../utils/p
 import { detectFolderMergeScenario } from '../../../utils/folderMerge';
 import { runTransferWithProgress } from './runTransferWithProgress';
 import { tauriCommands } from '../../../utils/tauriCommands';
+import { dispatchFilesChanged } from './filesChangedEvent';
 
 export interface UseClipboardConfig {
+  /** 패널 인스턴스 ID — qf-files-changed 자기 수신 차단용 */
+  instanceId?: string;
   selectedPaths: string[];
   currentPath: string | null;
   loadDirectory: (path: string) => Promise<void>;
@@ -24,6 +27,7 @@ export interface UseClipboardConfig {
  * 분할 뷰에서는 sharedClipboard/onClipboardChange로 공유, 단일 뷰에서는 내부 상태 사용.
  */
 export function useClipboard({
+  instanceId,
   selectedPaths,
   currentPath,
   loadDirectory,
@@ -115,14 +119,14 @@ export function useClipboard({
       }
       pendingPasteSelectRef.current = destPaths;
       loadDirectory(currentPath);
-      // 분할 뷰에서 다른 패널도 새로고침되도록 이벤트 발생
-      window.dispatchEvent(new Event('qf-files-changed'));
+      // 분할 뷰에서 다른 패널도 새로고침되도록 이벤트 발생 (자기 패널은 위 loadDirectory가 처리)
+      dispatchFilesChanged(instanceId);
     } catch (e) {
       console.error('붙여넣기 실패:', e);
     } finally {
       setPendingCopyPaths?.(prev => prev.filter(p => !destPaths.includes(normalizeFsPath(p))));
     }
-  }, [currentPath, loadDirectory, setClipboard, setEntries, currentEntries, setPendingCopyPaths]);
+  }, [currentPath, instanceId, loadDirectory, setClipboard, setEntries, currentEntries, setPendingCopyPaths]);
 
   const handlePaste = useCallback(async () => {
     if (!currentPath) return;

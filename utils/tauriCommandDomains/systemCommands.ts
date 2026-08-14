@@ -11,7 +11,8 @@ export const systemCommands = {
     return runDirectCommand<void>('open_terminal', { path });
   },
   runTerminalCommand(path: string, command: string) {
-    return runCommand<void>('run_terminal_command', { path, command });
+    // 임의 명령은 실행 시간을 예측할 수 없음 — 일반 레인 점유 방지
+    return runDirectCommand<void>('run_terminal_command', { path, command });
   },
   openSacSettings() {
     return runDirectCommand<void>('open_sac_settings');

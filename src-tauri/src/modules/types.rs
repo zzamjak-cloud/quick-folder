@@ -43,13 +43,14 @@ pub fn file_identity(meta: &std::fs::Metadata) -> String {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
+        // ctime은 rename·xattr 등 내용과 무관한 메타데이터 변경만으로 바뀌어
+        // 썸네일 캐시가 불필요하게 무효화되므로 제외한다(클라우드 materialize 노이즈도 동일).
+        // 내용 변경 감지는 ino+mtime+len으로 충분하다.
         return format!(
-            "unix:{}:{}:{}:{}:{}:{}:{}",
+            "unix:{}:{}:{}:{}:{}",
             meta.dev(),
             meta.ino(),
             created,
-            meta.ctime(),
-            meta.ctime_nsec(),
             modified,
             meta.len()
         );

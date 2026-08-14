@@ -220,6 +220,37 @@ fn collect_thumbnail_source_paths(path: &Path, out: &mut Vec<String>) {
     }
 }
 
+// 이름 변경 시 디스크 썸네일 캐시를 새 경로 키로 이관한다 — 내용이 같은데 재생성하는 낭비와
+// 스피너 복귀를 없앤다. identity는 ctime을 포함하지 않아(rename 시 불변) rename 전에 계산해도 유효하다.
+// 디렉토리는 하위 파일 키가 전부 경로를 포함해 일괄 이관 비용이 크므로 재생성에 맡긴다
+// (옛 키 파일은 10GB 프루닝이 정리). Google Drive의 fileId 기반 캐시는 경로 무관이라 이관 불필요.
+pub(crate) fn migrate_thumbnail_cache_for_rename(app_cache: &Path, old_path: &str, new_path: &str) {
+    let Ok(meta) = std::fs::metadata(old_path) else {
+        return;
+    };
+    if meta.is_dir() {
+        return;
+    }
+    let identity = crate::modules::types::file_identity(&meta);
+    // 클라우드 경로 폴백 키(mtime-len 시그니처)도 함께 이관
+    let cloud_identity = format!("sig:{}-{}", thumbnail_modified_millis(&meta), meta.len());
+    for size in THUMBNAIL_CACHE_SIZES {
+        for id_variant in [identity.as_str(), cloud_identity.as_str()] {
+            let old_key = stable_thumbnail_cache_key(old_path, id_variant, size);
+            let new_key = stable_thumbnail_cache_key(new_path, id_variant, size);
+            for dir_name in THUMBNAIL_CACHE_DIR_NAMES {
+                let dir = app_cache.join(dir_name);
+                for ext in ["png", "none"] {
+                    let old_file = dir.join(format!("{}.{}", old_key, ext));
+                    if old_file.exists() {
+                        let _ = std::fs::rename(&old_file, dir.join(format!("{}.{}", new_key, ext)));
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn invalidate_thumbnail_cache_paths_in_root(app_cache: &Path, paths: &[String]) {
     let mut source_paths = Vec::new();
     for path in paths {

@@ -118,11 +118,15 @@ export function useDirectoryLoader({
 
   const loadDirectory = useCallback(async (path: string, options: LoadDirectoryOptions = {}) => {
     if (!path) return;
-    if (gridRef.current && currentPathRef.current) {
-      scrollPositionRef.current.set(`${viewModeRef.current}:${currentPathRef.current}`, gridRef.current.scrollTop);
+    const previousPath = currentPathRef.current;
+    if (gridRef.current && previousPath) {
+      scrollPositionRef.current.set(`${viewModeRef.current}:${previousPath}`, gridRef.current.scrollTop);
     }
     currentPathRef.current = path;
-    cancelAllQueued();
+    // 폴더 "이동"일 때만 이전 폴더의 대기 요청을 취소한다.
+    // 같은 경로 재로딩(qf-files-changed 새로고침 등)에서 취소하면 아직 onLoad 전인
+    // 카드들의 썸네일 요청이 몰살되어 일제히 스피너로 복귀한다.
+    if (previousPath !== path) cancelAllQueued();
     setError(null);
 
     const isRecent = path === RECENT_PATH;
@@ -231,5 +235,7 @@ export function useDirectoryLoader({
     loadDirectory,
     prefetchDirectory,
     lastVisitedChildRef,
+    // 수동 listDirectory 후 메모리 목록 캐시 동기화용 (이름 변경 흐름 등)
+    cacheEntries,
   };
 }
