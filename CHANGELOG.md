@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.68] - 2026-08-18
+
+### Fixed
+- 마우스 측면 버튼(뒤로/앞으로) 내비게이션이 동작하지 않던 문제 수정 — 퍼지검색의 hidden IME input이 항상 포커스를 유지해 보조 버튼 핸들러가 무시되던 것을 키보드 단축키와 동일하게 예외 처리
+- 우클릭 동영상 압축 메뉴의 `handleCompressVideo` 타입 시그니처에 크기 옵션(`scalePercent`) 누락으로 발생하던 타입 오류 3건 수정
+
 ## [1.27.67] - 2026-08-15
 
 ### Fixed

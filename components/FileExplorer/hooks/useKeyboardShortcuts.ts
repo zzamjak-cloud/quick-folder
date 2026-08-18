@@ -719,7 +719,11 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
       if (renamingPath) return;
       const active = document.activeElement;
       if (active && (active as HTMLElement).isContentEditable) return;
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      // 퍼지필터의 hidden input은 항상 포커스를 유지하므로 예외 (키보드 단축키와 동일한 정책)
+      const isFuzzyFilterInput = active instanceof HTMLInputElement
+        && active.hasAttribute('data-fuzzy-filter-input');
+      if ((active instanceof HTMLInputElement && !isFuzzyFilterInput)
+        || active instanceof HTMLTextAreaElement) return;
       // 마크다운 편집기가 열려 있으면 무시
       if (document.querySelector('[data-markdown-editor]')) return;
 

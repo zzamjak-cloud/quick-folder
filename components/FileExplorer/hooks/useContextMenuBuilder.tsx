@@ -45,7 +45,7 @@ export interface UseContextMenuBuilderConfig {
     handleDelete: (paths: string[], permanent: boolean) => void;
     handleCompressZip: (paths: string[]) => void;
     handleExtractZip: (paths: string[]) => void;
-    handleCompressVideo: (paths: string | string[], quality: 'low' | 'medium' | 'high') => void;
+    handleCompressVideo: (paths: string | string[], quality: 'low' | 'medium' | 'high', scalePercent?: number) => void;
     handleVideoToGif: (paths: string[]) => void;
     handleGifToMp4: (paths: string[]) => void;
     handleCompressPdf: (path: string) => void;
