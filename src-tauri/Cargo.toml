@@ -1,10 +1,10 @@
 [package]
 name = "app"
-version = "1.27.68"
+version = "1.27.69"
 description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+authors = ["zzamjak-cloud"]
+license = "GPL-3.0-only"
+repository = "https://github.com/zzamjak-cloud/quick-folder"
 edition = "2021"
 rust-version = "1.77.2"
 

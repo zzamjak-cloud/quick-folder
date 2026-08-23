@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.69] - 2026-08-23
+
+### Changed
+- 프로젝트 라이선스 표기를 GNU General Public License v3.0 only (GPL-3.0-only)로 변경
+- README, npm/Cargo/Tauri 메타데이터, 배포 번들 라이선스 파일 경로에 저작권자와 GPLv3 조건을 명확히 반영
+
 ## [1.27.68] - 2026-08-18
 
 ### Fixed

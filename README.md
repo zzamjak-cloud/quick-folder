@@ -38,4 +38,10 @@ npm run tauri build
 
 ## 라이선스
 
-MIT
+QuickFolder Widget은 **GNU General Public License v3.0 only (GPL-3.0-only)** 조건으로 배포됩니다.
+
+Copyright (c) 2026 zzamjak-cloud.
+
+이 프로젝트를 수정하거나 재배포하는 경우 GPLv3 조건에 따라 전체 대응 소스 코드를 공개하고 동일한 GPLv3 조건을 유지해야 합니다. 제3자가 이 프로젝트를 자신의 독점 저작물처럼 표시하거나, 저작권 고지를 제거하거나, 소스 공개 의무 없이 폐쇄형 제품으로 재배포하는 것은 허용되지 않습니다.
+
+GPLv3는 상업적 사용 또는 유상 배포 자체를 금지하지 않습니다. 상업적 판매를 포함한 모든 배포는 GPLv3의 소스 공개, 동일 라이선스, 저작권 고지 유지 조건을 따라야 합니다.

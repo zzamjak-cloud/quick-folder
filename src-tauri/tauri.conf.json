@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "QuickFolder Widget",
-  "version": "1.27.68",
+  "version": "1.27.69",
   "identifier": "com.quickfolder.widget",
   "build": {
     "frontendDist": "../dist",
@@ -35,6 +35,8 @@
   },
   "bundle": {
     "publisher": "zzamjak-cloud",
+    "copyright": "Copyright (c) 2026 zzamjak-cloud",
+    "licenseFile": "../LICENSE",
     "active": true,
     "targets": [
       "app",

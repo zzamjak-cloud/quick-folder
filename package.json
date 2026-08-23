@@ -1,7 +1,13 @@
 {
   "name": "quickfolder-widget",
   "private": true,
-  "version": "1.27.68",
+  "version": "1.27.69",
+  "author": "zzamjak-cloud",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zzamjak-cloud/quick-folder.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
