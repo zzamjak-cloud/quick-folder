@@ -83,7 +83,7 @@ export default memo(function FileCard({
   // 일시 실패(이름 변경 직후 경로 미존재 창 등) 자동 복구용 — 키당 1회만 지연 재시도
   const thumbnailErrorRetriedKeyRef = useRef<string | null>(null);
 
-  const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns|svg)$/i.test(entry.name);
+  const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns)$/i.test(entry.name);
 
   // 네이티브 아이콘 (공유 캐시 훅)
   const nativeIcon = useNativeIcon(entry, thumbnailSize, isVisible);
@@ -129,27 +129,31 @@ export default memo(function FileCard({
     const ft = entry.file_type;
     if (ft !== 'image' && ft !== 'video') return;
 
-    const cached = getThumb(thumbnailCacheKey);
-    if (cached !== undefined) {
-      // '' = 썸네일 없음 확정 → 아이콘 폴백
-      setThumbnail(cached ? cached : null);
-      return;
-    }
     // SVG: Rust 이미지 디코더가 지원하지 않아 썸네일 생성이 항상 실패했다(→ 아이콘만 표시).
     // WebView는 SVG를 직접 렌더할 수 있으므로 원본을 asset URL로 그대로 사용한다.
     // (파일 수정 시 WebView 캐시를 무효화하려 identity 토큰을 쿼리로 덧붙인다)
+    //
+    // 캐시 조회보다 **먼저** 처리해야 한다(회귀 주의). 1.27.70 이전 빌드는 SVG 썸네일 생성 실패를
+    // ''(썸네일 없음 확정)로 캐시했고 그 값은 localStorage로 영속된다. 캐시를 먼저 읽으면
+    // 업데이트 후에도 ''가 반환돼 이 분기에 영영 도달하지 못한다(무한 스피너의 원인이었음).
     if (isSvg) {
       const svgUrl = `${convertFileSrc(entry.path)}?qf=${encodeURIComponent(
         `${entry.modified ?? 0}-${entry.size ?? 0}`
       )}`;
       if (failedThumbnailUrlsRef.current.has(svgUrl)) {
-        // 깨진 SVG → 재시도 루프 대신 아이콘 폴백으로 확정
-        setThumb(thumbnailCacheKey, '');
+        // 깨진 SVG → 재시도 루프 대신 아이콘 폴백 (''를 캐시하지는 않는다)
         setThumbnail(null);
         return;
       }
-      setThumb(thumbnailCacheKey, svgUrl);
+      setThumb(thumbnailCacheKey, svgUrl); // 구버전이 남긴 '' 를 덮어써 자가 치유
       setThumbnail(svgUrl);
+      return;
+    }
+
+    const cached = getThumb(thumbnailCacheKey);
+    if (cached !== undefined) {
+      // '' = 썸네일 없음 확정 → 아이콘 폴백
+      setThumbnail(cached ? cached : null);
       return;
     }
 

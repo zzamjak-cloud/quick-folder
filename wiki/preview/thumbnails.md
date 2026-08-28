@@ -175,6 +175,7 @@ FileCard는 실제 그리드 스크롤 컨테이너를 `IntersectionObserver.roo
 
 ### SVG는 Rust를 거치지 않는다 (회귀 주의)
 `.svg`는 Rust `image` 크레이트가 디코드하지 못해 `get_file_thumbnail_path`가 항상 실패했고, 그 결과 그리드에 OS 셸 아이콘만 떴다. WebView는 SVG를 그대로 렌더하므로 **원본 경로의 asset URL을 썸네일로 직접 사용**한다.
+- **캐시 조회보다 먼저 분기해야 한다(회귀 주의).** 1.27.70 이전 빌드는 SVG 썸네일 생성 실패를 `''`(썸네일 없음 확정)로 캐시했고, 이 값은 localStorage로 영속된다. 캐시를 먼저 읽으면 업데이트 후에도 `''`가 반환돼 SVG 분기에 도달하지 못한다. 1.27.70에서 실제로 이 순서 때문에 **로딩 스피너가 무한히 도는** 증상이 나왔다(SVG를 `isThumbnailImage`에 넣어 placeholder 대상으로 만들었던 탓). 지금은 ① SVG 분기가 `getThumb`보다 앞에 있고 ② SVG는 `isThumbnailImage`에서 제외해 실패 시 스피너가 아니라 아이콘으로 떨어진다. 회귀 테스트: `tests/ui/FileCardSvgThumbnail.test.tsx`
 - `FileCard`: 썸네일 effect에서 `isSvgPath`(utils/pathUtils)면 `convertFileSrc(path)?qf={mtime}-{size}`를 `setThumb` + 표시하고 조기 반환(IPC 없음). `?qf`는 파일 수정 시 WebView 캐시 무효화용. `<img>` onError가 난 URL은 `failedThumbnailUrlsRef`에 남으므로, 재진입 시 `''`(썸네일 없음)로 확정해 아이콘 폴백 — 재시도 루프 방지.
 - `prewarmThumbnails`(useDirectoryLoader), `getPersistentThumbUrl`(thumbnailCache): SVG 제외. Rust PNG 캐시가 존재하지 않아 batch 요청·추측 URL(404)만 낭비된다.
 - 컬럼 뷰(`useColumnView.loadThumbnail`)·중복 파일 모달도 같은 asset URL 방식. 스페이스바 미리보기는 원래부터 원본 asset URL이라 영향 없음.
