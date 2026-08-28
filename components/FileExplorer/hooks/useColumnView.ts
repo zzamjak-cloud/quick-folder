@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { FileEntry } from '../../../types';
 import { naturalCompare } from '../../../utils/naturalCompare';
 import { queuedInvoke } from './invokeQueue';
@@ -121,6 +122,18 @@ export function useColumnView() {
             return { ...prev, loading: false };
           });
         });
+      return;
+    }
+
+    // SVG: Rust 디코더 미지원 → 원본을 asset URL로 직접 표시
+    if (/\.svg$/i.test(entry.name)) {
+      setPreview({
+        entry,
+        thumbnail: convertFileSrc(entry.path),
+        textContent: null,
+        videoPath: null,
+        loading: false,
+      });
       return;
     }
 

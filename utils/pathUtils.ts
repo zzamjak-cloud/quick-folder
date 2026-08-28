@@ -22,6 +22,11 @@ export function getExtension(path: string): string {
   return dot > 0 ? name.substring(dot) : '';
 }
 
+/** SVG 파일 여부 (Rust 이미지 디코더 미지원 → WebView가 원본을 직접 렌더) */
+export function isSvgPath(path: string): boolean {
+  return /\.svg$/i.test(path);
+}
+
 /** 경로에서 부모 디렉토리 추출 */
 export function getParentDir(path: string): string {
   const sep = getPathSeparator(path);

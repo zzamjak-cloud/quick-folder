@@ -84,6 +84,8 @@ export function useDirectoryLoader({
           count++;
           continue;
         }
+        // SVG는 Rust 썸네일 생성 대상이 아니다(카드가 원본 asset URL을 직접 렌더)
+        if (lower.endsWith('.svg')) continue;
         if (entry.file_type === 'image' && isCloudPath(entry.path)) {
           fixedItems.push({ path: entry.path, fileType: 'image' });
           fixedKeys.push(thumbKey(entry.path, FIXED_GRID_THUMB_SIZE, entry.modified, entry.size, entry.identity));

@@ -8,7 +8,7 @@ import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvokeLow, isTauriCommandCancelled } from './hooks/invokeQueue';
 import { thumbKey, getThumb, setThumb, deleteThumb, getPersistentThumbUrl, FIXED_GRID_THUMB_SIZE } from './hooks/thumbnailCache';
-import { isCloudPath } from '../../utils/pathUtils';
+import { isCloudPath, isSvgPath } from '../../utils/pathUtils';
 import FuzzyHighlightedName from './FuzzyHighlightedName';
 
 interface FileCardProps {
@@ -62,6 +62,8 @@ export default memo(function FileCard({
   // 화면에는 그리드 레이아웃이 <img>를 CSS로 축소 표시 → 줌/크기변경 시 재생성·재다운로드 없음.
   // 로컬 이미지/비디오는 표시 크기 그대로 생성(생성이 싸므로).
   const isPsd = /\.(psd|psb)$/i.test(entry.name);
+  // SVG는 Rust 썸네일 생성 대상이 아니다(아래 썸네일 effect 주석 참고)
+  const isSvg = isSvgPath(entry.path);
   const isCloudEntry = isCloudPath(entry.path);
   const useFixedRenderSize = isPsd || (entry.file_type === 'image' && isCloudEntry);
   const renderSize: number = useFixedRenderSize ? FIXED_GRID_THUMB_SIZE : thumbnailSize;
@@ -81,7 +83,7 @@ export default memo(function FileCard({
   // 일시 실패(이름 변경 직후 경로 미존재 창 등) 자동 복구용 — 키당 1회만 지연 재시도
   const thumbnailErrorRetriedKeyRef = useRef<string | null>(null);
 
-  const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns)$/i.test(entry.name);
+  const isThumbnailImage = entry.file_type === 'image' && /\.(jpe?g|png|gif|webp|bmp|ico|icns|svg)$/i.test(entry.name);
 
   // 네이티브 아이콘 (공유 캐시 훅)
   const nativeIcon = useNativeIcon(entry, thumbnailSize, isVisible);
@@ -133,6 +135,24 @@ export default memo(function FileCard({
       setThumbnail(cached ? cached : null);
       return;
     }
+    // SVG: Rust 이미지 디코더가 지원하지 않아 썸네일 생성이 항상 실패했다(→ 아이콘만 표시).
+    // WebView는 SVG를 직접 렌더할 수 있으므로 원본을 asset URL로 그대로 사용한다.
+    // (파일 수정 시 WebView 캐시를 무효화하려 identity 토큰을 쿼리로 덧붙인다)
+    if (isSvg) {
+      const svgUrl = `${convertFileSrc(entry.path)}?qf=${encodeURIComponent(
+        `${entry.modified ?? 0}-${entry.size ?? 0}`
+      )}`;
+      if (failedThumbnailUrlsRef.current.has(svgUrl)) {
+        // 깨진 SVG → 재시도 루프 대신 아이콘 폴백으로 확정
+        setThumb(thumbnailCacheKey, '');
+        setThumbnail(null);
+        return;
+      }
+      setThumb(thumbnailCacheKey, svgUrl);
+      setThumbnail(svgUrl);
+      return;
+    }
+
     setThumbnail(null);
 
     const thumbSourcePath = entry.path;
@@ -193,7 +213,7 @@ export default memo(function FileCard({
       if (errorRetryTimer) clearTimeout(errorRetryTimer);
       if (cancelFn) cancelFn();
     };
-  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd, thumbnailCacheKey]);
+  }, [isVisible, isPending, entry.file_type, entry.path, entry.modified, entry.size, entry.identity, thumbnailSize, thumbnailReloadSeq, isPsd, isSvg, thumbnailCacheKey]);
 
   const handleThumbnailLoad = useCallback(() => {
     if (!thumbnail) return;

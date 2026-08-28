@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.70] - 2026-08-28
+
+### Added
+- `.blend` 파일에 Blender 공식 로고 아이콘 적용 — Blender 설치 여부·OS 셸 아이콘과 무관하게 항상 동일하게 표시. `.blend1`·`.blend2` 등 백업본도 동일 아이콘 사용
+
+### Fixed
+- `.svg` 파일 썸네일이 표시되지 않던 문제 수정 — Rust 이미지 디코더가 SVG를 지원하지 않아 썸네일 생성이 항상 실패했다. WebView가 직접 렌더할 수 있으므로 원본을 asset URL로 표시하도록 변경(그리드·컬럼 뷰·중복 파일 모달). 존재하지 않는 PNG 캐시 경로 추측과 불필요한 배치 썸네일 요청도 함께 제거
+
 ## [1.27.69] - 2026-08-23
 
 ### Changed

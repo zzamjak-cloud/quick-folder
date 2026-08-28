@@ -221,6 +221,8 @@ export async function getPersistentThumbUrl(
   fileIdentity?: string,
 ): Promise<string | null> {
   if (fileType !== 'image' && fileType !== 'video') return null;
+  // SVG는 Rust 썸네일(PNG) 캐시가 존재하지 않는다 — 추측 URL은 404만 유발
+  if (/\.svg$/i.test(path)) return null;
   // Google Drive 등 cloud path는 Rust에서 file ID 기반 drive_thumbnails 경로를 결정한다.
   // 프론트가 path 기반 img/video_thumbnails URL을 먼저 꽂으면 새로고침 직후 404가 난다.
   if (isCloudPath(path)) return null;

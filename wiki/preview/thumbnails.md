@@ -173,6 +173,13 @@ IntersectionObserver 진입 전 선요청
 ```
 FileCard는 실제 그리드 스크롤 컨테이너를 `IntersectionObserver.root`로 사용하고, `rootMargin`으로 화면 진입 전에 썸네일 요청을 시작한다. Google Drive 같은 cloud path는 더 큰 선요청 범위와 eager 이미지 로드를 사용해 File Provider 지연을 흡수한다. 카드가 선요청 범위를 벗어나면 pending 요청을 취소해 빠른 스크롤 중 지나간 항목이 큐를 계속 점유하지 않게 한다.
 
+### SVG는 Rust를 거치지 않는다 (회귀 주의)
+`.svg`는 Rust `image` 크레이트가 디코드하지 못해 `get_file_thumbnail_path`가 항상 실패했고, 그 결과 그리드에 OS 셸 아이콘만 떴다. WebView는 SVG를 그대로 렌더하므로 **원본 경로의 asset URL을 썸네일로 직접 사용**한다.
+- `FileCard`: 썸네일 effect에서 `isSvgPath`(utils/pathUtils)면 `convertFileSrc(path)?qf={mtime}-{size}`를 `setThumb` + 표시하고 조기 반환(IPC 없음). `?qf`는 파일 수정 시 WebView 캐시 무효화용. `<img>` onError가 난 URL은 `failedThumbnailUrlsRef`에 남으므로, 재진입 시 `''`(썸네일 없음)로 확정해 아이콘 폴백 — 재시도 루프 방지.
+- `prewarmThumbnails`(useDirectoryLoader), `getPersistentThumbUrl`(thumbnailCache): SVG 제외. Rust PNG 캐시가 존재하지 않아 batch 요청·추측 URL(404)만 낭비된다.
+- 컬럼 뷰(`useColumnView.loadThumbnail`)·중복 파일 모달도 같은 asset URL 방식. 스페이스바 미리보기는 원래부터 원본 asset URL이라 영향 없음.
+- 네이티브 아이콘(`useNativeIcon`)은 SVG도 그대로 조회한다 — 리스트/컬럼의 16px 행은 셸 아이콘을 계속 쓰고, 카드에서는 썸네일이 우선순위상 이긴다.
+
 ## 사전 로딩 (prewarmThumbnails)
 `useDirectoryLoader` — `loadDirectory` 완료 후 앞쪽 최대 200개(= Rust `MAX_BATCH_ITEMS`) 이미지/비디오/PSD 항목을 `ensure_thumbnails_batch` 1회로 묶어 Rust에서 캐시를 보장한다(클라우드 포함). 개별 카드의 lazy 로딩은 그대로라 batch 실패 시 단건 요청으로 폴백된다.
 - **결과를 메모리 캐시에 주입**: `ensure_thumbnails_batch`는 입력과 **1:1 순서**로 `cachedPath`를 반환하고(Rust에서 join 실패 시에도 순서·개수 보장), prewarm이 이를 카드의 `thumbKey(entry.path, size, modified)`로 `setThumb`한다. → prewarm된 항목은 카드가 마운트/스크롤 진입 시 `getThumb` 동기 HIT로 **IPC 없이 즉시 표시**(특히 cloud는 카드가 경로를 동기적으로 알 다른 방법이 없어 효과 큼).

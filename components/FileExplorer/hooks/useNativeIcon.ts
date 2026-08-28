@@ -7,16 +7,22 @@ import { tauriCommands } from '../../../utils/tauriCommands';
 const ICON_FETCH_SIZE = 128;
 const nativeIconCache = new Map<string, string>();
 
+// 파일명에서 확장자 추출 (소문자, 확장자 없으면 빈 문자열)
+// Blender 백업본(.blend1 ~ .blend32)은 'blend'로 정규화 — fileUtils.getExt와 동일 규칙
+function extOf(name: string): string {
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return /^blend\d+$/.test(ext) ? 'blend' : ext;
+}
+
 function getCacheKey(isDir: boolean, path: string, name: string): string {
   // 폴더는 경로별 캐시 — 한 경로만 실패해도 전역 __folder__ 로 poison 되지 않게 함
   if (isDir) return `folder:${path}`;
-  const ext =
-    name.lastIndexOf('.') > 0 ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '__none__';
-  return ext;
+  return extOf(name) || '__none__';
 }
 
 // Shell 아이콘보다 전용 폴백이 더 안정적인 확장자만 예외 처리
-const SKIP_NATIVE_EXTS = new Set(['exe', 'unitypackage']);
+const SKIP_NATIVE_EXTS = new Set(['exe', 'unitypackage', 'blend']);
 // 썸네일이 생성되므로 네이티브 아이콘 불필요한 이미지 확장자
 const THUMBNAIL_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'icns']);
 
@@ -30,10 +36,7 @@ export function useNativeIcon(
   size: number,
   isVisible: boolean = true,
 ): string | null {
-  const lowerName = entry.name.toLowerCase();
-  const ext = lowerName.lastIndexOf('.') > 0
-    ? lowerName.slice(lowerName.lastIndexOf('.') + 1)
-    : '';
+  const ext = extOf(entry.name);
   // PSD 등은 image 타입이지만 시스템 아이콘 사용 (썸네일 미생성)
   const skip = THUMBNAIL_IMAGE_EXTS.has(ext) || (!entry.is_dir && SKIP_NATIVE_EXTS.has(ext));
 

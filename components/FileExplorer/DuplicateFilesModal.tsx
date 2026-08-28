@@ -120,6 +120,15 @@ function DuplicateThumb({
     if (!thumbKind) return;
 
     const key = thumbKey(entry.path, thumbSize, entry.modified, entry.size, entry.identity);
+
+    // SVG: Rust 디코더 미지원 → 원본을 asset URL로 직접 표시
+    if (/\.svg$/i.test(entry.name)) {
+      const svgUrl = convertFileSrc(entry.path);
+      setThumb(key, svgUrl);
+      setThumbnail(svgUrl);
+      return;
+    }
+
     const cached = getThumb(key);
     if (cached) {
       setThumbnail(cached);
