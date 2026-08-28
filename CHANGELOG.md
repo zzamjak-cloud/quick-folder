@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.71] - 2026-08-28
+
+### Fixed
+- `.svg` 파일 썸네일 자리에 로딩 스피너가 무한히 도는 문제 수정 — 1.27.70 이전 빌드가 캐시한 '썸네일 없음' 값(localStorage 영속)을 먼저 읽어 SVG 처리 분기에 도달하지 못했다. 캐시 조회보다 먼저 분기하도록 바꿔 기존 캐시를 자동으로 덮어쓰며, 렌더 실패 시에도 스피너 대신 아이콘으로 표시된다
+
 ## [1.27.70] - 2026-08-28
 
 ### Added
