@@ -210,3 +210,17 @@ FileCard는 실제 그리드 스크롤 컨테이너를 `IntersectionObserver.roo
   tokio 워커 고갈 프리즈의 원인이었다).
 - `ThumbnailSize` 타입: `40|60|80|100|120|160|200|240|280|320` — 이 값 외 사용 금지.
 - 네이티브 아이콘 캐시는 파일 내용이 아니라 OS/확장자/폴더 타입 기준이다. 파일별 커스텀 아이콘을 정확히 보여야 하는 기능에서는 별도 키 정책이 필요하다.
+
+## 확장자 전용 SVG 아이콘 (extensionIcons.tsx)
+
+썸네일이 생성되지 않는 코드·텍스트·데이터 파일은 OS 셸 아이콘 대신 **확장자별 전용 SVG**를 쓴다 (OS·설치 앱과 무관하게 항상 동일).
+
+- 아이콘 컴포넌트: `components/FileExplorer/extensionIcons.tsx` (viewBox 128 고정, `{size, className}` props)
+- 확장자→아이콘 매핑: `fileUtils.tsx`의 `EXT_ICON`, 색상은 `EXT_COLOR`
+- 대상: py/pyw/pyi, js/mjs/cjs/jsx, cs, html/htm, json, toml, md/markdown/mdx, txt/text/sh, bat/cmd, ps1/psm1/psd1, bin, db/sqlite/sqlite3/sql, unitypackage/unity, blend, exe
+- `currentColor` 기반 아이콘(bat·bin·db·txt·markdown)만 `EXT_COLOR`로 색을 지정한다. 브랜드 로고(python·js·csharp·html·json·toml·powershell·unity)는 색이 내장돼 있어 지정 불필요.
+
+### 회귀 주의 — 두 맵을 반드시 함께 갱신
+`EXT_ICON`에 확장자를 추가하면 `useNativeIcon.ts`의 `SKIP_NATIVE_EXTS`에도 등록해야 한다.
+FileCard 렌더 우선순위가 `썸네일 > 네이티브 아이콘 > FileTypeIcon`이라 SKIP에 없으면 셸 아이콘이 전용 SVG를 덮는다.
+회귀 테스트: `tests/ui/ExtensionIconMapping.test.tsx` (두 맵의 동기화 + 전용 SVG 렌더 검증)

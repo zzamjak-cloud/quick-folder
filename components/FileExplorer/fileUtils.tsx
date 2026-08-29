@@ -1,6 +1,21 @@
 import React from 'react';
 import { Folder, File, FileImage, FileVideo, FileText, FileCode, Archive, Cog } from 'lucide-react';
 import type { ThemeVars } from './types';
+import {
+  BatIcon,
+  BinIcon,
+  CSharpIcon,
+  DbIcon,
+  HtmlIcon,
+  JavaScriptIcon,
+  JsonIcon,
+  MarkdownIcon,
+  PowerShellIcon,
+  PythonIcon,
+  TomlIcon,
+  TxtIcon,
+  UnityIcon,
+} from './extensionIcons';
 
 // 파일명에서 확장자 추출 (소문자)
 // Blender 백업본(.blend1 ~ .blend32 — 저장 시 유지 개수 설정에 따라 늘어남)은
@@ -11,28 +26,6 @@ function getExt(fileName?: string): string {
   const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
   return /^blend\d+$/.test(ext) ? 'blend' : ext;
 }
-
-// Unity3D .unitypackage 전용 큐브 아이콘
-const UnityCubeIcon: React.FC<{ size: number; className?: string }> = ({ size, className }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    className={className}
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.6}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    {/* 큐브 외곽 (Unity 로고 풍 3D 큐브) */}
-    <path d="M12 2.5 L21 7 L21 17 L12 21.5 L3 17 L3 7 Z" />
-    <path d="M12 2.5 L12 12" />
-    <path d="M12 12 L21 7" />
-    <path d="M12 12 L3 7" />
-    <path d="M12 12 L12 21.5" />
-  </svg>
-);
 
 // Blender .blend 전용 로고 아이콘 (공식 로고 SVG — 브랜드 컬러 고정)
 // 셸 아이콘과 달리 Blender 설치 여부·OS와 무관하게 항상 동일하게 표시된다
@@ -63,22 +56,64 @@ const BlenderIcon: React.FC<{ size: number; className?: string }> = ({ size, cla
 
 // 네이티브 아이콘이 안 나오는 확장자만 lucide 아이콘 폴백 매핑
 // (이 확장자들은 useNativeIcon의 SKIP_NATIVE_EXTS에도 등록됨)
-const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> = {
-  md: FileText,          // 마크다운 → 문서(종이) 아이콘
-  json: FileText,        // JSON → 문서(종이) 아이콘
-  sh: FileText,          // 셸 스크립트 → 문서(종이) 아이콘
-  exe: Cog,              // 실행파일 → 톱니바퀴 아이콘
-  unitypackage: UnityCubeIcon, // Unity3D 패키지 → 큐브 아이콘
-  blend: BlenderIcon,    // Blender 파일(.blend + .blend1/2… 백업본) → 블렌더 로고 아이콘
+export const EXT_ICON: Record<string, React.FC<{ size: number; className?: string }>> = {
+  // 문서·텍스트
+  md: MarkdownIcon,          // 마크다운
+  markdown: MarkdownIcon,
+  mdx: MarkdownIcon,
+  txt: TxtIcon,              // 일반 텍스트
+  text: TxtIcon,
+  json: JsonIcon,            // JSON
+  toml: TomlIcon,            // TOML
+
+  // 스크립트·코드
+  py: PythonIcon,            // 파이썬
+  pyw: PythonIcon,
+  pyi: PythonIcon,
+  js: JavaScriptIcon,        // 자바스크립트
+  mjs: JavaScriptIcon,
+  cjs: JavaScriptIcon,
+  jsx: JavaScriptIcon,
+  cs: CSharpIcon,            // C#
+  html: HtmlIcon,            // HTML
+  htm: HtmlIcon,
+  bat: BatIcon,              // 윈도우 배치
+  cmd: BatIcon,
+  ps1: PowerShellIcon,       // 파워셸
+  psm1: PowerShellIcon,
+  psd1: PowerShellIcon,
+  sh: TxtIcon,               // 셸 스크립트 → 텍스트 문서 아이콘
+
+  // 바이너리·데이터
+  bin: BinIcon,              // 바이너리
+  db: DbIcon,                // 데이터베이스
+  sqlite: DbIcon,
+  sqlite3: DbIcon,
+  sql: DbIcon,
+  exe: Cog,                  // 실행파일 → 톱니바퀴 아이콘
+
+  // 3D 툴
+  unitypackage: UnityIcon,   // Unity3D 패키지 → 유니티 로고
+  unity: UnityIcon,          // Unity 씬
+  blend: BlenderIcon,        // Blender 파일(.blend + .blend1/2… 백업본) → 블렌더 로고
 };
 
 // 확장자별 전용 색상 (네이티브 아이콘 skip 대상만)
 const EXT_COLOR: Record<string, string> = {
-  md: '#fbbf24',         // 마크다운 → 문서 옐로
-  json: '#fbbf24',       // JSON → 문서 옐로
-  sh: '#fbbf24',         // 셸 스크립트 → 문서 옐로
+  md: '#64748b',         // 마크다운 외곽선 → 슬레이트
+  markdown: '#64748b',
+  mdx: '#64748b',
+  txt: '#94a3b8',        // 텍스트 라벨 밴드 → 그레이
+  text: '#94a3b8',
+  sh: '#94a3b8',         // 셸 스크립트 → 텍스트와 동일
+  bat: '#7f8c9a',        // 배치 라벨 밴드 → 다크 그레이
+  cmd: '#7f8c9a',
+  bin: '#a8a29e',        // 바이너리 라벨 밴드 → 스톤
+  db: '#38bdf8',         // DB 라벨 밴드 → 스카이 블루
+  sqlite: '#38bdf8',
+  sqlite3: '#38bdf8',
+  sql: '#38bdf8',
   exe: '#60a5fa',        // 실행파일 블루
-  unitypackage: '#e5e7eb', // Unity3D 패키지 → 흰색 (다크 배경에서 큐브 라인이 잘 보이도록)
 };
 
 // 파일 타입별 아이콘 컴포넌트

@@ -21,8 +21,17 @@ function getCacheKey(isDir: boolean, path: string, name: string): string {
   return extOf(name) || '__none__';
 }
 
-// Shell 아이콘보다 전용 폴백이 더 안정적인 확장자만 예외 처리
-const SKIP_NATIVE_EXTS = new Set(['exe', 'unitypackage', 'blend']);
+// 전용 SVG 아이콘(fileUtils EXT_ICON)이 있는 확장자는 OS 셸 아이콘을 건너뛴다.
+// EXT_ICON에 항목을 추가하면 여기에도 반드시 등록해야 셸 아이콘이 덮어쓰지 않는다(회귀 주의).
+export const SKIP_NATIVE_EXTS = new Set([
+  'exe', 'unitypackage', 'unity', 'blend',
+  'md', 'markdown', 'mdx', 'txt', 'text', 'json', 'toml',
+  'py', 'pyw', 'pyi',
+  'js', 'mjs', 'cjs', 'jsx',
+  'cs', 'html', 'htm',
+  'bat', 'cmd', 'ps1', 'psm1', 'psd1', 'sh',
+  'bin', 'db', 'sqlite', 'sqlite3', 'sql',
+]);
 // 썸네일이 생성되므로 네이티브 아이콘 불필요한 이미지 확장자
 const THUMBNAIL_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'icns']);
 

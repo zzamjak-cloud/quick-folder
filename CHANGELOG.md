@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.72] - 2026-08-29
+
+### Added
+- 파일 확장자별 전용 SVG 아이콘 13종 적용 — Python, JavaScript, C#, HTML, JSON, TOML, PowerShell, Markdown, TXT, BAT, BIN, DB, Unity. OS 셸 아이콘·설치된 앱과 무관하게 항상 동일하게 표시된다
+  - 적용 확장자: `py`/`pyw`/`pyi`, `js`/`mjs`/`cjs`/`jsx`, `cs`, `html`/`htm`, `json`, `toml`, `md`/`markdown`/`mdx`, `txt`/`text`/`sh`, `bat`/`cmd`, `ps1`/`psm1`/`psd1`, `bin`, `db`/`sqlite`/`sqlite3`/`sql`, `unitypackage`/`unity`
+
+### Changed
+- `.unitypackage` 아이콘을 기존 단순 큐브 라인 아이콘에서 Unity 공식 로고로 교체
+
 ## [1.27.71] - 2026-08-28
 
 ### Fixed
