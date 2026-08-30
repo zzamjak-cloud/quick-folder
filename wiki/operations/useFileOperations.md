@@ -63,3 +63,17 @@ Rust 호출은 `tauriCommands.*` typed API를 사용한다.
 - [undo.md](undo.md)
 - [../rust/commands.md](../rust/commands.md)
 - [../explorer/archives.md](../explorer/archives.md)
+
+## 대소문자만 바꾸는 이름 변경 (회귀 주의)
+
+`vehicles` → `Vehicles`처럼 **대소문자만** 바꾸는 이름 변경은 macOS APFS(기본 case-insensitive)와
+Windows NTFS에서 `Path::exists()`가 자기 자신을 찾아 true를 반환한다.
+그대로 두면 "동일한 이름의 파일이 존재합니다." 에러로 막힌다.
+
+- `rename_item_impl`(`src-tauri/src/modules/file_ops/mutation.rs`)은 대상이 존재해도
+  `is_same_fs_entry(old, new)`가 true면 rename을 허용한다.
+  - Unix: `symlink_metadata`의 `dev`+`ino` 비교 (심볼릭 링크는 링크 자체를 비교)
+  - Windows: 같은 부모 + 파일명 `to_lowercase()` 일치
+- `fs::rename`은 case-insensitive FS에서도 대소문자 변경을 정상 처리한다(검증됨).
+- 회귀 테스트: `file_ops.rs::tests::test_rename_item_case_only`
+  — `exists()`는 대소문자 무시 FS에서 무의미하므로 `read_dir`로 실제 엔트리 이름을 검증한다.

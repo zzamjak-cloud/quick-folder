@@ -104,6 +104,36 @@ mod tests {
         cleanup_test_dir(&test_dir);
     }
 
+    // 대소문자만 바꾸는 이름 변경 (vehicles → Vehicles)
+    // 대소문자 구분 없는 파일시스템에서 exists() 검사에 걸려 막히던 회귀 방지
+    #[test]
+    fn test_rename_item_case_only() {
+        let test_dir = setup_test_dir("rename_item_case_only");
+        let lower = test_dir.join("vehicles");
+        let upper = test_dir.join("Vehicles");
+        fs::write(&lower, "test").unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let result = rename_item_impl(
+                lower.to_string_lossy().to_string(),
+                upper.to_string_lossy().to_string(),
+                None,
+            )
+            .await;
+            assert!(result.is_ok(), "대소문자만 바꾸는 이름 변경은 허용돼야 함");
+
+            // 실제 디렉토리 엔트리 이름이 바뀌었는지 확인 (exists()는 대소문자 무시 FS에서 무의미)
+            let names: Vec<String> = fs::read_dir(&test_dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+                .collect();
+            assert!(names.contains(&"Vehicles".to_string()), "실제 이름: {:?}", names);
+            assert!(!names.contains(&"vehicles".to_string()), "실제 이름: {:?}", names);
+        });
+
+        cleanup_test_dir(&test_dir);
+    }
+
     #[test]
     fn test_read_text_file() {
         let test_dir = setup_test_dir("read_text_file");

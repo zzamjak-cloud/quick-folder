@@ -59,6 +59,34 @@ pub async fn write_text_file(path: String, content: String) -> Result<()> {
 
 // ===== 이름 변경 =====
 
+/// 두 경로가 파일시스템상 같은 항목을 가리키는지 판정.
+/// 대소문자 구분 없는 파일시스템에서 대소문자만 바꾸는 rename을 허용하기 위해 쓴다.
+/// 심볼릭 링크는 링크 자체를 비교해야 하므로 `symlink_metadata`를 사용한다.
+#[cfg(unix)]
+fn is_same_fs_entry(a: &std::path::Path, b: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::symlink_metadata(a), std::fs::symlink_metadata(b)) {
+        (Ok(ma), Ok(mb)) => ma.dev() == mb.dev() && ma.ino() == mb.ino(),
+        _ => false,
+    }
+}
+
+/// Windows는 dev/ino가 없어 경로 비교로 판정한다.
+/// 기본 NTFS는 대소문자를 구분하지 않으므로 같은 부모 아래 이름이 대소문자만 다르면 같은 항목이다.
+#[cfg(windows)]
+fn is_same_fs_entry(a: &std::path::Path, b: &std::path::Path) -> bool {
+    if a.parent() != b.parent() {
+        return false;
+    }
+    match (a.file_name(), b.file_name()) {
+        (Some(na), Some(nb)) => {
+            na.to_string_lossy().to_lowercase() == nb.to_string_lossy().to_lowercase()
+        }
+        _ => false,
+    }
+}
+
+
 // spawn_blocking: 네트워크 파일시스템에서 tokio 워커 차단 방지
 pub(super) async fn rename_item_impl(
     old_path: String,
@@ -69,7 +97,15 @@ pub(super) async fn rename_item_impl(
         if old_path == new_path {
             return Ok(());
         }
-        if std::path::Path::new(&new_path).exists() {
+        // 대소문자 구분 없는 파일시스템(macOS APFS 기본, Windows NTFS)에서는
+        // `vehicles` → `Vehicles` 같은 대소문자만 바꾸는 변경도 exists()가 true라
+        // "이미 존재함"으로 오판된다. 같은 파일을 가리키면 rename을 허용한다.
+        if std::path::Path::new(&new_path).exists()
+            && !is_same_fs_entry(
+                std::path::Path::new(&old_path),
+                std::path::Path::new(&new_path),
+            )
+        {
             return Err(AppError::AlreadyExists(
                 "동일한 이름의 파일이 존재합니다.".to_string(),
             ));

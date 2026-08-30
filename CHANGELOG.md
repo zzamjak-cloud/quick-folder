@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.73] - 2026-08-30
+
+### Fixed
+- 대소문자만 바꾸는 이름 변경(`vehicles` → `Vehicles`)이 "동일한 이름의 파일이 존재합니다." 에러로 막히던 문제 수정 — macOS APFS·Windows NTFS는 대소문자를 구분하지 않아 중복 검사가 자기 자신을 찾아냈다. 실제로 같은 파일을 가리키는 경우에만 변경을 허용한다
+
 ## [1.27.72] - 2026-08-29
 
 ### Added
