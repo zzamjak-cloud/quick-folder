@@ -12,7 +12,7 @@
 | 폰트 미리보기 | `FontPreviewModal.tsx` | — |
 | 폰트 병합 | `FontMergeModal.tsx` | — |
 | HWP 미리보기 | `HwpPreviewModal.tsx` | — |
-| FBX 미리보기 | `FbxPreviewModal.tsx` | — |
+| 3D 모델 미리보기 (.fbx/.obj) | `ModelPreviewModal.tsx` | — |
 | JSON 뷰어 | `JsonViewerModal.tsx` | — |
 | Diff Viewer | `DiffViewerModal.tsx` | [diff-viewer.md](diff-viewer.md) |
 | 중복 파일 찾기 | `DuplicateFilesModal.tsx` | [../explorer/duplicate-finder.md](../explorer/duplicate-finder.md) |

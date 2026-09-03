@@ -36,17 +36,11 @@ export default defineConfig({
           if (!id.includes('node_modules')) return undefined;
           const normalized = id.split(path.sep).join('/');
 
-          if (normalized.includes('/node_modules/three/examples/jsm/loaders/')) {
-            return 'vendor-three-loaders';
-          }
-          if (normalized.includes('/node_modules/three/examples/jsm/controls/')) {
-            return 'vendor-three-controls';
-          }
-          if (normalized.includes('/node_modules/three/src/renderers/')) {
-            return 'vendor-three-renderers';
-          }
-          if (normalized.includes('/node_modules/three/src/')) return 'vendor-three-core';
-          if (normalized.includes('/node_modules/three/')) return 'vendor-three-core';
+          // three는 반드시 단일 청크로 유지한다.
+          // src/renderers 등을 별도 청크로 쪼개면 three 내부 순환 참조 때문에
+          // 청크 그래프에 사이클이 생겨 프로덕션 빌드에서만
+          // "Cannot access 'X' before initialization" TDZ 오류로 3D 미리보기가 죽는다(회귀 주의).
+          if (normalized.includes('/node_modules/three/')) return 'vendor-three';
           if (normalized.includes('/node_modules/pdfjs-dist/')) return 'vendor-pdfjs';
           if (
             normalized.includes('/node_modules/@tiptap/')

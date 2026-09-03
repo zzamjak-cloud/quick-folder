@@ -63,6 +63,14 @@ export const TxtIcon: React.FC<ExtIconProps> = (p) => (
   <PaperLabelIcon {...p} label="TXT" textLength={96} />
 );
 
+export const FbxIcon: React.FC<ExtIconProps> = (p) => (
+  <PaperLabelIcon {...p} label="FBX" textLength={96} />
+);
+
+export const ObjIcon: React.FC<ExtIconProps> = (p) => (
+  <PaperLabelIcon {...p} label="OBJ" textLength={96} />
+);
+
 // C# — 육각형 바탕 + C# 심볼 (브랜드 컬러 고정)
 export const CSharpIcon: React.FC<ExtIconProps> = ({ size, className }) => (
   <svg width={size} height={size} viewBox="0 0 128 128" className={className} preserveAspectRatio="xMidYMid meet">

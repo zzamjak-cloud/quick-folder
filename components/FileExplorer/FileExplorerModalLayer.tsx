@@ -19,7 +19,7 @@ const GifCompressModal = lazy(() => import('./GifCompressModal'));
 const PdfPreviewModal = lazy(() => import('./PdfPreviewModal'));
 const AudioPreviewModal = lazy(() => import('./AudioPreviewModal'));
 const CodePreviewModal = lazy(() => import('./CodePreviewModal'));
-const FbxPreviewModal = lazy(() => import('./FbxPreviewModal'));
+const ModelPreviewModal = lazy(() => import('./ModelPreviewModal'));
 const FontMergeModal = lazy(() => import('./FontMergeModal'));
 const FolderMergeModal = lazy(() => import('./FolderMergeModal'));
 const TerminalPresetModal = lazy(() => import('./TerminalPresetModal'));
@@ -295,10 +295,10 @@ export default function FileExplorerModalLayer({
           />
         )}
 
-        {preview.fbxPreviewPath && (
-          <FbxPreviewModal
-            path={preview.fbxPreviewPath}
-            onClose={() => preview.setFbxPreviewPath(null)}
+        {preview.modelPreviewPath && (
+          <ModelPreviewModal
+            path={preview.modelPreviewPath}
+            onClose={() => preview.setModelPreviewPath(null)}
             themeVars={themeVars}
           />
         )}

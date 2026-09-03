@@ -43,8 +43,8 @@ function createPreview(overrides: Partial<PreviewState> = {}): PreviewState {
     setCodePreviewPath: vi.fn(),
     codePreviewEditRequest: 0,
     handleCodePreview: vi.fn(),
-    fbxPreviewPath: null,
-    setFbxPreviewPath: vi.fn(),
+    modelPreviewPath: null,
+    setModelPreviewPath: vi.fn(),
     hwpPreviewPath: null,
     setHwpPreviewPath: vi.fn(),
     closeAllPreviews: vi.fn(),
@@ -91,7 +91,15 @@ describe('usePreviewRouting', () => {
       fbxHook.result.current.previewFile(entry({ name: 'scene.fbx', path: '/tmp/scene.fbx' }));
     });
     expect(fbxPreview.closeAllPreviews).toHaveBeenCalledOnce();
-    expect(fbxPreview.setFbxPreviewPath).toHaveBeenCalledWith('/tmp/scene.fbx');
+    expect(fbxPreview.setModelPreviewPath).toHaveBeenCalledWith('/tmp/scene.fbx');
+
+    const objPreview = createPreview();
+    const objHook = renderRouting(objPreview);
+    act(() => {
+      objHook.result.current.previewFile(entry({ name: 'model.obj', path: '/tmp/model.obj' }));
+    });
+    expect(objPreview.closeAllPreviews).toHaveBeenCalledOnce();
+    expect(objPreview.setModelPreviewPath).toHaveBeenCalledWith('/tmp/model.obj');
   });
 
   test('openEntry는 폴더, 압축 파일, 동영상, JSON을 별도 경로로 라우팅한다', async () => {

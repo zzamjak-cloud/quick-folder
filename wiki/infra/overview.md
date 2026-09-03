@@ -24,6 +24,18 @@ cargo test            # Rust 테스트 (command_boundary 포함)
 | `tsconfig.json` | TypeScript 설정 |
 | `package.json` | npm 설정·버전 |
 
+## vite manualChunks 회귀 주의
+
+`three`는 **반드시 단일 청크(`vendor-three`)로 유지**한다.
+
+`three/src/renderers/**`를 별도 청크로 분리하면 three 내부 순환 참조 때문에 청크 그래프에 사이클이 생겨,
+개발 서버에서는 정상이지만 **프로덕션 빌드에서만** 모듈 평가 시점에
+`Cannot access 'X' before initialization` (TDZ) 오류가 발생한다.
+이 경우 `ModelPreviewScene` 청크 로드가 실패해 `.fbx`/`.obj` 미리보기 진입 시 렌더러 전체가 크래시한다.
+
+- 증상 확인: `localStorage.qf_renderer_crash_log_v1` (index.tsx의 `RootErrorBoundary`가 기록)
+- 검증 방법: `npm run build` 후 `dist/assets/vendor-three-*.js`가 **1개**이고 다른 청크를 import하지 않는지 확인
+
 ## 빌드 산출물
 
 | 플랫폼 | 위치 | 크기 |

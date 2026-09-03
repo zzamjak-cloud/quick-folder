@@ -37,7 +37,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
   const [hasCrop, setHasCrop] = useState(false);
   const cropSaveFnRef = useRef<(() => void) | null>(null);
   const [editMode, setEditMode] = useState(false);
-  const [activeTool, setActiveTool] = useState<DrawingTool>('pen');
+  const [activeTool, setActiveTool] = useState<DrawingTool>('rect');
   const [drawColor, setDrawColor] = useState('#EF4444');
   const [drawWidth, setDrawWidth] = useState(4);
   const [hasDrawStrokes, setHasDrawStrokes] = useState(false);
@@ -172,7 +172,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     setHasCrop(false);
     cropSaveFnRef.current = null;
     setEditMode(false);
-    setActiveTool('pen');
+    setActiveTool('rect');
     setHasDrawStrokes(false);
     setImageDims(null);
     setActionMode('none');
@@ -274,7 +274,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
         e.preventDefault();
         e.stopPropagation();
         setEditMode(true);
-        setActiveTool('pen');
+        setActiveTool('rect');
       }
     };
     window.addEventListener('keydown', handler, true);
@@ -286,7 +286,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
     setActionMode('none');
     setHasCrop(false);
     setEditMode(true);
-    setActiveTool('pen');
+    setActiveTool('rect');
   }, [preview.previewImageEditRequest, preview.previewImagePath, isCroppable]);
 
   useLayoutEffect(() => {
@@ -410,7 +410,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
                         return;
                       }
                       setActionMode('none');
-                      setActiveTool('pen');
+                      setActiveTool('rect');
                       setEditMode(true);
                     }}
                     icon={<Edit3 size={15} />}
@@ -493,7 +493,7 @@ export function ImagePreviewModal({ preview, themeVars, previewEntry, onCropSave
             {/* 헤더 2행: 편집/압축/크기조정/배경제거/PNG저장 */}
             <div className="hidden">
               {isCroppable && !editMode && (
-                <button className="text-xs px-3 py-1 rounded hover:opacity-80" style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }} onClick={(e) => { e.stopPropagation(); setEditMode(true); setActiveTool('pen'); }}>편집</button>
+                <button className="text-xs px-3 py-1 rounded hover:opacity-80" style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }} onClick={(e) => { e.stopPropagation(); setEditMode(true); setActiveTool('rect'); }}>편집</button>
               )}
               {editMode && (
                 <button className="text-xs px-3 py-1 rounded hover:opacity-80" style={{ background: themeVars?.surface ?? '#333', color: themeVars?.text ?? '#e5e7eb', border: `1px solid ${themeVars?.border ?? '#444'}` }} onClick={(e) => { e.stopPropagation(); setEditMode(false); }}>편집 종료</button>

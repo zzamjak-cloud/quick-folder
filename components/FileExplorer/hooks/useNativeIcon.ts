@@ -24,7 +24,7 @@ function getCacheKey(isDir: boolean, path: string, name: string): string {
 // 전용 SVG 아이콘(fileUtils EXT_ICON)이 있는 확장자는 OS 셸 아이콘을 건너뛴다.
 // EXT_ICON에 항목을 추가하면 여기에도 반드시 등록해야 셸 아이콘이 덮어쓰지 않는다(회귀 주의).
 export const SKIP_NATIVE_EXTS = new Set([
-  'exe', 'unitypackage', 'unity', 'blend',
+  'exe', 'unitypackage', 'unity', 'blend', 'fbx', 'obj',
   'md', 'markdown', 'mdx', 'txt', 'text', 'json', 'toml',
   'py', 'pyw', 'pyi',
   'js', 'mjs', 'cjs', 'jsx',

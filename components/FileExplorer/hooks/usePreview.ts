@@ -42,8 +42,8 @@ export interface PreviewState {
   /** 코드 미리보기 열기 (옵션: 편집 모드 진입) */
   handleCodePreview: (path: string, initialEdit?: boolean) => void;
   // FBX 3D 미리보기
-  fbxPreviewPath: string | null;
-  setFbxPreviewPath: (path: string | null) => void;
+  modelPreviewPath: string | null;
+  setModelPreviewPath: (path: string | null) => void;
   // HWP/HWPX 미리보기
   hwpPreviewPath: string | null;
   setHwpPreviewPath: (path: string | null) => void;
@@ -94,7 +94,7 @@ export function usePreview(): PreviewState {
   }, []);
 
   // FBX 3D 미리보기
-  const [fbxPreviewPath, setFbxPreviewPath] = useState<string | null>(null);
+  const [modelPreviewPath, setModelPreviewPath] = useState<string | null>(null);
 
   // HWP/HWPX 미리보기
   const [hwpPreviewPath, setHwpPreviewPath] = useState<string | null>(null);
@@ -262,7 +262,7 @@ export function usePreview(): PreviewState {
     setPreviewMdError(null);
     setPreviewMdLoading(false);
     setCodePreviewPath(null);
-    setFbxPreviewPath(null);
+    setModelPreviewPath(null);
     setHwpPreviewPath(null);
     // 진행 중 로드 무효화
     textLoadRequestRef.current++;
@@ -270,7 +270,7 @@ export function usePreview(): PreviewState {
     mdLoadRequestRef.current++;
   }, []);
 
-  const isAnyPreviewOpen = !!(previewImagePath || videoPlayerPath || previewTextPath || previewJsonPath || previewMdPath || codePreviewPath || fbxPreviewPath || hwpPreviewPath);
+  const isAnyPreviewOpen = !!(previewImagePath || videoPlayerPath || previewTextPath || previewJsonPath || previewMdPath || codePreviewPath || modelPreviewPath || hwpPreviewPath);
 
   return {
     videoPlayerPath, setVideoPlayerPath,
@@ -285,7 +285,7 @@ export function usePreview(): PreviewState {
     handlePreviewMd, closeMdPreview,
     codePreviewPath, setCodePreviewPath,
     codePreviewEditRequest, handleCodePreview,
-    fbxPreviewPath, setFbxPreviewPath,
+    modelPreviewPath, setModelPreviewPath,
     hwpPreviewPath, setHwpPreviewPath,
     closeAllPreviews, isAnyPreviewOpen,
   };

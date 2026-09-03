@@ -91,9 +91,9 @@ export function usePreviewRouting({
     } else if (isMd) {
       if (!preview.previewMdPath) preview.closeAllPreviews();
       preview.handlePreviewMd(entry.path);
-    } else if (/\.fbx$/i.test(entry.name)) {
+    } else if (/\.(fbx|obj)$/i.test(entry.name)) {
       preview.closeAllPreviews();
-      preview.setFbxPreviewPath(entry.path);
+      preview.setModelPreviewPath(entry.path);
     } else if (/\.(hwp|hwpx)$/i.test(entry.name)) {
       if (!preview.hwpPreviewPath) preview.closeAllPreviews();
       preview.setHwpPreviewPath(entry.path);

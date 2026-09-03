@@ -30,7 +30,7 @@ function getTextureTail(url: string): string | null {
   return url.slice(match.index + match[0].length).split(/[?#]/, 1)[0] || null;
 }
 
-export function getFbxTextureFallbackPath(modelPath: string, resourceUrl: string): string | null {
+export function getModelTextureFallbackPath(modelPath: string, resourceUrl: string): string | null {
   if (!TEXTURE_EXT_RE.test(resourceUrl)) return null;
 
   const modelDir = getDirName(modelPath);
@@ -48,14 +48,14 @@ export function getFbxTextureFallbackPath(modelPath: string, resourceUrl: string
   return joinPath(modelDir, fileName);
 }
 
-export function createFbxUrlModifier(
+export function createModelUrlModifier(
   modelPath: string,
   toAssetUrl: (path: string) => string,
 ): (url: string) => string {
   return (url: string) => {
     if (url.startsWith('data:') || url.startsWith('blob:')) return url;
 
-    const fallbackPath = getFbxTextureFallbackPath(modelPath, url);
+    const fallbackPath = getModelTextureFallbackPath(modelPath, url);
     return fallbackPath ? toAssetUrl(fallbackPath) : url;
   };
 }

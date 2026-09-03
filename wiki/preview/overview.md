@@ -23,7 +23,7 @@ Space 키
 | `.mp3` `.wav` `.flac` 등 | `AudioPreviewModal.tsx` | |
 | `.json` | `JsonViewerModal.tsx` | 트리 뷰 |
 | `.hwp` | `HwpPreviewModal.tsx` | 텍스트 추출 |
-| `.fbx` | `FbxPreviewModal.tsx` | 3D 뷰어 |
+| `.fbx` `.obj` | `ModelPreviewModal.tsx` | 3D 뷰어 (three.js) |
 | `.laigter` | `LaigterLitPreview.tsx` | |
 | 코드 파일 | `CodePreviewModal.tsx` | `CODE_PREVIEW_EXTS` 집합 |
 | 텍스트 파일 | `PreviewModals.tsx` | `TEXT_PREVIEW_EXTS` 집합 |

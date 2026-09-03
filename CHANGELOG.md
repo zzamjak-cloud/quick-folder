@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.75] - 2026-09-03
+
+### Added
+- `.obj` 파일 앱 내 3D 미리보기 추가 — Space로 `.fbx`와 동일한 뷰어에서 열린다. `mtllib` 선언을 읽어 `.mtl` 머티리얼을 함께 로드하고, 법선(vn)이 없는 OBJ는 정점 법선을 계산해 검게 보이지 않도록 처리한다. 기존에는 macOS QuickLook에 의존해 Windows에서는 미리보기가 없었다
+- `.fbx`, `.obj` 확장자 전용 썸네일 아이콘 추가
+
+### Fixed
+- `.fbx` 미리보기 진입 시 화면 전체가 크래시하던 문제 수정 — `vite.config.ts`의 `manualChunks`가 `three/src/renderers`를 별도 청크로 분리해 three 내부 순환 참조가 청크 사이클이 되면서, 프로덕션 빌드에서만 `Cannot access 'X' before initialization` TDZ 오류가 발생했다. three를 단일 `vendor-three` 청크로 통합했다
+- 3D 모델 로드·초기화 실패 시 실제 오류 메시지를 함께 표시해 원인(미지원 FBX 버전, 파일 접근 실패 등)을 구분할 수 있게 개선
+
+### Changed
+- 마크다운 편집기에서 `"`, `'`, `(`, `[`, `{` 입력 시 자동으로 쌍을 닫고 선택 영역을 감싸던 동작 제거 — 편집을 방해했다
+- 이미지 편집기 도구 순서를 사각형 → 원형 → 펜 → 지우개로 변경하고, 편집 모드 진입 시 기본 도구를 사각형으로 변경
+- `.blend1`, `.blend2` 등 Blender 백업본 아이콘 투명도를 50%로 낮춰 같은 폴더의 원본 `.blend`이 잘 보이도록 개선
+- `.fbx` 전용이던 3D 미리보기 컴포넌트를 `.fbx`/`.obj` 공용 `ModelPreviewModal`/`ModelPreviewScene`으로 정리
+
 ## [1.27.74] - 2026-09-03
 
 ### Added

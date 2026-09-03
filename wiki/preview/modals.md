@@ -56,7 +56,7 @@ const CodePreviewModal = lazy(() => import('./CodePreviewModal'));
 | `AudioPreviewModal.tsx` | 오디오 | — |
 | `JsonViewerModal.tsx` | `.json` | `read_text_file` |
 | `HwpPreviewModal.tsx` | `.hwp` | `extract_hwp_text` |
-| `FbxPreviewModal.tsx` | `.fbx` | — |
+| `ModelPreviewModal.tsx` | `.fbx` `.obj` | — |
 | `LaigterLitPreview.tsx` | `.laigter` | `laigter_maps_preview` |
 | `DuplicateFilesModal.tsx` | — | `find_duplicate_files`, `delete_items` |
 | `DiffViewerModal.tsx` | 텍스트·코드 | `read_text_file` (프론트 diff) |

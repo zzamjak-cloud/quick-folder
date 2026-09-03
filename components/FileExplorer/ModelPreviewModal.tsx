@@ -2,19 +2,19 @@ import React, { lazy, Suspense, useRef, useState } from 'react';
 import { ThemeVars } from '../../types';
 import { getFileName } from '../../utils/pathUtils';
 import { useEscapeKey } from './hooks/useEscapeKey';
-import type { FbxPreviewSceneHandle } from './FbxPreviewScene';
+import type { ModelPreviewSceneHandle } from './ModelPreviewScene';
 
-const FbxPreviewScene = lazy(() => import('./FbxPreviewScene'));
+const ModelPreviewScene = lazy(() => import('./ModelPreviewScene'));
 
-interface FbxPreviewModalProps {
+interface ModelPreviewModalProps {
   path: string;
   themeVars: ThemeVars | null;
   onClose: () => void;
 }
 
-export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreviewModalProps) {
+export default function ModelPreviewModal({ path, themeVars, onClose }: ModelPreviewModalProps) {
   const fileName = getFileName(path);
-  const sceneRef = useRef<FbxPreviewSceneHandle | null>(null);
+  const sceneRef = useRef<ModelPreviewSceneHandle | null>(null);
   const [wireframe, setWireframe] = useState(false);
 
   const surface2 = themeVars?.surface2 ?? '#1e293b';
@@ -89,11 +89,11 @@ export default function FbxPreviewModal({ path, themeVars, onClose }: FbxPreview
             style={{ backgroundColor: 'rgba(26, 26, 46, 0.85)', color: mutedColor }}
             onClick={e => e.stopPropagation()}
           >
-            FBX 뷰어 로딩 중...
+            3D 뷰어 로딩 중...
           </div>
         }
       >
-        <FbxPreviewScene
+        <ModelPreviewScene
           ref={sceneRef}
           path={path}
           accentColor={accentColor}

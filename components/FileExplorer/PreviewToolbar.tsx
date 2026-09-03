@@ -23,9 +23,9 @@ interface PreviewToolbarProps {
 
 // 도구 목록 정의
 const TOOLS: { tool: DrawingTool; icon: React.ElementType; label: string }[] = [
-  { tool: 'pen',     icon: Pen,    label: '펜' },
   { tool: 'rect',    icon: Square, label: '사각형' },
   { tool: 'ellipse', icon: Circle, label: '원형' },
+  { tool: 'pen',     icon: Pen,    label: '펜' },
   { tool: 'eraser',  icon: Eraser, label: '지우개' },
 ];
 

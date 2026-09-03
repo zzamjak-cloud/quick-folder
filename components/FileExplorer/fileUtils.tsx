@@ -6,10 +6,12 @@ import {
   BinIcon,
   CSharpIcon,
   DbIcon,
+  FbxIcon,
   HtmlIcon,
   JavaScriptIcon,
   JsonIcon,
   MarkdownIcon,
+  ObjIcon,
   PowerShellIcon,
   PythonIcon,
   TomlIcon,
@@ -26,6 +28,17 @@ function getExt(fileName?: string): string {
   const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
   return /^blend\d+$/.test(ext) ? 'blend' : ext;
 }
+
+// 원본(.blend)이 아닌 Blender 백업본(.blend1, .blend2 …) 여부
+// 백업본은 아이콘을 반투명 처리해 같은 폴더의 원본이 더 잘 보이게 한다
+function isBlendBackup(fileName?: string): boolean {
+  if (!fileName) return false;
+  const dot = fileName.lastIndexOf('.');
+  if (dot < 0) return false;
+  return /^blend\d+$/.test(fileName.slice(dot + 1).toLowerCase());
+}
+
+const BLEND_BACKUP_OPACITY = 0.5;
 
 // Blender .blend 전용 로고 아이콘 (공식 로고 SVG — 브랜드 컬러 고정)
 // 셸 아이콘과 달리 Blender 설치 여부·OS와 무관하게 항상 동일하게 표시된다
@@ -96,6 +109,8 @@ export const EXT_ICON: Record<string, React.FC<{ size: number; className?: strin
   unitypackage: UnityIcon,   // Unity3D 패키지 → 유니티 로고
   unity: UnityIcon,          // Unity 씬
   blend: BlenderIcon,        // Blender 파일(.blend + .blend1/2… 백업본) → 블렌더 로고
+  fbx: FbxIcon,              // FBX 모델
+  obj: ObjIcon,              // OBJ 모델
 };
 
 // 확장자별 전용 색상 (네이티브 아이콘 skip 대상만)
@@ -114,6 +129,8 @@ const EXT_COLOR: Record<string, string> = {
   sqlite3: '#38bdf8',
   sql: '#38bdf8',
   exe: '#60a5fa',        // 실행파일 블루
+  fbx: '#f97316',        // FBX 라벨 밴드 → 오렌지
+  obj: '#a78bfa',        // OBJ 라벨 밴드 → 바이올렛
 };
 
 // 파일 타입별 아이콘 컴포넌트
@@ -122,8 +139,20 @@ export function FileTypeIcon({ fileType, size, fileName }: { fileType: string; s
   // 확장자별 전용 아이콘 우선 적용
   const ext = getExt(fileName);
   const ExtIcon = EXT_ICON[ext];
-  if (ExtIcon) return <ExtIcon {...iconProps} />;
+  const icon = ExtIcon ? <ExtIcon {...iconProps} /> : fallbackTypeIcon(fileType, iconProps);
 
+  // 백업본은 반투명 처리
+  if (isBlendBackup(fileName)) {
+    return (
+      <span style={{ opacity: BLEND_BACKUP_OPACITY, display: 'inline-flex', flexShrink: 0 }}>
+        {icon}
+      </span>
+    );
+  }
+  return icon;
+}
+
+function fallbackTypeIcon(fileType: string, iconProps: { size: number; className: string }) {
   switch (fileType) {
     case 'directory': return <Folder {...iconProps} />;
     case 'image':     return <FileImage {...iconProps} />;
