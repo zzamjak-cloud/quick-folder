@@ -437,6 +437,7 @@ export const jaLegacyTextTranslations = {
     '경로 & 외부 도구': 'パス & 外部ツール',
     '선택 항목 경로 복사': '選択項目のパスをコピー',
     'Photoshop에서 열기': 'Photoshop で開く',
+    'Photoshop/Blender에서 열기': 'Photoshop / Blender で開く',
     '사이드바 접기/펼치기': 'サイドバーの折りたたみ/展開',
     '좌우 분할 → 상하 분할 → 분할 해제': '左右分割 → 上下分割 → 分割解除',
     '뷰 모드 4종': '4 種類のビューモード',

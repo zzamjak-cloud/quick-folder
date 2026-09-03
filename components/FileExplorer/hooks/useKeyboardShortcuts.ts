@@ -226,20 +226,35 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
 
-      // Ctrl+Alt+O (Cmd+Option+O): Photoshop에서 열기
+      // Ctrl+Alt+O (Cmd+Option+O): 확장자에 맞는 전용 앱에서 열기 (이미지 → Photoshop, .blend → Blender)
       if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyO') {
         e.preventDefault();
         const imageExts = new Set([
           'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'psd', 'psb',
           'tiff', 'tif', 'svg', 'ico', 'raw', 'cr2', 'nef', 'arw',
         ]);
-        const imagePaths = selectedPaths.filter(p => {
+        // Blender 파일 (.blend, .blend1 등 백업 확장자 포함)
+        const blenderExts = new Set(['blend', 'blend1', 'blend2']);
+
+        const imagePaths: string[] = [];
+        const blenderPaths: string[] = [];
+        for (const p of selectedPaths) {
           const ext = p.split('.').pop()?.toLowerCase() ?? '';
-          return imageExts.has(ext);
-        });
+          if (imageExts.has(ext)) {
+            imagePaths.push(p);
+          } else if (blenderExts.has(ext)) {
+            blenderPaths.push(p);
+          }
+        }
+
         if (imagePaths.length > 0) {
           tauriCommands.openInPhotoshop(imagePaths).catch((err: unknown) => {
             setError(`Photoshop 열기 실패: ${err}`);
+          });
+        }
+        if (blenderPaths.length > 0) {
+          tauriCommands.openInBlender(blenderPaths).catch((err: unknown) => {
+            setError(`Blender 열기 실패: ${err}`);
           });
         }
         return;

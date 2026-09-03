@@ -490,6 +490,196 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+// Blender에서 파일 열기 (.blend 등)
+#[tauri::command]
+pub async fn open_in_blender(paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // /Applications/에서 "Blender*" 앱 중 최신 버전 찾기
+        let blender_app = std::fs::read_dir("/Applications")
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .flatten()
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("Blender") && (name.ends_with(".app") || e.path().is_dir()) {
+                            Some(name)
+                        } else {
+                            None
+                        }
+                    })
+                    .max() // 알파벳 순 최대 = 최신 버전
+            })
+            .ok_or_else(|| {
+                "Blender를 찾을 수 없습니다. 설치되어 있는지 확인해주세요.".to_string()
+            })?;
+
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg("-a").arg(&blender_app);
+        for p in &paths {
+            cmd.arg(p);
+        }
+        cmd.spawn()
+            .map_err(|e| format!("Blender 실행 실패: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // .blend 파일 연결 프로그램(HKCR\blendfile\shell\open\command)에서 실행 파일 경로 추출
+        fn find_blender_from_registry() -> Option<String> {
+            use std::ptr;
+            use winapi::um::winnt::KEY_READ;
+            use winapi::um::winreg::{
+                RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CLASSES_ROOT,
+            };
+
+            unsafe {
+                let subkey: Vec<u16> = "blendfile\\shell\\open\\command\0".encode_utf16().collect();
+                let mut hkey = ptr::null_mut();
+                if RegOpenKeyExW(HKEY_CLASSES_ROOT, subkey.as_ptr(), 0, KEY_READ, &mut hkey) != 0 {
+                    return None;
+                }
+
+                // 기본값(이름 없는 값) 크기 조회
+                let mut data_type = 0u32;
+                let mut data_size = 0u32;
+                if RegQueryValueExW(
+                    hkey,
+                    ptr::null(),
+                    ptr::null_mut(),
+                    &mut data_type,
+                    ptr::null_mut(),
+                    &mut data_size,
+                ) != 0
+                {
+                    RegCloseKey(hkey);
+                    return None;
+                }
+
+                let mut data = vec![0u8; data_size as usize];
+                if RegQueryValueExW(
+                    hkey,
+                    ptr::null(),
+                    ptr::null_mut(),
+                    &mut data_type,
+                    data.as_mut_ptr(),
+                    &mut data_size,
+                ) != 0
+                {
+                    RegCloseKey(hkey);
+                    return None;
+                }
+                RegCloseKey(hkey);
+
+                let slice: &[u16] =
+                    std::slice::from_raw_parts(data.as_ptr() as *const u16, data_size as usize / 2);
+                let command = String::from_utf16_lossy(slice).trim_end_matches('\0').to_string();
+
+                // `"C:\...\blender-launcher.exe" "%1"` 형태에서 첫 번째 따옴표 구간만 추출
+                let exe = if command.starts_with('"') {
+                    command[1..].split('"').next()?.to_string()
+                } else {
+                    command.split_whitespace().next()?.to_string()
+                };
+                if std::path::Path::new(&exe).exists() {
+                    return Some(exe);
+                }
+                None
+            }
+        }
+
+        // 표준 설치 경로에서 직접 탐색 (레지스트리 폴백)
+        fn find_blender_in_program_files() -> Option<String> {
+            let bases = [
+                "C:\\Program Files\\Blender Foundation",
+                "C:\\Program Files (x86)\\Blender Foundation",
+            ];
+            for base in &bases {
+                if let Ok(entries) = std::fs::read_dir(base) {
+                    let mut candidates: Vec<String> = entries
+                        .flatten()
+                        .filter_map(|e| {
+                            let name = e.file_name().to_string_lossy().to_string();
+                            if name.starts_with("Blender") {
+                                let exe = format!("{}\\{}\\blender.exe", base, name);
+                                if std::path::Path::new(&exe).exists() {
+                                    return Some(exe);
+                                }
+                            }
+                            None
+                        })
+                        .collect();
+                    candidates.sort();
+                    if let Some(last) = candidates.pop() {
+                        return Some(last);
+                    }
+                }
+            }
+
+            // Steam 버전 폴백
+            for exe in &[
+                "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe",
+                "C:\\Program Files\\Steam\\steamapps\\common\\Blender\\blender.exe",
+            ] {
+                if std::path::Path::new(exe).exists() {
+                    return Some((*exe).to_string());
+                }
+            }
+            None
+        }
+
+        // PATH 환경변수에서 blender.exe 탐색 (포터블/CLI 설치 대응)
+        fn find_blender_in_path() -> Option<String> {
+            let path_var = std::env::var_os("PATH")?;
+            for dir in std::env::split_paths(&path_var) {
+                let exe = dir.join("blender.exe");
+                if exe.exists() {
+                    return Some(exe.to_string_lossy().to_string());
+                }
+            }
+            None
+        }
+
+        let blender_path = find_blender_from_registry()
+            .or_else(find_blender_in_program_files)
+            .or_else(find_blender_in_path);
+
+        match blender_path {
+            Some(exe) => {
+                // Blender는 한 프로세스에 여러 .blend를 동시에 열 수 없어 파일마다 인스턴스를 띄운다
+                for p in &paths {
+                    std::process::Command::new(&exe)
+                        .arg(p)
+                        .spawn()
+                        .map_err(|e| format!("Blender 실행 실패: {}", e))?;
+                }
+            }
+            None => {
+                // 실행 파일을 못 찾은 경우(Microsoft Store 앱, 포터블 설치 등)
+                // .blend 기본 연결 프로그램으로 셸 실행하여 위임한다
+                for p in &paths {
+                    shell_execute_url(p).map_err(|e| {
+                        format!("Blender를 찾을 수 없습니다. 기본 연결 프로그램 실행도 실패했습니다: {}", e)
+                    })?;
+                }
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = &paths;
+        return Err("이 플랫폼에서는 Blender 열기가 지원되지 않습니다".into());
+    }
+
+    Ok(())
+}
+
 // macOS Quick Look 미리보기 실행 (qlmanage -p <path>)
 #[tauri::command]
 pub async fn quick_look(path: String) -> Result<(), String> {

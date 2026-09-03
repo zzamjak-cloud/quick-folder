@@ -437,6 +437,7 @@ export const frLegacyTextTranslations = {
     '경로 & 외부 도구': 'Chemins et outils externes',
     '선택 항목 경로 복사': 'Copier le chemin de l\'élément sélectionné',
     'Photoshop에서 열기': 'Ouvrir dans Photoshop',
+    'Photoshop/Blender에서 열기': 'Ouvrir dans Photoshop/Blender',
     '사이드바 접기/펼치기': 'Réduire/déployer la barre latérale',
     '좌우 분할 → 상하 분할 → 분할 해제': 'Division horizontale -> division verticale -> désactiver la division',
     '뷰 모드 4종': 'Quatre modes d\'affichage',

@@ -102,6 +102,9 @@ export const mediaCommands = {
   openInPhotoshop(paths: string[]) {
     return runDirectCommand<void>('open_in_photoshop', { paths });
   },
+  openInBlender(paths: string[]) {
+    return runDirectCommand<void>('open_in_blender', { paths });
+  },
   convertToIco(path: string) {
     return runCommand<void>('convert_to_ico', { path });
   },

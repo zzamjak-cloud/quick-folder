@@ -437,6 +437,7 @@ export const zhTWLegacyTextTranslations = {
     '경로 & 외부 도구': '路徑與外部工具',
     '선택 항목 경로 복사': '複製所選項目路徑',
     'Photoshop에서 열기': '在 Photoshop 中開啟',
+    'Photoshop/Blender에서 열기': '在 Photoshop/Blender 中開啟',
     '사이드바 접기/펼치기': '收合/展開側邊欄',
     '좌우 분할 → 상하 분할 → 분할 해제': '左右分割 → 上下分割 → 取消分割',
     '뷰 모드 4종': '4 種檢視模式',

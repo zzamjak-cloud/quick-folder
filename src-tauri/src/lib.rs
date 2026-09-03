@@ -60,6 +60,7 @@ pub fn run() {
             extract_zip,
             open_with_app,
             open_in_photoshop,
+            open_in_blender,
             read_text_file,
             write_files_to_clipboard,
             read_files_from_clipboard,

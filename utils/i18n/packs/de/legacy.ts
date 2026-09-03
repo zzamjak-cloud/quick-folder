@@ -437,6 +437,7 @@ export const deLegacyTextTranslations = {
     '경로 & 외부 도구': 'Pfade & externe Werkzeuge',
     '선택 항목 경로 복사': 'Pfad des ausgewählten Elements kopieren',
     'Photoshop에서 열기': 'In Photoshop öffnen',
+    'Photoshop/Blender에서 열기': 'In Photoshop/Blender öffnen',
     '사이드바 접기/펼치기': 'Seitenleiste einklappen/einblenden',
     '좌우 분할 → 상하 분할 → 분할 해제': 'Horizontale Teilung → vertikale Teilung → Teilung aufheben',
     '뷰 모드 4종': 'Vier Ansichtsmodi',

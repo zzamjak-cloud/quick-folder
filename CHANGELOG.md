@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.74] - 2026-09-03
+
+### Added
+- `.blend` 파일을 선택하고 Ctrl+Alt+O(macOS: Cmd+Option+O)를 누르면 Blender로 열리도록 추가 — 기존 이미지 파일의 Photoshop 열기와 동일한 단축키를 확장자에 따라 분기한다. `.blend1`/`.blend2` 백업 파일도 지원하며, 이미지와 `.blend`를 함께 선택하면 각각 Photoshop·Blender로 열린다
+- Windows Blender 탐색 4단계 폴백 — 레지스트리(`blendfile\shell\open\command`) → `Program Files\Blender Foundation` 및 Steam 경로 → `PATH` 환경변수 → `.blend` 기본 연결 프로그램 셸 실행. Microsoft Store 설치본이나 포터블 설치처럼 실행 파일 경로를 노출하지 않는 환경도 열린다
+- macOS는 `/Applications`의 `Blender*` 앱 중 최신 버전을 찾아 실행
+
 ## [1.27.73] - 2026-08-30
 
 ### Fixed

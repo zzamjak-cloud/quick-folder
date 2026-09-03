@@ -437,6 +437,7 @@ export const enLegacyTextTranslations = {
     '경로 & 외부 도구': 'Paths & external tools',
     '선택 항목 경로 복사': 'Copy selected item path',
     'Photoshop에서 열기': 'Open in Photoshop',
+    'Photoshop/Blender에서 열기': 'Open in Photoshop/Blender',
     '사이드바 접기/펼치기': 'Collapse/expand sidebar',
     '좌우 분할 → 상하 분할 → 분할 해제': 'Horizontal split -> vertical split -> disable split',
     '뷰 모드 4종': 'Four view modes',
