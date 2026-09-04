@@ -192,3 +192,32 @@ test('tauriCommands 도메인은 Rust command 이름과 인자를 한 경계로 
     { cmd: 'plugin:drag|start_drag', args: { item: ['/tmp/a.txt'], image: 'data:image/png;base64,AA==', onEvent: { send: true } } },
   ]);
 });
+
+test('프론트엔드 준비 신호는 일반 레인이 막혀 있어도 즉시 전달된다', async () => {
+  const mock = createDeferredInvoke();
+  __setTauriInvokeForTest(mock.invoke as TauriInvokeMock);
+
+  // 일반 레인을 동시성 상한까지 채워 큐가 막힌 상황을 만든다.
+  const blocking = Array.from({ length: 6 }, (_, index) =>
+    queuedInvoke<string>(`blocking-${index}`, { index })
+  );
+  const queuedBehind = queuedInvoke<string>('waiting-command');
+
+  // 준비 신호는 direct 레인이라 큐를 우회해 곧바로 호출돼야 한다.
+  // 큐를 타면 흰 화면이 아닌데도 워치독이 앱을 재시작하게 된다(회귀 주의).
+  const ready = systemCommands.markFrontendReady();
+
+  const readyCall = mock.calls.find(call => call.cmd === 'mark_frontend_ready');
+  assert.ok(readyCall, '준비 신호가 큐에 막혀 전달되지 않음');
+  assert.deepEqual(readyCall.args, {});
+
+  readyCall.resolve(undefined);
+  await ready;
+
+  cancelQueuedTauriCommands();
+  await assert.rejects(queuedBehind.promise, error => isTauriCommandCancelled(error));
+  for (const call of mock.calls) {
+    call.resolve(`${call.cmd}:done`);
+  }
+  await Promise.allSettled(blocking.map(op => op.promise));
+});

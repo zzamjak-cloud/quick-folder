@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.76] - 2026-09-04
+
+### Fixed
+- 앱을 실행하면 **창은 뜨는데 내용이 흰 화면으로 남던 문제** 자동 복구 추가 — WebView2 런타임 자동 업데이트와 앱 업데이트가 겹치는 시점에 `EBWebView` 프로필의 V8 code cache / HTTP cache가 무효 상태로 남으면 스크립트가 아예 실행되지 않았다. Rust 로그에는 아무 에러도 남지 않아 사용자가 원인을 알 수 없었고, 재설치해도 재현됐다. 이제 프론트엔드가 15초 안에 마운트되지 않으면 캐시 폴더만 정리한 뒤 1회 자동 재시작한다
+  - 카테고리·탭·창 상태·테마가 저장된 `Local Storage`는 삭제 대상에서 제외된다
+  - 캐시를 정리해도 흰 화면이면 재시작을 멈추고 이력만 남긴다(무한 재시작 방지)
+  - 복구 이력은 `%LOCALAPPDATA%\com.quickfolder.widget\webview-recovery.log`에 기록된다
+
 ## [1.27.75] - 2026-09-03
 
 ### Added

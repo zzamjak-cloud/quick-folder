@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.27.75"
+version = "1.27.76"
 description = "A Tauri App"
 authors = ["zzamjak-cloud"]
 license = "GPL-3.0-only"
@@ -59,6 +59,8 @@ ico = "0.3"
 icns = "0.3"
 ttf-parser = "0.24"
 dirs = "6.0.0"
+# 흰 화면 복구 이력의 사람이 읽을 수 있는 시각 표기용 (이미 의존성 트리에 있음)
+chrono = "0.4"
 filetime = "0.2"
 lopdf = "0.36.0"
 

@@ -1,8 +1,30 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { isTauri } from './utils/isTauri';
+import { systemCommands } from './utils/tauriCommandDomains/systemCommands';
 
 const RENDERER_CRASH_LOG_KEY = 'qf_renderer_crash_log_v1';
+
+/**
+ * 백엔드 흰 화면 워치독에 "렌더러가 살아 있다"고 알린다.
+ * 신호가 없으면 백엔드가 WebView2 캐시를 정리하고 앱을 1회 재시작한다.
+ * 정상 UI든 오류 화면이든 사용자에게 무언가 보이는 상태면 흰 화면이 아니므로 둘 다 신호를 보낸다.
+ */
+function signalFrontendReady() {
+  if (!isTauri()) return;
+  void systemCommands.markFrontendReady().catch(() => {
+    // 신호 실패가 화면 렌더링을 막아서는 안 된다. 실패하면 워치독이 복구를 시도한다.
+  });
+}
+
+function ReadySignal() {
+  React.useEffect(() => {
+    signalFrontendReady();
+  }, []);
+
+  return null;
+}
 
 function serializeCrashReason(reason: unknown): { message: string; stack?: string } {
   if (reason instanceof Error) {
@@ -56,6 +78,8 @@ class RootErrorBoundary extends React.Component<React.PropsWithChildren, { error
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     recordRendererCrash('react-render', error, info.componentStack ?? undefined);
+    // 오류 화면도 사용자에게 보이는 UI다. 캐시 손상이 아니므로 재시작으로 해결되지 않는다.
+    signalFrontendReady();
   }
 
   render() {
@@ -109,6 +133,7 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <RootErrorBoundary>
+      <ReadySignal />
       <App />
     </RootErrorBoundary>
   </React.StrictMode>

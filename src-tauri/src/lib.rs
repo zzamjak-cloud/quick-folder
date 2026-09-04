@@ -5,6 +5,9 @@ pub use modules::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 웹뷰가 만들어지기 전에 처리해야 한다. 실행 중에는 캐시 폴더가 잠겨 삭제할 수 없다.
+    crate::modules::system_ops::purge_stale_webview_cache_if_pending();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -105,6 +108,7 @@ pub fn run() {
             get_google_drive_file_id,
             set_google_drive_offline,
             extract_hwp_text,
+            mark_frontend_ready,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -114,6 +118,9 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            // 프론트엔드가 제한 시간 안에 마운트되지 않으면 WebView2 캐시 손상으로 보고 1회 복구한다.
+            crate::modules::system_ops::spawn_white_screen_watchdog(app.handle());
+
             // 로컬 PSD 그리드 캐시 1회 정리(임베드→composite 전환). 시작 차단 방지로 별도 스레드.
             let handle = app.handle().clone();
             std::thread::spawn(move || {

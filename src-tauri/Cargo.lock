@@ -94,11 +94,12 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "app"
-version = "1.27.75"
+version = "1.27.76"
 dependencies = [
  "arboard",
  "base64 0.22.1",
  "block",
+ "chrono",
  "dirs",
  "encoding_rs",
  "ffmpeg-sidecar",
@@ -700,8 +701,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 

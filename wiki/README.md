@@ -41,6 +41,7 @@ AI 탐색용 위키 인덱스. 작업 전 해당 파일을 먼저 읽으면 소�
 | 드로잉 캔버스 수정 | `special/drawing.md` |
 | 빌드·릴리스 절차 | `infra/release.md` |
 | 빌드 설정·설정 파일 | `infra/overview.md` |
+| 앱이 흰 화면으로 뜸 | `infra/white-screen-recovery.md` |
 | 테스트 추가·실행 | `infra/testing.md` |
 | Tauri command 호출 계층 | `rust/overview.md` → `utils/tauriCommands.ts` |
 | localStorage 키·persist | `utils/storage.ts` (`storageKeys`) |
@@ -134,6 +135,7 @@ AI 탐색용 위키 인덱스. 작업 전 해당 파일을 먼저 읽으면 소�
 | `overview.md` | 설정 파일·빌드 산출물·tsconfig 주의 |
 | `testing.md` | Node/Vitest/Rust 테스트 체계·실행 명령 |
 | `release.md` | 릴리스 자동화 절차·태그 규칙 |
+| `white-screen-recovery.md` | WebView2 캐시 손상 흰 화면·자동 복구·수동 복구 |
 
 ---
 

@@ -29,4 +29,12 @@ export const systemCommands = {
   startFileDrag(item: string[], image: string, onEvent: unknown) {
     return runDirectCommand<void>('plugin:drag|start_drag', { item, image, onEvent });
   },
+  /**
+   * 프론트엔드가 마운트됐음을 백엔드에 알린다.
+   * 이 신호가 제한 시간 안에 오지 않으면 백엔드가 흰 화면으로 판정하고
+   * WebView2 캐시를 정리한 뒤 1회 재시작한다. 큐가 막혀도 전달돼야 하므로 direct 레인을 쓴다.
+   */
+  markFrontendReady() {
+    return runDirectCommand<void>('mark_frontend_ready');
+  },
 };
