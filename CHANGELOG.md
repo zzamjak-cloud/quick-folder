@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.77] - 2026-09-08
+
+### Changed
+- 좌측 사이드바 "+" 버튼으로 신규 섹션을 만들면 목록 **맨 위**에 추가된다 (기존에는 맨 아래에 추가되어 섹션이 많을 때 스크롤해야 확인 가능했다)
+
 ## [1.27.76] - 2026-09-04
 
 ### Fixed

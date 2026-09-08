@@ -158,7 +158,8 @@ export function useCategoryManagement(
         shortcuts: [],
         createdAt: Date.now()
       };
-      setCategories(prev => [...prev, newCat]);
+      // 신규 섹션은 목록 최상단에 추가
+      setCategories(prev => [newCat, ...prev]);
       addToast(t('toast.categoryAdded'), "success");
     }
     setIsCatModalOpen(false);
