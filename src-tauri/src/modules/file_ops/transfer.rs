@@ -15,14 +15,60 @@ use crate::helpers::get_copy_destination;
 use crate::modules::error::{AppError, Result};
 use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
 
+// 심볼릭 링크는 대상 파일을 복제하지 않고 링크 자체를 다시 만든다.
+// .app 번들의 `Versions/Current`, `Frameworks/*` 링크가 실제 파일로 펼쳐지면
+// 번들 크기가 몇 배로 불어나고 코드 서명이 깨져 실행되지 않는다.
+// 반환 true = 링크로 처리 완료, false = 링크가 아니거나(또는 Windows에서 링크 생성 불가)
+// 호출부가 기존 복사 로직을 그대로 수행해야 하는 경우.
+pub fn copy_symlink(src: &std::path::Path, dest: &std::path::Path) -> Result<bool> {
+    let Ok(meta) = std::fs::symlink_metadata(src) else {
+        return Ok(false);
+    };
+    if !meta.file_type().is_symlink() {
+        return Ok(false);
+    }
+    let target = std::fs::read_link(src)?;
+    if std::fs::symlink_metadata(dest).is_ok() {
+        let _ = std::fs::remove_file(dest);
+    }
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&target, dest)?;
+        Ok(true)
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows는 개발자 모드/관리자 권한이 없으면 링크를 만들 수 없다 → 일반 복사로 폴백
+        let absolute = if target.is_absolute() {
+            target.clone()
+        } else {
+            src.parent()
+                .map(|parent| parent.join(&target))
+                .unwrap_or_else(|| target.clone())
+        };
+        let created = if absolute.is_dir() {
+            std::os::windows::fs::symlink_dir(&target, dest)
+        } else {
+            std::os::windows::fs::symlink_file(&target, dest)
+        };
+        Ok(created.is_ok())
+    }
+}
+
 pub fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)?.flatten() {
+        let src_child = entry.path();
         let dest_child = dest.join(entry.file_name());
-        if entry.path().is_dir() {
-            copy_dir_recursive(&entry.path(), &dest_child)?;
+        if copy_symlink(&src_child, &dest_child)? {
+            continue;
+        }
+        if src_child.is_dir() {
+            copy_dir_recursive(&src_child, &dest_child)?;
         } else {
-            std::fs::copy(entry.path(), &dest_child)?;
+            std::fs::copy(&src_child, &dest_child)?;
         }
     }
     Ok(())
@@ -123,7 +169,8 @@ pub(super) fn count_files_to_copy(path: &std::path::Path) -> Result<u64> {
     }
     let mut n = 0u64;
     for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        if entry.file_type().is_file() {
+        // 심볼릭 링크도 한 건으로 센다 (링크 그대로 복사되므로)
+        if entry.file_type().is_file() || entry.file_type().is_symlink() {
             n += 1;
         }
     }
@@ -178,6 +225,9 @@ pub(super) async fn copy_items_impl(
             continue;
         }
 
+        if copy_symlink(src_path, &dest_path)? {
+            continue;
+        }
         if src_path.is_dir() {
             copy_dir_recursive(src_path, &dest_path)?;
         } else {
@@ -292,7 +342,10 @@ pub(super) async fn move_items_impl(
 
         // 같은 볼륨이면 rename, 다른 볼륨이면 복사 후 삭제
         if std::fs::rename(src_path, &dest_path).is_err() {
-            if src_path.is_dir() {
+            if copy_symlink(src_path, &dest_path)? {
+                // 링크 자체만 제거 (remove_dir_all은 링크 대상 폴더를 지울 수 있다)
+                std::fs::remove_file(src_path)?;
+            } else if src_path.is_dir() {
                 copy_dir_recursive(src_path, &dest_path)?;
                 std::fs::remove_dir_all(src_path)?;
             } else {

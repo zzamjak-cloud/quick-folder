@@ -11,6 +11,7 @@ pub enum FileType {
     Archive,
     Font,
     Directory,
+    App,
     Other,
 }
 
@@ -62,6 +63,68 @@ pub fn file_identity(meta: &std::fs::Metadata) -> String {
     }
 }
 
+// macOS 번들 확장자 — 파일시스템상 디렉토리지만 Finder는 단일 항목(앱·패키지)으로 다룬다.
+// 여기에 없는 확장자는 평범한 폴더로 취급된다.
+#[cfg(target_os = "macos")]
+const MACOS_BUNDLE_EXTS: &[&str] = &[
+    "app",
+    "appex",
+    "bundle",
+    "framework",
+    "kext",
+    "plugin",
+    "component",
+    "qlgenerator",
+    "mdimporter",
+    "prefpane",
+    "saver",
+    "wdgt",
+    "workflow",
+    "xpc",
+    "rtfd",
+    "scptd",
+    "download",
+    "docset",
+    "dsym",
+    "sparsebundle",
+    "photoslibrary",
+    "imovielibrary",
+    "tvlibrary",
+    "aplibrary",
+    "fcpbundle",
+    "band",
+    "logicx",
+    "xcodeproj",
+    "xcworkspace",
+    "playground",
+];
+
+// 경로가 macOS 번들(.app 등)인지 판정한다. 다른 OS에서는 항상 false.
+#[cfg(target_os = "macos")]
+pub fn is_package_bundle(path: &std::path::Path) -> bool {
+    path.extension()
+        .map(|ext| ext.to_string_lossy().to_lowercase())
+        .map(|ext| MACOS_BUNDLE_EXTS.contains(&ext.as_str()))
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn is_package_bundle(_path: &std::path::Path) -> bool {
+    false
+}
+
+// 표시용 (is_dir, FileType) 결정.
+// macOS 번들은 실제로 디렉토리여도 폴더 진입 대신 단일 앱/패키지로 노출한다.
+pub fn entry_kind(path: &std::path::Path, name: &str, meta_is_dir: bool) -> (bool, FileType) {
+    if !meta_is_dir {
+        return (false, classify_file(name));
+    }
+    if is_package_bundle(path) {
+        return (false, FileType::App);
+    }
+    (true, FileType::Directory)
+}
+
 // 파일 타입 분류 헬퍼
 pub fn classify_file(name: &str) -> FileType {
     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
@@ -103,6 +166,37 @@ pub fn classify_file(name: &str) -> FileType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // macOS 번들(.app)은 디렉토리여도 단일 앱 항목으로 노출돼야 한다 (폴더 진입 회귀 방지)
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_macos_bundle_is_treated_as_app() {
+        use std::path::Path;
+
+        let (is_dir, file_type) = entry_kind(Path::new("/Applications/Godot.app"), "Godot.app", true);
+        assert!(!is_dir);
+        assert!(matches!(file_type, FileType::App));
+
+        let (is_dir, file_type) = entry_kind(Path::new("/Users/me/Documents"), "Documents", true);
+        assert!(is_dir);
+        assert!(matches!(file_type, FileType::Directory));
+
+        // 확장자만 같고 실제로는 파일이면 번들이 아니다
+        let (is_dir, file_type) = entry_kind(Path::new("/tmp/note.app"), "note.app", false);
+        assert!(!is_dir);
+        assert!(matches!(file_type, FileType::Other));
+    }
+
+    // macOS 외 플랫폼에서는 .app 디렉토리를 평범한 폴더로 유지한다
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn test_bundle_is_plain_directory_off_macos() {
+        use std::path::Path;
+
+        let (is_dir, file_type) = entry_kind(Path::new("C:/Tools/Godot.app"), "Godot.app", true);
+        assert!(is_dir);
+        assert!(matches!(file_type, FileType::Directory));
+    }
 
     #[test]
     fn test_classify_file_images() {

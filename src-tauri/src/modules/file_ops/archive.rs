@@ -1,6 +1,28 @@
 use crate::helpers::percent_decode_utf8;
 use crate::modules::error::Result;
 
+// 압축 대상의 유닉스 권한(실행 비트 포함)을 ZIP 항목에 보존한다.
+// 보존하지 않으면 해제된 .app 번들의 실행 파일이 0644가 되어 실행할 수 없다.
+#[cfg(unix)]
+fn zip_options_for(
+    path: &std::path::Path,
+    options: zip::write::SimpleFileOptions,
+) -> zip::write::SimpleFileOptions {
+    use std::os::unix::fs::PermissionsExt;
+    match std::fs::metadata(path) {
+        Ok(meta) => options.unix_permissions(meta.permissions().mode() & 0o777),
+        Err(_) => options,
+    }
+}
+
+#[cfg(not(unix))]
+fn zip_options_for(
+    _path: &std::path::Path,
+    options: zip::write::SimpleFileOptions,
+) -> zip::write::SimpleFileOptions {
+    options
+}
+
 // ===== ZIP 압축 =====
 
 // ZIP 압축
@@ -22,7 +44,7 @@ pub async fn compress_to_zip(paths: Vec<String>, dest: String) -> Result<String>
         if src.is_dir() {
             add_directory_to_zip(&mut zip, src, &base_name, options)?;
         } else {
-            zip.start_file(&base_name, options)?;
+            zip.start_file(&base_name, zip_options_for(src, options))?;
             let content = std::fs::read(src)?;
             std::io::Write::write_all(&mut zip, &content)?;
         }
@@ -45,7 +67,7 @@ fn add_directory_to_zip<W: std::io::Write + std::io::Seek>(
         if entry.path().is_dir() {
             add_directory_to_zip(zip, &entry.path(), &full_name, options)?;
         } else {
-            zip.start_file(&full_name, options)?;
+            zip.start_file(&full_name, zip_options_for(&entry.path(), options))?;
             let content = std::fs::read(entry.path())?;
             std::io::Write::write_all(zip, &content)?;
         }
@@ -157,6 +179,39 @@ pub struct ExtractResult {
     pub failed: Vec<ExtractFailure>,
 }
 
+// ZIP 항목의 유닉스 권한을 복원한다. 실행 비트가 없으면 .app 번들·스크립트가 실행되지 않는다.
+#[cfg(unix)]
+pub(crate) fn restore_unix_mode(path: &std::path::Path, mode: Option<u32>) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(mode) = mode {
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o777));
+    }
+}
+
+// 심볼릭 링크 항목은 링크 대상 문자열이 본문에 들어 있다. 일반 파일로 풀면
+// 프레임워크를 포함한 .app 번들이 깨지므로 링크로 복원한다.
+// 대상이 절대경로거나 `..`를 포함하면 해제 폴더 밖을 가리킬 수 있어 건너뛴다.
+#[cfg(unix)]
+pub(crate) fn restore_symlink<R: std::io::Read>(
+    entry: &mut R,
+    out_path: &std::path::Path,
+) -> std::io::Result<()> {
+    let mut target = String::new();
+    entry.read_to_string(&mut target)?;
+    let target = target.trim_end_matches('\0');
+    if target.is_empty()
+        || target.starts_with('/')
+        || target.split('/').any(|part| part == "..")
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "안전하지 않은 심볼릭 링크 대상",
+        ));
+    }
+    let _ = std::fs::remove_file(out_path);
+    std::os::unix::fs::symlink(target, out_path)
+}
+
 #[tauri::command]
 pub async fn extract_zip(zip_path: String, dest_dir: String) -> Result<ExtractResult> {
     let file = std::fs::File::open(&zip_path)?;
@@ -205,8 +260,16 @@ pub async fn extract_zip(zip_path: String, dest_dir: String) -> Result<ExtractRe
             if let Some(parent) = out_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
+            #[cfg(unix)]
+            if let Some(mode) = entry.unix_mode() {
+                if mode & 0xF000 == 0xA000 {
+                    return restore_symlink(&mut entry, &out_path);
+                }
+            }
             let mut outfile = std::fs::File::create(&out_path)?;
             std::io::copy(&mut entry, &mut outfile)?;
+            #[cfg(unix)]
+            restore_unix_mode(&out_path, entry.unix_mode());
             Ok(())
         })();
 
@@ -225,4 +288,92 @@ pub async fn extract_zip(zip_path: String, dest_dir: String) -> Result<ExtractRe
         extracted,
         failed,
     })
+}
+
+// .app 번들 실행 비트 유실 회귀 방지 — 압축 → 해제 왕복에서 권한이 유지돼야 한다
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn test_dir(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("quickfolder_zip_mode_{}", name));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn extract_zip_restores_executable_bit_and_symlink() {
+        let root = test_dir("extract");
+        let zip_path = root.join("bundle.zip");
+
+        {
+            let file = std::fs::File::create(&zip_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let base = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+
+            zip.start_file("App.app/Contents/MacOS/App", base.unix_permissions(0o755))
+                .unwrap();
+            zip.write_all(b"#!/bin/sh\n").unwrap();
+
+            zip.start_file("App.app/Contents/Info.plist", base.unix_permissions(0o644))
+                .unwrap();
+            zip.write_all(b"plist").unwrap();
+
+            // 심볼릭 링크 항목 (본문이 링크 대상 경로)
+            zip.add_symlink("App.app/Contents/Current", "MacOS/App", base)
+                .unwrap();
+
+            zip.finish().unwrap();
+        }
+
+        let dest = root.join("out");
+        let result = tauri::async_runtime::block_on(extract_zip(
+            zip_path.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+        ))
+        .unwrap();
+        assert!(result.failed.is_empty(), "해제 실패 항목: {:?}", result.failed);
+
+        let exe = dest.join("App.app/Contents/MacOS/App");
+        let mode = std::fs::metadata(&exe).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
+
+        let plist = dest.join("App.app/Contents/Info.plist");
+        let plist_mode = std::fs::metadata(&plist).unwrap().permissions().mode() & 0o777;
+        assert_eq!(plist_mode, 0o644);
+
+        let link = dest.join("App.app/Contents/Current");
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn compress_to_zip_keeps_executable_bit() {
+        let root = test_dir("compress");
+        let src = root.join("run.sh");
+        std::fs::write(&src, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&src, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let zip_path = root.join("out.zip");
+        tauri::async_runtime::block_on(compress_to_zip(
+            vec![src.to_string_lossy().to_string()],
+            zip_path.to_string_lossy().to_string(),
+        ))
+        .unwrap();
+
+        let file = std::fs::File::open(&zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let entry = archive.by_name("run.sh").unwrap();
+        assert_eq!(entry.unix_mode().unwrap() & 0o777, 0o755);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

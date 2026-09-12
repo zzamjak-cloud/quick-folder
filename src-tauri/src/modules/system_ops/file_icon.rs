@@ -6,7 +6,8 @@ mod native;
 mod text;
 
 use crate::modules::archive_ops::materialize_archive_path_in_cache;
-use cache::{icon_cache, icon_cache_key, read_disk_icon_cache, write_disk_icon_cache};
+use crate::modules::types::is_package_bundle;
+use cache::{icon_cache, icon_cache_key, icon_cache_key_for_path, read_disk_icon_cache, write_disk_icon_cache};
 use native::get_native_icon_bytes;
 
 // OS 네이티브 파일 아이콘 가져오기 (확장자별 캐시)
@@ -24,7 +25,10 @@ pub fn get_file_icon(
         .unwrap_or_else(|| std::path::PathBuf::from(&path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
     let p = std::path::Path::new(&resolved_path_str);
-    let is_dir = p.is_dir() || is_dir_hint.unwrap_or(false);
+    // macOS 번들(.app 등)은 디렉토리지만 아이콘은 앱마다 달라 폴더 아이콘/확장자 캐시를 쓸 수 없다.
+    // → 경로+수정시각 단위로 캐시하고 NSWorkspace의 실제 번들 아이콘을 그대로 쓴다.
+    let is_bundle = p.is_dir() && is_package_bundle(p);
+    let is_dir = !is_bundle && (p.is_dir() || is_dir_hint.unwrap_or(false));
     let ext = if is_dir {
         String::new()
     } else {
@@ -32,7 +36,11 @@ pub fn get_file_icon(
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default()
     };
-    let cache_key = icon_cache_key(is_dir, &ext, size);
+    let cache_key = if is_bundle {
+        icon_cache_key_for_path(&resolved_path_str, p, size)
+    } else {
+        icon_cache_key(is_dir, &ext, size)
+    };
 
     // 1차: 메모리 캐시
     {

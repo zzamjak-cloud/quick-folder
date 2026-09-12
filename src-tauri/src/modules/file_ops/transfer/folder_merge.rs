@@ -2,7 +2,7 @@ use crate::helpers::get_numbered_destination;
 use crate::modules::error::{AppError, Result};
 use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
 
-use super::copy_dir_recursive;
+use super::{copy_dir_recursive, copy_symlink};
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -198,6 +198,9 @@ pub(in crate::modules::file_ops) fn merge_folders_recursive(
     for entry in std::fs::read_dir(source)?.flatten() {
         let src_child = entry.path();
         let dest_child = dest.join(entry.file_name());
+        if !dest_child.exists() && copy_symlink(&src_child, &dest_child)? {
+            continue;
+        }
         if src_child.is_dir() {
             if dest_child.exists() && dest_child.is_dir() {
                 merge_folders_recursive(&src_child, &dest_child, mode, app_cache)?;

@@ -60,7 +60,7 @@ pub fn run() {
             get_video_thumbnail,
             get_video_thumbnail_path,
             compress_to_zip,
-            extract_zip,
+            extract_archive,
             open_with_app,
             open_in_photoshop,
             open_in_blender,

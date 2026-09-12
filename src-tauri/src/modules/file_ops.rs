@@ -682,4 +682,36 @@ mod tests {
 
         cleanup_test_dir(&test_dir);
     }
+
+    // .app 번들의 심볼릭 링크가 실제 파일로 펼쳐지면 서명이 깨진다 — 링크는 링크로 복사돼야 한다
+    #[cfg(unix)]
+    #[test]
+    fn test_copy_preserves_symlinks() {
+        let test_dir = setup_test_dir("copy_symlink");
+        let bundle = test_dir.join("App.app/Contents");
+        fs::create_dir_all(bundle.join("Versions/A")).unwrap();
+        fs::write(bundle.join("Versions/A/App"), "binary").unwrap();
+        std::os::unix::fs::symlink("A", bundle.join("Versions/Current")).unwrap();
+        std::os::unix::fs::symlink("Versions/Current/App", bundle.join("App")).unwrap();
+
+        let dest = test_dir.join("copied");
+        copy_dir_recursive(&test_dir.join("App.app"), &dest).unwrap();
+
+        let copied_current = dest.join("Contents/Versions/Current");
+        assert!(fs::symlink_metadata(&copied_current)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read_link(&copied_current).unwrap().to_string_lossy(), "A");
+
+        let copied_app = dest.join("Contents/App");
+        assert!(fs::symlink_metadata(&copied_app)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        // 링크를 따라가면 원본 내용이 그대로 읽혀야 한다 (상대 경로 유지 확인)
+        assert_eq!(fs::read_to_string(&copied_app).unwrap(), "binary");
+
+        cleanup_test_dir(&test_dir);
+    }
 }

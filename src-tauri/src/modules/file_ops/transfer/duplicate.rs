@@ -1,7 +1,7 @@
 use crate::helpers::get_copy_destination;
 use crate::modules::error::{AppError, Result};
 
-use super::copy_dir_recursive;
+use super::{copy_dir_recursive, copy_symlink};
 
 // 대상 디렉토리에서 중복되는 파일명 확인
 #[tauri::command]
@@ -44,7 +44,9 @@ pub async fn duplicate_items(paths: Vec<String>) -> Result<Vec<String>> {
         // 충돌 방지: " (복사)", " (복사 2)", " (복사 3)" ...
         let dest_path = get_copy_destination(parent, &stem, &ext, is_dir);
 
-        if is_dir {
+        if copy_symlink(src, &dest_path)? {
+            // 링크는 링크 그대로 복제
+        } else if is_dir {
             copy_dir_recursive(src, &dest_path)?;
         } else {
             std::fs::copy(src, &dest_path)?;

@@ -59,6 +59,19 @@ await tauriCommands.transferItemsWithProgress({ ... });
 - Windows 예약 문자·제어문자·예약 장치명도 치환한다.
 - 항목별 실패는 `?`로 전체 중단하지 말고 `ExtractResult.failed`에 모아 계속 진행한다.
 
+## 심볼릭 링크 복사 규칙
+
+복사·이동·복제·폴더 병합은 심볼릭 링크를 **링크 그대로** 재생성한다 (`transfer.rs::copy_symlink`).
+링크를 따라가 실파일로 복제하면 `.app` 번들(`Versions/Current`, `Frameworks/*`)이 몇 배로 불어나고 서명이 깨진다.
+
+- 모든 복사 분기는 `copy_symlink()`를 **먼저** 호출하고, `true`면 그 항목은 처리 완료다.
+  (`copy_dir_recursive`, `copy_dir_recursive_with_progress`, `copy_items_impl`, 다른 볼륨 이동 폴백,
+  `duplicate.rs`, `folder_merge.rs`, 진행률 큐의 `TransferStep::CopyFile`)
+- 계획/카운트 단계(`build_transfer_plan`, `count_files_to_copy`)는 `is_file() || is_symlink()`로 센다.
+  `is_file()`만 보면 링크가 통째로 누락된다.
+- Windows는 링크 생성 권한이 없을 수 있어 `copy_symlink()`가 `false`를 반환하고 일반 복사로 폴백한다.
+- 링크 원본을 지울 때는 `remove_file()`을 쓴다. `remove_dir_all()`은 링크 대상 폴더를 지울 수 있다.
+
 ## 새 파일 조작 기능 추가 체크리스트
 
 > **Ctrl+Z 실행취소는 필수다. 빠뜨리면 안 된다.**

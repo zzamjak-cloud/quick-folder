@@ -9,6 +9,7 @@ mod materialize;
 mod path;
 mod records;
 
+pub use extract::extract_archive;
 pub use listing::list_archive_directory;
 pub use materialize::{materialize_archive_path_in_cache, materialize_archive_paths};
 pub use path::{
@@ -365,6 +366,44 @@ mod tests {
         assert_eq!(resolved.archive_path, materialized_inner_archive);
         assert_eq!(resolved.logical_archive_path, nested_archive_path);
         assert_eq!(resolved.inner_path.as_deref(), Some("docs/file.txt"));
+
+        cleanup_test_dir(&test_dir);
+    }
+
+    // .7z 같은 비-zip 압축도 우클릭 압축 풀기로 통째로 해제되고 실행 권한이 유지돼야 한다
+    #[cfg(unix)]
+    #[test]
+    fn extract_archive_handles_non_zip_and_keeps_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let test_dir = setup_test_dir("extract_7z");
+        let bundle_bin = test_dir.join("src/App.app/Contents/MacOS/App");
+        fs::create_dir_all(bundle_bin.parent().unwrap()).unwrap();
+        fs::write(&bundle_bin, b"#!/bin/sh\n").unwrap();
+        fs::set_permissions(&bundle_bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let archive = test_dir.join("bundle.7z");
+        let packed = std::process::Command::new("tar")
+            .args(["--format", "7zip", "-cf"])
+            .arg(&archive)
+            .arg("App.app")
+            .current_dir(test_dir.join("src"))
+            .status()
+            .unwrap();
+        assert!(packed.success(), "7z 생성 실패");
+
+        let dest = test_dir.join("out");
+        let result = tauri::async_runtime::block_on(extract_archive(
+            archive.to_string_lossy().to_string(),
+            dest.to_string_lossy().to_string(),
+        ))
+        .unwrap();
+        assert_eq!(result.failed.len(), 0);
+        assert!(result.total >= 1);
+
+        let extracted = dest.join("App.app/Contents/MacOS/App");
+        let mode = fs::metadata(&extracted).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
 
         cleanup_test_dir(&test_dir);
     }

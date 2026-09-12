@@ -15,10 +15,12 @@ function extOf(name: string): string {
   return /^blend\d+$/.test(ext) ? 'blend' : ext;
 }
 
-function getCacheKey(isDir: boolean, path: string, name: string): string {
+function getCacheKey(entry: FileEntry): string {
   // 폴더는 경로별 캐시 — 한 경로만 실패해도 전역 __folder__ 로 poison 되지 않게 함
-  if (isDir) return `folder:${path}`;
-  return extOf(name) || '__none__';
+  if (entry.is_dir) return `folder:${entry.path}`;
+  // macOS 번들(.app 등)은 항목마다 아이콘이 다르므로 확장자 캐시를 쓰면 안 된다
+  if (entry.file_type === 'app') return `bundle:${entry.path}`;
+  return extOf(entry.name) || '__none__';
 }
 
 // 전용 SVG 아이콘(fileUtils EXT_ICON)이 있는 확장자는 OS 셸 아이콘을 건너뛴다.
@@ -51,12 +53,12 @@ export function useNativeIcon(
 
   const [nativeIcon, setNativeIcon] = useState<string | null>(() => {
     if (skip) return null;
-    return nativeIconCache.get(getCacheKey(entry.is_dir, entry.path, entry.name)) ?? null;
+    return nativeIconCache.get(getCacheKey(entry)) ?? null;
   });
 
   useEffect(() => {
     if (!isVisible || skip) return;
-    const cacheKey = getCacheKey(entry.is_dir, entry.path, entry.name);
+    const cacheKey = getCacheKey(entry);
 
     if (nativeIconCache.has(cacheKey)) {
       const cached = nativeIconCache.get(cacheKey)!;

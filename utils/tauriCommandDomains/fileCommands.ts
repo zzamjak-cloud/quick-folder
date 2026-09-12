@@ -59,8 +59,9 @@ export const fileCommands = {
   compressToZip(paths: string[], dest: string) {
     return runDirectCommand<void>('compress_to_zip', { paths, dest });
   },
-  extractZip(zipPath: string, destDir: string) {
-    return runDirectCommand<ExtractZipResult>('extract_zip', { zipPath, destDir });
+  // zip은 내장 해제, 그 외(.7z/.rar/.tar.*)는 Rust에서 tar(libarchive)로 위임
+  extractArchive(archivePath: string, destDir: string) {
+    return runDirectCommand<ExtractZipResult>('extract_archive', { archivePath, destDir });
   },
   calculateFolderSize<T>(path: string) {
     return runDirectCommand<T>('calculate_folder_size', { path });

@@ -2,9 +2,13 @@
 pub(super) use super::records::decode_archive_tool_output;
 use super::{
     path::is_zip_archive_path,
-    records::{decode_zip_entry_name, normalize_archive_entry_name, run_tar_output},
+    records::{
+        decode_zip_entry_name, list_archive_records, normalize_archive_entry_name, run_tar_output,
+    },
 };
 use crate::modules::error::{AppError, Result};
+#[cfg(unix)]
+use crate::modules::file_ops::{restore_symlink, restore_unix_mode};
 use std::ffi::OsString;
 use std::fs::File;
 use std::io;
@@ -86,8 +90,17 @@ fn extract_zip_patterns_to_dir(
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        #[cfg(unix)]
+        if let Some(mode) = file.unix_mode() {
+            if mode & 0xF000 == 0xA000 {
+                restore_symlink(&mut file, &output_path)?;
+                continue;
+            }
+        }
         let mut output = File::create(&output_path)?;
         io::copy(&mut file, &mut output)?;
+        #[cfg(unix)]
+        restore_unix_mode(&output_path, file.unix_mode());
     }
 
     if matched {
@@ -98,4 +111,44 @@ fn extract_zip_patterns_to_dir(
             patterns.join(", ")
         )))
     }
+}
+
+// ZIP 외 압축(.7z/.rar/.tar.*)도 우클릭 "압축 풀기"로 통째로 해제한다.
+// libarchive 기반 bsdtar가 읽기를 지원하고 유닉스 권한도 그대로 복원한다.
+#[tauri::command]
+pub async fn extract_archive(
+    archive_path: String,
+    dest_dir: String,
+) -> Result<crate::modules::file_ops::ExtractResult> {
+    if is_zip_archive_path(Path::new(&archive_path)) {
+        return crate::modules::file_ops::extract_zip(archive_path, dest_dir).await;
+    }
+
+    let dest_clone = dest_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<crate::modules::file_ops::ExtractResult> {
+        let archive = Path::new(&archive_path);
+        let dest = Path::new(&dest_clone);
+        std::fs::create_dir_all(dest)?;
+
+        run_tar_output(&[
+            OsString::from("-xf"),
+            archive.as_os_str().to_os_string(),
+            OsString::from("-C"),
+            dest.as_os_str().to_os_string(),
+        ])?;
+
+        // tar는 개별 실패를 보고하지 않는다 — 전체 성공/실패만 다루고 파일 수는 목록으로 센다
+        let total = list_archive_records(archive)
+            .map(|records| records.iter().filter(|record| !record.is_dir).count())
+            .unwrap_or(0);
+
+        Ok(crate::modules::file_ops::ExtractResult {
+            dest_dir: dest_clone.clone(),
+            total,
+            extracted: total,
+            failed: Vec::new(),
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("압축 해제 작업 실패: {}", e)))?
 }

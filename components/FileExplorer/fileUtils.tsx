@@ -160,6 +160,7 @@ function fallbackTypeIcon(fileType: string, iconProps: { size: number; className
     case 'document':  return <FileText {...iconProps} />;
     case 'code':      return <FileCode {...iconProps} />;
     case 'archive':   return <Archive {...iconProps} />;
+    case 'app':       return <Cog {...iconProps} />;
     default:          return <File {...iconProps} />;
   }
 }
@@ -178,6 +179,7 @@ export function iconColor(fileType: string, fileName?: string): string {
     case 'document':  return '#fbbf24';
     case 'code':      return '#22d3ee';
     case 'archive':   return '#fb923c';
+    case 'app':       return '#f472b6';
     default:          return '#94a3b8';
   }
 }
@@ -319,6 +321,12 @@ export function createFileDragImage(paths: string[], sourceElement?: HTMLElement
 }
 
 // 파일 크기 포맷
+// 항목 표시용 크기 — macOS 번들은 내부 용량을 재지 않으므로 '패키지'로 표기
+export function formatEntrySize(entry: { size: number; is_dir: boolean; file_type: string }): string {
+  if (entry.file_type === 'app') return '패키지';
+  return formatSize(entry.size, entry.is_dir);
+}
+
 export function formatSize(bytes: number, isDir: boolean): string {
   if (isDir) return '폴더';
   if (bytes === 0) return '0 B';
@@ -330,12 +338,12 @@ export function formatSize(bytes: number, isDir: boolean): string {
 // 파일 호버 툴팁 포맷
 export function formatTooltip(entry: { name: string; path: string; is_dir: boolean; size: number; modified: number; file_type: string }, imageDims?: [number, number] | null): string {
   const parts: string[] = [entry.name];
-  if (!entry.is_dir) parts.push(`크기: ${formatSize(entry.size, false)}`);
+  if (!entry.is_dir && entry.file_type !== 'app') parts.push(`크기: ${formatSize(entry.size, false)}`);
   if (entry.modified) parts.push(`수정일: ${new Date(entry.modified).toLocaleString('ko-KR')}`);
   if (imageDims) parts.push(`해상도: ${imageDims[0]} × ${imageDims[1]}`);
   const labels: Record<string, string> = {
     directory: '폴더', image: '이미지', video: '비디오',
-    document: '문서', code: '코드', archive: '압축', other: '기타',
+    document: '문서', code: '코드', archive: '압축', app: '패키지', other: '기타',
   };
   parts.push(`유형: ${labels[entry.file_type] ?? '기타'}`);
   return parts.join('\n');

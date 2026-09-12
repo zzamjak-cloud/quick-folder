@@ -82,11 +82,24 @@
 - 압축 내부 원본은 항상 **copy**로 취급한다. move는 허용하지 않는다.
 - 압축 내부 경로는 드롭 타겟으로 취급하지 않는다.
 
+## 압축 풀기 (전체 해제)
+
+우클릭 `압축 풀기`는 `extract_archive` 커맨드 하나로 처리한다.
+
+- `.zip` → Rust `zip` 크레이트 (`file_ops/archive.rs::extract_zip`)
+- 그 외 `.7z`/`.rar`/`.tar.*` → `tar`(libarchive) 위임. 읽기는 libarchive가 지원하므로 별도 도구가 필요 없다.
+- 대상 폴더 이름은 `stripArchiveSuffix()`로 확장자를 뗀다 (`.tar.gz` 처럼 두 단계도 처리).
+- **유닉스 권한·심볼릭 링크를 반드시 복원한다.** 실행 비트가 빠지면 해제한 `.app`이 실행되지 않고
+  (`'X.app' 응용 프로그램을 열 수 없습니다`), 링크가 실파일로 펼쳐지면 번들 서명이 깨진다.
+  zip 경로는 `restore_unix_mode()` / `restore_symlink()`, tar 경로는 tar 자체가 보존한다.
+- 압축 생성(`compress_to_zip`)도 `zip_options_for()`로 원본 권한을 저장한다 — 안 그러면 왕복 시 실행 비트가 사라진다.
+
 ## 회귀 포인트
 - 일반 압축은 반대편 패널에 열리고, 중첩 압축은 현재 패널에 남아야 한다.
 - 압축 내부 파일 크기가 다시 전부 `0B`로 돌아가면 `archive_ops.rs`의 size 전달 경로를 먼저 본다.
 - 한글 폴더명/파일명이 깨지면 ZIP raw name과 `tar.exe` 출력 디코딩 경로를 먼저 본다.
 - 드래그로 꺼낼 때 반응이 없으면 `materialize_archive_paths`와 `useInternalDragDrop.ts`의 error surface를 같이 확인한다.
+- 해제한 앱·스크립트가 실행되지 않으면 권한 복원(`restore_unix_mode`) 경로를 먼저 본다.
 
 ## 관련 위키
 - [overview.md](overview.md)

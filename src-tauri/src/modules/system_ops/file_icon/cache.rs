@@ -47,6 +47,25 @@ pub(super) fn icon_cache_key(is_dir: bool, ext: &str, size: u32) -> String {
     ])
 }
 
+// 번들(.app 등)처럼 항목마다 아이콘이 다른 경로 전용 캐시 키.
+// 앱 업데이트로 아이콘이 바뀌면 수정시각이 달라져 자연히 무효화된다.
+pub(super) fn icon_cache_key_for_path(path: &str, fs_path: &std::path::Path, size: u32) -> String {
+    let modified = std::fs::metadata(fs_path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    stable_cache_key(&[
+        b"file-icon-v1",
+        platform_cache_segment().as_bytes(),
+        b"bundle",
+        path.as_bytes(),
+        modified.to_string().as_bytes(),
+        size.to_string().as_bytes(),
+    ])
+}
+
 fn icon_cache_file<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     cache_key: &str,
@@ -85,7 +104,10 @@ pub(super) fn write_disk_icon_cache<R: tauri::Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use super::{icon_cache_file, icon_cache_key, read_disk_icon_cache, write_disk_icon_cache};
+    use super::{
+        icon_cache_file, icon_cache_key, icon_cache_key_for_path, read_disk_icon_cache,
+        write_disk_icon_cache,
+    };
 
     #[test]
     fn icon_cache_key_separates_kind_and_size() {
@@ -98,6 +120,18 @@ mod tests {
         assert_ne!(txt_128, txt_64);
         assert_ne!(txt_128, folder_128);
         assert_ne!(txt_128, none_128);
+    }
+
+    // 번들은 앱마다 아이콘이 달라 경로별로 키가 갈려야 한다 (확장자 캐시 공유 회귀 방지)
+    #[test]
+    fn bundle_icon_key_differs_per_path() {
+        use std::path::Path;
+
+        let godot = icon_cache_key_for_path("/Applications/Godot.app", Path::new("/Applications/Godot.app"), 128);
+        let blender = icon_cache_key_for_path("/Applications/Blender.app", Path::new("/Applications/Blender.app"), 128);
+
+        assert_ne!(godot, blender);
+        assert_ne!(godot, icon_cache_key(false, "app", 128));
     }
 
     #[test]

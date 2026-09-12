@@ -102,6 +102,21 @@ sharedClipboard ← 두 패인 간 공유
 - 이미 압축 내부에 있을 때 중첩 압축을 더블클릭하면 현재 패널에서 계속 진입한다.
 - 실제 경로/압축 내부 경로 구분은 `utils/pathUtils.ts`의 `isArchiveVirtualPath`, `splitArchiveVirtualPath`, `shouldOpenArchiveInCurrentPane`에 모여 있다.
 
+## macOS 번들(.app 등) 처리
+
+macOS의 `.app`, `.framework`, `.xcodeproj` 등은 파일시스템상 디렉토리지만 Finder는 단일 항목으로 보여준다.
+QuickFolder도 동일하게 취급한다 — 번들을 폴더로 노출하면 더블클릭 시 실행 대신 폴더 진입이 되고,
+드롭 대상이 되어 번들 내부에 파일이 복사되는 사고가 난다.
+
+- 판정: `src-tauri/src/modules/types.rs`의 `is_package_bundle()` (확장자 목록, macOS 전용 — 다른 OS는 항상 false)
+- 변환: 같은 파일의 `entry_kind(path, name, meta_is_dir)` → `(is_dir=false, FileType::App)`
+- 적용 지점: `list_directory`, `is_directory` (`file_ops/listing.rs`), 검색 결과 (`system_ops/file_search.rs`)
+- **새로 `FileEntry`를 만드는 Rust 코드는 반드시 `entry_kind()`를 거칠 것.** `meta.is_dir()`를 그대로 쓰면 회귀한다.
+- 크기는 계산하지 않는다(`size: 0`). UI는 `formatEntrySize()`가 `'패키지'`로 표시한다.
+- 아이콘: 앱마다 다르므로 확장자 캐시를 쓰면 안 된다. Rust는 `icon_cache_key_for_path()`(경로+수정시각),
+  프런트는 `useNativeIcon`의 `bundle:{path}` 키를 사용한다.
+- 내부 탐색은 우클릭 → `패키지 내용 보기` (`useContextMenuBuilder`)로만 제공한다.
+
 ## 관련 위키
 - [FileExplorer.md](FileExplorer.md)
 - [archives.md](archives.md)

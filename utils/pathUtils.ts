@@ -63,6 +63,15 @@ export function isBrowsableArchiveFilePath(path: string): boolean {
   return BROWSABLE_ARCHIVE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
 }
 
+// 압축 파일명에서 확장자를 떼어 해제 폴더 이름을 만든다 (.tar.gz 처럼 두 단계도 처리)
+export function stripArchiveSuffix(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  const matched = BROWSABLE_ARCHIVE_SUFFIXES
+    .filter((suffix) => lower.endsWith(suffix))
+    .sort((a, b) => b.length - a.length)[0];
+  return matched ? fileName.slice(0, fileName.length - matched.length) : fileName;
+}
+
 export function buildArchiveBrowsePath(path: string): string {
   const sep = getPathSeparator(path);
   return path.endsWith(sep) ? path : `${path}${sep}`;

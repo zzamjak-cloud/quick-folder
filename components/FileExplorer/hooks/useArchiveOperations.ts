@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { FileEntry } from '../../../types';
 import type { TranslationKey } from '../../../utils/i18n';
-import { getFileName, getPathSeparator } from '../../../utils/pathUtils';
+import { getFileName, getPathSeparator, stripArchiveSuffix } from '../../../utils/pathUtils';
 import { tauriCommands } from '../../../utils/tauriCommands';
 
 interface UseArchiveOperationsConfig {
@@ -61,7 +61,7 @@ export function useArchiveOperations({
       let totalFailed = 0;
       for (const zipPath of paths) {
         const fileName = getFileName(zipPath);
-        const baseName = fileName.replace(/\.zip$/i, '');
+        const baseName = stripArchiveSuffix(fileName);
         let counter = 2;
         let folderName = baseName;
         while (existingNames.has(folderName)) {
@@ -70,7 +70,7 @@ export function useArchiveOperations({
         }
         existingNames.add(folderName);
         const destDir = `${currentPath}${sep}${folderName}`;
-        const result = await tauriCommands.extractZip(zipPath, destDir);
+        const result = await tauriCommands.extractArchive(zipPath, destDir);
         createdDirs.push(result.destDir || destDir);
         if (result.failed.length > 0) {
           totalFailed += result.failed.length;

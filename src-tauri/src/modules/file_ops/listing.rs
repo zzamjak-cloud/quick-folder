@@ -1,6 +1,6 @@
 use crate::modules::archive_ops::{list_archive_directory, resolve_archive_virtual_path_with_app};
 use crate::modules::error::{AppError, Result};
-use crate::modules::types::{classify_file, file_identity, FileEntry, FileType};
+use crate::modules::types::{entry_kind, file_identity, is_package_bundle, FileEntry, FileType};
 
 fn virtual_dir_entry(name: String, path: String) -> FileEntry {
     let identity = format!("virtual:{}", path);
@@ -66,14 +66,11 @@ pub async fn list_directory<R: tauri::Runtime>(
                 continue;
             }
 
-            let file_type = if meta.is_dir() {
-                FileType::Directory
-            } else {
-                classify_file(&name)
-            };
+            let entry_path = entry.path();
+            let (is_dir, file_type) = entry_kind(&entry_path, &name, meta.is_dir());
             result.push(FileEntry {
-                path: entry.path().to_string_lossy().to_string(),
-                is_dir: meta.is_dir(),
+                path: entry_path.to_string_lossy().to_string(),
+                is_dir,
                 size: if meta.is_dir() { 0 } else { meta.len() },
                 modified,
                 identity: file_identity(&meta),
@@ -141,10 +138,11 @@ pub async fn list_system_roots() -> Result<Vec<FileEntry>> {
 
 // ===== 경로 확인 =====
 
-// 경로가 디렉토리인지 확인
+// 경로가 디렉토리인지 확인 (macOS 번들은 단일 항목이므로 false)
 #[tauri::command]
 pub fn is_directory(path: String) -> bool {
-    std::path::Path::new(&path).is_dir()
+    let p = std::path::Path::new(&path);
+    p.is_dir() && !is_package_bundle(p)
 }
 
 #[derive(Debug, serde::Serialize)]

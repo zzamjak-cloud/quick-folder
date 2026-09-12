@@ -732,6 +732,7 @@ export default function FileExplorer({
     preview,
     openEntry,
     openInOsExplorer,
+    onNavigateTo: handleNavigateTo,
     handleAddTag,
     handleRemoveTag,
     onAddToFavorites,

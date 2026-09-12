@@ -1,7 +1,7 @@
 use crate::modules::error::{AppError, Result};
 use crate::modules::image_ops::invalidate_thumbnail_cache_paths_in_root;
 
-use super::{collect_copy_jobs, collect_move_jobs, count_files_to_copy};
+use super::{collect_copy_jobs, collect_move_jobs, copy_symlink, count_files_to_copy};
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,7 +136,11 @@ fn build_transfer_plan(
             move_cleanup_roots.push(src.clone());
         }
 
-        if src.is_file() {
+        let src_is_symlink = std::fs::symlink_metadata(src)
+            .map(|meta| meta.file_type().is_symlink())
+            .unwrap_or(false);
+
+        if src_is_symlink || src.is_file() {
             steps.push(TransferStep::CopyFile {
                 src: src.clone(),
                 dest: dest.clone(),
@@ -144,7 +148,8 @@ fn build_transfer_plan(
             });
         } else if src.is_dir() {
             for entry in WalkDir::new(src).into_iter().filter_map(|e| e.ok()) {
-                if entry.file_type().is_file() {
+                // 심볼릭 링크는 is_file()이 false다 — 포함하지 않으면 링크가 통째로 누락된다
+                if entry.file_type().is_file() || entry.file_type().is_symlink() {
                     let rel = entry.path().strip_prefix(src).unwrap_or(entry.path());
                     let dest_path = dest.join(rel);
                     let name = entry.file_name().to_string_lossy().to_string();
@@ -239,7 +244,9 @@ fn execute_transfer_steps(
                         );
                     }
                 }
-                std::fs::copy(src, dest)?;
+                if !copy_symlink(src, dest)? {
+                    std::fs::copy(src, dest)?;
+                }
             }
         }
 
@@ -315,17 +322,21 @@ fn copy_dir_recursive_with_progress(
 ) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)?.flatten() {
+        let src_child = entry.path();
         let dest_child = dest.join(entry.file_name());
-        if entry.path().is_dir() {
+        let is_symlink = copy_symlink(&src_child, &dest_child)?;
+        if !is_symlink && src_child.is_dir() {
             copy_dir_recursive_with_progress(
-                &entry.path(),
+                &src_child,
                 &dest_child,
                 total_files,
                 done,
                 on_progress,
             )?;
         } else {
-            std::fs::copy(entry.path(), &dest_child)?;
+            if !is_symlink {
+                std::fs::copy(&src_child, &dest_child)?;
+            }
             *done += 1;
             let name = entry.file_name().to_string_lossy().to_string();
             let pct = if total_files > 0 {
@@ -366,7 +377,8 @@ pub(super) fn run_copy_with_progress(
 
     let mut done = 0u64;
     for (src, dest_one) in jobs {
-        if src.is_dir() {
+        let is_symlink = copy_symlink(&src, &dest_one)?;
+        if !is_symlink && src.is_dir() {
             copy_dir_recursive_with_progress(
                 &src,
                 &dest_one,
@@ -375,7 +387,9 @@ pub(super) fn run_copy_with_progress(
                 &on_progress,
             )?;
         } else {
-            std::fs::copy(&src, &dest_one)?;
+            if !is_symlink {
+                std::fs::copy(&src, &dest_one)?;
+            }
             done += 1;
             let pct = if total_files > 0 {
                 (done as f32 / total_files as f32) * 100.0

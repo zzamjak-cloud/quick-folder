@@ -6,7 +6,7 @@ import { readJsonStorage, storageKeys, writeJsonStorage } from '../../../utils/s
 import { ThemeVars } from '../types';
 import {
   FileTypeIcon,
-  formatSize,
+  formatEntrySize,
   formatTooltip,
   getFileIconShadowStyle,
   iconColor,
@@ -174,7 +174,7 @@ export const DetailsRow = memo(function DetailsRow({
 
   const typeLabels: Record<string, string> = {
     directory: '폴더', image: '이미지', video: '비디오',
-    document: '문서', code: '코드', archive: '압축', other: '기타',
+    document: '문서', code: '코드', archive: '압축', app: '패키지', other: '기타',
   };
 
   function fmtDate(ms: number) {
@@ -250,7 +250,7 @@ export const DetailsRow = memo(function DetailsRow({
       </td>
       <td className="px-3 py-1 text-xs" style={{ color: themeVars?.muted }}>{fmtDate(entry.modified)}</td>
       <td className="px-3 py-1 text-right text-xs" style={{ color: themeVars?.muted }}>
-        {formatSize(entry.size, entry.is_dir)}
+        {formatEntrySize(entry)}
       </td>
       <td className="px-3 py-1 text-xs" style={{ color: themeVars?.muted }}>{typeLabels[entry.file_type] ?? '기타'}</td>
     </tr>

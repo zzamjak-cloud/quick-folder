@@ -5,9 +5,9 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
-  RotateCcw, HardDrive, Terminal, Files, GitCompare,
+  RotateCcw, HardDrive, Terminal, Files, GitCompare, FolderOpen,
 } from 'lucide-react';
-import { getFileName, isArchiveVirtualPath, isGoogleDrivePath } from '../../../utils/pathUtils';
+import { getFileName, isArchiveVirtualPath, isBrowsableArchiveFilePath, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
 import { NamingCase } from '../../../utils/caseConvert';
 import { deleteTerminalPreset, getTerminalPresets, isHighRiskTerminalCommand } from '../terminalPresets';
@@ -76,6 +76,7 @@ export interface UseContextMenuBuilderConfig {
   };
   openEntry: (entry: FileEntry) => void;
   openInOsExplorer: (path: string) => void;
+  onNavigateTo: (path: string) => void;
   handleAddTag: (path: string) => void;
   handleRemoveTag: (path: string) => void;
   onAddToFavorites: (path: string, name: string) => void;
@@ -98,6 +99,7 @@ export function useContextMenuBuilder({
   preview,
   openEntry,
   openInOsExplorer,
+  onNavigateTo,
   handleAddTag,
   handleRemoveTag,
   onAddToFavorites,
@@ -137,6 +139,15 @@ export function useContextMenuBuilder({
         icon: <ExternalLink size={13} />,
         label: '열기',
         onClick: () => { const entry = entries.find(e => e.path === singlePath); if (entry) openEntry(entry); },
+      });
+    }
+    // macOS 번들(.app 등)은 단일 항목으로 보이므로 내부 탐색은 별도 메뉴로 제공한다
+    if (isSingle && singleEntry?.file_type === 'app') {
+      openSection.items.push({
+        id: 'show-package-contents',
+        icon: <FolderOpen size={13} />,
+        label: '패키지 내용 보기',
+        onClick: () => onNavigateTo(singlePath),
       });
     }
     if (isSingle && singleEntry && !singleEntry.is_dir &&
@@ -332,8 +343,8 @@ export function useContextMenuBuilder({
       onClick: () => fileOps.handleCompressZip(paths),
       disabled: paths.length === 0,
     });
-    // ZIP 압축 풀기 (.zip 파일이 선택된 경우에만 표시)
-    const zipPaths = paths.filter(p => /\.zip$/i.test(p));
+    // 압축 풀기 (.zip/.7z/.rar/.tar.* 가 선택된 경우에만 표시)
+    const zipPaths = paths.filter(isBrowsableArchiveFilePath);
     if (zipPaths.length > 0) {
       toolSection.items.push({
         id: 'extract-zip',
@@ -730,7 +741,7 @@ export function useContextMenuBuilder({
     return sections;
   }, [
     contextMenu, entries, currentPath, clipboardHook.clipboard, folderTags,
-    openEntry, openInOsExplorer, preview.handlePreviewImage,
+    openEntry, openInOsExplorer, onNavigateTo, preview.handlePreviewImage,
     clipboardHook.handleCopy, clipboardHook.handleCut, clipboardHook.handlePaste, fileOps.handleDuplicate,
     fileOps.handleRenameStart, fileOps.handleBulkRename, fileOps.handleConvertCase, fileOps.handleDelete,
     fileOps.handleCompressZip, fileOps.handleExtractZip, fileOps.handleCompressVideo, fileOps.handleVideoToGif, fileOps.handleGifToMp4,

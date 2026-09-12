@@ -16,7 +16,8 @@ export interface Category {
 }
 
 // 파일 탐색기 관련 타입
-export type FileType = 'image' | 'video' | 'document' | 'code' | 'archive' | 'other' | 'directory';
+// 'app' = macOS 번들(.app 등) — 파일시스템상 디렉토리지만 단일 실행 항목으로 다룬다
+export type FileType = 'image' | 'video' | 'document' | 'code' | 'archive' | 'other' | 'directory' | 'app';
 
 export interface FileEntry {
   name: string;

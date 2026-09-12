@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.27.77"
+version = "1.27.78"
 description = "A Tauri App"
 authors = ["zzamjak-cloud"]
 license = "GPL-3.0-only"

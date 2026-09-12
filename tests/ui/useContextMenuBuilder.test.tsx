@@ -64,6 +64,7 @@ function createConfig(overrides: Partial<UseContextMenuBuilderConfig> = {}): Use
     },
     openEntry: vi.fn(),
     openInOsExplorer: vi.fn(),
+    onNavigateTo: vi.fn(),
     handleAddTag: vi.fn(),
     handleRemoveTag: vi.fn(),
     onAddToFavorites: vi.fn(),

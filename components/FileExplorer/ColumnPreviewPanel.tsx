@@ -33,6 +33,7 @@ const typeLabels: Record<string, string> = {
   document: '문서',
   code: '코드',
   archive: '압축 파일',
+  app: '패키지',
   other: '기타',
 };
 
@@ -164,7 +165,7 @@ export default memo(function ColumnPreviewPanel({ preview, themeVars }: ColumnPr
       {/* 파일 정보 */}
       <div className="w-full flex flex-col gap-1.5 mt-1 flex-shrink-0">
         <InfoRow label="종류" value={typeLabels[entry.file_type] ?? '기타'} themeVars={themeVars} />
-        {!entry.is_dir && (
+        {!entry.is_dir && entry.file_type !== 'app' && (
           <InfoRow label="크기" value={formatSize(entry.size, false)} themeVars={themeVars} />
         )}
         {entry.modified > 0 && (

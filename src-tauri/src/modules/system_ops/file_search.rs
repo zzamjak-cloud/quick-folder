@@ -4,7 +4,7 @@
 use super::super::constants::{
     DUPLICATE_SCAN_MAX_DEPTH, MAX_DUPLICATE_GROUPS, MAX_DUPLICATE_SCAN_FILES, SEARCH_MAX_DEPTH,
 };
-use super::super::types::{classify_file, file_identity, FileEntry, FileType};
+use super::super::types::{classify_file, entry_kind, file_identity, FileEntry};
 use crate::helpers::{is_hidden_file, is_system_filename};
 
 #[cfg(target_os = "windows")]
@@ -189,17 +189,12 @@ fn search_with_mdfind(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let is_dir = meta.is_dir();
-        let file_type = if is_dir {
-            FileType::Directory
-        } else {
-            classify_file(&name)
-        };
+        let (is_dir, file_type) = entry_kind(std::path::Path::new(line), &name, meta.is_dir());
 
         result.push(FileEntry {
             path: line.to_string(),
             is_dir,
-            size: if is_dir { 0 } else { meta.len() },
+            size: if meta.is_dir() { 0 } else { meta.len() },
             modified,
             identity: file_identity(&meta),
             file_type,
@@ -297,17 +292,12 @@ fn search_with_windows_index(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let is_dir = meta.is_dir();
-        let file_type = if is_dir {
-            FileType::Directory
-        } else {
-            classify_file(&name)
-        };
+        let (is_dir, file_type) = entry_kind(std::path::Path::new(line), &name, meta.is_dir());
 
         result.push(FileEntry {
             path: line.to_string(),
             is_dir,
-            size: if is_dir { 0 } else { meta.len() },
+            size: if meta.is_dir() { 0 } else { meta.len() },
             modified,
             identity: file_identity(&meta),
             file_type,
@@ -377,17 +367,12 @@ fn search_with_walkdir(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let is_dir = meta.is_dir();
-        let file_type = if is_dir {
-            FileType::Directory
-        } else {
-            classify_file(&name)
-        };
+        let (is_dir, file_type) = entry_kind(entry.path(), &name, meta.is_dir());
 
         result.push(FileEntry {
             path: entry.path().to_string_lossy().to_string(),
             is_dir,
-            size: if is_dir { 0 } else { meta.len() },
+            size: if meta.is_dir() { 0 } else { meta.len() },
             modified,
             identity: file_identity(&meta),
             file_type,

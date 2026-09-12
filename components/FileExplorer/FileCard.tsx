@@ -3,7 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { FileEntry, ThumbnailSize } from '../../types';
 import { ThemeVars } from './types';
 import { Play, RefreshCw } from 'lucide-react';
-import { FileTypeIcon, iconColor, formatSize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
+import { FileTypeIcon, iconColor, formatEntrySize, formatTooltip, getFileIconShadowStyle } from './fileUtils';
 import { useRenameInput } from './hooks/useRenameInput';
 import { useNativeIcon } from './hooks/useNativeIcon';
 import { queuedInvokeLow, isTauriCommandCancelled } from './hooks/invokeQueue';
@@ -465,7 +465,7 @@ export default memo(function FileCard({
           className="text-[10px] leading-none text-center"
           style={{ color: themeVars?.muted ?? '#94a3b8' }}
         >
-          {formatSize(entry.size, entry.is_dir)}
+          {formatEntrySize(entry)}
           {imageDims && (
             <span className="ml-1 opacity-75">{imageDims[0]}×{imageDims[1]}</span>
           )}
