@@ -14,7 +14,7 @@ pub use listing::list_archive_directory;
 pub use materialize::{materialize_archive_path_in_cache, materialize_archive_paths};
 pub use path::{
     build_archive_root_virtual_path, is_browsable_archive_path,
-    resolve_archive_virtual_path_with_app,
+    resolve_archive_virtual_path_with_cache,
 };
 
 #[cfg(test)]

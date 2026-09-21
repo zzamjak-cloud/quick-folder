@@ -1,3 +1,4 @@
+use app_lib::modules::paths::AppPaths;
 use app_lib::types::{FileEntry, FileType};
 use app_lib::{
     check_duplicate_items, compress_image_preview, compress_to_zip, create_directory,
@@ -141,9 +142,9 @@ fn archive_commands_compress_and_extract_files() {
 
 #[test]
 fn archive_virtual_listing_reads_zip_root_and_child_entries() {
-    let app = tauri::test::mock_app();
-    let app_handle = app.handle().clone();
     let test_dir = TestDir::new("archive_virtual_listing");
+    // 압축 materialize 캐시를 테스트 디렉토리로 격리한다.
+    let app_paths = AppPaths::new(test_dir.join("cache"));
     let source_dir = test_dir.join("source");
     let zip_path = test_dir.join("bundle.zip");
 
@@ -157,14 +158,14 @@ fn archive_virtual_listing_reads_zip_root_and_child_entries() {
             .expect("compress_to_zip command 실패");
     });
 
-    let root_entries = list_archive_directory(&app_handle, &format!("{}/", zip_path.display()))
+    let root_entries = list_archive_directory(&app_paths, &format!("{}/", zip_path.display()))
         .expect("list_archive_directory root command 실패");
     assert!(root_entries
         .iter()
         .any(|entry| entry.name == "source" && entry.is_dir));
 
     let child_entries =
-        list_archive_directory(&app_handle, &format!("{}/source", zip_path.display()))
+        list_archive_directory(&app_paths, &format!("{}/source", zip_path.display()))
             .expect("list_archive_directory child command 실패");
     assert!(child_entries
         .iter()

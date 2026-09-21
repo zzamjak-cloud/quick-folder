@@ -124,7 +124,9 @@ pub fn run() {
             // 로컬 PSD 그리드 캐시 1회 정리(임베드→composite 전환). 시작 차단 방지로 별도 스레드.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                crate::modules::image_ops::migrate_psd_local_cache_once(&handle);
+                if let Ok(app_paths) = crate::modules::paths::AppPaths::from_app(&handle) {
+                    crate::modules::image_ops::migrate_psd_local_cache_once(&app_paths);
+                }
             });
             Ok(())
         })

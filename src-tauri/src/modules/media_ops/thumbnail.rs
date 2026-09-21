@@ -30,16 +30,12 @@ pub async fn get_video_thumbnail(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("video_thumbnails");
 
     tokio::task::spawn_blocking(move || {
-        let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+        let resolved_path = materialize_archive_path_in_cache(&app_paths, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
@@ -75,16 +71,12 @@ pub async fn get_video_thumbnail_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("video_thumbnails");
 
     tokio::task::spawn_blocking(move || -> Result<Option<String>> {
-        let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+        let resolved_path = materialize_archive_path_in_cache(&app_paths, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         // 클라우드 경로: OS 썸네일 우선(풀 다운로드 회피) + mtime-len 시그니처 캐시 키
@@ -630,7 +622,11 @@ fn get_native_video_thumbnail(_path: &str, _size: u32) -> Result<Option<Vec<u8>>
 // spawn_blocking: 파일당 수백 회 syscall이 발생할 수 있어 IPC(메인)/워커 스레드 차단 방지
 #[tauri::command]
 pub async fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
-    tokio::task::spawn_blocking(move || invalidate_thumbnail_cache_paths(&app, &paths))
+    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        invalidate_thumbnail_cache_paths(&app_paths, &paths);
+        Ok(())
+    })
         .await
         .map_err(|e| AppError::Internal(format!("썸네일 캐시 무효화 실패: {}", e)))?
 }

@@ -13,7 +13,7 @@ pub use progress::{CopyProgress, TransferFileItem, TransferQueueProgress};
 
 use crate::helpers::get_copy_destination;
 use crate::modules::error::{AppError, Result};
-use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
+use crate::modules::image_ops::invalidate_thumbnail_cache_paths_in_root;
 
 // 심볼릭 링크는 대상 파일을 복제하지 않고 링크 자체를 다시 만든다.
 // .app 번들의 `Versions/Current`, `Frameworks/*` 링크가 실제 파일로 펼쳐지면
@@ -245,7 +245,9 @@ pub async fn copy_items(
     dest: String,
     overwrite: Option<bool>,
 ) -> Result<()> {
-    let app_cache = thumbnail_cache_root(&app)?;
+    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+        .cache_dir()
+        .to_path_buf();
     copy_items_impl(sources, dest, overwrite, Some(&app_cache)).await
 }
 
@@ -260,7 +262,9 @@ pub async fn copy_items_with_progress(
 ) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     let dest_path = std::path::PathBuf::from(dest);
-    let app_cache = thumbnail_cache_root(&app)?;
+    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+        .cache_dir()
+        .to_path_buf();
     let on_progress = on_progress.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -282,7 +286,9 @@ pub async fn transfer_items_with_progress(
 ) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     let dest_path = std::path::PathBuf::from(dest);
-    let app_cache = thumbnail_cache_root(&app)?;
+    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+        .cache_dir()
+        .to_path_buf();
     let on_progress = on_progress.clone();
     let op = operation.clone();
 
@@ -365,6 +371,8 @@ pub async fn move_items(
     dest: String,
     overwrite: Option<bool>,
 ) -> Result<()> {
-    let app_cache = thumbnail_cache_root(&app)?;
+    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+        .cache_dir()
+        .to_path_buf();
     move_items_impl(sources, dest, overwrite, Some(&app_cache)).await
 }

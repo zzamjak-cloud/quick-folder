@@ -1,5 +1,5 @@
 use super::{
-    path::{build_archive_virtual_path, resolve_archive_virtual_path_with_app},
+    path::{build_archive_virtual_path, resolve_archive_virtual_path_with_cache},
     records::list_archive_records,
     ArchiveVirtualPath,
 };
@@ -84,11 +84,11 @@ pub(super) fn list_archive_directory_resolved(
         .collect())
 }
 
-pub fn list_archive_directory<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+pub fn list_archive_directory(
+    paths: &crate::modules::paths::AppPaths,
     path: &str,
 ) -> Result<Vec<FileEntry>> {
-    let resolved = resolve_archive_virtual_path_with_app(app, path)?.ok_or_else(|| {
+    let resolved = resolve_archive_virtual_path_with_cache(paths, path)?.ok_or_else(|| {
         AppError::InvalidInput(format!("압축 가상 경로가 올바르지 않습니다: {}", path))
     })?;
     list_archive_directory_resolved(&resolved)

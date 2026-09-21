@@ -1,6 +1,6 @@
 use crate::helpers::stable_cache_key;
 use crate::modules::error::{AppError, Result};
-use crate::modules::image_ops::thumbnail_cache_root;
+use crate::modules::paths::AppPaths;
 use crate::modules::types::FileEntry;
 
 // ===== 디렉토리 목록 영속 캐시 (구글 드라이브 등 콜드스타트 대응) =====
@@ -21,11 +21,11 @@ fn legacy_dir_listing_cache_key(path: &str) -> String {
     format!("{:x}", hasher.finish())
 }
 
-fn dir_listing_cache_files<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+fn dir_listing_cache_files(
+    app_paths: &AppPaths,
     path: &str,
 ) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
-    let dir = thumbnail_cache_root(app)?.join("dir_listings");
+    let dir = app_paths.cache_subdir("dir_listings");
     std::fs::create_dir_all(&dir).ok();
     let stable_key = stable_cache_key(&[b"dir-listing-v2", path.as_bytes()]);
     let legacy_key = legacy_dir_listing_cache_key(path);
@@ -53,7 +53,7 @@ pub async fn read_cached_listing<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Option<Vec<FileEntry>>> {
-    let (file, legacy_file) = dir_listing_cache_files(&app, &path)?;
+    let (file, legacy_file) = dir_listing_cache_files(&AppPaths::from_app(&app)?, &path)?;
     tokio::task::spawn_blocking(move || -> Result<Option<Vec<FileEntry>>> {
         if let Some(entries) = read_cached_listing_file(&file, &path)? {
             return Ok(Some(entries));
@@ -83,7 +83,7 @@ pub async fn write_cached_listing<R: tauri::Runtime>(
     path: String,
     entries: Vec<FileEntry>,
 ) -> Result<()> {
-    let (file, _) = dir_listing_cache_files(&app, &path)?;
+    let (file, _) = dir_listing_cache_files(&AppPaths::from_app(&app)?, &path)?;
     tokio::task::spawn_blocking(move || -> Result<()> {
         let cached = CachedListing { path, entries };
         if let Ok(data) = serde_json::to_vec(&cached) {

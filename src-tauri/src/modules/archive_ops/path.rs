@@ -101,11 +101,11 @@ pub(super) fn resolve_archive_virtual_path(path: &str) -> Option<ArchiveVirtualP
         .flatten()
 }
 
-pub fn resolve_archive_virtual_path_with_app<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+pub fn resolve_archive_virtual_path_with_cache(
+    paths: &crate::modules::paths::AppPaths,
     path: &str,
 ) -> Result<Option<ArchiveVirtualPath>> {
     resolve_archive_virtual_path_with_loader(path, |prefix| {
-        super::materialize::materialize_archive_path_in_cache(app, prefix)
+        super::materialize::materialize_archive_path_in_cache(paths, prefix)
     })
 }

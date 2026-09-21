@@ -1,6 +1,6 @@
 use crate::helpers::get_numbered_destination;
 use crate::modules::error::{AppError, Result};
-use crate::modules::image_ops::{invalidate_thumbnail_cache_paths_in_root, thumbnail_cache_root};
+use crate::modules::image_ops::invalidate_thumbnail_cache_paths_in_root;
 
 use super::{copy_dir_recursive, copy_symlink};
 
@@ -224,7 +224,9 @@ pub async fn merge_folders(
     conflict_mode: FolderMergeConflictMode,
     is_move: bool,
 ) -> Result<()> {
-    let app_cache = thumbnail_cache_root(&app)?;
+    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+        .cache_dir()
+        .to_path_buf();
     tokio::task::spawn_blocking(move || {
         let src_path = std::path::Path::new(&source);
         if !src_path.is_dir() {

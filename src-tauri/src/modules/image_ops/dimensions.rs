@@ -8,10 +8,11 @@ pub async fn get_image_dimensions<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Option<(u32, u32)>> {
+    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
     tokio::task::spawn_blocking(move || -> Result<Option<(u32, u32)>> {
         use std::io::Read;
 
-        let resolved_path = materialize_archive_path_in_cache(&app, &path)?
+        let resolved_path = materialize_archive_path_in_cache(&app_paths, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         let ext = resolved_path_str

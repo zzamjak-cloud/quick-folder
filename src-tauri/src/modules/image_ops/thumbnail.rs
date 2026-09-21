@@ -4,6 +4,7 @@ use super::heavy::HeavyOpPermit;
 use crate::helpers::*;
 use crate::modules::archive_ops::materialize_archive_path_in_cache;
 use crate::modules::error::{AppError, Result};
+use crate::modules::paths::AppPaths;
 use base64::Engine;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,23 +21,12 @@ const THUMBNAIL_CACHE_PRUNE_INTERVAL_MS: u64 = 60_000;
 const GOOGLE_DRIVE_THUMBNAIL_CACHE_VERSION: &str = "v7";
 static LAST_THUMBNAIL_CACHE_PRUNE_MS: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn thumbnail_cache_root<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-) -> Result<PathBuf> {
-    use tauri::Manager;
-    app.path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))
-}
 
 // 로컬 PSD 그리드 캐시(psd_thumbnails) 1회 정리 — 임베드→composite 전환에 맞춰
 // 기존 저화질 임베드 캐시를 비워 다음 표시 때 composite로 재생성되게 한다.
 // 마커 파일로 1회만 수행(이후 실행은 즉시 반환). 마커는 .png가 아니라 프루닝 대상이 아니다.
-pub(crate) fn migrate_psd_local_cache_once<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let Ok(app_cache) = thumbnail_cache_root(app) else {
-        return;
-    };
-    let dir = app_cache.join("psd_thumbnails");
+pub(crate) fn migrate_psd_local_cache_once(app_paths: &AppPaths) {
+    let dir = app_paths.cache_subdir("psd_thumbnails");
     let marker = dir.join(".composite_migrated_v1");
     if marker.exists() {
         return;
@@ -284,13 +274,8 @@ pub(crate) fn invalidate_thumbnail_cache_paths_in_root(app_cache: &Path, paths: 
     }
 }
 
-pub(crate) fn invalidate_thumbnail_cache_paths<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    paths: &[String],
-) -> Result<()> {
-    let app_cache = thumbnail_cache_root(app)?;
-    invalidate_thumbnail_cache_paths_in_root(&app_cache, paths);
-    Ok(())
+pub(crate) fn invalidate_thumbnail_cache_paths(app_paths: &AppPaths, paths: &[String]) {
+    invalidate_thumbnail_cache_paths_in_root(app_paths.cache_dir(), paths);
 }
 
 fn now_millis() -> u64 {
@@ -1062,17 +1047,13 @@ pub async fn get_file_thumbnail_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("img_thumbnails");
 
     tokio::task::spawn_blocking(move || -> Result<Option<String>> {
         let resolved_path =
-            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
+            materialize_archive_path_in_cache(&app_paths, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         let ext = resolved_path_str
             .rsplit('.')
@@ -1121,17 +1102,13 @@ pub async fn get_file_thumbnail(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("img_thumbnails");
 
     tokio::task::spawn_blocking(move || {
         let resolved_path =
-            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
+            materialize_archive_path_in_cache(&app_paths, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         let ext = resolved_path_str
             .rsplit('.')
@@ -1170,13 +1147,13 @@ pub async fn get_file_thumbnail(
 // 미리보기 캐시(psd_previews / 클라우드는 drive_thumbnails)를 보장하고 캐시 PNG 경로를 반환.
 // 미리보기 표시(base64)와 백그라운드 프리워밍이 같은 캐시 키를 공유하도록 공통화한다.
 fn resolve_psd_preview_cache(
-    app: &tauri::AppHandle,
+    app_paths: &AppPaths,
     app_cache: &Path,
     path: &str,
     size: u32,
 ) -> Result<Option<PathBuf>> {
     let resolved_path =
-        materialize_archive_path_in_cache(app, path)?.unwrap_or_else(|| PathBuf::from(path));
+        materialize_archive_path_in_cache(app_paths, path)?.unwrap_or_else(|| PathBuf::from(path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
     // 클라우드(구글드라이브): fileId 기반 캐시로 안정화. dataless여도 끝부분 merged composite만
@@ -1202,15 +1179,11 @@ pub async fn get_psd_thumbnail(
     size: u32,
 ) -> Result<Option<String>> {
     use base64::Engine;
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        match resolve_psd_preview_cache(&app, &app_cache, &path, size)? {
+        match resolve_psd_preview_cache(&app_paths, &app_cache, &path, size)? {
             Some(cache_path) => {
                 let cached = std::fs::read(cache_path)?;
                 Ok(Some(
@@ -1232,15 +1205,11 @@ pub async fn prewarm_psd_preview(
     path: String,
     size: u32,
 ) -> Result<bool> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        Ok(resolve_psd_preview_cache(&app, &app_cache, &path, size)?.is_some())
+        Ok(resolve_psd_preview_cache(&app_paths, &app_cache, &path, size)?.is_some())
     })
     .await
     .map_err(|e| AppError::Internal(format!("PSD 미리보기 프리워밍 실패: {}", e)))?
@@ -1253,15 +1222,11 @@ pub async fn get_psd_preview_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
 
     tokio::task::spawn_blocking(move || -> Result<Option<String>> {
-        Ok(resolve_psd_preview_cache(&app, &app_cache, &path, size)?
+        Ok(resolve_psd_preview_cache(&app_paths, &app_cache, &path, size)?
             .map(|p| p.to_string_lossy().to_string()))
     })
     .await
@@ -1274,17 +1239,13 @@ pub async fn get_psd_thumbnail_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    use tauri::Manager;
-
-    let app_cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
+    let app_paths = AppPaths::from_app(&app)?;
+    let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("psd_thumbnails");
 
     tokio::task::spawn_blocking(move || -> Result<Option<String>> {
         let resolved_path =
-            materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
+            materialize_archive_path_in_cache(&app_paths, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
         let is_cloud = crate::helpers::is_cloud_path(&resolved_path_str);
 

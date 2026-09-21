@@ -1,18 +1,14 @@
 use super::{
     extract::{archive_path_to_dest, extract_archive_patterns_to_dir},
-    path::{archive_path_string, resolve_archive_virtual_path_with_app},
+    path::{archive_path_string, resolve_archive_virtual_path_with_cache},
 };
 use crate::helpers::{get_copy_destination, stable_cache_key};
 use crate::modules::error::{AppError, Result};
+use crate::modules::paths::AppPaths;
 use crate::modules::file_ops::copy_dir_recursive;
 use std::path::{Path, PathBuf};
 
-fn archive_cache_root<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    archive_path: &Path,
-) -> Result<PathBuf> {
-    use tauri::Manager;
-
+fn archive_cache_root(paths: &AppPaths, archive_path: &Path) -> Result<PathBuf> {
     let meta = std::fs::metadata(archive_path)?;
     let modified = meta
         .modified()
@@ -22,11 +18,7 @@ fn archive_cache_root<R: tauri::Runtime>(
         .unwrap_or_else(|| "0".to_string());
     let size = meta.len().to_string();
 
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| AppError::Internal(e.to_string()))?
-        .join("archive_materialized");
+    let cache_dir = paths.cache_subdir("archive_materialized");
     let archive_key = stable_cache_key(&[
         b"archive-materialized-v1",
         archive_path_string(archive_path).as_bytes(),
@@ -36,11 +28,11 @@ fn archive_cache_root<R: tauri::Runtime>(
     Ok(cache_dir.join(archive_key))
 }
 
-pub fn materialize_archive_path_in_cache<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+pub fn materialize_archive_path_in_cache(
+    paths: &AppPaths,
     virtual_path: &str,
 ) -> Result<Option<PathBuf>> {
-    let resolved = match resolve_archive_virtual_path_with_app(app, virtual_path)? {
+    let resolved = match resolve_archive_virtual_path_with_cache(paths, virtual_path)? {
         Some(value) => value,
         None => return Ok(None),
     };
@@ -48,7 +40,7 @@ pub fn materialize_archive_path_in_cache<R: tauri::Runtime>(
     let inner_path = resolved.inner_path.clone().ok_or_else(|| {
         AppError::InvalidInput("압축 파일 루트는 직접 materialize 할 수 없습니다".to_string())
     })?;
-    let cache_root = archive_cache_root(app, &resolved.archive_path)?.join("content");
+    let cache_root = archive_cache_root(paths, &resolved.archive_path)?.join("content");
     let output_path = archive_path_to_dest(&cache_root, &inner_path)?;
     if output_path.exists() {
         return Ok(Some(output_path));
@@ -96,14 +88,10 @@ pub async fn materialize_archive_paths(
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<String>> {
+    let app_paths = AppPaths::from_app(&app)?;
     tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
-        use tauri::Manager;
-
-        let batch_root = app
-            .path()
-            .app_cache_dir()
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .join("archive_drag_batches")
+        let batch_root = app_paths
+            .cache_subdir("archive_drag_batches")
             .join(stable_cache_key(&[
                 b"archive-drag-batch-v1",
                 format!("{:?}", std::time::SystemTime::now()).as_bytes(),
@@ -112,7 +100,7 @@ pub async fn materialize_archive_paths(
 
         let mut output_paths = Vec::with_capacity(paths.len());
         for path in &paths {
-            match materialize_archive_path_in_cache(&app, path)? {
+            match materialize_archive_path_in_cache(&app_paths, path)? {
                 Some(materialized) => {
                     let copied = copy_materialized_entry_to_batch(&materialized, &batch_root)?;
                     output_paths.push(copied.to_string_lossy().to_string());

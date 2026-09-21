@@ -12,7 +12,8 @@ use std::path::Path;
 pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 
-    let resolved_path = materialize_archive_path_in_cache(&app, &path)
+    let app_paths = crate::modules::paths::AppPaths::from_app(&app).map_err(|e| e.to_string())?;
+    let resolved_path = materialize_archive_path_in_cache(&app_paths, &path)
         .map_err(|e| e.to_string())?
         .unwrap_or_else(|| std::path::PathBuf::from(&path));
 

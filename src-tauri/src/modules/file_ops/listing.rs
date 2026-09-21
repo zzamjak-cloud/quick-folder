@@ -1,4 +1,4 @@
-use crate::modules::archive_ops::{list_archive_directory, resolve_archive_virtual_path_with_app};
+use crate::modules::archive_ops::{list_archive_directory, resolve_archive_virtual_path_with_cache};
 use crate::modules::error::{AppError, Result};
 use crate::modules::types::{entry_kind, file_identity, is_package_bundle, FileEntry, FileType};
 
@@ -23,10 +23,11 @@ pub async fn list_directory<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Vec<FileEntry>> {
+    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
     // spawn_blocking: 네트워크 파일시스템(Google Drive 등) I/O가 tokio 워커를 차단하지 않도록 분리
     tokio::task::spawn_blocking(move || -> Result<Vec<FileEntry>> {
-        if resolve_archive_virtual_path_with_app(&app, &path)?.is_some() {
-            return list_archive_directory(&app, &path);
+        if resolve_archive_virtual_path_with_cache(&app_paths, &path)?.is_some() {
+            return list_archive_directory(&app_paths, &path);
         }
 
         let entries = std::fs::read_dir(&path)?;
