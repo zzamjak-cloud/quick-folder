@@ -13,6 +13,11 @@ export default defineConfig({
     port: 3000,
     host: '0.0.0.0',
     strictPort: true,
+    watch: {
+      // Cargo 워크스페이스 전환으로 빌드 산출물이 리포지토리 루트 target/ 으로 왔다.
+      // 감시 대상에 두면 cargo 빌드마다 tauri-codegen-assets 변경을 잡아 페이지가 리로드된다.
+      ignored: ['**/target/**', '**/src-tauri/target/**'],
+    },
   },
   plugins: [
     tailwindcss(),
