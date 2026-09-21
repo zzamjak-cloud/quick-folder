@@ -1,19 +1,60 @@
 # Rust 백엔드 개요
 
+## Cargo 워크스페이스
+
+루트 `Cargo.toml`이 워크스페이스다. 빌드 산출물은 **리포지토리 루트 `target/`** 에 생긴다(`src-tauri/target/` 아님).
+
+| 크레이트 | 경로 | 역할 |
+|---------|------|------|
+| `quickfolder-core` | `crates/quickfolder-core` | 파일·이미지·미디어 처리 로직. **Tauri 의존 0**, 단독 빌드됨 |
+| `app` | `src-tauri` | Tauri 앱. command 래퍼와 GUI 전용 기능만 |
+
+코어를 분리한 이유: CLI·MCP 서버가 GUI 없이 같은 로직을 쓰기 위함. GUI 프로세스는
+UI 보호를 위해 동시성이 제한되지만(`MAX_HEAVY_OPS=3`), 별도 프로세스는 코어 수만큼 열 수 있다.
+
+## 코어 ↔ 앱 경계
+
+코어는 GUI 타입을 모른다. 앱이 가진 값을 다음 두 타입으로 바꿔 주입한다.
+
+| 앱(Tauri) | 코어 | 변환 위치 |
+|-----------|------|----------|
+| `AppHandle` → `app.path().app_cache_dir()` | `AppPaths` | `src-tauri/src/modules/tauri_glue.rs::app_paths` |
+| `tauri::ipc::Channel<T>` | `Progress<T>` (`Arc<dyn ProgressSink<T>>`) | `tauri_glue::channel_sink` |
+
+`AppPaths::from_bundle_identifier("com.quickfolder.widget")`가 GUI와 **같은 캐시 경로**를 만든다.
+→ CLI·MCP가 앱이 이미 받아둔 ffmpeg·썸네일 캐시를 그대로 재사용한다.
+
 ## 진입점
-`src-tauri/src/lib.rs` — Tauri 명령 등록  
-`src-tauri/src/helpers.rs` — 공통 헬퍼 함수
+`src-tauri/src/lib.rs` — Tauri 명령 등록 (`generate_handler!`)
+`src-tauri/src/modules/commands.rs` — `#[tauri::command]` 래퍼 76개. 본문은 코어 호출 1줄
+`crates/quickfolder-core/src/helpers.rs` — 공통 헬퍼 함수
 
 ## 모듈 구조
 
-대형 단일 `.rs` 파일은 **facade + 하위 모듈** 패턴으로 분리됐다. facade 파일(`file_ops.rs` 등)이 Tauri 명령을 노출하고, 실제 구현은 하위 모듈에 있다.
+대형 단일 `.rs` 파일은 **facade + 하위 모듈** 패턴으로 분리됐다. facade 파일(`file_ops.rs` 등)이 공개 API를 노출하고, 실제 구현은 하위 모듈에 있다.
 
 ```
+crates/quickfolder-core/src/
+├── lib.rs                       ← 모듈 선언 + 평면 재수출
+├── helpers.rs
+├── paths.rs                     ← AppPaths (캐시 경로 규약)
+├── progress.rs                  ← ProgressSink / Progress / NullSink
+├── runtime.rs                   ← 런타임 바깥용 block_on
+└── (아래 ops 모듈들)
+
 src-tauri/src/
 ├── lib.rs
-├── helpers.rs
 └── modules/
-    ├── mod.rs
+    ├── commands.rs              ← #[tauri::command] 래퍼
+    ├── tauri_glue.rs            ← AppHandle→AppPaths, Channel→Progress
+    └── system_ops/              ← GUI 전용 잔류
+        ├── file_explorer.rs
+        ├── file_icon*
+        ├── clipboard.rs
+        ├── app_activation.rs
+        └── webview_recovery.rs
+
+crates/quickfolder-core/src/    ← ops 모듈 (아래)
     ├── types.rs
     ├── constants.rs
     ├── error.rs
@@ -55,17 +96,8 @@ src-tauri/src/
     │   └── media_ops/thumbnail.rs
     ├── hwp_ops.rs
     ├── laigter_maps.rs
-    ├── system_ops/
-    │   ├── file_explorer.rs
+    ├── system_ops/              ← GUI 비의존分만 코어에 있음
     │   ├── file_search.rs
-    │   ├── file_icon.rs             ← icon command facade
-    │   │   ├── file_icon/cache.rs
-    │   │   ├── file_icon/text.rs
-    │   │   └── file_icon/native/
-    │   │       ├── macos.rs
-    │   │       ├── windows.rs
-    │   │       └── fallback.rs
-    │   ├── clipboard.rs
     │   └── google_drive.rs
     └── tool_ops/
         ├── ffmpeg.rs
@@ -124,7 +156,11 @@ await queuedInvoke('get_thumbnail', { path, size });
 | 큐 | `utils/tauriInvoke.ts` | 우선순위·취소·동시성 제한 |
 | re-export | `hooks/invokeQueue.ts` | FileExplorer에서 import 경로 유지 |
 
-새 Rust 명령 추가 시: `lib.rs` 등록 → 해당 `tauriCommandDomains/*.ts`에 typed wrapper 추가 → `tauriCommands.ts` merge 확인.
+새 Rust 명령 추가 시:
+1. 로직을 `crates/quickfolder-core`에 구현 (Tauri 타입 금지 — 캐시 경로는 `AppPaths`, 진행률은 `Progress<T>`)
+2. `src-tauri/src/modules/commands.rs`에 `#[tauri::command]` 래퍼 추가
+3. `lib.rs`의 `generate_handler!`에 등록
+4. 해당 `tauriCommandDomains/*.ts`에 typed wrapper 추가 → `tauriCommands.ts` merge 확인
 
 ## 압축 탐색 메모
 - `file_ops/listing.rs::list_directory`는 archive virtual path를 감지하면 `archive_ops.rs`로 라우팅한다.
@@ -135,7 +171,8 @@ await queuedInvoke('get_thumbnail', { path, size });
 
 | 파일 | 역할 |
 |------|------|
-| `src-tauri/tests/command_boundary.rs` | Tauri 명령 등록·핸들러 경계·파일 시스템 실패 통합 테스트 |
+| `crates/quickfolder-core/tests/command_boundary.rs` | 명령 경계·파일 시스템 실패 통합 테스트 |
+| `crates/quickfolder-core/tests/image_golden.rs` | 이미지 연산 결과 지문 고정 (픽셀 해시). 갱신은 `UPDATE_GOLDEN=1` |
 | facade 내 `#[cfg(test)]` | submodule 단위 테스트 |
 
 → [../infra/testing.md](../infra/testing.md)
@@ -152,7 +189,7 @@ await queuedInvoke('get_thumbnail', { path, size });
 | `encoding_rs` 0.8 | ZIP/TAR 이름 디코딩 fallback (CP949/EUC-KR) |
 | `trash` 5.0 | 휴지통 이동 |
 | `walkdir` 2.0 | 디렉토리 순회 |
-| `arboard` 3.0 | 클립보드 |
+| `arboard` 3.0 | 클립보드 (app 크레이트 전용) |
 | `ttf-parser` 0.24 | 폰트 파싱 |
 | `hwarang` 0.2 | HWP 파일 |
 | `dirs` 6.0 | OS 디렉토리 경로 |

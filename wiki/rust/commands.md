@@ -1,6 +1,7 @@
 # Rust 명령 레퍼런스
 
 전체 `#[tauri::command]` 함수 목록. 등록 위치: `src-tauri/src/lib.rs`
+래퍼는 `src-tauri/src/modules/commands.rs`, 로직 본체는 `crates/quickfolder-core`에 있다.
 
 ## 파일 시스템
 

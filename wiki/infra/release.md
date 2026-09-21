@@ -24,6 +24,12 @@ git push origin develop && git push origin develop:main
 git tag -a v{version} → git push origin v{version}
 ```
 
+## Cargo 워크스페이스 주의
+
+루트 `Cargo.toml`이 워크스페이스라서 빌드 산출물은 **리포지토리 루트 `target/`** 에 생긴다.
+`src-tauri/target/` 을 가정한 스크립트가 있으면 함께 고쳐야 한다(release.yml의 latest.json 탐색은 반영 완료).
+버전은 여전히 아래 3파일만 맞추면 된다. `crates/quickfolder-core`는 내부 크레이트라 버전 동기화 대상이 아니다.
+
 ## 버전 동기화 필수 파일
 
 | 파일 | 키 |

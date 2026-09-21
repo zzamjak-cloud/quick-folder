@@ -209,12 +209,12 @@ AI 탐색용 위키 인덱스. 작업 전 해당 파일을 먼저 읽으면 소�
 
 | 역할 | 경로 |
 |------|------|
-| Rust 명령 등록 | `src-tauri/src/lib.rs` |
-| Rust 공통 헬퍼 | `src-tauri/src/helpers.rs` |
-| 파일 CRUD facade | `src-tauri/src/modules/file_ops.rs` → `file_ops/{listing,mutation,archive,cache,transfer}/` |
-| 압축 탐색 facade | `src-tauri/src/modules/archive_ops.rs` → `archive_ops/{listing,extract,materialize,path,records}.rs` |
-| 이미지 처리 facade | `src-tauri/src/modules/image_ops.rs` → `image_ops/*.rs` |
-| 미디어 처리 facade | `src-tauri/src/modules/media_ops.rs` → `media_ops/{gif,thumbnail,video}.rs` |
+| Rust 명령 등록 | `src-tauri/src/lib.rs` (래퍼는 `src-tauri/src/modules/commands.rs`) |
+| Rust 공통 헬퍼 | `crates/quickfolder-core/src/helpers.rs` |
+| 파일 CRUD facade | `crates/quickfolder-core/src/file_ops.rs` → `file_ops/{listing,mutation,archive,cache,transfer}/` |
+| 압축 탐색 facade | `crates/quickfolder-core/src/archive_ops.rs` → `archive_ops/{listing,extract,materialize,path,records}.rs` |
+| 이미지 처리 facade | `crates/quickfolder-core/src/image_ops.rs` → `image_ops/*.rs` |
+| 미디어 처리 facade | `crates/quickfolder-core/src/media_ops.rs` → `media_ops/{gif,thumbnail,video}.rs` |
 | command boundary 테스트 | `src-tauri/tests/command_boundary.rs` |
 
 ### 테스트
