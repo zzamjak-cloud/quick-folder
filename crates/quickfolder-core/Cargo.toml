@@ -9,6 +9,9 @@ description = "QuickFolder 파일·이미지·미디어 처리 코어 (GUI 비�
 [lib]
 name = "quickfolder_core"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
