@@ -1,0 +1,96 @@
+//! 비디오 압축/편집/변환 처리 모듈
+
+mod compress;
+mod concat;
+mod edit;
+pub(crate) mod encoders;
+mod gif;
+mod progress;
+
+use crate::error::Result;
+
+#[derive(Clone, serde::Serialize)]
+pub struct VideoProgress {
+    pub percent: f32,
+    pub speed: String,
+    pub fps: f32,
+}
+
+pub async fn compress_video(
+    input: String,
+    quality: String,
+    scale_percent: Option<u32>,
+    on_progress: crate::progress::Progress<VideoProgress>,
+) -> Result<String> {
+    compress::compress_video(input, quality, scale_percent, on_progress).await
+}
+
+pub async fn trim_video(
+    input: String,
+    start_sec: f64,
+    end_sec: f64,
+    crop_x: Option<i32>,
+    crop_y: Option<i32>,
+    crop_w: Option<i32>,
+    crop_h: Option<i32>,
+    scale_width: Option<i32>,
+    speed: Option<f64>,
+    on_progress: crate::progress::Progress<VideoProgress>,
+) -> Result<String> {
+    edit::trim_video(
+        input,
+        start_sec,
+        end_sec,
+        crop_x,
+        crop_y,
+        crop_w,
+        crop_h,
+        scale_width,
+        speed,
+        on_progress,
+    )
+    .await
+}
+
+pub async fn cut_video(
+    input: String,
+    start_sec: f64,
+    end_sec: f64,
+    on_progress: crate::progress::Progress<VideoProgress>,
+) -> Result<String> {
+    edit::cut_video(input, start_sec, end_sec, on_progress).await
+}
+
+pub async fn concat_videos(
+    paths: Vec<String>,
+    on_progress: crate::progress::Progress<VideoProgress>,
+) -> Result<String> {
+    concat::concat_videos(paths, on_progress).await
+}
+
+pub async fn video_to_gif(
+    input: String,
+    start_sec: f64,
+    end_sec: f64,
+    crop_x: Option<i32>,
+    crop_y: Option<i32>,
+    crop_w: Option<i32>,
+    crop_h: Option<i32>,
+    scale_width: Option<i32>,
+    speed: Option<f64>,
+    on_progress: crate::progress::Progress<VideoProgress>,
+) -> Result<String> {
+    gif::video_to_gif(
+        input,
+        start_sec,
+        end_sec,
+        crop_x,
+        crop_y,
+        crop_w,
+        crop_h,
+        scale_width,
+        speed,
+        on_progress,
+    )
+    .await
+}
