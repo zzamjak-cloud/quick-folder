@@ -83,7 +83,7 @@ fn is_same_volume(a: &std::path::Path, b: &std::path::Path) -> bool {
 }
 
 fn send_queue_progress(
-    channel: &tauri::ipc::Channel<TransferQueueProgress>,
+    channel: &crate::modules::progress::Progress<TransferQueueProgress>,
     phase: &str,
     operation: &str,
     done: u64,
@@ -97,7 +97,7 @@ fn send_queue_progress(
     } else {
         0.0
     };
-    let _ = channel.send(TransferQueueProgress {
+    channel.send(TransferQueueProgress {
         phase: phase.to_string(),
         operation: operation.to_string(),
         done_files: done,
@@ -172,7 +172,7 @@ fn execute_transfer_steps(
     plan: &TransferPlan,
     operation: &str,
     app_cache: Option<&std::path::Path>,
-    channel: &tauri::ipc::Channel<TransferQueueProgress>,
+    channel: &crate::modules::progress::Progress<TransferQueueProgress>,
 ) -> Result<()> {
     let steps = &plan.steps;
     let total = steps.len() as u64;
@@ -285,7 +285,7 @@ pub(super) fn run_transfer_with_queue(
     dest: &std::path::Path,
     overwrite: bool,
     app_cache: Option<&std::path::Path>,
-    channel: &tauri::ipc::Channel<TransferQueueProgress>,
+    channel: &crate::modules::progress::Progress<TransferQueueProgress>,
 ) -> Result<()> {
     send_queue_progress(channel, "scanning", operation, 0, 0, "", None, None);
 
@@ -318,7 +318,7 @@ fn copy_dir_recursive_with_progress(
     dest: &std::path::Path,
     total_files: u64,
     done: &mut u64,
-    on_progress: &tauri::ipc::Channel<CopyProgress>,
+    on_progress: &crate::modules::progress::Progress<CopyProgress>,
 ) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)?.flatten() {
@@ -344,7 +344,7 @@ fn copy_dir_recursive_with_progress(
             } else {
                 100.0
             };
-            let _ = on_progress.send(CopyProgress {
+            on_progress.send(CopyProgress {
                 percent: pct.min(100.0),
                 done_files: *done,
                 total_files,
@@ -360,7 +360,7 @@ pub(super) fn run_copy_with_progress(
     dest_path: std::path::PathBuf,
     overwrite: bool,
     app_cache: std::path::PathBuf,
-    on_progress: tauri::ipc::Channel<CopyProgress>,
+    on_progress: crate::modules::progress::Progress<CopyProgress>,
 ) -> Result<()> {
     let jobs = collect_copy_jobs(&sources, &dest_path, overwrite, Some(&app_cache))?;
     let mut total_files = 0u64;
@@ -368,7 +368,7 @@ pub(super) fn run_copy_with_progress(
         total_files += count_files_to_copy(src)?;
     }
 
-    let _ = on_progress.send(CopyProgress {
+    on_progress.send(CopyProgress {
         percent: 0.0,
         done_files: 0,
         total_files,
@@ -400,7 +400,7 @@ pub(super) fn run_copy_with_progress(
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let _ = on_progress.send(CopyProgress {
+            on_progress.send(CopyProgress {
                 percent: pct.min(100.0),
                 done_files: done,
                 total_files,
@@ -409,7 +409,7 @@ pub(super) fn run_copy_with_progress(
         }
     }
 
-    let _ = on_progress.send(CopyProgress {
+    on_progress.send(CopyProgress {
         percent: 100.0,
         done_files: done,
         total_files,

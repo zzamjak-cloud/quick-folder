@@ -265,7 +265,7 @@ pub async fn copy_items_with_progress(
     let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
         .cache_dir()
         .to_path_buf();
-    let on_progress = on_progress.clone();
+    let on_progress = crate::modules::progress::channel_sink(on_progress);
 
     tokio::task::spawn_blocking(move || {
         progress::run_copy_with_progress(sources, dest_path, overwrite, app_cache, on_progress)
@@ -289,7 +289,7 @@ pub async fn transfer_items_with_progress(
     let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
         .cache_dir()
         .to_path_buf();
-    let on_progress = on_progress.clone();
+    let on_progress = crate::modules::progress::channel_sink(on_progress);
     let op = operation.clone();
 
     tokio::task::spawn_blocking(move || {

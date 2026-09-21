@@ -124,7 +124,7 @@ fn run_encode_attempt(
     output_path: &std::path::Path,
     hwaccel_args: &[String],
     video_args: &[String],
-    on_progress: &tauri::ipc::Channel<VideoProgress>,
+    on_progress: &crate::modules::progress::Progress<VideoProgress>,
 ) -> std::result::Result<(), String> {
     let mut cmd = std::process::Command::new(ffmpeg_path);
     cmd.arg("-y");
@@ -160,7 +160,7 @@ fn run_encode_attempt(
                 if let Some(val) = line.strip_prefix("out_time_ms=") {
                     if let Ok(us) = val.parse::<i64>() {
                         let secs = us as f32 / 1_000_000.0;
-                        let _ = on_progress_clone.send(VideoProgress {
+                        on_progress_clone.send(VideoProgress {
                             percent: secs,
                             speed: String::new(),
                             fps: 0.0,
@@ -168,7 +168,7 @@ fn run_encode_attempt(
                     }
                 } else if let Some(val) = line.strip_prefix("speed=") {
                     let speed_str = val.trim().to_string();
-                    let _ = on_progress_clone.send(VideoProgress {
+                    on_progress_clone.send(VideoProgress {
                         percent: -2.0, // 스피드만 업데이트 신호
                         speed: speed_str,
                         fps: 0.0,
@@ -223,7 +223,7 @@ pub async fn compress_video(
     input: String,
     quality: String,
     scale_percent: Option<u32>,
-    on_progress: tauri::ipc::Channel<VideoProgress>,
+    on_progress: crate::modules::progress::Progress<VideoProgress>,
 ) -> Result<String> {
     // 출력 파일명: {이름}_comp.{확장자}, 충돌 시 _comp_2, _comp_3 ...
     let input_path = std::path::Path::new(&input);

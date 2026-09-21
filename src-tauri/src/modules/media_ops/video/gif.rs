@@ -14,7 +14,7 @@ pub async fn video_to_gif(
     crop_h: Option<i32>,
     scale_width: Option<i32>,
     speed: Option<f64>,
-    on_progress: tauri::ipc::Channel<VideoProgress>,
+    on_progress: crate::modules::progress::Progress<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
     let stem = input_path
@@ -152,7 +152,7 @@ pub async fn video_to_gif(
                     if let Ok(us) = val.parse::<i64>() {
                         let secs = us as f32 / 1_000_000.0;
                         let percent = (secs / duration * 100.0).min(100.0);
-                        let _ = on_progress_clone.send(VideoProgress {
+                        on_progress_clone.send(VideoProgress {
                             percent,
                             speed: String::new(),
                             fps: 0.0,

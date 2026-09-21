@@ -7,7 +7,7 @@ use crate::modules::tool_ops::find_ffmpeg_path;
 // --- 동영상 이어붙이기 (concat) ---
 pub async fn concat_videos(
     paths: Vec<String>,
-    on_progress: tauri::ipc::Channel<VideoProgress>,
+    on_progress: crate::modules::progress::Progress<VideoProgress>,
 ) -> Result<String> {
     if paths.is_empty() {
         return Err(AppError::InvalidInput(
@@ -109,7 +109,7 @@ fn run_concat_attempt(
     ffmpeg_path: &std::path::Path,
     args: &[String],
     output_path: &std::path::Path,
-    on_progress: &tauri::ipc::Channel<VideoProgress>,
+    on_progress: &crate::modules::progress::Progress<VideoProgress>,
 ) -> std::result::Result<(), String> {
     let mut cmd = std::process::Command::new(ffmpeg_path);
     cmd.args(args);
@@ -138,14 +138,14 @@ fn run_concat_attempt(
                 if let Some(val) = line.strip_prefix("out_time_ms=") {
                     if let Ok(us) = val.parse::<i64>() {
                         let secs = us as f32 / 1_000_000.0;
-                        let _ = on_progress_clone.send(VideoProgress {
+                        on_progress_clone.send(VideoProgress {
                             percent: secs, // 프론트엔드에서 총 길이 대비 계산
                             speed: String::new(),
                             fps: 0.0,
                         });
                     }
                 } else if let Some(val) = line.strip_prefix("speed=") {
-                    let _ = on_progress_clone.send(VideoProgress {
+                    on_progress_clone.send(VideoProgress {
                         percent: -2.0,
                         speed: val.trim().to_string(),
                         fps: 0.0,

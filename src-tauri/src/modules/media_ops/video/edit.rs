@@ -209,7 +209,7 @@ pub async fn trim_video(
     crop_h: Option<i32>,
     scale_width: Option<i32>,
     speed: Option<f64>,
-    on_progress: tauri::ipc::Channel<VideoProgress>,
+    on_progress: crate::modules::progress::Progress<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
     let stem = input_path
@@ -277,7 +277,7 @@ fn run_edit_encode_attempt(
     args: &[String],
     duration: f32,
     output_path: &std::path::Path,
-    on_progress: &tauri::ipc::Channel<VideoProgress>,
+    on_progress: &crate::modules::progress::Progress<VideoProgress>,
 ) -> std::result::Result<(), String> {
     let mut cmd = std::process::Command::new(ffmpeg_path);
     cmd.args(args);
@@ -309,13 +309,11 @@ fn run_edit_encode_attempt(
                         // 퍼센트: 현재 위치 / 구간 길이
                         let percent = (secs / duration * 100.0).min(100.0);
                         if progress_state.should_emit(percent)
-                            && on_progress_clone
-                                .send(VideoProgress {
-                                    percent,
-                                    speed: String::new(),
-                                    fps: 0.0,
-                                })
-                                .is_err()
+                            && !on_progress_clone.send(VideoProgress {
+                                percent,
+                                speed: String::new(),
+                                fps: 0.0,
+                            })
                         {
                             break;
                         }
@@ -574,7 +572,7 @@ pub async fn cut_video(
     input: String,
     start_sec: f64,
     end_sec: f64,
-    on_progress: tauri::ipc::Channel<VideoProgress>,
+    on_progress: crate::modules::progress::Progress<VideoProgress>,
 ) -> Result<String> {
     let input_path = std::path::Path::new(&input);
     let stem = input_path
@@ -614,7 +612,7 @@ pub async fn cut_video(
     // 진행률 전송 헬퍼: 각 단계(앞/뒤 추출, 합치기)를 33% 씩 배분
     let send_progress = |step: u32, sub_percent: f32| {
         let base = step as f32 * 33.0;
-        let _ = on_progress.send(VideoProgress {
+        on_progress.send(VideoProgress {
             percent: (base + sub_percent * 33.0).min(99.0),
             speed: String::new(),
             fps: 0.0,
@@ -721,7 +719,7 @@ pub async fn cut_video(
         ));
     }
 
-    let _ = on_progress.send(VideoProgress {
+    on_progress.send(VideoProgress {
         percent: 100.0,
         speed: String::new(),
         fps: 0.0,
