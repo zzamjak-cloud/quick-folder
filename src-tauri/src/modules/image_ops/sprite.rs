@@ -11,7 +11,7 @@ pub async fn sprite_sheet_preview(
     cols: u32,
     rows: u32,
 ) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         use image::imageops;
 
         let canvas = create_sprite_canvas(&images, cell_width, cell_height, cols, rows)?;
@@ -48,7 +48,7 @@ pub async fn save_sprite_sheet(
     rows: u32,
     output: String,
 ) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let canvas = create_sprite_canvas(&images, cell_width, cell_height, cols, rows)?;
 
         // 출력 경로 결정: 중복 시 _sheet_2.png, _sheet_3.png ... 순서
@@ -81,7 +81,7 @@ pub async fn split_sprite_sheet(
     output_dir: String,
     base_name: String,
 ) -> Result<Vec<String>> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&input)?;
         let (width, height) = (img.width(), img.height());
         let cell_w = width / cols;

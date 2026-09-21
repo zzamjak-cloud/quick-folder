@@ -428,7 +428,7 @@ fn download_ffmpeg_inner() -> Result<()> {
 /// FFmpeg 다운로드 설치 (원 배포처에서 사용자 기기로 직접 다운로드)
 #[tauri::command]
 pub async fn download_ffmpeg() -> Result<()> {
-    tauri::async_runtime::spawn_blocking(download_ffmpeg_inner)
+    tokio::task::spawn_blocking(download_ffmpeg_inner)
         .await
         .map_err(|e| AppError::Internal(format!("설치 태스크 실패: {}", e)))?
 }

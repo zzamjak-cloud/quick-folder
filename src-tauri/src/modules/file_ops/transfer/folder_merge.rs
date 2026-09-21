@@ -121,7 +121,7 @@ pub async fn analyze_folder_merge(
     source: String,
     dest_parent: String,
 ) -> Result<FolderMergeAnalysis> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let src_path = std::path::Path::new(&source);
         if !src_path.is_dir() {
             return Err(AppError::InvalidInput("소스가 폴더가 아닙니다".into()));
@@ -225,7 +225,7 @@ pub async fn merge_folders(
     is_move: bool,
 ) -> Result<()> {
     let app_cache = thumbnail_cache_root(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let src_path = std::path::Path::new(&source);
         if !src_path.is_dir() {
             return Err(AppError::InvalidInput("소스가 폴더가 아닙니다".into()));

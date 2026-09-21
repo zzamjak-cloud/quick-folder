@@ -331,7 +331,7 @@ mod tests {
         }
 
         let dest = root.join("out");
-        let result = tauri::async_runtime::block_on(extract_zip(
+        let result = crate::modules::runtime::block_on(extract_zip(
             zip_path.to_string_lossy().to_string(),
             dest.to_string_lossy().to_string(),
         ))
@@ -363,7 +363,7 @@ mod tests {
         std::fs::set_permissions(&src, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let zip_path = root.join("out.zip");
-        tauri::async_runtime::block_on(compress_to_zip(
+        crate::modules::runtime::block_on(compress_to_zip(
             vec![src.to_string_lossy().to_string()],
             zip_path.to_string_lossy().to_string(),
         ))

@@ -93,7 +93,7 @@ pub(super) async fn rename_item_impl(
     new_path: String,
     app_cache: Option<std::path::PathBuf>,
 ) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+    tokio::task::spawn_blocking(move || -> Result<()> {
         if old_path == new_path {
             return Ok(());
         }
@@ -190,7 +190,7 @@ pub(super) async fn delete_items_impl(
     use_trash: bool,
     app_cache: Option<std::path::PathBuf>,
 ) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+    tokio::task::spawn_blocking(move || -> Result<()> {
         if let Some(app_cache) = app_cache {
             invalidate_thumbnail_cache_paths_in_root(&app_cache, &paths);
         }
@@ -308,7 +308,7 @@ pub async fn delete_items_elevated(app: tauri::AppHandle, paths: Vec<String>) ->
 // 휴지통에서 파일 복원 (원래 경로로)
 #[tauri::command]
 pub async fn restore_trash_items(original_paths: Vec<String>) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+    tokio::task::spawn_blocking(move || -> Result<()> {
         for orig_path in &original_paths {
             restore_single_item(orig_path)?;
         }

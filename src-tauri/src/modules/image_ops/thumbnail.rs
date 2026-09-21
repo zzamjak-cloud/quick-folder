@@ -1070,7 +1070,7 @@ pub async fn get_file_thumbnail_path(
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
     let cache_dir = app_cache.join("img_thumbnails");
 
-    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+    tokio::task::spawn_blocking(move || -> Result<Option<String>> {
         let resolved_path =
             materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
@@ -1129,7 +1129,7 @@ pub async fn get_file_thumbnail(
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
     let cache_dir = app_cache.join("img_thumbnails");
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let resolved_path =
             materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
@@ -1209,7 +1209,7 @@ pub async fn get_psd_thumbnail(
         .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         match resolve_psd_preview_cache(&app, &app_cache, &path, size)? {
             Some(cache_path) => {
                 let cached = std::fs::read(cache_path)?;
@@ -1239,7 +1239,7 @@ pub async fn prewarm_psd_preview(
         .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         Ok(resolve_psd_preview_cache(&app, &app_cache, &path, size)?.is_some())
     })
     .await
@@ -1260,7 +1260,7 @@ pub async fn get_psd_preview_path(
         .app_cache_dir()
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
 
-    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+    tokio::task::spawn_blocking(move || -> Result<Option<String>> {
         Ok(resolve_psd_preview_cache(&app, &app_cache, &path, size)?
             .map(|p| p.to_string_lossy().to_string()))
     })
@@ -1282,7 +1282,7 @@ pub async fn get_psd_thumbnail_path(
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
     let cache_dir = app_cache.join("psd_thumbnails");
 
-    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+    tokio::task::spawn_blocking(move || -> Result<Option<String>> {
         let resolved_path =
             materialize_archive_path_in_cache(&app, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();

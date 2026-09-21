@@ -5,7 +5,7 @@ use crate::modules::error::{AppError, Result};
 /// PNG → ICO 변환 (16, 32, 48, 256px 멀티 사이즈)
 #[tauri::command]
 pub async fn convert_to_ico(path: String) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&path)?;
         let sizes = [16u32, 32, 48, 256];
         let out_path = {
@@ -36,7 +36,7 @@ pub async fn convert_to_ico(path: String) -> Result<String> {
 /// PNG → ICNS 변환 (간단한 ICNS 포맷 — 256px ic08, 512px ic09)
 #[tauri::command]
 pub async fn convert_to_icns(path: String) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&path)?;
         let out_path = {
             let p = std::path::Path::new(&path);

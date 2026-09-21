@@ -223,7 +223,7 @@ fn install_fonttools_inner() -> Result<()> {
 
 /// fonttools 사용 가능 여부 (sidecar 내장 Python 우선, 이후 시스템 Python)
 pub async fn check_fonttools() -> Result<bool> {
-    let ok = tauri::async_runtime::spawn_blocking(|| python_for_font_merge().is_some())
+    let ok = tokio::task::spawn_blocking(|| python_for_font_merge().is_some())
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ok)
@@ -231,7 +231,7 @@ pub async fn check_fonttools() -> Result<bool> {
 
 /// 내장 런타임 + pip로 fonttools 확보
 pub async fn download_fonttools() -> Result<()> {
-    tauri::async_runtime::spawn_blocking(install_fonttools_inner)
+    tokio::task::spawn_blocking(install_fonttools_inner)
         .await
         .map_err(|e| AppError::Internal(format!("fonttools 다운로드 실패: {e}")))?
 }

@@ -24,7 +24,7 @@ pub async fn list_directory<R: tauri::Runtime>(
     path: String,
 ) -> Result<Vec<FileEntry>> {
     // spawn_blocking: 네트워크 파일시스템(Google Drive 등) I/O가 tokio 워커를 차단하지 않도록 분리
-    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<FileEntry>> {
         if resolve_archive_virtual_path_with_app(&app, &path)?.is_some() {
             return list_archive_directory(&app, &path);
         }
@@ -173,7 +173,7 @@ struct FolderSizeAccumulator {
 // 폴더 내부 파일 크기 합계를 계산한다.
 #[tauri::command]
 pub async fn calculate_folder_size(path: String) -> Result<FolderSizeInfo> {
-    tauri::async_runtime::spawn_blocking(move || calculate_folder_size_impl(&path))
+    tokio::task::spawn_blocking(move || calculate_folder_size_impl(&path))
         .await
         .map_err(|e| AppError::Internal(format!("폴더 용량 계산 작업 실패: {}", e)))?
 }

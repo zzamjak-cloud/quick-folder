@@ -125,7 +125,7 @@ pub async fn extract_archive(
     }
 
     let dest_clone = dest_dir.clone();
-    tauri::async_runtime::spawn_blocking(move || -> Result<crate::modules::file_ops::ExtractResult> {
+    tokio::task::spawn_blocking(move || -> Result<crate::modules::file_ops::ExtractResult> {
         let archive = Path::new(&archive_path);
         let dest = Path::new(&dest_clone);
         std::fs::create_dir_all(dest)?;

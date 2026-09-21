@@ -393,7 +393,7 @@ mod tests {
         assert!(packed.success(), "7z 생성 실패");
 
         let dest = test_dir.join("out");
-        let result = tauri::async_runtime::block_on(extract_archive(
+        let result = crate::modules::runtime::block_on(extract_archive(
             archive.to_string_lossy().to_string(),
             dest.to_string_lossy().to_string(),
         ))

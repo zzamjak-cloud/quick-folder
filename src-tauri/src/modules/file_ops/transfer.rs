@@ -263,7 +263,7 @@ pub async fn copy_items_with_progress(
     let app_cache = thumbnail_cache_root(&app)?;
     let on_progress = on_progress.clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         progress::run_copy_with_progress(sources, dest_path, overwrite, app_cache, on_progress)
     })
     .await
@@ -286,7 +286,7 @@ pub async fn transfer_items_with_progress(
     let on_progress = on_progress.clone();
     let op = operation.clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         progress::run_transfer_with_queue(
             &op,
             &sources,

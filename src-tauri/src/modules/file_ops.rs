@@ -73,7 +73,7 @@ mod tests {
         let test_dir = setup_test_dir("create_directory");
         let new_dir = test_dir.join("new_folder");
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result = create_directory(new_dir.to_string_lossy().to_string()).await;
             assert!(result.is_ok());
             assert!(new_dir.exists());
@@ -88,7 +88,7 @@ mod tests {
         let test_dir = setup_test_dir("create_text_file");
         let file_path = test_dir.join("new_file.txt");
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 새 파일 생성
             let result = create_text_file(file_path.to_string_lossy().to_string()).await;
             assert!(result.is_ok());
@@ -113,7 +113,7 @@ mod tests {
         let upper = test_dir.join("Vehicles");
         fs::write(&lower, "test").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result = rename_item_impl(
                 lower.to_string_lossy().to_string(),
                 upper.to_string_lossy().to_string(),
@@ -160,7 +160,7 @@ mod tests {
         let file_path = test_dir.join("output.txt");
         let content = "Test content\nLine 2\n한글 테스트";
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result =
                 write_text_file(file_path.to_string_lossy().to_string(), content.to_string()).await;
             assert!(result.is_ok());
@@ -179,7 +179,7 @@ mod tests {
         let new_path = test_dir.join("new.txt");
         fs::write(&old_path, "test").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 정상 이름 변경
             let result = rename_item_impl(
                 old_path.to_string_lossy().to_string(),
@@ -238,7 +238,7 @@ mod tests {
         let file1 = test_dir.join("original.txt");
         fs::write(&file1, "content").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 복제
             let result = duplicate_items(vec![file1.to_string_lossy().to_string()]).await;
             assert!(result.is_ok());
@@ -272,7 +272,7 @@ mod tests {
         let file1 = src.join("file1.txt");
         fs::write(&file1, "content1").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 복사
             let result = copy_items_impl(
                 vec![file1.to_string_lossy().to_string()],
@@ -299,7 +299,7 @@ mod tests {
         let file1 = src.join("file1.txt");
         fs::write(&file1, "content1").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 이동
             let result = move_items_impl(
                 vec![file1.to_string_lossy().to_string()],
@@ -328,7 +328,7 @@ mod tests {
         fs::write(&file1, "content1").unwrap();
         fs::write(dest.join("file1.txt"), "existing").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result = check_duplicate_items(
                 vec![file1.to_string_lossy().to_string()],
                 dest.to_string_lossy().to_string(),
@@ -356,7 +356,7 @@ mod tests {
         fs::write(dest_folder.join("only_dest.txt"), "from dest").unwrap();
         fs::write(dest_folder.join("conflict.txt"), "dest version").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let analysis = analyze_folder_merge(
                 src_folder.to_string_lossy().to_string(),
                 test_dir.join("dest").to_string_lossy().to_string(),
@@ -411,7 +411,7 @@ mod tests {
         fs::write(src_dir.join("file1.txt"), "content1").unwrap();
         fs::write(src_dir.join("subdir/file2.txt"), "content2").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 압축
             let result = compress_to_zip(
                 vec![src_dir.to_string_lossy().to_string()],
@@ -464,7 +464,7 @@ mod tests {
             zip.finish().unwrap();
         }
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result = extract_zip(
                 zip_path.to_string_lossy().to_string(),
                 extract_dir.to_string_lossy().to_string(),
@@ -501,7 +501,7 @@ mod tests {
             zip.finish().unwrap();
         }
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result = extract_zip(
                 zip_path.to_string_lossy().to_string(),
                 extract_dir.to_string_lossy().to_string(),
@@ -547,7 +547,7 @@ mod tests {
             zip.finish().unwrap();
         }
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             let result = extract_zip(
                 zip_path.to_string_lossy().to_string(),
                 extract_dir.to_string_lossy().to_string(),
@@ -586,7 +586,7 @@ mod tests {
         fs::write(test_dir.join("root.txt"), b"12345").unwrap();
         fs::write(nested_dir.join("child.bin"), b"1234567").unwrap();
 
-        let info = tauri::async_runtime::block_on(calculate_folder_size(
+        let info = crate::modules::runtime::block_on(calculate_folder_size(
             test_dir.to_string_lossy().to_string(),
         ))
         .unwrap();
@@ -611,7 +611,7 @@ mod tests {
         fs::write(assets_dir.join("image.png"), vec![0u8; 6]).unwrap();
         fs::write(test_dir.join("root.log"), vec![0u8; 12]).unwrap();
 
-        let info = tauri::async_runtime::block_on(calculate_folder_size(
+        let info = crate::modules::runtime::block_on(calculate_folder_size(
             test_dir.to_string_lossy().to_string(),
         ))
         .unwrap();
@@ -638,7 +638,7 @@ mod tests {
         let file_path = test_dir.join("file.txt");
         fs::write(&file_path, b"content").unwrap();
 
-        let result = tauri::async_runtime::block_on(calculate_folder_size(
+        let result = crate::modules::runtime::block_on(calculate_folder_size(
             file_path.to_string_lossy().to_string(),
         ));
         assert!(matches!(result, Err(AppError::InvalidInput(_))));
@@ -652,7 +652,7 @@ mod tests {
         let file1 = test_dir.join("file1.txt");
         fs::write(&file1, "content").unwrap();
 
-        tauri::async_runtime::block_on(async {
+        crate::modules::runtime::block_on(async {
             // 직접 삭제 (use_trash = false)
             let result =
                 delete_items_impl(vec![file1.to_string_lossy().to_string()], false, None).await;

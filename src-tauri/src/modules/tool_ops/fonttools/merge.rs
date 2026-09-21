@@ -6,7 +6,7 @@ pub async fn merge_fonts(
     merge_path: String,
     output_path: String,
 ) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         // Python fonttools를 사용한 폰트 병합
         // A 폰트를 베이스로, B 폰트에서 A에 없는 글리프만 복사
         let script = r#"

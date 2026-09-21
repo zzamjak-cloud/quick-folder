@@ -14,7 +14,7 @@ pub struct ImageCompressPreview {
 
 #[tauri::command]
 pub async fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&path)?;
 
         // 크롭 영역이 이미지 범위 내인지 검증
@@ -53,7 +53,7 @@ pub async fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -
 
 #[tauri::command]
 pub async fn save_annotated_image(original_path: String, image_data: String) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         // data URL에서 base64 부분 추출
         let base64_data = image_data
             .strip_prefix("data:image/png;base64,")
@@ -137,7 +137,7 @@ fn encode_compressed_image(
 
 #[tauri::command]
 pub async fn compress_image_preview(path: String, quality: String) -> Result<ImageCompressPreview> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         use base64::Engine;
 
         let (bytes, mime, _) = encode_compressed_image(&path, &quality)?;
@@ -154,7 +154,7 @@ pub async fn compress_image_preview(path: String, quality: String) -> Result<Ima
 
 #[tauri::command]
 pub async fn compress_image(path: String, quality: String) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let input_path = std::path::Path::new(&path);
         let parent = input_path.parent().unwrap_or(std::path::Path::new("."));
         let stem = input_path
@@ -176,7 +176,7 @@ pub async fn compress_image(path: String, quality: String) -> Result<String> {
 
 #[tauri::command]
 pub async fn resize_image(path: String, width: u32, height: u32) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         if width == 0 || height == 0 {
             return Err(AppError::InvalidInput(
                 "너비/높이는 1px 이상이어야 합니다.".to_string(),

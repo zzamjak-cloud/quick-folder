@@ -309,7 +309,7 @@ fn compress_pdf_inner(input: &str) -> Result<String> {
 /// PDF 압축 Tauri 명령. blocking 작업을 별도 스레드로 위임한다.
 #[tauri::command]
 pub async fn compress_pdf(input: String) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || compress_pdf_inner(&input))
+    tokio::task::spawn_blocking(move || compress_pdf_inner(&input))
         .await
         .map_err(|e| AppError::Internal(format!("PDF 압축 실패: {}", e)))?
 }

@@ -18,7 +18,7 @@ use crate::helpers::is_system_file;
 // spawn_blocking으로 네트워크 파일시스템 차단 방지
 #[tauri::command]
 pub async fn get_recent_files(roots: Vec<String>, days: u32) -> Result<Vec<FileEntry>, String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
         let now = std::time::SystemTime::now();
         let cutoff = std::time::Duration::from_secs(days as u64 * 24 * 60 * 60);
         let mut results: Vec<FileEntry> = Vec::new();
@@ -111,7 +111,7 @@ pub async fn search_files(
     query: String,
     max_results: usize,
 ) -> Result<Vec<FileEntry>, String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<FileEntry>, String> {
         // macOS: mdfind (Spotlight 인덱스) 먼저 시도
         #[cfg(target_os = "macos")]
         {
@@ -400,7 +400,7 @@ pub struct DuplicateGroup {
 // 1단계: 크기로 후보 축소 → 2단계: xxh3 해시로 동일 내용 확인
 #[tauri::command]
 pub async fn find_duplicate_files(root: String) -> Result<Vec<DuplicateGroup>, String> {
-    tauri::async_runtime::spawn_blocking(move || find_duplicates_blocking(&root))
+    tokio::task::spawn_blocking(move || find_duplicates_blocking(&root))
         .await
         .map_err(|e| format!("중복 파일 탐색 태스크 실패: {}", e))?
 }

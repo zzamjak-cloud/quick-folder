@@ -96,7 +96,7 @@ pub async fn materialize_archive_paths(
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<String>> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<String>> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
         use tauri::Manager;
 
         let batch_root = app

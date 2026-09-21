@@ -38,7 +38,7 @@ pub async fn get_video_thumbnail(
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
     let cache_dir = app_cache.join("video_thumbnails");
 
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let resolved_path = materialize_archive_path_in_cache(&app, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
@@ -83,7 +83,7 @@ pub async fn get_video_thumbnail_path(
         .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
     let cache_dir = app_cache.join("video_thumbnails");
 
-    tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>> {
+    tokio::task::spawn_blocking(move || -> Result<Option<String>> {
         let resolved_path = materialize_archive_path_in_cache(&app, &path)?
             .unwrap_or_else(|| std::path::PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
@@ -136,7 +136,7 @@ pub async fn ensure_thumbnails_batch(
             let app = app.clone();
             let task_path = item.path.clone();
             let task_ft = item.file_type.clone();
-            let handle = tauri::async_runtime::spawn(async move {
+            let handle = tokio::task::spawn(async move {
                 match task_ft.as_str() {
                     "image" => {
                         crate::modules::image_ops::get_file_thumbnail_path(app, task_path, size)
@@ -630,7 +630,7 @@ fn get_native_video_thumbnail(_path: &str, _size: u32) -> Result<Option<Vec<u8>>
 // spawn_blocking: 파일당 수백 회 syscall이 발생할 수 있어 IPC(메인)/워커 스레드 차단 방지
 #[tauri::command]
 pub async fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || invalidate_thumbnail_cache_paths(&app, &paths))
+    tokio::task::spawn_blocking(move || invalidate_thumbnail_cache_paths(&app, &paths))
         .await
         .map_err(|e| AppError::Internal(format!("썸네일 캐시 무효화 실패: {}", e)))?
 }

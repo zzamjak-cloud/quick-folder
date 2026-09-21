@@ -138,7 +138,7 @@ pub async fn pixelate_preview(
     scale: u32,
     max_colors: u32,
 ) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         // 원본 이미지 열기
         let img = image::open(&input)?;
 
@@ -175,7 +175,7 @@ pub async fn pixelate_image(
     scale: u32,
     max_colors: u32,
 ) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         // 원본 해상도로 이미지 열기
         let img = image::open(&input)?;
 

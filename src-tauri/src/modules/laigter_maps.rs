@@ -301,7 +301,7 @@ pub async fn laigter_maps_preview(
     max_side: Option<u32>,
 ) -> Result<LaigterMapsPreviewResponse> {
     let max_side = max_side.unwrap_or(512).clamp(64, 1024);
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&input)?;
         let rgba = resize_max_side(&img, max_side);
         let (normal, parallax, specular, occlusion) = generate_maps_from_rgba(&rgba, &params)?;
@@ -327,7 +327,7 @@ pub async fn laigter_maps_export(
     params: LaigterParams,
     options: LaigterExportOptions,
 ) -> Result<Vec<String>> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&input)?;
         let rgba = img.to_rgba8();
         let (normal, parallax, specular, occlusion) = generate_maps_from_rgba(&rgba, &params)?;

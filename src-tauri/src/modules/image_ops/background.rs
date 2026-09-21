@@ -163,7 +163,7 @@ pub async fn remove_white_bg_preview(
     feather: u8,
     seeds: Vec<[u32; 2]>,
 ) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let img = image::open(&input)?;
 
         // 미리보기용: 긴 변이 600px 초과 시 축소
@@ -213,7 +213,7 @@ pub async fn remove_white_bg_save(
     seeds: Vec<[u32; 2]>,
     trim: bool,
 ) -> Result<Vec<String>> {
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let mut outputs = Vec::new();
         for input in &inputs {
             let img = image::open(input).map_err(|e| {

@@ -37,7 +37,7 @@ fn last_ffmpeg_error(stderr: &str, fallback: &str) -> String {
 // reduce_size: true이면 해상도 50% 축소
 #[tauri::command]
 pub async fn compress_gif(path: String, quality: String, reduce_size: bool) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<String> {
+    tokio::task::spawn_blocking(move || -> Result<String> {
         let input_path = std::path::Path::new(&path);
         let parent = input_path.parent().ok_or_else(|| AppError::InvalidInput("부모 디렉토리 없음".to_string()))?;
         let stem = input_path.file_stem()
@@ -96,7 +96,7 @@ pub async fn compress_gif(path: String, quality: String, reduce_size: bool) -> R
 // GIF를 MP4로 변환
 #[tauri::command]
 pub async fn gif_to_mp4(path: String) -> Result<String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<String> {
+    tokio::task::spawn_blocking(move || -> Result<String> {
         let input_path = std::path::Path::new(&path);
         let parent = input_path
             .parent()
