@@ -26,6 +26,7 @@
 | 스마트 폴더 병합 | `wiki/operations/folder-merge.md` |
 | 썸네일·미리보기 버그 | `wiki/preview/thumbnails.md` |
 | Rust 명령 추가 | `wiki/rust/overview.md` → `wiki/rust/commands.md` |
+| AI 에이전트 연동(MCP)·배치 CLI | `wiki/mcp/overview.md` |
 | 빌드·릴리스 | `wiki/infra/release.md` |
 | 앱이 흰 화면으로 뜸 | `wiki/infra/white-screen-recovery.md` |
 | 전체 인덱스 | `wiki/README.md` |

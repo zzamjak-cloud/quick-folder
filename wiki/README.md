@@ -209,6 +209,7 @@ AI 탐색용 위키 인덱스. 작업 전 해당 파일을 먼저 읽으면 소�
 
 | 역할 | 경로 |
 |------|------|
+| MCP 서버·배치 CLI | `wiki/mcp/overview.md` → `crates/quickfolder-mcp`, `crates/quickfolder-cli` |
 | Rust 명령 등록 | `src-tauri/src/lib.rs` (래퍼는 `src-tauri/src/modules/commands.rs`) |
 | Rust 공통 헬퍼 | `crates/quickfolder-core/src/helpers.rs` |
 | 파일 CRUD facade | `crates/quickfolder-core/src/file_ops.rs` → `file_ops/{listing,mutation,archive,cache,transfer}/` |
