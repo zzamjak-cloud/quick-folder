@@ -51,6 +51,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri/binaries/ffmpeg-dist | Out-Null
           New-Item -ItemType File -Force -Path src-tauri/binaries/python-fonttools-placeholder | Out-Null
+          New-Item -ItemType File -Force -Path src-tauri/binaries/qf-mcp-placeholder | Out-Null
           New-Item -ItemType File -Force -Path src-tauri/binaries/ffmpeg-dist/placeholder | Out-Null
 
       - name: install frontend dependencies
@@ -94,6 +95,7 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries/ffmpeg-dist
           touch src-tauri/binaries/python-fonttools-placeholder
+          touch src-tauri/binaries/qf-mcp-placeholder
           touch src-tauri/binaries/ffmpeg-dist/placeholder
 
       - name: install frontend dependencies

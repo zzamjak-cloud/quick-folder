@@ -68,6 +68,31 @@ enum Command {
     },
     /// 환경 진단 (캐시 경로, 동시성, ffmpeg)
     Info,
+    /// MCP 서버를 AI 클라이언트에 등록·해제한다 (앱 설정 팝업과 같은 로직)
+    Mcp {
+        #[command(subcommand)]
+        action: McpCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum McpCommand {
+    /// 클라이언트별 등록 상태 조회 (읽기 전용)
+    Status,
+    /// 등록. 허용 폴더를 하나 이상 지정해야 한다.
+    Install {
+        /// claude-code | claude-desktop | cursor | gemini-cli | codex-cli
+        #[arg(long)]
+        client: String,
+        /// 에이전트가 접근할 수 있는 폴더 (반복 지정 가능)
+        #[arg(long = "root", required = true)]
+        roots: Vec<PathBuf>,
+    },
+    /// 등록 해제
+    Uninstall {
+        #[arg(long)]
+        client: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -255,6 +280,7 @@ fn main() -> ExitCode {
             print_query_result(result)
         }
         Command::Info => print_info(jobs, cli.json),
+        Command::Mcp { action } => run_mcp(action, cli.json),
     }
 }
 
@@ -331,6 +357,71 @@ fn print_query_result<T: serde::Serialize>(result: Result<T, String>) -> ExitCod
             eprintln!("{}", e);
             ExitCode::FAILURE
         }
+    }
+}
+
+fn run_mcp(action: McpCommand, json: bool) -> ExitCode {
+    use quickfolder_core::mcp_setup;
+
+    let server = mcp_setup::find_qf_mcp_path();
+    match action {
+        McpCommand::Status => {
+            let reference = server.clone().unwrap_or_default();
+            let statuses = mcp_setup::client_statuses(&reference);
+            if json {
+                let payload = serde_json::json!({
+                    "server_path": server.as_ref().map(|p| p.display().to_string()),
+                    "clients": statuses,
+                });
+                println!("{}", serde_json::to_string_pretty(&payload).unwrap());
+            } else {
+                match &server {
+                    Some(p) => println!("MCP 서버 : {}", p.display()),
+                    None => println!("MCP 서버 : 찾을 수 없음"),
+                }
+                println!();
+                for s in &statuses {
+                    let mark = match s.state {
+                        mcp_setup::RegistrationState::Registered => "등록됨",
+                        mcp_setup::RegistrationState::Outdated => "경로 불일치",
+                        mcp_setup::RegistrationState::NotRegistered => "미등록",
+                    };
+                    let exists = if s.config_exists { "" } else { " (설정 파일 없음)" };
+                    println!("{:<16} {:<10} {}{}", s.label, mark, s.config_path, exists);
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        McpCommand::Install { client, roots } => {
+            let Some(command) = server else {
+                eprintln!("qf-mcp 실행 파일을 찾을 수 없습니다.");
+                return ExitCode::FAILURE;
+            };
+            match mcp_setup::register(&client, &command, &roots) {
+                Ok(outcome) => {
+                    println!("등록 완료: {}", outcome.config_path);
+                    if let Some(backup) = outcome.backup_path {
+                        println!("백업      : {}", backup);
+                    }
+                    println!("적용하려면 해당 클라이언트를 재시작하세요.");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        McpCommand::Uninstall { client } => match mcp_setup::unregister(&client) {
+            Ok(outcome) => {
+                println!("해제 완료: {}", outcome.config_path);
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                ExitCode::FAILURE
+            }
+        },
     }
 }
 

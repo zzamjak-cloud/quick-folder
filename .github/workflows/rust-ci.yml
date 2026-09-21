@@ -60,6 +60,7 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries/ffmpeg-dist
           touch src-tauri/binaries/python-fonttools-placeholder
+          touch src-tauri/binaries/qf-mcp-placeholder
           touch src-tauri/binaries/ffmpeg-dist/placeholder
 
       # command 래퍼 계층이 코어 시그니처와 맞는지 확인한다

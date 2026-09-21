@@ -109,6 +109,10 @@ pub fn run() {
             set_google_drive_offline,
             extract_hwp_text,
             mark_frontend_ready,
+            mcp_setup_status,
+            mcp_register,
+            mcp_unregister,
+            mcp_config_snippet,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -31,7 +31,60 @@ GUI 프로세스 안에서 배치를 돌리면 UI 보호용 동시성 제한을 
 속도 이득은 경로에 따라 다르다. 별도 프로세스의 실질적 가치는 **GUI 없이 동작**하고
 **MCP 서버가 Tauri 툴체인에 묶이지 않는다**는 쪽이 더 크다.
 
-## MCP 서버 설정
+## 앱에서 등록하기 (권장)
+
+설정 메뉴 → **AI 에이전트 연동 (MCP)**. `qf-mcp`는 앱에 번들되므로 별도 빌드·다운로드가 필요 없다.
+
+1. **허용 폴더**를 하나 이상 추가한다. 비어 있으면 등록 버튼이 잠긴다 —
+   이 목록이 곧 `QF_MCP_ROOTS`이고, 에이전트가 건드릴 수 있는 범위의 전부다.
+2. 클라이언트 행의 **등록** 버튼을 누른다.
+3. 해당 AI 클라이언트를 재시작한다.
+
+### 지원 클라이언트
+
+| 클라이언트 | 설정 파일 | 형식 |
+|---|---|---|
+| Claude Code | `~/.claude.json` | JSON `mcpServers` |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (win: `%APPDATA%`) | JSON `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | JSON `mcpServers` |
+| Gemini CLI | `~/.gemini/settings.json` | JSON `mcpServers` |
+| Codex CLI | `~/.codex/config.toml` | TOML `[mcp_servers.x]` |
+
+**미지원**: ChatGPT 데스크톱 앱은 로컬 설정 파일이 없고 원격 MCP(HTTPS URL)를 서버 측에 등록하는
+방식이라 로컬 stdio 바이너리를 파일로 등록할 수 없다.
+
+새 클라이언트 추가는 `crates/quickfolder-core/src/mcp_setup.rs`의 `CLIENTS` 테이블에 한 줄,
+`config_path()`에 경로 한 줄이면 된다.
+
+### 설정 파일을 건드릴 때의 규칙
+
+`mcp_setup.rs`가 지키는 것 (전부 테스트로 고정돼 있다):
+
+- 쓰기 전 `<파일>.qfbak` 으로 **변경 직전 상태**를 백업한다
+- 같은 이름 항목이 있으면 갱신한다 — 중복 생성하지 않는다
+- 우리 항목 외에는 건드리지 않는다. JSON은 키 순서(`serde_json` preserve_order),
+  TOML은 주석과 서식(`toml_edit`)을 보존한다
+- 해제는 `quickfolder` 항목만 제거한다
+
+### 상태 표시
+
+| 표시 | 의미 |
+|---|---|
+| 미등록 | 설정 파일에 `quickfolder` 항목이 없다 |
+| 등록됨 | 항목이 있고 실행 경로가 현재 앱과 일치한다 |
+| 경로 불일치 | 항목은 있으나 경로가 다르다 — 개발 빌드로 등록한 뒤 정식 앱으로 바꾼 경우 등. **갱신** 필요 |
+
+### CLI로도 가능
+
+앱 버튼과 같은 코드를 쓴다.
+
+```bash
+qf mcp status
+qf mcp install --client claude-code --root ~/Pictures --root ~/Downloads
+qf mcp uninstall --client claude-code
+```
+
+## 수동 등록 (직접 쓰고 싶을 때)
 
 ```bash
 cargo build --release -p quickfolder-mcp     # target/release/qf-mcp

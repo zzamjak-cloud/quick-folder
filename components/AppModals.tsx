@@ -15,6 +15,7 @@ import { Button } from './ui/Button';
 import { ThemeSettingsModal } from './ThemeSettingsModal';
 import { ZoomModal } from './ZoomModal';
 import { LanguageSettingsModal } from './LanguageSettingsModal';
+import { McpSettingsModal } from './McpSettingsModal';
 import { UpdateModal } from './UpdateModal';
 import { UpdateFailedModal } from './UpdateFailedModal';
 import { HelpModal } from './HelpModal';
@@ -34,6 +35,8 @@ interface AppModalsProps {
   setIsLanguageModalOpen: Dispatch<SetStateAction<boolean>>;
   isHelpModalOpen: boolean;
   setIsHelpModalOpen: Dispatch<SetStateAction<boolean>>;
+  isMcpModalOpen: boolean;
+  setIsMcpModalOpen: Dispatch<SetStateAction<boolean>>;
   theme: ThemeManagement;
   themeVars: ThemeVars | null;
   language: AppLanguage;
@@ -55,6 +58,8 @@ export function AppModals({
   setIsLanguageModalOpen,
   isHelpModalOpen,
   setIsHelpModalOpen,
+  isMcpModalOpen,
+  setIsMcpModalOpen,
   theme,
   themeVars,
   language,
@@ -68,6 +73,7 @@ export function AppModals({
 }: AppModalsProps) {
   return (
     <>
+      <McpSettingsModal isOpen={isMcpModalOpen} onClose={() => setIsMcpModalOpen(false)} t={t} />
       <ThemeSettingsModal isOpen={isBgModalOpen} onClose={() => setIsBgModalOpen(false)} theme={theme} t={t} />
       <ZoomModal isOpen={isZoomModalOpen} onClose={() => setIsZoomModalOpen(false)} zoomPercent={theme.zoomPercent} setZoomPercent={theme.setZoomPercent} t={t} />
       <LanguageSettingsModal

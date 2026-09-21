@@ -15,6 +15,7 @@ pub mod helpers;
 pub mod hwp_ops;
 pub mod image_ops;
 pub mod laigter_maps;
+pub mod mcp_setup;
 pub mod media_ops;
 pub mod paths;
 pub mod progress;

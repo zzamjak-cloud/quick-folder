@@ -5,6 +5,7 @@ import {
   ZoomIn,
   HelpCircle,
   Languages,
+  Plug,
 } from 'lucide-react';
 import {
   closestCenter,
@@ -156,6 +157,7 @@ export default function App() {
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+  const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
   const [settingsMenu, setSettingsMenu] = useState<{ x: number; y: number } | null>(null);
   const [collapsedSessionMenu, setCollapsedSessionMenu] = useState<{ categoryId: string; x: number; y: number } | null>(null);
 
@@ -877,6 +879,12 @@ export default function App() {
         label: t('settings.language'),
         onClick: () => setIsLanguageModalOpen(true),
       },
+      {
+        id: 'mcp',
+        icon: <Plug size={13} />,
+        label: t('settings.mcp'),
+        onClick: () => setIsMcpModalOpen(true),
+      },
     ],
   }], [t]);
 
@@ -1329,6 +1337,8 @@ export default function App() {
         setIsZoomModalOpen={setIsZoomModalOpen}
         isLanguageModalOpen={isLanguageModalOpen}
         setIsLanguageModalOpen={setIsLanguageModalOpen}
+        isMcpModalOpen={isMcpModalOpen}
+        setIsMcpModalOpen={setIsMcpModalOpen}
         isHelpModalOpen={isHelpModalOpen}
         setIsHelpModalOpen={setIsHelpModalOpen}
         theme={theme}
