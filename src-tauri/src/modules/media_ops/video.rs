@@ -23,7 +23,7 @@ pub async fn compress_video(
     scale_percent: Option<u32>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
     compress::compress_video(input, quality, scale_percent, on_progress).await
 }
 
@@ -40,7 +40,7 @@ pub async fn trim_video(
     speed: Option<f64>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
     edit::trim_video(
         input,
         start_sec,
@@ -63,7 +63,7 @@ pub async fn cut_video(
     end_sec: f64,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
     edit::cut_video(input, start_sec, end_sec, on_progress).await
 }
 
@@ -72,7 +72,7 @@ pub async fn concat_videos(
     paths: Vec<String>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
     concat::concat_videos(paths, on_progress).await
 }
 
@@ -89,7 +89,7 @@ pub async fn video_to_gif(
     speed: Option<f64>,
     on_progress: tauri::ipc::Channel<VideoProgress>,
 ) -> Result<String> {
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
     gif::video_to_gif(
         input,
         start_sec,

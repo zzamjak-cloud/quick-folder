@@ -23,7 +23,7 @@ pub async fn list_directory<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Vec<FileEntry>> {
-    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     // spawn_blocking: 네트워크 파일시스템(Google Drive 등) I/O가 tokio 워커를 차단하지 않도록 분리
     tokio::task::spawn_blocking(move || -> Result<Vec<FileEntry>> {
         if resolve_archive_virtual_path_with_cache(&app_paths, &path)?.is_some() {

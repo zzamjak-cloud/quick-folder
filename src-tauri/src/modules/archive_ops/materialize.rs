@@ -88,7 +88,7 @@ pub async fn materialize_archive_paths(
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<Vec<String>> {
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
         let batch_root = app_paths
             .cache_subdir("archive_drag_batches")

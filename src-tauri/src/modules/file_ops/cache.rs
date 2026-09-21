@@ -53,7 +53,7 @@ pub async fn read_cached_listing<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Option<Vec<FileEntry>>> {
-    let (file, legacy_file) = dir_listing_cache_files(&AppPaths::from_app(&app)?, &path)?;
+    let (file, legacy_file) = dir_listing_cache_files(&crate::modules::tauri_glue::app_paths(&app)?, &path)?;
     tokio::task::spawn_blocking(move || -> Result<Option<Vec<FileEntry>>> {
         if let Some(entries) = read_cached_listing_file(&file, &path)? {
             return Ok(Some(entries));
@@ -83,7 +83,7 @@ pub async fn write_cached_listing<R: tauri::Runtime>(
     path: String,
     entries: Vec<FileEntry>,
 ) -> Result<()> {
-    let (file, _) = dir_listing_cache_files(&AppPaths::from_app(&app)?, &path)?;
+    let (file, _) = dir_listing_cache_files(&crate::modules::tauri_glue::app_paths(&app)?, &path)?;
     tokio::task::spawn_blocking(move || -> Result<()> {
         let cached = CachedListing { path, entries };
         if let Ok(data) = serde_json::to_vec(&cached) {

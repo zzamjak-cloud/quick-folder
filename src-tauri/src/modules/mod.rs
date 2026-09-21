@@ -1,18 +1,16 @@
 // 모듈 선언
+// 코어(quickfolder-core)로 이동한 모듈 — 기존 crate::modules::* 경로를 유지하기 위해 재수출
+pub use quickfolder_core::{constants, error, paths, progress, runtime, types};
+
 pub mod archive_ops;
-pub mod constants;
-pub mod error;
 pub mod file_ops;
 pub mod hwp_ops;
 pub mod image_ops;
 pub mod laigter_maps;
 pub mod media_ops;
-pub mod paths;
-pub mod progress;
-pub mod runtime;
+pub mod tauri_glue;
 pub mod system_ops;
 pub mod tool_ops;
-pub mod types;
 
 // Re-export: lib.rs에서 use modules::*; 로 사용 가능하도록
 pub use archive_ops::*;

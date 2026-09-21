@@ -20,7 +20,7 @@ pub fn get_file_icon(
 ) -> Result<Option<String>, String> {
     use base64::Engine;
 
-    let app_paths = crate::modules::paths::AppPaths::from_app(&app).map_err(|e| e.to_string())?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app).map_err(|e| e.to_string())?;
     let resolved_path = materialize_archive_path_in_cache(&app_paths, &path)
         .map_err(|e| e.to_string())?
         .unwrap_or_else(|| std::path::PathBuf::from(&path));

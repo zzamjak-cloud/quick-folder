@@ -39,3 +39,6 @@ src-tauri/.omc
 .omc
 .claude
 docs/superpowers
+
+# Cargo 워크스페이스 빌드 산출물
+/target/

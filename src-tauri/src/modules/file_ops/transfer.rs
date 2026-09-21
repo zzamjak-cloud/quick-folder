@@ -245,7 +245,7 @@ pub async fn copy_items(
     dest: String,
     overwrite: Option<bool>,
 ) -> Result<()> {
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
     copy_items_impl(sources, dest, overwrite, Some(&app_cache)).await
@@ -262,10 +262,10 @@ pub async fn copy_items_with_progress(
 ) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     let dest_path = std::path::PathBuf::from(dest);
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
 
     tokio::task::spawn_blocking(move || {
         progress::run_copy_with_progress(sources, dest_path, overwrite, app_cache, on_progress)
@@ -286,10 +286,10 @@ pub async fn transfer_items_with_progress(
 ) -> Result<()> {
     let overwrite = overwrite.unwrap_or(false);
     let dest_path = std::path::PathBuf::from(dest);
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
-    let on_progress = crate::modules::progress::channel_sink(on_progress);
+    let on_progress = crate::modules::tauri_glue::channel_sink(on_progress);
     let op = operation.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -371,7 +371,7 @@ pub async fn move_items(
     dest: String,
     overwrite: Option<bool>,
 ) -> Result<()> {
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
     move_items_impl(sources, dest, overwrite, Some(&app_cache)).await

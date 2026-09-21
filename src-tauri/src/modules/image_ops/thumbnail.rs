@@ -1047,7 +1047,7 @@ pub async fn get_file_thumbnail_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("img_thumbnails");
 
@@ -1102,7 +1102,7 @@ pub async fn get_file_thumbnail(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("img_thumbnails");
 
@@ -1179,7 +1179,7 @@ pub async fn get_psd_thumbnail(
     size: u32,
 ) -> Result<Option<String>> {
     use base64::Engine;
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
 
     tokio::task::spawn_blocking(move || {
@@ -1205,7 +1205,7 @@ pub async fn prewarm_psd_preview(
     path: String,
     size: u32,
 ) -> Result<bool> {
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
 
     tokio::task::spawn_blocking(move || {
@@ -1222,7 +1222,7 @@ pub async fn get_psd_preview_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
 
     tokio::task::spawn_blocking(move || -> Result<Option<String>> {
@@ -1239,7 +1239,7 @@ pub async fn get_psd_thumbnail_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    let app_paths = AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("psd_thumbnails");
 

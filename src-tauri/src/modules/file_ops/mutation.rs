@@ -45,7 +45,7 @@ pub fn read_text_file<R: tauri::Runtime>(
     path: String,
     max_bytes: usize,
 ) -> Result<String> {
-    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let resolved_path = materialize_archive_path_in_cache(&app_paths, &path)?
         .unwrap_or_else(|| std::path::PathBuf::from(&path));
     read_text_file_impl(&resolved_path, max_bytes)
@@ -128,7 +128,7 @@ pub async fn rename_item<R: tauri::Runtime>(
     old_path: String,
     new_path: String,
 ) -> Result<()> {
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
     rename_item_impl(old_path, new_path, Some(app_cache)).await
@@ -228,7 +228,7 @@ pub async fn delete_items<R: tauri::Runtime>(
     paths: Vec<String>,
     use_trash: bool,
 ) -> Result<()> {
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
     delete_items_impl(paths, use_trash, Some(app_cache)).await
@@ -240,7 +240,7 @@ pub async fn delete_items<R: tauri::Runtime>(
 pub async fn delete_items_elevated(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
-        if let Ok(app_paths) = crate::modules::paths::AppPaths::from_app(&app) {
+        if let Ok(app_paths) = crate::modules::tauri_glue::app_paths(&app) {
             crate::modules::image_ops::invalidate_thumbnail_cache_paths(&app_paths, &paths);
         }
         // 임시 PowerShell 스크립트 파일에 삭제 명령 작성

@@ -5,10 +5,9 @@
 //! # 사용 예제
 //!
 //! ```rust
-//! use app_lib::modules::error::{AppError, Result};
+//! use quickfolder_core::error::{AppError, Result};
 //!
-//! // Tauri 커맨드에서 Result<T> 반환 (AppError 자동 변환)
-//! #[tauri::command]
+//! // Result<T> 반환 (AppError 자동 변환)
 //! pub async fn my_command(path: String) -> Result<String> {
 //!     // io::Error는 자동으로 AppError::Io로 변환됨
 //!     let content = std::fs::read_to_string(&path)?;
@@ -16,7 +15,6 @@
 //! }
 //!
 //! // 명시적 에러 생성
-//! #[tauri::command]
 //! pub fn validate_input(value: u32) -> Result<()> {
 //!     if value > 100 {
 //!         return Err(AppError::InvalidInput("값은 100 이하여야 합니다".to_string()));
@@ -201,7 +199,7 @@ impl std::error::Error for AppError {}
 /// # 예제
 ///
 /// ```rust
-/// use app_lib::modules::error::{AppError, Result};
+/// use quickfolder_core::error::{AppError, Result};
 ///
 /// fn read_file(path: &str) -> Result<String> {
 ///     // io::Error는 자동으로 AppError로 변환됨
@@ -228,7 +226,7 @@ impl From<std::io::Error> for AppError {
 /// # 예제
 ///
 /// ```rust
-/// use app_lib::modules::error::Result;
+/// use quickfolder_core::error::Result;
 ///
 /// fn load_image(path: &str) -> Result<image::RgbaImage> {
 ///     // ImageError는 자동으로 AppError::ImageProcessing으로 변환됨
@@ -265,14 +263,13 @@ impl From<lopdf::Error> for AppError {
 /// 애플리케이션 전용 Result 타입
 ///
 /// `std::result::Result<T, AppError>`의 별칭으로,
-/// 모든 Tauri 커맨드에서 간결하게 사용할 수 있습니다.
+/// 코어와 앱 양쪽에서 간결하게 사용할 수 있습니다.
 ///
 /// # 예제
 ///
 /// ```rust
-/// use app_lib::modules::error::Result;
+/// use quickfolder_core::error::Result;
 ///
-/// #[tauri::command]
 /// pub async fn my_command(path: String) -> Result<Vec<String>> {
 ///     // ...
 ///     Ok(vec![])

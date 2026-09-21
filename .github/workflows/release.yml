@@ -206,10 +206,11 @@ jobs:
           if [ -f latest.json ]; then
             F=latest.json
           else
-            F=$(find src-tauri/target -name latest.json -type f 2>/dev/null | head -1 || true)
+            # Cargo 워크스페이스 전환으로 빌드 산출물이 리포지토리 루트 target/ 으로 이동했다.
+            F=$(find target src-tauri/target -name latest.json -type f 2>/dev/null | head -1 || true)
           fi
           if [ -z "${F}" ] || [ ! -f "$F" ]; then
-            echo "::error::latest.json not found (checked ./latest.json and src-tauri/target/)"
+            echo "::error::latest.json not found (checked ./latest.json, target/, src-tauri/target/)"
             ls -la
             find . -maxdepth 4 -name latest.json -type f 2>/dev/null || true
             exit 1

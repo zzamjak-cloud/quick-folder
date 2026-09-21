@@ -1,15 +1,12 @@
 //! 앱 경로 규약
 //!
-//! 캐시 디렉토리 위치를 한 곳에서 결정한다. GUI 앱은 Tauri `AppHandle`에서,
-//! CLI/MCP는 동일한 번들 식별자 기준 경로에서 만들어 같은 캐시를 공유한다.
+//! 캐시 디렉토리 위치를 한 곳에서 결정한다. GUI 앱은 Tauri `AppHandle`에서(src-tauri 글루),
+//! CLI/MCP는 번들 식별자 기준 경로에서 만들어 같은 캐시를 공유한다.
 //! (이미 내려받은 ffmpeg·썸네일 캐시를 재사용하기 위함)
-//!
-//! `from_app`만 Tauri에 의존한다. 코어 크레이트 분리 시 이 함수는 src-tauri 쪽
-//! 글루 코드로 옮기고 나머지는 그대로 이동한다.
 
 use std::path::{Path, PathBuf};
 
-use crate::modules::error::{AppError, Result};
+use crate::error::{AppError, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppPaths {
@@ -19,16 +16,6 @@ pub struct AppPaths {
 impl AppPaths {
     pub fn new(cache_dir: PathBuf) -> Self {
         Self { cache_dir }
-    }
-
-    /// Tauri AppHandle에서 파생 (GUI 전용 진입점)
-    pub fn from_app<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Self> {
-        use tauri::Manager;
-        let cache_dir = app
-            .path()
-            .app_cache_dir()
-            .map_err(|e: tauri::Error| AppError::Internal(e.to_string()))?;
-        Ok(Self::new(cache_dir))
     }
 
     /// 번들 식별자 기준 캐시 경로 — GUI가 쓰는 경로와 동일해야 한다.
@@ -50,21 +37,10 @@ impl AppPaths {
     }
 }
 
-#[cfg(target_os = "macos")]
+/// 플랫폼 캐시 루트 (macOS: ~/Library/Caches, Windows: %LOCALAPPDATA%,
+/// Linux: $XDG_CACHE_HOME 또는 ~/.cache) — Tauri가 쓰는 경로와 동일하다.
 fn platform_cache_root() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Library").join("Caches"))
-}
-
-#[cfg(target_os = "windows")]
-fn platform_cache_root() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn platform_cache_root() -> Option<PathBuf> {
-    std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+    dirs::cache_dir()
 }
 
 #[cfg(test)]

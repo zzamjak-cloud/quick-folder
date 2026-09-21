@@ -30,7 +30,7 @@ pub async fn get_video_thumbnail(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("video_thumbnails");
 
@@ -71,7 +71,7 @@ pub async fn get_video_thumbnail_path(
     path: String,
     size: u32,
 ) -> Result<Option<String>> {
-    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     let app_cache = app_paths.cache_dir().to_path_buf();
     let cache_dir = app_cache.join("video_thumbnails");
 
@@ -622,7 +622,7 @@ fn get_native_video_thumbnail(_path: &str, _size: u32) -> Result<Option<Vec<u8>>
 // spawn_blocking: 파일당 수백 회 syscall이 발생할 수 있어 IPC(메인)/워커 스레드 차단 방지
 #[tauri::command]
 pub async fn invalidate_thumbnail_cache(app: tauri::AppHandle, paths: Vec<String>) -> Result<()> {
-    let app_paths = crate::modules::paths::AppPaths::from_app(&app)?;
+    let app_paths = crate::modules::tauri_glue::app_paths(&app)?;
     tokio::task::spawn_blocking(move || -> Result<()> {
         invalidate_thumbnail_cache_paths(&app_paths, &paths);
         Ok(())

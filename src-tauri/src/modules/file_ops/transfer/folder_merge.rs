@@ -224,7 +224,7 @@ pub async fn merge_folders(
     conflict_mode: FolderMergeConflictMode,
     is_move: bool,
 ) -> Result<()> {
-    let app_cache = crate::modules::paths::AppPaths::from_app(&app)?
+    let app_cache = crate::modules::tauri_glue::app_paths(&app)?
         .cache_dir()
         .to_path_buf();
     tokio::task::spawn_blocking(move || {

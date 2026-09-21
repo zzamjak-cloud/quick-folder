@@ -11,7 +11,7 @@
 use image::{imageops, RgbaImage};
 use std::path::{Path, PathBuf};
 
-use crate::modules::error::{AppError, Result};
+use crate::error::{AppError, Result};
 
 /// 클라우드 스토리지 경로 감지 (구글드라이브 / iCloud / OneDrive / Dropbox)
 /// 바이트 직접 읽기가 느린(온디맨드 hydration) 경로 → OS 네이티브 썸네일을 우선 사용.
@@ -103,7 +103,7 @@ fn hex_value(byte: u8) -> Option<u8> {
 ///
 /// ```rust
 /// use std::path::Path;
-/// use app_lib::find_unique_path;
+/// use quickfolder_core::helpers::find_unique_path;
 ///
 /// let parent = Path::new("/tmp");
 /// let path = find_unique_path(parent, "output", "_compressed", ".mp4");
@@ -137,7 +137,7 @@ pub fn find_unique_path(parent: &Path, stem: &str, suffix: &str, ext: &str) -> P
 ///
 /// ```rust
 /// use std::path::Path;
-/// use app_lib::get_copy_destination;
+/// use quickfolder_core::helpers::get_copy_destination;
 ///
 /// let parent = Path::new("/tmp");
 ///
@@ -228,8 +228,8 @@ pub fn get_numbered_destination(parent: &Path, stem: &str, ext: &str, is_dir: bo
 /// # 예제
 ///
 /// ```rust,no_run
-/// use app_lib::create_sprite_canvas;
-/// # fn main() -> app_lib::modules::error::Result<()> {
+/// use quickfolder_core::helpers::create_sprite_canvas;
+/// # fn main() -> quickfolder_core::error::Result<()> {
 ///
 /// let images = vec![
 ///     "icon1.png".to_string(),
@@ -287,7 +287,7 @@ pub fn create_sprite_canvas(
 /// # 예제
 ///
 /// ```rust
-/// use app_lib::is_hidden_file;
+/// use quickfolder_core::helpers::is_hidden_file;
 ///
 /// assert_eq!(is_hidden_file(".DS_Store"), true);
 /// assert_eq!(is_hidden_file("normal.txt"), false);
@@ -317,7 +317,7 @@ pub fn is_system_file(meta: &std::fs::Metadata) -> bool {
 /// # 예제
 ///
 /// ```rust
-/// use app_lib::is_system_filename;
+/// use quickfolder_core::helpers::is_system_filename;
 ///
 /// assert_eq!(is_system_filename("desktop.ini"), true);
 /// assert_eq!(is_system_filename("~$document.docx"), true);
