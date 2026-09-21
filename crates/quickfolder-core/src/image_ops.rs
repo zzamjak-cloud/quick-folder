@@ -1,16 +1,19 @@
 //! 이미지 처리 모듈 (썸네일, 픽셀화, 배경 제거, 스프라이트 시트, ICO/ICNS 변환, 폰트 처리)
 
+pub mod batch;
 mod background;
 mod compression;
 mod convert;
 mod dimensions;
 mod font;
-mod heavy;
+pub mod heavy;
 mod pixelate;
 mod sprite;
 mod thumbnail;
 
 pub use background::{remove_white_bg_preview, remove_white_bg_save};
+pub use batch::{run_image_batch, ImageBatchOp};
+pub use heavy::{heavy_op_limit, set_heavy_op_limit};
 pub use compression::{
     compress_image, compress_image_preview, crop_image, resize_image, save_annotated_image,
     ImageCompressPreview,

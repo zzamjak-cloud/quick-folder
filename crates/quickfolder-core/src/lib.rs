@@ -7,6 +7,7 @@
 //! GUI 상태가 필요한 값(캐시 경로, 진행률 채널)은 `AppPaths`·`Progress<T>`로 주입받는다.
 
 pub mod archive_ops;
+pub mod batch;
 pub mod constants;
 pub mod error;
 pub mod file_ops;
