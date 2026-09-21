@@ -30,6 +30,12 @@ git tag -a v{version} → git push origin v{version}
 `src-tauri/target/` 을 가정한 스크립트가 있으면 함께 고쳐야 한다(release.yml의 latest.json 탐색은 반영 완료).
 버전은 여전히 아래 3파일만 맞추면 된다. `crates/quickfolder-core`는 내부 크레이트라 버전 동기화 대상이 아니다.
 
+## 릴리스에 함께 올라가는 것
+
+앱 번들(.dmg/.exe) 외에 배치 바이너리 `qf`·`qf-mcp`가 같은 릴리스에 첨부된다
+(macOS universal / Windows x64). 부가 산출물이라 `continue-on-error`로 걸어 두었고,
+실패해도 앱 릴리스를 막지 않는다. 사용법은 [../mcp/overview.md](../mcp/overview.md).
+
 ## 버전 동기화 필수 파일
 
 | 파일 | 키 |

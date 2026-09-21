@@ -13,8 +13,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src-tauri/Cargo.lock'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
       - 'src-tauri/Cargo.toml'
+      - 'crates/*/Cargo.toml'
       - 'package-lock.json'
 
 jobs:
@@ -37,7 +39,8 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          # Cargo 워크스페이스 루트가 리포지토리 루트다 (target/도 루트에 생성)
+          workspaces: '. -> target'
           shared-key: "release-windows"
           cache-on-failure: "true"
 
@@ -81,7 +84,8 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          # Cargo 워크스페이스 루트가 리포지토리 루트다 (target/도 루트에 생성)
+          workspaces: '. -> target'
           shared-key: "release-macos"
           cache-on-failure: "true"
 

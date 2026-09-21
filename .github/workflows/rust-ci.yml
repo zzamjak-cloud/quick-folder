@@ -1,0 +1,77 @@
+name: "Rust CI"
+
+# 코어/CLI/MCP 크레이트의 테스트와 앱 크레이트의 컴파일 검증.
+# 번들링(.app/.dmg)은 release.yml이 태그에서 담당한다.
+# 실행 플랫폼: macOS 고정 — 개발·릴리스 플랫폼과 같고, Linux용 webkit2gtk 의존성 설치가 불필요하다.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'crates/**'
+      - 'src-tauri/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust-ci.yml'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'src-tauri/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        continue-on-error: true
+        with:
+          workspaces: '. -> target'
+          shared-key: "ci-macos"
+
+      # 코어·CLI·MCP: GUI 툴체인 없이 단독으로 테스트된다
+      - name: 코어/CLI/MCP 테스트
+        run: cargo test -p quickfolder-core -p quickfolder-cli -p quickfolder-mcp
+
+      - name: 배치 바이너리 빌드
+        run: cargo build --release -p quickfolder-cli -p quickfolder-mcp
+
+      # 앱 크레이트는 tauri-build가 프론트엔드 산출물(dist)을 요구한다
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 프론트엔드 빌드
+        run: |
+          npm ci
+          npm run build
+
+      - name: 더미 번들 리소스 생성
+        run: |
+          mkdir -p src-tauri/binaries/ffmpeg-dist
+          touch src-tauri/binaries/python-fonttools-placeholder
+          touch src-tauri/binaries/ffmpeg-dist/placeholder
+
+      # command 래퍼 계층이 코어 시그니처와 맞는지 확인한다
+      - name: 앱 크레이트 컴파일 검증
+        run: cargo check -p app --all-targets
+
+      - name: 배치 바이너리 업로드
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qf-binaries-macos
+          path: |
+            target/release/qf
+            target/release/qf-mcp
+          if-no-files-found: error

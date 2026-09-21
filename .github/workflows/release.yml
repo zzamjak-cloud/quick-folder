@@ -47,7 +47,8 @@ jobs:
         uses: swatinem/rust-cache@v2
         continue-on-error: true
         with:
-          workspaces: './src-tauri -> target'
+          # Cargo 워크스페이스 루트가 리포지토리 루트다 (target/도 루트에 생성)
+          workspaces: '. -> target'
           shared-key: "release-${{ matrix.os }}"
           save-if: "false"
 
@@ -196,6 +197,47 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      # AI 에이전트 연동용 배치 바이너리(qf / qf-mcp)를 같은 릴리스에 첨부한다.
+      # 앱 번들과 무관한 부가 산출물이라 실패해도 릴리스를 막지 않는다(continue-on-error).
+      # 사용법: wiki/mcp/overview.md
+      - name: Build batch binaries (macOS universal)
+        if: matrix.os == 'macos'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --target "$target" -p quickfolder-cli -p quickfolder-mcp
+          done
+          mkdir -p batch-bin
+          for bin in qf qf-mcp; do
+            lipo -create -output "batch-bin/${bin}-macos-universal" \
+              "target/aarch64-apple-darwin/release/${bin}" \
+              "target/x86_64-apple-darwin/release/${bin}"
+            chmod +x "batch-bin/${bin}-macos-universal"
+          done
+          ls -lh batch-bin/
+
+      - name: Build batch binaries (Windows x64)
+        if: matrix.os == 'windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release -p quickfolder-cli -p quickfolder-mcp
+          mkdir -p batch-bin
+          cp target/release/qf.exe batch-bin/qf-windows-x64.exe
+          cp target/release/qf-mcp.exe batch-bin/qf-mcp-windows-x64.exe
+
+      - name: Attach batch binaries to release
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" batch-bin/* --clobber
 
       # 병렬 빌드마다 전체 latest.json이 교체되므로, 플랫폼별 조각을 아티팩트로 남겨 merge job에서 합침
       # tauri-action v0.5+ 는 latest.json 을 repo 루트(process.cwd)에 생성함 — 예전처럼 target/ 아래만 찾으면 실패함
