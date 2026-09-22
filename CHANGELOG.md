@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.81] - 2026-09-22
+
 ### Fixed
 - **Windows 업데이트 설치가 "Error opening file for writing" 으로 멈추던 문제** — AI 에이전트 연동(MCP)을 등록해 두면 `qf-mcp.exe` 가 에이전트 세션이 사는 동안 상주해 설치 파일을 잠근다. 설치·제거 직전에 정리하도록 했다. 에이전트는 다음 호출 때 서버를 새로 띄우므로 잃는 것이 없다
 
