@@ -138,8 +138,8 @@ struct DuplicateGroup {
 | 명령 | 파라미터 | 설명 |
 |------|----------|------|
 | `get_image_dimensions` | `path` | 가로·세로 픽셀 |
-| `pixelate_preview` | `path, block_size` | 픽셀화 미리보기 (base64) |
-| `pixelate_image` | `path, block_size, dest` | 픽셀화 저장 |
+| `pixelate_preview` | `input, pixel_size, scale, max_colors, full_resolution?` | 픽셀화 미리보기 (base64, `full_resolution`이면 축소 없이 원본 해상도) |
+| `pixelate_image` | `input, pixel_size, scale, max_colors` | 픽셀화 저장 (`scale 0` = 원본 크기 유지) |
 | `crop_image` | `path, x, y, w, h, dest` | 자르기 |
 | `save_annotated_image` | `path, strokes, dest` | 드로잉 주석 저장 |
 | `compress_image_preview` | `path, quality` | 압축 미리보기 (base64) |

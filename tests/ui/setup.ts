@@ -62,3 +62,18 @@ Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
   configurable: true,
   value: () => 'data:image/png;base64,',
 });
+
+// jsdom은 ResizeObserver를 구현하지 않는다. 크기를 추적하는 컴포넌트(PanZoomView 등)가
+// 마운트만으로 깨지지 않도록 no-op 구현을 둔다 — jsdom은 레이아웃을 계산하지 않으므로
+// 실제 콜백이 울릴 일도 없다.
+if (!('ResizeObserver' in globalThis)) {
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    configurable: true,
+    writable: true,
+    value: class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    },
+  });
+}

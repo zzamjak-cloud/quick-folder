@@ -21,7 +21,7 @@ pub use compression::{
 pub use convert::{convert_to_icns, convert_to_ico};
 pub use dimensions::get_image_dimensions;
 pub use font::{get_font_info, read_font_bytes, FontInfo};
-pub use pixelate::{pixelate_image, pixelate_preview};
+pub use pixelate::{clear_pixelate_preview_cache, pixelate_image, pixelate_preview};
 pub use sprite::{save_sprite_sheet, split_sprite_sheet, sprite_sheet_preview};
 pub(crate) use thumbnail::{
     cached_thumbnail, ensure_cached_thumbnail, ensure_google_drive_thumbnail,

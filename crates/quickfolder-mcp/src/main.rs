@@ -79,7 +79,7 @@ pub struct ImageBatchParams {
     /// pixelate: 픽셀 블록 크기
     #[serde(default)]
     pub pixel_size: Option<u32>,
-    /// pixelate: 출력 최대 변 길이 (0이면 원본 유지)
+    /// pixelate: 출력 최대 변 길이 (0이면 원본 크기 그대로 유지, 1이면 논리 해상도로 축소)
     #[serde(default)]
     pub scale: Option<u32>,
     /// pixelate: 팔레트 색상 수 (0이면 양자화 안 함)

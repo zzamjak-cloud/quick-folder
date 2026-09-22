@@ -102,7 +102,7 @@ enum ImageCommand {
         paths: Vec<PathBuf>,
         #[arg(long, default_value_t = 8)]
         pixel_size: u32,
-        /// 출력 최대 변 길이 (0이면 원본 크기 유지)
+        /// 출력 최대 변 길이 (0이면 원본 크기 그대로 유지, 1이면 논리 해상도로 축소)
         #[arg(long, default_value_t = 0)]
         scale: u32,
         /// 팔레트 색상 수 (0이면 양자화 안 함)

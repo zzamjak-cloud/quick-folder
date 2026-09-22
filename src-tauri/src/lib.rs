@@ -82,6 +82,7 @@ pub fn run() {
             video_to_gif,
             gif_to_mp4,
             pixelate_preview,
+            clear_pixelate_preview_cache,
             pixelate_image,
             laigter_maps_preview,
             laigter_maps_export,

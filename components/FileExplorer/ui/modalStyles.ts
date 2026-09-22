@@ -89,11 +89,17 @@ export function getModalPanelStyle(
 }
 
 /** 로딩 스피너 컴포넌트 */
-export function Spinner({ themeVars }: { themeVars: ThemeVars | null }): React.JSX.Element {
+export function Spinner(
+  { themeVars, size = 24 }: { themeVars: ThemeVars | null; size?: number },
+): React.JSX.Element {
   return React.createElement('div', { className: 'flex items-center justify-center' },
     React.createElement('div', {
-      className: 'w-6 h-6 rounded-full border-2 border-t-transparent animate-spin',
-      style: { borderColor: `${themeVars?.accent ?? '#3b82f6'} transparent transparent transparent` },
+      className: 'rounded-full border-2 border-t-transparent animate-spin',
+      style: {
+        width: size,
+        height: size,
+        borderColor: `${themeVars?.accent ?? '#3b82f6'} transparent transparent transparent`,
+      },
     })
   );
 }

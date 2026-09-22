@@ -451,6 +451,13 @@ pub async fn pixelate_image(
     quickfolder_core::pixelate_image(input, pixel_size, scale, max_colors).await
 }
 
+/// 픽셀화 팝업을 닫을 때 호출 — 미리보기용 디코딩 캐시를 즉시 비운다.
+/// 큰 이미지는 수십 MB를 차지하므로 팝업이 닫힌 뒤까지 들고 있지 않는다.
+#[tauri::command]
+pub fn clear_pixelate_preview_cache() {
+    quickfolder_core::clear_pixelate_preview_cache();
+}
+
 #[tauri::command]
 pub async fn pixelate_preview(
     input: String,

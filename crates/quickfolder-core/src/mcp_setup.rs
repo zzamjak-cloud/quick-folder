@@ -485,13 +485,10 @@ pub fn config_snippet(client_id: &str, command: &Path, roots: &[PathBuf]) -> Res
                 }
             }
         }))?,
-        ConfigFormat::Toml => format!(
-            "[mcp_servers.{name}]\ncommand = \"{command}\"\nargs = []\n\n[mcp_servers.{name}.env]\n{env} = \"{roots}\"\n",
-            name = SERVER_NAME,
-            command = command.display(),
-            env = ROOTS_ENV,
-            roots = roots_value,
-        ),
+        // 직접 문자열을 조립하지 않는다. TOML 기본 문자열은 백슬래시를 이스케이프로
+        // 읽으므로 Windows 경로(`C:\Users\...`)를 그대로 끼워 넣으면 `\U` 를 유니코드
+        // 이스케이프로 해석해 파싱이 깨진다. 실제 파일에 쓸 때와 같은 toml_edit 경로를 쓴다.
+        ConfigFormat::Toml => toml_with_entry(None, command, &roots_value, Path::new("snippet"))?,
     })
 }
 
@@ -688,5 +685,35 @@ mod tests {
             .expect("TOML 조각이 파싱돼야 한다");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snippet_escapes_backslash_paths() {
+        // Windows 경로는 백슬래시를 품는다. TOML 기본 문자열에서 `\U`·`\x` 같은 조합은
+        // 이스케이프로 해석돼 파싱이 깨진다 — 리눅스 CI에서도 잡히도록 경로를 직접 만든다.
+        let bin = PathBuf::from(r"C:\Users\Loadcomplete\AppData\Local\qf-mcp.exe");
+        let root = PathBuf::from(r"D:\0_Client\quick-folder");
+
+        let toml = config_snippet("codex-cli", &bin, &[root.clone()]).unwrap();
+        let doc = toml
+            .parse::<toml_edit::DocumentMut>()
+            .expect("TOML 조각이 파싱돼야 한다");
+        // 파싱만이 아니라 경로가 원래 값 그대로 돌아와야 한다
+        assert_eq!(
+            doc["mcp_servers"][SERVER_NAME]["command"].as_str(),
+            Some(bin.display().to_string().as_str()),
+        );
+        assert_eq!(
+            doc["mcp_servers"][SERVER_NAME]["env"][ROOTS_ENV].as_str(),
+            Some(root.display().to_string().as_str()),
+        );
+
+        let json = config_snippet("claude-code", &bin, &[root.clone()]).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("JSON 조각이 파싱돼야 한다");
+        assert_eq!(
+            parsed["mcpServers"][SERVER_NAME]["command"].as_str(),
+            Some(bin.display().to_string().as_str()),
+        );
     }
 }
