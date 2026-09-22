@@ -691,8 +691,12 @@ mod tests {
     fn snippet_escapes_backslash_paths() {
         // Windows 경로는 백슬래시를 품는다. TOML 기본 문자열에서 `\U`·`\x` 같은 조합은
         // 이스케이프로 해석돼 파싱이 깨진다 — 리눅스 CI에서도 잡히도록 경로를 직접 만든다.
-        let bin = PathBuf::from(r"C:\Users\Loadcomplete\AppData\Local\qf-mcp.exe");
-        let root = PathBuf::from(r"D:\0_Client\quick-folder");
+        //
+        // 드라이브 문자(`C:`)는 일부러 빼둔다. `join_roots` 가 쓰는 `env::join_paths` 는
+        // 유닉스에서 `:` 를 구분자로 보고 그런 세그먼트를 거부해, 검증하려는 백슬래시
+        // 문제에 닿기도 전에 테스트가 죽는다. `\U` 는 드라이브 문자 없이도 재현된다.
+        let bin = PathBuf::from(r"\Users\Loadcomplete\AppData\Local\qf-mcp.exe");
+        let root = PathBuf::from(r"\0_Client\quick-folder");
 
         let toml = config_snippet("codex-cli", &bin, &[root.clone()]).unwrap();
         let doc = toml
