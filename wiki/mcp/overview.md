@@ -112,6 +112,11 @@ claude mcp add quickfolder \
 | `qf_file_ops` | **파괴적** | move/copy/rename/mkdir — `confirm: true` 필요 |
 | `qf_delete` | **파괴적** | 휴지통 경유만 — `confirm: true` 필요 |
 
+### 업데이트와 qf-mcp 잠금
+
+에이전트가 띄운 `qf-mcp.exe` 는 그 세션이 사는 동안 상주해 Windows 설치 파일을 잠근다.
+설치 훅에서 설치 직전에 종료한다 — [../infra/release.md](../infra/release.md).
+
 ### 안전장치
 
 - **경로 allowlist**: `QF_MCP_ROOTS` 밖은 거부. 심볼릭 링크와 `..`을 해소한 뒤 검사하므로

@@ -95,6 +95,28 @@ git push origin v{version}
 - **Rust 캐시는 Windows·macOS 모두 기본 브랜치(main)에 시딩** (`warm-cache.yml`) — GitHub 캐시는 "현재 ref 또는 기본 브랜치"에서만 복원되므로 태그 ref끼리는 캐시 공유가 안 된다. main 푸시 중 `Cargo.lock`/`Cargo.toml`/`package-lock.json` 변경 시에만 자동 실행(수동 `workflow_dispatch`도 가능). release.yml은 같은 `shared-key: release-{os}`로 복원만 하고 저장 안 함(`save-if: false`). **릴리스 때 main fast-forward 푸시를 빼먹으면 캐시가 낡아 릴리스가 느려진다.**
 - **Windows Python+fonttools는 `portable-tools-v1` 릴리스 자산 재사용** — 매 릴리스 다운로드+pip install(3~5분) 제거. Python 버전 갱신 시 `build-tools.yml` 수동 실행으로 자산 재게시.
 
+## Windows 설치 훅 — qf-mcp 잠금 해제
+
+`src-tauri/windows/hooks.nsh` (`bundle.windows.nsis.installerHooks`).
+
+`qf-mcp.exe` 는 AI 에이전트가 stdio 서버로 띄워 **에이전트 세션이 사는 동안 상주**한다.
+그 상태로 설치하면 NSIS 가 잠긴 파일을 덮어쓰지 못하고 이 대화상자에서 멈춘다:
+
+```
+Error opening file for writing:
+C:\Users\...\QuickFolder Widget\binaries\qf-mcp.exe
+```
+
+MCP 를 등록한 사용자는 **업데이트 때마다** 이걸 본다(자동 업데이트도 같은 지점에서 멈춘다).
+`NSIS_HOOK_PREINSTALL`·`NSIS_HOOK_PREUNINSTALL` 에서 `taskkill /F /T /IM qf-mcp.exe` 로
+정리한다. 에이전트는 stdio 서버가 끊기면 다음 호출 때 새로 띄우므로 잃는 것이 없다.
+
+- **훅에서 `MessageBox` 금지** — 업데이터가 `/S` 무인 모드로 실행하므로 사용자 눈에
+  보이지 않는 채로 설치가 멈춘다.
+- `taskkill` 은 대상이 없으면 128 을 돌려준다. 정상이므로 결과를 무시한다.
+- 종료 직후에도 핸들이 남아 있을 수 있어 `Sleep 500` 을 둔다.
+- 경로는 `tauri.conf.json` 기준 상대경로다(`src-tauri/windows/hooks.nsh`).
+
 ## 코드 서명 정책 (무서명 배포)
 OS 코드 서명 인증서(Apple Developer ID, Windows Authenticode)는 **비용 문제로 도입하지 않는다**.
 - macOS: `APPLE_SIGNING_IDENTITY: "-"` (ad-hoc 서명)만 유지. Gatekeeper 경고는 최초 설치 1회 사용자 허용으로 통과.
