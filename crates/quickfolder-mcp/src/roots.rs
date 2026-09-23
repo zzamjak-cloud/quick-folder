@@ -4,7 +4,9 @@
 //! `QF_MCP_ROOTS`에 나열된 디렉토리 밖은 전부 거부한다.
 //! **환경변수가 비어 있으면 아무 경로도 허용하지 않는다** — 명시적 옵트인이 기본이다.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
+
+use quickfolder_core::path_guard::normalize;
 
 pub struct Roots {
     allowed: Vec<PathBuf>,
@@ -66,47 +68,6 @@ impl Roots {
     pub fn check_all(&self, paths: &[String]) -> Result<Vec<PathBuf>, String> {
         paths.iter().map(|p| self.check(p)).collect()
     }
-}
-
-/// 심볼릭 링크와 `..`을 해소한 절대 경로.
-///
-/// 존재하지 않는 경로(출력 대상 등)는 가장 가까운 상위 실재 경로를 정규화한 뒤
-/// 나머지를 이어 붙인다. `..`을 문자열로 남겨두면 루트 검사를 우회할 수 있다.
-fn normalize(path: &Path) -> PathBuf {
-    if let Ok(resolved) = path.canonicalize() {
-        return resolved;
-    }
-    let mut ancestor = path.to_path_buf();
-    let mut tail: Vec<std::ffi::OsString> = Vec::new();
-    while let Some(parent) = ancestor.parent().map(|p| p.to_path_buf()) {
-        let Some(name) = ancestor.file_name().map(|n| n.to_os_string()) else {
-            break;
-        };
-        if let Ok(resolved) = parent.canonicalize() {
-            // name은 실재하는 parent의 바로 아래, tail은 그보다 깊은 쪽부터 쌓였으므로
-            // name → tail 역순 순서로 이어 붙여야 원래 경로가 복원된다.
-            let mut out = resolved;
-            out.push(name);
-            for part in tail.iter().rev() {
-                out.push(part);
-            }
-            return out;
-        }
-        tail.push(name);
-        ancestor = parent;
-    }
-    // 정규화할 수 없으면 최소한 . 과 .. 만 접어 둔다
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

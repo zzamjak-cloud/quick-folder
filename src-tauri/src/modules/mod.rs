@@ -6,12 +6,14 @@ pub use quickfolder_core::{
     paths, progress, runtime, tool_ops, types,
 };
 
+pub mod agent_commands;
 pub mod commands;
 pub mod mcp_commands;
 pub mod system_ops;
 pub mod tauri_glue;
 
 // Re-export: lib.rs에서 use modules::*; 로 사용 가능하도록
+pub use agent_commands::*;
 pub use commands::*;
 pub use mcp_commands::*;
 pub use quickfolder_core::AppPaths;

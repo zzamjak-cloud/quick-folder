@@ -6,6 +6,7 @@
 //! 앱의 `#[tauri::command]` 래퍼는 여기 함수들을 그대로 호출한다.
 //! GUI 상태가 필요한 값(캐시 경로, 진행률 채널)은 `AppPaths`·`Progress<T>`로 주입받는다.
 
+pub mod agent_launch;
 pub mod archive_ops;
 pub mod batch;
 pub mod constants;
@@ -17,6 +18,7 @@ pub mod image_ops;
 pub mod laigter_maps;
 pub mod mcp_setup;
 pub mod media_ops;
+pub mod path_guard;
 pub mod paths;
 pub mod progress;
 pub mod runtime;

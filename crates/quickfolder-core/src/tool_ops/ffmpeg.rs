@@ -38,6 +38,62 @@ fn installed_app_ffmpeg_candidates() -> Vec<std::path::PathBuf> {
     candidates
 }
 
+/// 앱에 번들된 FFmpeg 후보 경로들.
+///
+/// 이 함수는 **GUI 앱(`app.exe`)과 `qf-mcp` 양쪽에서 호출된다.** 설치 폴더 안 위치가
+/// 서로 달라서, `current_exe()` 옆만 보면 qf-mcp 쪽이 통째로 빗나간다.
+///
+/// ```text
+/// Windows  <install>/app.exe                      ← GUI
+///          <install>/binaries/qf-mcp.exe          ← MCP 서버
+///          <install>/binaries/ffmpeg-dist/ffmpeg.exe   ← 실물
+///
+/// macOS    <app>/Contents/MacOS/QuickFolder            ← GUI
+///          <app>/Contents/Resources/binaries/qf-mcp    ← MCP 서버
+///          <app>/Contents/Resources/binaries/ffmpeg-dist/ffmpeg  ← 실물
+/// ```
+///
+/// GUI 기준이면 `binaries/ffmpeg-dist/` 로 내려가야 하고, qf-mcp 기준이면 이미
+/// `binaries/` 안이라 `ffmpeg-dist/` 만 붙이면 된다. 둘 다 후보에 넣는다.
+fn bundled_ffmpeg_candidates() -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    const BIN: &str = "ffmpeg.exe";
+    #[cfg(not(target_os = "windows"))]
+    const BIN: &str = "ffmpeg";
+
+    let Ok(exe) = std::env::current_exe() else {
+        return Vec::new();
+    };
+    let Some(dir) = exe.parent() else {
+        return Vec::new();
+    };
+
+    // macOS 외 플랫폼에서는 아래 Resources 후보 push 가 컴파일되지 않아 mut 가 남는다
+    #[allow(unused_mut)]
+    let mut candidates = vec![
+        // Tauri externalBin sidecar (실행 파일 바로 옆)
+        dir.join(BIN),
+        // 호출자가 GUI 앱일 때
+        dir.join("binaries").join("ffmpeg-dist").join(BIN),
+        // 호출자가 qf-mcp 일 때 (이미 binaries/ 안에 있다)
+        dir.join("ffmpeg-dist").join(BIN),
+    ];
+
+    // macOS 는 GUI 가 Contents/MacOS 에 있어 Resources 로 건너뛰어야 한다
+    #[cfg(target_os = "macos")]
+    if let Some(contents) = dir.parent() {
+        candidates.push(
+            contents
+                .join("Resources")
+                .join("binaries")
+                .join("ffmpeg-dist")
+                .join(BIN),
+        );
+    }
+
+    candidates
+}
+
 fn is_runnable_ffmpeg(path: &std::path::Path) -> bool {
     if !path.exists()
         || std::fs::metadata(path)
@@ -58,53 +114,20 @@ fn is_runnable_ffmpeg(path: &std::path::Path) -> bool {
 
 /// ffmpeg 바이너리 경로 탐색 (번들 바이너리 → 시스템 PATH)
 pub fn find_ffmpeg_path() -> Option<std::path::PathBuf> {
-    // 1. 번들링된 바이너리 (실행 파일 옆, Tauri externalBin)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            #[cfg(target_os = "windows")]
-            let bundled = dir.join("ffmpeg.exe");
-            #[cfg(not(target_os = "windows"))]
-            let bundled = dir.join("ffmpeg");
-
-            if is_runnable_ffmpeg(&bundled) {
-                eprintln!("✅ 번들링된 FFmpeg 발견: {:?}", bundled);
-                return Some(bundled);
-            }
+    // 1. 앱에 번들된 FFmpeg.
+    //
+    //    **호출자가 GUI 앱일 수도 있고 qf-mcp 일 수도 있다.** 둘은 설치 폴더 안에서
+    //    깊이가 다르므로 두 레이아웃을 모두 본다 (`bundled_ffmpeg_candidates` 주석 참고).
+    for candidate in bundled_ffmpeg_candidates() {
+        // 리소스 복사 과정에서 실행 권한이 유실될 수 있으므로 복구 시도
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o755));
         }
-    }
-
-    // 1-1. 앱에 번들된 자체 LGPL 빌드 (tauri.conf.json resources: binaries/ffmpeg-dist/*)
-    //      macOS: .app/Contents/Resources/binaries/ffmpeg-dist/ffmpeg
-    //      Windows: <설치폴더>/binaries/ffmpeg-dist/ffmpeg.exe
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            #[cfg(target_os = "macos")]
-            let bundled_res = dir
-                .parent()
-                .map(|contents| contents.join("Resources"))
-                .map(|r| r.join("binaries").join("ffmpeg-dist").join("ffmpeg"));
-            #[cfg(target_os = "windows")]
-            let bundled_res = Some(
-                dir.join("binaries")
-                    .join("ffmpeg-dist")
-                    .join("ffmpeg.exe"),
-            );
-            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-            let bundled_res: Option<std::path::PathBuf> = None;
-
-            if let Some(res) = bundled_res {
-                // 리소스 복사 과정에서 실행 권한이 유실될 수 있으므로 복구 시도
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ =
-                        std::fs::set_permissions(&res, std::fs::Permissions::from_mode(0o755));
-                }
-                if is_runnable_ffmpeg(&res) {
-                    eprintln!("✅ 번들 LGPL FFmpeg 발견: {:?}", res);
-                    return Some(res);
-                }
-            }
+        if is_runnable_ffmpeg(&candidate) {
+            eprintln!("✅ 번들 FFmpeg 발견: {:?}", candidate);
+            return Some(candidate);
         }
     }
 
@@ -467,6 +490,37 @@ mod tests {
             std::path::PathBuf::from(
                 r"C:\Users\tester\AppData\Local\QuickFolder Widget\ffmpeg.exe"
             )
+        );
+    }
+    /// qf-mcp 는 설치 폴더의 `binaries/` 안에 있고 GUI 는 그 위에 있다.
+    /// 한쪽 기준으로만 후보를 만들면 다른 쪽이 통째로 빗나간다 — 실제로 그랬다.
+    #[test]
+    fn bundled_candidates_cover_both_gui_and_qf_mcp_layouts() {
+        let candidates = bundled_ffmpeg_candidates();
+        let as_text: Vec<String> = candidates
+            .iter()
+            .map(|p| p.display().to_string().replace('\\', "/"))
+            .collect();
+
+        assert!(
+            as_text.iter().any(|p| p.contains("/binaries/ffmpeg-dist/")),
+            "GUI 레이아웃 후보 누락: {:?}",
+            as_text
+        );
+        assert!(
+            as_text
+                .iter()
+                .any(|p| p.ends_with("ffmpeg-dist/ffmpeg") || p.ends_with("ffmpeg-dist/ffmpeg.exe")),
+            "qf-mcp 레이아웃 후보 누락: {:?}",
+            as_text
+        );
+        // sidecar(실행 파일 바로 옆)도 계속 본다
+        assert!(
+            as_text
+                .iter()
+                .any(|p| p.ends_with("/ffmpeg") || p.ends_with("/ffmpeg.exe")),
+            "sidecar 후보 누락: {:?}",
+            as_text
         );
     }
 }

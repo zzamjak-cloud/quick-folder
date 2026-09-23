@@ -22,6 +22,8 @@ export function useModalStates() {
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   // 중복 파일 찾기 대상 폴더 경로
   const [duplicateFinderPath, setDuplicateFinderPath] = useState<string | null>(null);
+  // AI 에이전트 요청 대상 폴더 경로
+  const [agentRequestPath, setAgentRequestPath] = useState<string | null>(null);
   // Diff Viewer 비교 대상 [왼쪽, 오른쪽] 경로
   const [diffViewerPaths, setDiffViewerPaths] = useState<[string, string] | null>(null);
   // 폴더 태그 입력 프롬프트
@@ -58,6 +60,7 @@ export function useModalStates() {
     isGoToFolderOpen, setIsGoToFolderOpen,
     isGlobalSearchOpen, setIsGlobalSearchOpen,
     duplicateFinderPath, setDuplicateFinderPath,
+    agentRequestPath, setAgentRequestPath,
     diffViewerPaths, setDiffViewerPaths,
     tagPrompt, setTagPrompt,
     renamingPath, setRenamingPath,

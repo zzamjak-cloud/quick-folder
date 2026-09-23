@@ -5,7 +5,7 @@ import {
   ExternalLink, Folder, Copy, CopyPlus, Scissors, Clipboard as ClipboardIcon,
   Edit2, Trash2, Hash, Star, FileArchive, Eye, Film, Grid3x3, LayoutGrid, Ungroup, Tag,
   FolderPlus, FileText, Image, List, Eraser, Type, Cloud, Link, CaseSensitive, Layers,
-  RotateCcw, HardDrive, Terminal, Files, GitCompare, FolderOpen,
+  RotateCcw, HardDrive, Terminal, Files, GitCompare, FolderOpen, Bot,
 } from 'lucide-react';
 import { getFileName, isArchiveVirtualPath, isBrowsableArchiveFilePath, isGoogleDrivePath } from '../../../utils/pathUtils';
 import { isComparableTextFile } from '../../../utils/isComparableTextFile';
@@ -14,6 +14,7 @@ import { deleteTerminalPreset, getTerminalPresets, isHighRiskTerminalCommand } f
 import { tauriCommands } from '../../../utils/tauriCommands';
 import { translate, type TranslationKey } from '../../../utils/i18n';
 import { fileIdentityToken } from './thumbnailCache';
+import { useAgentAvailability } from './useAgentAvailability';
 
 const RECENT_PATH = '__recent__';
 
@@ -68,6 +69,7 @@ export interface UseContextMenuBuilderConfig {
     setTerminalPresetPath: (path: string | null) => void;
     setTerminalPresetEditId: (presetId: string | null) => void;
     setDuplicateFinderPath: (path: string | null) => void;
+    setAgentRequestPath: (path: string | null) => void;
     setDiffViewerPaths: (paths: [string, string] | null) => void;
   };
   t?: (key: TranslationKey) => string;
@@ -109,6 +111,9 @@ export function useContextMenuBuilder({
   // 동영상 압축 크기(%) — 메뉴가 새로 열릴 때마다 원본(100%)으로 초기화
   const [compressScale, setCompressScale] = useState(100);
   useEffect(() => { setCompressScale(100); }, [contextMenu]);
+
+  // AI 에이전트 요청 메뉴 노출 여부 (MCP 등록 + 허용 폴더 여부)
+  const agents = useAgentAvailability();
 
   const contextMenuSections = useMemo((): ContextMenuSection[] => {
     if (!contextMenu) return [];
@@ -717,6 +722,15 @@ export function useContextMenuBuilder({
             label: t('folderSize.menuLabel'),
             onClick: () => fileOps.handleInspectFolderSize(singlePath),
           },
+          // MCP 연동이 등록되고 이 폴더가 허용 루트 안일 때만 노출한다
+          ...(agents.canRequest(singlePath)
+            ? [{
+                id: 'agent-request',
+                icon: <Bot size={13} />,
+                label: t('agentRequest.menuLabel'),
+                onClick: () => modals.setAgentRequestPath(singlePath),
+              }]
+            : []),
         ],
       });
     }
@@ -753,6 +767,8 @@ export function useContextMenuBuilder({
     modals.setPdfPreviewPath, modals.setGifCompressPaths, modals.setTerminalPresetPath,
     modals.setTerminalPresetEditId,
     modals.setDuplicateFinderPath,
+    modals.setAgentRequestPath,
+    agents,
     modals.setDiffViewerPaths,
     t,
     compressScale,

@@ -114,6 +114,9 @@ pub fn run() {
             mcp_register,
             mcp_unregister,
             mcp_config_snippet,
+            agent_status,
+            agent_run,
+            agent_cancel,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

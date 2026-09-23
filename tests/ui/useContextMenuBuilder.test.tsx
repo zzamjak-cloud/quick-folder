@@ -57,6 +57,7 @@ function createConfig(overrides: Partial<UseContextMenuBuilderConfig> = {}): Use
       setTerminalPresetPath: vi.fn(),
       setTerminalPresetEditId: vi.fn(),
       setDuplicateFinderPath: vi.fn(),
+      setAgentRequestPath: vi.fn(),
       setDiffViewerPaths: vi.fn(),
     },
     preview: {

@@ -569,6 +569,7 @@ export default function FileExplorer({
     modals.isGoToFolderOpen ||
     modals.isGlobalSearchOpen ||
     modals.duplicateFinderPath ||
+    modals.agentRequestPath ||
     modals.diffViewerPaths ||
     modals.tagPrompt ||
     modals.markdownEditorPath ||

@@ -6,6 +6,7 @@ import { mcpCommands } from '../utils/tauriCommands';
 import type { McpClientStatus, McpSetupStatus } from '../utils/tauriCommandDomains/mcpCommands';
 import { runDirectCommand } from '../utils/tauriCommandRunner';
 import type { TranslationKey } from '../utils/i18n';
+import { MCP_CHANGED_EVENT } from './FileExplorer/hooks/useAgentAvailability';
 
 const ROOTS_STORAGE_KEY = 'qf_mcp_roots';
 
@@ -36,6 +37,8 @@ export function McpSettingsModal({ isOpen, onClose, t }: McpSettingsModalProps) 
   const refresh = useCallback(async () => {
     try {
       setStatus(await mcpCommands.mcpSetupStatus());
+      // 우클릭 메뉴의 "AI Agent 요청하기" 노출 여부가 등록 상태를 따라간다
+      window.dispatchEvent(new Event(MCP_CHANGED_EVENT));
     } catch (e) {
       setNotice({ kind: 'error', text: String(e) });
     }

@@ -39,7 +39,30 @@ HW 디코드 초기화 실패 환경을 위해 각 인코더 후보를 HW → SW
 const ready = await ensureFfmpeg(t, setStatusText);
 ```
 
-바이너리 탐색 우선순위(`find_ffmpeg_path`): 다운로드본 → 설치된 앱 → 패키지 관리자 절대 경로(Homebrew/choco/winget — GUI 앱 PATH 미반영 대응) → 시스템 PATH.
+바이너리 탐색 우선순위(`find_ffmpeg_path`): 번들 → 다운로드본 → 설치된 앱 → 패키지 관리자 절대 경로(Homebrew/choco/winget — GUI 앱 PATH 미반영 대응) → 시스템 PATH.
+
+#### 번들 탐색은 호출자가 둘이다 (`bundled_ffmpeg_candidates`)
+
+`find_ffmpeg_path`는 **GUI 앱과 `qf-mcp` 양쪽에서 호출된다.** 설치 폴더 안 깊이가 달라서
+`current_exe()` 옆만 보면 qf-mcp 쪽이 통째로 빗나간다.
+
+```text
+Windows  <install>/app.exe                                ← GUI
+         <install>/binaries/qf-mcp.exe                    ← MCP 서버
+         <install>/binaries/ffmpeg-dist/ffmpeg.exe        ← 실물
+
+macOS    <app>/Contents/MacOS/QuickFolder                 ← GUI
+         <app>/Contents/Resources/binaries/qf-mcp         ← MCP 서버
+         <app>/Contents/Resources/binaries/ffmpeg-dist/ffmpeg  ← 실물
+```
+
+GUI 기준이면 `binaries/ffmpeg-dist/`로 내려가야 하고, qf-mcp 기준이면 이미 `binaries/` 안이라
+`ffmpeg-dist/`만 붙이면 된다. **둘 다 후보에 넣는다.** 한쪽만 보던 시절에는 설치된 qf-mcp가
+바로 옆 번들 ffmpeg를 못 찾아 `qf_info`가 `ffmpeg_available: false`를 돌려주고,
+에이전트 쪽 비디오 기능이 통째로 죽었다. `bundled_candidates_cover_both_gui_and_qf_mcp_layouts`
+테스트가 이걸 고정한다.
+
+새 외부 도구를 번들할 때도 같은 함정을 확인할 것 — **qf-mcp에서도 찾아지는지** 별도로 봐야 한다.
 
 ---
 
@@ -65,7 +88,7 @@ lopdf + image 크레이트만 사용한다. 외부 실행 파일·다운로드·
 ## FontTools (Python)
 
 ### 위치
-`binaries/python-fonttools-*` — 플랫폼별 Python 번들  
+`src-tauri/binaries/python-fonttools-placeholder` — 빈 placeholder (실물 아님, 아래 참고)  
 `src-tauri/src/modules/tool_ops/fonttools.rs` — command facade
 `src-tauri/src/modules/tool_ops/fonttools/{archive,install,merge,paths,python}.rs`
 
@@ -77,10 +100,21 @@ lopdf + image 크레이트만 사용한다. 외부 실행 파일·다운로드·
 invoke('check_fonttools') / invoke('download_fonttools') / invoke('install_fonttools')
 ```
 
-### tauri.conf.json 설정
+### 번들되지 않는다 — 최초 사용 시 다운로드
+
+`tauri.conf.json`의 `resources`에 `binaries/python-fonttools-*`가 있지만, `release.yml`이
+거기에 넣는 것은 `touch`로 만든 **빈 placeholder 파일**이다(`python-fonttools-placeholder`).
+실제 Python+fonttools 포터블 패키지는 최초 사용 시 GitHub Releases(`portable-tools-v1`)에서
+받아 `%LOCALAPPDATA%/QuickFolder/python_fonttools_embed`(macOS는
+`~/Library/Application Support/QuickFolder/...`)에 푼다. **GUI든 qf-mcp든 마찬가지다.**
+
 ```json
-"resources": ["binaries/python-fonttools-*"]
+"resources": ["binaries/python-fonttools-*"]   // placeholder 뿐 — 실물 아님
 ```
+
+설치 경로가 실행 파일 상대가 아니라 사용자 디렉터리라서, 한 번 받아 두면 qf-mcp도 그대로 쓴다.
+다만 **아직 받지 않은 상태에서 에이전트가 폰트 병합을 요청하면 다운로드 동의를 받을 GUI가 없다.**
+MCP로 폰트 기능을 노출할 때 이 점을 설계에 반영할 것.
 
 ---
 

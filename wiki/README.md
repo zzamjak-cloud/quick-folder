@@ -35,6 +35,7 @@ AI 탐색용 위키 인덱스. 작업 전 해당 파일을 먼저 읽으면 소�
 | 언어팩·다국어 누락 점검 | `i18n/overview.md` |
 | i18n 렌더링 snapshot | `i18n/overview.md` → `infra/testing.md` |
 | Rust 명령 추가·수정 | `rust/overview.md` → `rust/commands.md` |
+| 폴더 우클릭에서 AI 에이전트 실행 | `mcp/overview.md` (반대 방향 절) |
 | FFmpeg·Ghostscript·FontTools | `tools/overview.md` |
 | 마크다운 편집기 수정 | `special/markdown-editor.md` |
 | 스프라이트 시트·맵메이커 | `special/sprite-sheet.md` |

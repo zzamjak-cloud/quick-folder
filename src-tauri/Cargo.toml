@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.27.81"
+version = "1.27.82"
 description = "A Tauri App"
 authors = ["zzamjak-cloud"]
 license = "GPL-3.0-only"
@@ -25,7 +25,7 @@ tauri-build = { version = "2.5.3", features = [] }
 quickfolder-core = { path = "../crates/quickfolder-core" }
 arboard = "3"
 serde_json = "1.0"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "process", "io-util"] }
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.10", features = ["protocol-asset"] }

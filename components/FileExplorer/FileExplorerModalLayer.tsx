@@ -27,6 +27,7 @@ const GoToFolderModal = lazy(() => import('./GoToFolderModal'));
 const GlobalSearchModal = lazy(() => import('./GlobalSearchModal'));
 const DuplicateFilesModal = lazy(() => import('./DuplicateFilesModal'));
 const DiffViewerModal = lazy(() => import('./DiffViewerModal'));
+const AgentRequestModal = lazy(() => import('./AgentRequestModal'));
 
 type ModalState = ReturnType<typeof useModalStates>;
 
@@ -234,6 +235,15 @@ export default function FileExplorerModalLayer({
             onClose={() => modals.setDuplicateFinderPath(null)}
             onSelect={onGlobalSearchSelect}
             onDelete={onDuplicateFileDelete}
+            themeVars={themeVars}
+            t={t}
+          />
+        )}
+
+        {modals.agentRequestPath && (
+          <AgentRequestModal
+            path={modals.agentRequestPath}
+            onClose={() => modals.setAgentRequestPath(null)}
             themeVars={themeVars}
             t={t}
           />
