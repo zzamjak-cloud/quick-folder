@@ -74,6 +74,9 @@ export default memo(function FileCard({
     const cached = getThumb(thumbnailCacheKey);
     return cached ? cached : null;
   });
+  // 썸네일 없음 확정('' 캐시) 또는 재시도까지 실패 → 스피너 대신 아이콘 폴백.
+  // "로딩 중"과 "없음"을 구분하지 않으면 이미지 확장자는 스피너로 영구 고정된다(회귀 주의).
+  const [thumbnailUnavailable, setThumbnailUnavailable] = useState(() => getThumb(thumbnailCacheKey) === '');
   const [thumbnailReloadSeq, setThumbnailReloadSeq] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [imageDims, setImageDims] = useState<[number, number] | null>(null);
@@ -154,10 +157,12 @@ export default memo(function FileCard({
     if (cached !== undefined) {
       // '' = 썸네일 없음 확정 → 아이콘 폴백
       setThumbnail(cached ? cached : null);
+      setThumbnailUnavailable(cached === '');
       return;
     }
 
     setThumbnail(null);
+    setThumbnailUnavailable(false);
 
     const thumbSourcePath = entry.path;
     const useImageThumb = !isPsd && ft === 'image';
@@ -191,6 +196,7 @@ export default memo(function FileCard({
           const url = p ? convertFileSrc(p) : '';
           setThumb(thumbnailCacheKey, url); // '' 도 캐시 → 불필요한 재요청 방지
           setThumbnail(url ? url : null);
+          setThumbnailUnavailable(!url);
         })
         .catch(err => {
           // 실패는 캐시하지 않음. 단 effect가 살아 있는데 외부(cancelAllQueued 등)에서
@@ -207,6 +213,9 @@ export default memo(function FileCard({
             errorRetryTimer = setTimeout(() => {
               if (!cancelled) setThumbnailReloadSeq(seq => seq + 1);
             }, 800);
+          } else {
+            // 재시도도 실패(클라우드 다운로드 실패 등) → 아이콘 폴백. 캐시하지 않으므로 재방문 시 다시 시도한다.
+            setThumbnailUnavailable(true);
           }
         });
     }, delay);
@@ -355,7 +364,7 @@ export default memo(function FileCard({
               </div>
             )}
           </>
-        ) : isThumbnailImage ? (
+        ) : isThumbnailImage && !thumbnailUnavailable ? (
           <div
             className="flex items-center justify-center"
             aria-label="썸네일 로딩 중"

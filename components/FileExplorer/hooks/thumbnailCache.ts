@@ -47,8 +47,10 @@ function hydratePersistedCache(): void {
     if (!raw) return;
     const arr = JSON.parse(raw) as [string, string][];
     // 저장 순서(오래된→최근)대로 삽입해 LRU 순서 보존
+    // ''(썸네일 없음)는 복원하지 않는다 — 일시 실패(클라우드 다운로드 등)가 세션을 넘어 굳지 않게,
+    // 새 세션에서 한 번은 다시 묻는다(Rust 디스크 .none 캐시 hit라 비용은 IPC 1회).
     for (const [k, v] of arr) {
-      if (typeof k === 'string' && typeof v === 'string') cache.set(k, v);
+      if (typeof k === 'string' && typeof v === 'string' && v !== '') cache.set(k, v);
     }
   } catch {
     // 손상된 데이터 무시

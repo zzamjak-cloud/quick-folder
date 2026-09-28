@@ -27,7 +27,15 @@
             캐시 hit 때 mtime을 갱신해 최근 사용 항목을 보존
    negative cache: 생성 결과가 없으면 같은 키의 `.none` sentinel 저장
                    재시작 후에도 깨진/미지원 파일 재시도 방지
+                   **일시 실패는 `.none` 금지(회귀 주의)**: 클라우드 이미지 `fs::read` 실패
+                   (dataless 동시 materialize 등)는 Err로 올린다. 과거엔 삼키고 QuickLook→None으로
+                   `.none`이 영구 기록돼(mtime·len 키 불변) 폴더 전체가 무한 스피너였다.
+                   구버전 잔재는 `purge_stale_negative_thumbnail_cache_once`가 마커(`.none_purged_v1`)로 1회 제거
 ```
+
+### 프론트 "없음/실패" 표시 (무한 스피너 방지)
+- FileCard는 `thumbnailUnavailable`로 "로딩 중"과 "없음 확정('')/재시도 후 실패"를 구분한다. 후자는 스피너 대신 아이콘.
+- localStorage 복원 시 `''`는 버리고 새 세션에서 1회 재확인한다(일시 실패가 세션을 넘어 굳지 않게).
 
 ## thumbnailCache.ts
 

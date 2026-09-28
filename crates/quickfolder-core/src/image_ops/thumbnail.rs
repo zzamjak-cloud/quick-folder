@@ -159,6 +159,36 @@ fn remove_negative_thumbnail_cache(cache_file: &Path) {
     let _ = std::fs::remove_file(negative_thumbnail_cache_file(cache_file));
 }
 
+// 클라우드 읽기 실패가 `.none`으로 굳던 구버전 잔재를 1회 제거한다.
+// 어떤 `.none`이 일시 실패였는지 파일명으로 구분할 수 없어 전부 지운다 — 진짜 깨진 파일은
+// 한 번 더 시도한 뒤 다시 `.none`이 기록될 뿐이라 비용이 작다. 마커 파일로 재실행을 막는다.
+const NEGATIVE_CACHE_PURGE_MARKER: &str = ".none_purged_v1";
+
+pub(crate) fn purge_stale_negative_thumbnail_cache_once(app_cache: &Path) {
+    static DONE: std::sync::Once = std::sync::Once::new();
+    DONE.call_once(|| purge_stale_negative_thumbnail_cache(app_cache));
+}
+
+fn purge_stale_negative_thumbnail_cache(app_cache: &Path) {
+    let marker = app_cache.join(NEGATIVE_CACHE_PURGE_MARKER);
+    if marker.exists() {
+        return;
+    }
+    for dir in ["drive_thumbnails", "img_thumbnails"] {
+        let Ok(entries) = std::fs::read_dir(app_cache.join(dir)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "none") {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    std::fs::create_dir_all(app_cache).ok();
+    std::fs::write(marker, b"1").ok();
+}
+
 fn legacy_thumbnail_cache_key(path: &str, modified: u128, size: u32) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -660,7 +690,15 @@ fn generate_cloud_image_thumbnail_bytes(
     // 파일 읽기(클라우드 다운로드)는 동시성 제한 없이 24-wide 유지하고,
     // 메모리를 크게 쓰는 디코딩만 heavy-op 퍼밋으로 제한 → 대용량 이미지 동시 디코딩 시
     // RGBA 버퍼 폭증으로 인한 OOM/크래시를 방지한다.
-    if let Ok(data) = std::fs::read(path) {
+    //
+    // 읽기 실패는 Err로 올린다(회귀 주의). dataless 파일을 여러 개 동시에 materialize할 때
+    // File Provider 읽기가 일시적으로 실패하는데, 이를 삼키고 QuickLook으로 넘기면 None이 되어
+    // `.none`이 영구 기록되고, mtime·len 키가 materialize 후에도 같아 다시는 재시도되지 않았다.
+    let data = std::fs::read(path).map_err(|e| {
+        log::warn!("클라우드 이미지 읽기 실패 (썸네일 보류): {}: {}", path, e);
+        AppError::from(e)
+    })?;
+    {
         let decoded = {
             let _permit = HeavyOpPermit::acquire();
             image::load_from_memory(&data).ok().map(|img| {
@@ -1050,6 +1088,7 @@ pub async fn get_file_thumbnail_path(
     let cache_dir = app_cache.join("img_thumbnails");
 
     tokio::task::spawn_blocking(move || -> Result<Option<String>> {
+        purge_stale_negative_thumbnail_cache_once(&app_cache);
         let resolved_path =
             materialize_archive_path_in_cache(&app_paths, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
@@ -1103,6 +1142,7 @@ pub async fn get_file_thumbnail(
     let cache_dir = app_cache.join("img_thumbnails");
 
     tokio::task::spawn_blocking(move || {
+        purge_stale_negative_thumbnail_cache_once(&app_cache);
         let resolved_path =
             materialize_archive_path_in_cache(&app_paths, &path)?.unwrap_or_else(|| PathBuf::from(&path));
         let resolved_path_str = resolved_path.to_string_lossy().to_string();
@@ -1276,7 +1316,8 @@ mod tests {
         ensure_cached_thumbnail, ensure_google_drive_thumbnail,
         generate_cloud_image_thumbnail_bytes, google_drive_content_signature,
         google_drive_thumbnail_cache_file, invalidate_thumbnail_cache_paths_in_root,
-        negative_thumbnail_cache_file, safe_google_drive_file_id,
+        negative_thumbnail_cache_file, purge_stale_negative_thumbnail_cache,
+        safe_google_drive_file_id,
     };
 
     fn unique_test_dir(name: &str) -> std::path::PathBuf {
@@ -1390,6 +1431,37 @@ mod tests {
         let decoded = image::load_from_memory(&bytes.expect("thumbnail bytes")).unwrap();
 
         assert_eq!((decoded.width(), decoded.height()), (160, 60));
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cloud_image_thumbnail_read_failure_is_error_not_negative() {
+        // 읽기 실패(클라우드 다운로드 실패)는 None이 아니라 Err여야 `.none`이 기록되지 않는다
+        let root = unique_test_dir("cloud_read_fail");
+        let missing = root.join("missing.png");
+        assert!(generate_cloud_image_thumbnail_bytes(&missing.to_string_lossy(), "png", 160).is_err());
+    }
+
+    #[test]
+    fn purge_stale_negative_thumbnail_cache_removes_none_once() {
+        let root = unique_test_dir("purge_none");
+        let drive = root.join("drive_thumbnails");
+        let img = root.join("img_thumbnails");
+        std::fs::create_dir_all(&drive).unwrap();
+        std::fs::create_dir_all(&img).unwrap();
+        std::fs::write(drive.join("a_320_1-2_v7.none"), b"none").unwrap();
+        std::fs::write(drive.join("b_320_1-2_v7.png"), b"png").unwrap();
+        std::fs::write(img.join("c.none"), b"none").unwrap();
+
+        purge_stale_negative_thumbnail_cache(&root);
+        assert!(!drive.join("a_320_1-2_v7.none").exists());
+        assert!(!img.join("c.none").exists());
+        assert!(drive.join("b_320_1-2_v7.png").exists());
+
+        // 마커 이후 새로 생긴 `.none`은 유지(정상 음성 캐시)
+        std::fs::write(img.join("d.none"), b"none").unwrap();
+        purge_stale_negative_thumbnail_cache(&root);
+        assert!(img.join("d.none").exists());
         std::fs::remove_dir_all(root).ok();
     }
 
