@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.84] - 2026-10-05
+
+### Fixed
+- 이미지 파일 1개 선택 후 Ctrl+C 시 파일 참조와 함께 이미지 데이터(macOS: PNG/TIFF, Windows: CF_DIB/PNG)도 OS 클립보드에 등록해 이미지 편집기·메신저 등 다른 앱에 바로 붙여넣기 가능
+- macOS 파일 클립보드 쓰기를 osascript 대신 NSPasteboard 네이티브 API로 처리 (실패 시 osascript 폴백)
+
 ## [1.27.83] - 2026-09-28
 
 ### Fixed

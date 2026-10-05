@@ -15,10 +15,130 @@ pub fn read_files_from_clipboard() -> Result<Vec<String>, String> {
     read_files_from_clipboard_native()
 }
 
+// 이미지 데이터를 함께 등록할 최대 파일 크기 (Ctrl+C 시 UI 멈춤 방지)
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const CLIPBOARD_IMAGE_MAX_BYTES: u64 = 50 * 1024 * 1024;
+
+// 단일 이미지 파일 선택 시에만 이미지 데이터도 클립보드에 넣는다.
+// 파일 참조만 있으면 이미지 편집기·메신저 입력창 등에서 붙여넣기가 안 되기 때문.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn single_image_path(paths: &[String]) -> Option<&str> {
+    if paths.len() != 1 {
+        return None;
+    }
+    let path = std::path::Path::new(&paths[0]);
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    let supported = matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico"
+    ) || (cfg!(target_os = "macos")
+        && matches!(ext.as_str(), "heic" | "heif" | "tif" | "tiff"));
+    if !supported {
+        return None;
+    }
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > CLIPBOARD_IMAGE_MAX_BYTES {
+        return None;
+    }
+    Some(paths[0].as_str())
+}
+
 #[cfg(target_os = "macos")]
 fn write_files_to_clipboard_native(paths: &[String]) -> Result<(), String> {
+    match write_files_to_pasteboard(paths) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            log::warn!("NSPasteboard 쓰기 실패 ({}), osascript 폴백", e);
+            write_files_to_clipboard_osascript(paths)
+        }
+    }
+}
+
+// NSPasteboard에 파일 URL(Finder와 동일) + 단일 이미지면 PNG/TIFF 데이터까지 등록
+#[cfg(target_os = "macos")]
+fn write_files_to_pasteboard(paths: &[String]) -> Result<(), String> {
+    use objc::runtime::{Class, Object, BOOL, NO};
+    use objc::{msg_send, sel, sel_impl};
+
+    let ns_string = |cls: &Class, s: &str| -> Result<*mut Object, String> {
+        let c = std::ffi::CString::new(s).map_err(|e| e.to_string())?;
+        let obj: *mut Object = unsafe { msg_send![cls, stringWithUTF8String: c.as_ptr()] };
+        if obj.is_null() {
+            return Err("NSString 생성 실패".into());
+        }
+        Ok(obj)
+    };
+
+    unsafe {
+        let pool_class = Class::get("NSAutoreleasePool").ok_or("NSAutoreleasePool not found")?;
+        let pool: *mut Object = msg_send![pool_class, new];
+
+        let result = (|| -> Result<(), String> {
+            let pb_class = Class::get("NSPasteboard").ok_or("NSPasteboard not found")?;
+            let url_class = Class::get("NSURL").ok_or("NSURL not found")?;
+            let arr_class = Class::get("NSMutableArray").ok_or("NSMutableArray not found")?;
+            let str_class = Class::get("NSString").ok_or("NSString not found")?;
+
+            let pb: *mut Object = msg_send![pb_class, generalPasteboard];
+            if pb.is_null() {
+                return Err("generalPasteboard is null".into());
+            }
+
+            let urls: *mut Object = msg_send![arr_class, arrayWithCapacity: paths.len()];
+            for p in paths {
+                let ns_path = ns_string(str_class, p)?;
+                let url: *mut Object = msg_send![url_class, fileURLWithPath: ns_path];
+                if url.is_null() {
+                    return Err(format!("NSURL 생성 실패: {}", p));
+                }
+                let _: () = msg_send![urls, addObject: url];
+            }
+
+            let _: isize = msg_send![pb, clearContents];
+            let ok: BOOL = msg_send![pb, writeObjects: urls];
+            if ok == NO {
+                return Err("writeObjects 실패".into());
+            }
+
+            // 이미지 데이터는 첫 번째 pasteboard item에 추가 (실패해도 파일 복사는 유지)
+            if let Some(img_path) = single_image_path(paths) {
+                let ns_path = ns_string(str_class, img_path)?;
+                let is_png = img_path.to_ascii_lowercase().ends_with(".png");
+                if is_png {
+                    if let Ok(bytes) = std::fs::read(img_path) {
+                        if let Some(data_class) = Class::get("NSData") {
+                            let data: *mut Object = msg_send![data_class, dataWithBytes: bytes.as_ptr() as *const std::ffi::c_void length: bytes.len()];
+                            if !data.is_null() {
+                                let t = ns_string(str_class, "public.png")?;
+                                let _: BOOL = msg_send![pb, setData: data forType: t];
+                            }
+                        }
+                    }
+                }
+                if let Some(img_class) = Class::get("NSImage") {
+                    let alloc: *mut Object = msg_send![img_class, alloc];
+                    let image: *mut Object = msg_send![alloc, initWithContentsOfFile: ns_path];
+                    if !image.is_null() {
+                        let tiff: *mut Object = msg_send![image, TIFFRepresentation];
+                        if !tiff.is_null() {
+                            let t = ns_string(str_class, "public.tiff")?;
+                            let _: BOOL = msg_send![pb, setData: tiff forType: t];
+                        }
+                        let _: () = msg_send![image, release];
+                    }
+                }
+            }
+            Ok(())
+        })();
+
+        let _: () = msg_send![pool, drain];
+        result
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn write_files_to_clipboard_osascript(paths: &[String]) -> Result<(), String> {
     // osascript(AppleScript)로 클립보드에 파일 등록
-    // Finder와 동일한 방식으로 동작하여 Notion, Slack 등 외부 앱 호환
     let file_refs: Vec<String> = paths
         .iter()
         .map(|p| {
@@ -149,7 +269,8 @@ fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
         GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE, GMEM_ZEROINIT,
     };
     use winapi::um::winuser::{
-        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData, CF_HDROP,
+        CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+        CF_DIB, CF_HDROP,
     };
 
     // winapi 크레이트에 DROPFILES가 없어서 직접 정의
@@ -176,6 +297,9 @@ fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
         total_size += wp.len() * 2;
     }
     total_size += 2; // 끝 null 종료자
+
+    // 클립보드를 잠그기 전에 이미지 디코딩을 끝내 잠금 시간을 줄인다
+    let image_payload = single_image_path(paths).and_then(build_windows_image_payload);
 
     unsafe {
         if OpenClipboard(ptr::null_mut()) == 0 {
@@ -223,9 +347,86 @@ fn write_files_to_clipboard_inner(paths: &[String]) -> Result<(), String> {
         }
 
         // SetClipboardData 성공 시 시스템이 메모리 소유 (GlobalFree 호출 금지)
+
+        // 이미지 데이터 추가 (실패해도 파일 복사는 유지)
+        if let Some((dib, png)) = image_payload {
+            set_clipboard_bytes(CF_DIB, &dib);
+            let png_name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
+            let png_format = RegisterClipboardFormatW(png_name.as_ptr());
+            if png_format != 0 {
+                set_clipboard_bytes(png_format, &png);
+            }
+        }
+
         CloseClipboard();
         Ok(())
     }
+}
+
+// 열린 클립보드에 바이트 데이터를 지정 포맷으로 등록
+#[cfg(target_os = "windows")]
+unsafe fn set_clipboard_bytes(format: u32, bytes: &[u8]) -> bool {
+    use std::ptr;
+    use winapi::um::winbase::{GlobalAlloc, GlobalFree, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    use winapi::um::winuser::SetClipboardData;
+
+    let h_global = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
+    if h_global.is_null() {
+        return false;
+    }
+    let data = GlobalLock(h_global) as *mut u8;
+    if data.is_null() {
+        GlobalFree(h_global);
+        return false;
+    }
+    ptr::copy_nonoverlapping(bytes.as_ptr(), data, bytes.len());
+    GlobalUnlock(h_global);
+    if SetClipboardData(format, h_global).is_null() {
+        GlobalFree(h_global);
+        return false;
+    }
+    true
+}
+
+// 이미지 파일 → (CF_DIB 바이트, PNG 바이트). PNG 포맷은 알파 채널을 보존하는 앱(Office, 브라우저 등)용
+#[cfg(target_os = "windows")]
+fn build_windows_image_payload(path: &str) -> Option<(Vec<u8>, Vec<u8>)> {
+    let img = image::open(path).ok()?.to_rgba8();
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    // BITMAPINFOHEADER(40바이트) + 32bpp BGRA bottom-up 픽셀
+    let pixel_bytes = (width as usize) * (height as usize) * 4;
+    let mut dib = Vec::with_capacity(40 + pixel_bytes);
+    dib.extend_from_slice(&40u32.to_le_bytes()); // biSize
+    dib.extend_from_slice(&(width as i32).to_le_bytes()); // biWidth
+    dib.extend_from_slice(&(height as i32).to_le_bytes()); // biHeight (양수 = bottom-up)
+    dib.extend_from_slice(&1u16.to_le_bytes()); // biPlanes
+    dib.extend_from_slice(&32u16.to_le_bytes()); // biBitCount
+    dib.extend_from_slice(&0u32.to_le_bytes()); // biCompression = BI_RGB
+    dib.extend_from_slice(&(pixel_bytes as u32).to_le_bytes()); // biSizeImage
+    dib.extend_from_slice(&0i32.to_le_bytes()); // biXPelsPerMeter
+    dib.extend_from_slice(&0i32.to_le_bytes()); // biYPelsPerMeter
+    dib.extend_from_slice(&0u32.to_le_bytes()); // biClrUsed
+    dib.extend_from_slice(&0u32.to_le_bytes()); // biClrImportant
+    for row in img.rows().rev() {
+        for px in row {
+            let [r, g, b, a] = px.0;
+            dib.extend_from_slice(&[b, g, r, a]);
+        }
+    }
+
+    let png = if path.to_ascii_lowercase().ends_with(".png") {
+        std::fs::read(path).ok()?
+    } else {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png).ok()?;
+        buf.into_inner()
+    };
+
+    Some((dib, png))
 }
 
 #[cfg(target_os = "windows")]

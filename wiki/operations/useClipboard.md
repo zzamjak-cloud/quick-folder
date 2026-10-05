@@ -44,7 +44,7 @@ Ctrl+V
 ## OS 클립보드 Rust 명령
 | 명령 | 설명 |
 |------|------|
-| `write_files_to_clipboard(paths)` | 파일을 OS 클립보드에 등록 |
+| `write_files_to_clipboard(paths)` | 파일을 OS 클립보드에 등록. 단일 이미지(≤50MB)면 이미지 데이터도 함께 등록 (macOS PNG/TIFF, Windows CF_DIB+PNG) |
 | `read_files_from_clipboard()` | OS 클립보드 파일 목록 읽기 |
 | `paste_image_from_clipboard(dest)` | 이미지 데이터 → PNG 파일 저장, 경로 반환 |
 | `copy_path(path)` | 경로 텍스트 클립보드 복사 |
