@@ -501,6 +501,19 @@ export function useFileOperations(config: UseFileOperationsConfig) {
 
     if (undoRenames.length === 0) return;
 
+    // 기존 항목과 이름이 겹치면 낙관적 갱신 전에 중단한다.
+    // 겹친 상태로 setEntries 하면 같은 path(key)가 두 개 생겨 React가 카드 DOM을 정리하지 못하고
+    // 선택된 것처럼 보이는 유령 카드가 남는다. Windows 경로는 대소문자를 구분하지 않는다.
+    const normalize = (p: string) => (sep === '\\' ? p.toLowerCase() : p);
+    const movingPaths = new Set(undoRenames.map(r => normalize(r.oldPath)));
+    const occupiedPaths = new Set(
+      entries.map(e => normalize(e.path)).filter(p => !movingPaths.has(p)),
+    );
+    if (undoRenames.some(r => occupiedPaths.has(normalize(r.newPath)))) {
+      showCopyToast(t('toast.sameNameExists'));
+      return;
+    }
+
     const newPathByOldPath = new Map(undoRenames.map(r => [r.oldPath, r.newPath]));
     const optimistic = sortEntries(entries.map(entry => {
       const nextPath = newPathByOldPath.get(entry.path);
@@ -547,12 +560,13 @@ export function useFileOperations(config: UseFileOperationsConfig) {
       } else {
         console.error('이름 변경 실패:', e);
       }
-      // 실패 시 디렉토리 재로드하여 원래 이름 복원
+      // 실패 시 디렉토리 재로드하여 원래 이름과 선택 상태 복원
       if (currentPath) {
         const result = await tauriCommands.listDirectory(currentPath);
         cacheListing?.(currentPath, result);
         setEntries(sortEntries(result, sortBy, sortDir));
       }
+      setSelectedPaths(batchPaths);
     }
   }, [cacheListing, currentPath, entries, selectedPaths, ensureWritableContext, instanceId, sortBy, sortDir, sortEntries, showCopyToast, undoStack, setRenamingPath, setEntries, setSelectedPaths, setFocusedIndex, t]);
 

@@ -77,3 +77,15 @@ Windows NTFS에서 `Path::exists()`가 자기 자신을 찾아 true를 반환한
 - `fs::rename`은 case-insensitive FS에서도 대소문자 변경을 정상 처리한다(검증됨).
 - 회귀 테스트: `file_ops.rs::tests::test_rename_item_case_only`
   — `exists()`는 대소문자 무시 FS에서 무의미하므로 `read_dir`로 실제 엔트리 이름을 검증한다.
+
+## 기존 이름으로 이름 변경 시 유령 선택 카드 (회귀 주의)
+
+새 폴더를 만들고 인라인 이름변경으로 **이미 있는 폴더명**을 입력하면, 예전에는 선택된 것처럼 보이는
+카드가 화면에 계속 남았다.
+
+- 원인: `handleRenameCommit`이 rename 호출 **전에** 낙관적으로 `setEntries`를 하는데, 이때 같은 `path`를
+  가진 항목이 두 개 생긴다. 카드 key가 `path`라 React가 key 중복으로 DOM을 정리하지 못해 유령 카드가 남는다.
+  rename이 실패해 목록을 다시 불러와도 `selectedPaths`는 겹친 경로를 그대로 가리키고 있었다.
+- 대책: 낙관적 갱신 전에 현재 `entries`와 충돌하는지 검사하고(Windows는 대소문자 무시),
+  충돌하면 `toast.sameNameExists`만 띄우고 중단한다. rename 실패(catch) 시에는 선택을 원래 경로로 되돌린다.
+- 낙관적 갱신 로직을 수정할 때 **같은 path가 두 번 들어가는 상태를 만들지 말 것**.

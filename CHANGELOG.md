@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.85] - 2026-10-06
+
+### Fixed
+- 새 폴더 이름을 기존 폴더명으로 바꿀 때 선택된 것처럼 보이는 유령 카드가 남던 문제 수정 (충돌 시 토스트만 띄우고 중단)
+
 ## [1.27.84] - 2026-10-05
 
 ### Fixed
