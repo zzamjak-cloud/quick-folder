@@ -97,13 +97,99 @@ pub fn find_launcher(id: &str) -> Result<&'static AgentLauncher> {
         .ok_or_else(|| AppError::InvalidInput(format!("알 수 없는 에이전트: {}", id)))
 }
 
+/// 에이전트 CLI 를 찾고 띄울 때 쓰는 PATH.
+///
+/// macOS 에서 Finder·Dock 으로 실행한 앱은 셸 설정을 읽지 않아 PATH 가
+/// `/usr/bin:/bin:/usr/sbin:/sbin` 뿐이다. `~/.npm-global/bin`, `~/.local/bin`,
+/// Homebrew 에 깔린 `claude`·`codex`·`gemini` 가 보이지 않으므로 로그인 셸의 PATH 를
+/// 앞에 붙인다. 셸 기동이 느릴 수 있어 처음 한 번만 읽는다.
+///
+/// 프로세스 환경변수는 건드리지 않는다 — 스레드가 이미 떠 있는 상태에서 `set_var` 는 경쟁을 만든다.
+/// 대신 자식 프로세스를 띄울 때 이 값을 `PATH` 로 넘긴다 (`gemini` 는 `node` 도 PATH 로 찾는다).
+pub fn search_path() -> Option<std::ffi::OsString> {
+    static CACHED: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    CACHED.get_or_init(resolve_search_path).clone()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resolve_search_path() -> Option<std::ffi::OsString> {
+    std::env::var_os("PATH")
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_search_path() -> Option<std::ffi::OsString> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut push = |dir: PathBuf| {
+        if !dir.as_os_str().is_empty() && !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    };
+
+    if let Some(login) = login_shell_path() {
+        std::env::split_paths(&login).for_each(&mut push);
+    }
+    if let Some(current) = std::env::var_os("PATH") {
+        std::env::split_paths(&current).for_each(&mut push);
+    }
+    // 셸이 실패하거나 PATH 설정을 비대화형 rc 에만 둔 경우를 위한 흔한 설치 위치
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        for sub in [".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin", ".cargo/bin"] {
+            push(home.join(sub));
+        }
+    }
+    push(PathBuf::from("/opt/homebrew/bin"));
+    push(PathBuf::from("/usr/local/bin"));
+
+    std::env::join_paths(dirs).ok()
+}
+
+/// 로그인·대화형 셸이 만드는 PATH 를 읽는다. rc 파일이 찍는 잡음과 구분하려고 표식으로 감싼다.
+#[cfg(target_os = "macos")]
+fn login_shell_path() -> Option<String> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    const MARKER: &str = "__QF_PATH__";
+    // rc 파일이 입력을 기다리거나 멈추면 메뉴 판정이 막히므로 오래 기다리지 않는다
+    const TIMEOUT: Duration = Duration::from_secs(3);
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let mut child = Command::new(shell)
+        .args(["-ilc", &format!("printf '{m}%s{m}' \"$PATH\"", m = MARKER)])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < TIMEOUT => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+
+    let mut output = String::new();
+    child.stdout.take()?.read_to_string(&mut output).ok()?;
+    let start = output.find(MARKER)? + MARKER.len();
+    let len = output[start..].find(MARKER)?;
+    Some(output[start..start + len].to_string()).filter(|p| !p.is_empty())
+}
+
 /// PATH 에서 실행 파일을 찾는다.
 ///
 /// Windows 의 `claude`·`gemini`·`codex` 는 npm 이 만든 `.cmd` 셔임인 경우가 많아
 /// `PATHEXT` 를 훑어야 한다. 셸을 거치지 않고 직접 spawn 하므로 확장자까지 붙은
 /// 전체 경로가 필요하다.
 pub fn find_program(program: &str) -> Option<PathBuf> {
-    let paths = std::env::var_os("PATH")?;
+    let paths = search_path()?;
 
     #[cfg(target_os = "windows")]
     let exts: Vec<String> = std::env::var("PATHEXT")

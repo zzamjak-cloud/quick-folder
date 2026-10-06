@@ -355,6 +355,10 @@ JSON이 아닌 줄(CLI가 직접 찍는 경고 등)은 삼키지 않고 그대�
 `useAgentAvailability`가 **등록됨 + CLI 존재 + 이 폴더가 허용 루트 안**을 전부 만족할 때만 보인다.
 프런트의 `isUnderRoot`는 어림짐작이고(심볼릭 링크 미해소), 실제 차단은 Rust가 다시 한다.
 
+**macOS: CLI 존재 판정은 로그인 셸 PATH로 한다.** Finder·Dock으로 띄운 앱의 PATH에는
+`~/.npm-global/bin`·`~/.local/bin`·Homebrew가 없어서 CLI가 없다고 판정되고 메뉴가 사라진다.
+`agent_launch::search_path()`가 `$SHELL -ilc`로 PATH를 한 번 읽어 탐색과 spawn 양쪽에 쓴다.
+
 MCP 설정 모달에서 등록·해제하면 `qf:mcp-changed` 윈도우 이벤트가 나가고 메뉴가 갱신된다.
 
 ## 취소

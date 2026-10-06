@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.86] - 2026-10-06
+
+### Fixed
+- macOS에서 Finder·Dock으로 실행 시 AI 에이전트 CLI(claude·codex·gemini)를 찾지 못해 폴더 우클릭 "AI Agent 요청하기" 메뉴가 나타나지 않던 문제 수정 (로그인 셸 PATH를 읽어 CLI 탐색·실행에 사용)
+
 ## [1.27.85] - 2026-10-06
 
 ### Fixed

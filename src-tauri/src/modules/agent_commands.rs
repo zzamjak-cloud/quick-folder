@@ -101,6 +101,8 @@ fn registered_roots(mcp_client_id: &str) -> Result<Vec<PathBuf>> {
 /// 실행 가능한 에이전트 목록과 각 상태
 #[tauri::command]
 pub async fn agent_status() -> Result<Vec<AgentStatus>> {
+    // 첫 호출은 로그인 셸을 띄워 PATH 를 읽으므로 async 워커를 막지 않게 따로 돌린다
+    let _ = tauri::async_runtime::spawn_blocking(agent_launch::search_path).await;
     let server = mcp_setup::find_qf_mcp_path().unwrap_or_default();
     let clients = mcp_setup::client_statuses(&server);
 
@@ -158,7 +160,12 @@ pub async fn agent_run(
     let mut command = Command::new(&invocation.program);
     command
         .args(&invocation.args)
-        .current_dir(&invocation.cwd)
+        .current_dir(&invocation.cwd);
+    // GUI 앱의 빈약한 PATH 대신 로그인 셸 PATH 를 물려준다 (CLI 가 node 등을 찾아야 한다)
+    if let Some(path) = agent_launch::search_path() {
+        command.env("PATH", path);
+    }
+    command
         .envs(invocation.env.iter().cloned())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
