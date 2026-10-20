@@ -70,7 +70,7 @@ pub struct RootParam {
 pub struct ImageBatchParams {
     /// 처리할 파일 또는 폴더 경로 목록
     pub paths: Vec<String>,
-    /// 연산 종류: pixelate | resize | compress | crop | to_ico | to_icns | remove_white_bg
+    /// 연산 종류: pixelate | resize | compress | crop | to_ico | to_icns | remove_white_bg | remove_bg_ai
     pub op: String,
     /// 하위 폴더까지 훑을지 여부
     #[serde(default)]
@@ -108,9 +108,13 @@ pub struct ImageBatchParams {
     /// remove_white_bg: 경계 부드럽게 (0-255)
     #[serde(default)]
     pub feather: Option<u8>,
-    /// remove_white_bg: 여백 잘라내기
+    /// remove_white_bg / remove_bg_ai: 여백 잘라내기
     #[serde(default)]
     pub trim: bool,
+    /// remove_bg_ai: 모델 (isnet-general | isnet-anime | birefnet-lite, 기본 isnet-general).
+    /// 모델은 앱의 배경 제거 창(AI 모드)에서 미리 내려받아 둬야 한다.
+    #[serde(default)]
+    pub model: Option<String>,
     /// true면 실제로 처리하지 않고 대상 목록만 돌려준다
     #[serde(default)]
     pub dry_run: bool,
@@ -147,8 +151,15 @@ impl ImageBatchParams {
                 feather: self.feather.unwrap_or(0),
                 trim: self.trim,
             }),
+            "remove_bg_ai" => Ok(ImageBatchOp::RemoveBgAi {
+                model: self
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| quickfolder_core::DEFAULT_MODEL_ID.to_string()),
+                trim: self.trim,
+            }),
             other => Err(invalid(format!(
-                "알 수 없는 연산입니다: {}. pixelate | resize | compress | crop | to_ico | to_icns | remove_white_bg 중 하나여야 합니다.",
+                "알 수 없는 연산입니다: {}. pixelate | resize | compress | crop | to_ico | to_icns | remove_white_bg | remove_bg_ai 중 하나여야 합니다.",
                 other
             ))),
         }
@@ -631,7 +642,7 @@ impl QuickFolderServer {
     /// 이미지 일괄 처리
     #[tool(
         name = "qf_image_batch",
-        description = "폴더나 파일 목록에 이미지 연산을 일괄 적용한다. op: pixelate, resize, compress, crop, to_ico, to_icns, remove_white_bg. 원본은 남고 새 파일이 생성된다. 한 파일이 실패해도 나머지는 계속 처리된다."
+        description = "폴더나 파일 목록에 이미지 연산을 일괄 적용한다. op: pixelate, resize, compress, crop, to_ico, to_icns, remove_white_bg, remove_bg_ai(AI 모델로 사진·복잡한 배경 제거). 원본은 남고 새 파일이 생성된다. 한 파일이 실패해도 나머지는 계속 처리된다."
     )]
     pub async fn qf_image_batch(
         &self,

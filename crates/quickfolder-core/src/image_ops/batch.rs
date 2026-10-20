@@ -45,6 +45,17 @@ pub enum ImageBatchOp {
         #[serde(default)]
         trim: bool,
     },
+    /// AI 모델로 배경 제거 (모델은 앱에서 미리 내려받아 둬야 한다)
+    RemoveBgAi {
+        #[serde(default = "default_ai_bg_model")]
+        model: String,
+        #[serde(default)]
+        trim: bool,
+    },
+}
+
+fn default_ai_bg_model() -> String {
+    super::background_ai::DEFAULT_MODEL_ID.to_string()
 }
 
 /// 배치 대상 기본 확장자
@@ -67,7 +78,7 @@ impl ImageBatchOp {
             Self::Resize { width, height } => Some(format!("_{}x{}", width, height)),
             Self::Compress { .. } => Some("_compressed".to_string()),
             Self::Crop { .. } => Some("_crop".to_string()),
-            Self::RemoveWhiteBg { .. } => Some("_nobg".to_string()),
+            Self::RemoveWhiteBg { .. } | Self::RemoveBgAi { .. } => Some("_nobg".to_string()),
             Self::ToIco | Self::ToIcns => None,
         }
     }
@@ -103,6 +114,19 @@ impl ImageBatchOp {
                 let outputs =
                     super::remove_white_bg_save(vec![path], threshold, feather, vec![], trim)
                         .await?;
+                outputs
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| AppError::Internal("배경 제거 결과가 비어 있습니다".to_string()))
+            }
+            Self::RemoveBgAi { model, trim } => {
+                let outputs = super::ai_bg_save(
+                    vec![path],
+                    model,
+                    super::AiBgOptions::default(),
+                    trim,
+                )
+                .await?;
                 outputs
                     .into_iter()
                     .next()

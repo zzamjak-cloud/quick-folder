@@ -511,6 +511,7 @@ export const enLegacyTextTranslations = {
     '드래그로 영역 선택 후 헤더 PNG 저장': 'Drag to select an area, then save PNG from the header.',
     'ESC로 선택 영역 초기화': 'Press ESC to reset selection.',
     '흰 배경 자동 제거 + "여백 제거" 옵션으로 투명 가장자리 트리밍': 'Automatically remove white backgrounds and trim transparent edges with the "Remove margin" option.',
+    'AI 모드: 사진·복잡한 배경에서도 피사체만 분리 (처음 한 번 모델 다운로드)': 'AI mode: isolates the subject even on photos and complex backgrounds (one-time model download)',
     '결과 PNG는 원본과 동일 폴더에 새 파일로 저장': 'The result PNG is saved as a new file in the same folder as the original.',
     '픽셀화 (Pixelate)': 'Pixelate',
     '우클릭 → 픽셀화. 픽셀 크기·컬러 수 조절 (출력 크기는 픽셀 크기에 따라 자동 결정)': 'Right-click -> Pixelate. Adjust pixel size and color count (the output size follows the pixel size).',

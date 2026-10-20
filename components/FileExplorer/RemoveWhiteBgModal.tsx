@@ -3,23 +3,59 @@ import { ThemeVars } from './types';
 import ModalShell from './ui/ModalShell';
 import { Spinner } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Wand2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw, Wand2, Download } from 'lucide-react';
+import { Channel } from '@tauri-apps/api/core';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { invokeTauriCommand as invoke } from '../../utils/tauriInvoke';
 import type { TranslationKey } from '../../utils/i18n';
+import { tauriCommands } from '../../utils/tauriCommands';
+import type { AiBgDownloadProgress, AiBgOptions, AiBgStatus } from '../../utils/tauriCommandDomains/mediaCommands';
 
 // 저장소 키
 const LS_KEY = 'qf_remove_bg_settings';
+
+// 제거 방식: 색상 기반(단색 배경) / AI 모델(사진·복잡한 배경)
+type RemoveBgMode = 'color' | 'ai';
 
 interface SavedSettings {
   threshold: number;
   feather: number;
   previewBg: string; // 'checker' 또는 hex 색상
   trim: boolean;
+  mode: RemoveBgMode;
+  aiModel: string;
+  aiOptions: AiBgOptions;
 }
 
+const DEFAULT_SETTINGS: SavedSettings = {
+  threshold: 60,
+  feather: 30,
+  previewBg: 'checker',
+  trim: true,
+  mode: 'color',
+  aiModel: 'isnet-general',
+  aiOptions: { cutoff: 5, sharpness: 0, refineEdges: false, decontaminate: true },
+};
+
+// AI 모델 표시 순서와 라벨 (Rust 카탈로그 id 와 일치)
+const AI_MODEL_LABEL_KEYS: Record<string, TranslationKey> = {
+  'isnet-general': 'removeBg.ai.model.isnet-general',
+  'isnet-anime': 'removeBg.ai.model.isnet-anime',
+  'birefnet-lite': 'removeBg.ai.model.birefnet-lite',
+};
+
 function loadSettings(): SavedSettings {
-  return readJsonStorage(LS_KEY, { threshold: 60, feather: 30, previewBg: 'checker', trim: true });
+  // 이전 버전에서 저장한 값에는 AI 관련 필드가 없으므로 기본값 위에 덮는다
+  const stored = readJsonStorage<Partial<SavedSettings>>(LS_KEY, {});
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    aiOptions: { ...DEFAULT_SETTINGS.aiOptions, ...(stored.aiOptions ?? {}) },
+  };
+}
+
+function formatMb(bytes: number): string {
+  return `${Math.round(bytes / (1024 * 1024))}MB`;
 }
 
 function saveSettings(s: SavedSettings) {
@@ -53,11 +89,12 @@ interface RemoveWhiteBgModalProps {
   paths: string[];
   onClose: () => void;
   onApply: (paths: string[], threshold: number, feather: number, seeds: [number, number][], trim: boolean) => Promise<void>;
+  onApplyAi: (paths: string[], model: string, options: AiBgOptions, trim: boolean) => Promise<void>;
   themeVars: ThemeVars | null;
   t: (key: TranslationKey) => string;
 }
 
-export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars, t }: RemoveWhiteBgModalProps) {
+export default function RemoveWhiteBgModal({ paths, onClose, onApply, onApplyAi, themeVars, t }: RemoveWhiteBgModalProps) {
   const saved = useMemo(loadSettings, []);
 
   const formatMessage = useCallback((template: string, values: Record<string, string | number>) => (
@@ -76,6 +113,20 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
 
   // 투명 여백 트림 여부
   const [trim, setTrim] = useState(saved.trim);
+
+  // 제거 방식과 AI 설정
+  const [mode, setMode] = useState<RemoveBgMode>(saved.mode);
+  const [aiModel, setAiModel] = useState(saved.aiModel);
+  const [aiOptions, setAiOptions] = useState<AiBgOptions>(saved.aiOptions);
+  const [aiStatus, setAiStatus] = useState<AiBgStatus | null>(null);
+  const [download, setDownload] = useState<AiBgDownloadProgress | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  // 원본 미리보기 이미지의 표시 크기 — AI 결과(더 큰 해상도)를 같은 크기로 맞춰 그린다
+  const [origNatural, setOrigNatural] = useState<{ w: number; h: number } | null>(null);
+
+  // 늦게 도착한 이전 미리보기 응답이 최신 결과를 덮지 않도록 요청 번호로 거른다
+  const previewRequestId = useRef(0);
 
   // 다중 파일 전환
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -124,8 +175,44 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
 
   // 설정 변경 시 저장소에 반영
   useEffect(() => {
-    saveSettings({ threshold, feather, previewBg, trim });
-  }, [threshold, feather, previewBg, trim]);
+    saveSettings({ threshold, feather, previewBg, trim, mode, aiModel, aiOptions });
+  }, [threshold, feather, previewBg, trim, mode, aiModel, aiOptions]);
+
+  // AI 런타임·모델 설치 상태
+  const refreshAiStatus = useCallback(async () => {
+    try {
+      setAiStatus(await tauriCommands.aiBgStatus());
+    } catch (e) {
+      setError(formatMessage(t('removeBg.warning.previewFailed'), { message: String(e) }));
+    }
+  }, [formatMessage, t]);
+
+  useEffect(() => {
+    if (mode === 'ai' && !aiStatus) refreshAiStatus();
+  }, [mode, aiStatus, refreshAiStatus]);
+
+  const aiModelStatus = aiStatus?.models.find(m => m.id === aiModel) ?? null;
+  const aiReady = !!aiStatus?.supported && aiStatus.runtimeInstalled && !!aiModelStatus?.installed;
+  // 아직 받지 않은 것만 합산한 다운로드 용량
+  const aiDownloadBytes = (aiStatus && !aiStatus.runtimeInstalled ? aiStatus.runtimeSizeBytes : 0)
+    + (aiModelStatus && !aiModelStatus.installed ? aiModelStatus.sizeBytes : 0);
+
+  // 런타임·모델 내려받기
+  const handleAiDownload = useCallback(async () => {
+    setDownloading(true);
+    setError('');
+    const onProgress = new Channel<AiBgDownloadProgress>();
+    onProgress.onmessage = progress => setDownload(progress);
+    try {
+      await tauriCommands.aiBgInstall(aiModel, onProgress);
+      await refreshAiStatus();
+    } catch (e) {
+      setError(formatMessage(t('removeBg.ai.downloadFailed'), { message: String(e) }));
+    } finally {
+      setDownloading(false);
+      setDownload(null);
+    }
+  }, [aiModel, refreshAiStatus, formatMessage, t]);
 
   // 원본 이미지 크기 조회
   useEffect(() => {
@@ -158,19 +245,20 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
 
   // 결과 미리보기 요청
   // 매개변수명이 번역 함수 t를 가리지 않도록 주의 (섀도잉 시 catch 블록에서 크래시)
-  const fetchPreview = useCallback(async (path: string, thresholdVal: number, featherVal: number, seedsVal: [number, number][]) => {
+  const fetchPreview = useCallback(async (request: () => Promise<string>) => {
+    const requestId = ++previewRequestId.current;
     setLoading(true);
     setError('');
     try {
-      const base64 = await invoke<string>('remove_white_bg_preview', {
-        input: path, threshold: thresholdVal, feather: featherVal, seeds: seedsVal,
-      });
+      const base64 = await request();
+      if (requestId !== previewRequestId.current) return;
       setPreview(base64);
     } catch (e) {
+      if (requestId !== previewRequestId.current) return;
       setError(formatMessage(t('removeBg.warning.previewFailed'), { message: String(e) }));
       setPreview(null);
     } finally {
-      setLoading(false);
+      if (requestId === previewRequestId.current) setLoading(false);
     }
   }, [formatMessage, t]);
 
@@ -181,13 +269,24 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
   // 파라미터/시드 변경 시 200ms 디바운스 후 미리보기 갱신
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    if (mode === 'ai' && !aiReady) {
+      // 모델을 받기 전에는 미리볼 수 없다 — 진행 중이던 응답도 무시
+      previewRequestId.current++;
+      setPreview(null);
+      setLoading(false);
+      return;
+    }
     debounceTimer.current = setTimeout(() => {
-      fetchPreview(currentPath, threshold, feather, seedPoints);
+      fetchPreview(mode === 'ai'
+        ? () => tauriCommands.aiBgPreview(currentPath, aiModel, aiOptions)
+        : () => invoke<string>('remove_white_bg_preview', {
+          input: currentPath, threshold, feather, seeds: seedPoints,
+        }));
     }, 200);
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [currentPath, threshold, feather, seedPoints, fetchPreview]);
+  }, [currentPath, mode, aiReady, aiModel, aiOptions, threshold, feather, seedPoints, fetchPreview]);
 
   // 이미지 클릭 → 시드 포인트 추가
   const handleImageClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -274,7 +373,15 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
     setError('');
     setSaveProgress(isMulti ? `0/${paths.length}` : '');
     try {
-      await onApply(paths, threshold, feather, seedPoints, trim);
+      if (mode === 'ai') {
+        if (!aiReady) {
+          setError(t('removeBg.ai.notReady'));
+          return;
+        }
+        await onApplyAi(paths, aiModel, aiOptions, trim);
+      } else {
+        await onApply(paths, threshold, feather, seedPoints, trim);
+      }
       onClose();
     } catch (e) {
       setError(formatMessage(t('removeBg.warning.saveFailed'), { message: String(e) }));
@@ -343,14 +450,31 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
         <div className="flex items-center justify-between flex-wrap gap-1">
           <div className="flex items-center gap-1.5">
             <button
-              style={wandActive ? activeBtnStyle : smallBtnStyle}
-              onClick={() => setWandActive(v => !v)}
-              title={t('removeBg.magicWandTitle')}
+              style={mode === 'color' ? activeBtnStyle : smallBtnStyle}
+              onClick={() => setMode('color')}
+              title={t('removeBg.mode.colorTitle')}
             >
-              <Wand2 size={13} />
-              <span>{t('removeBg.magicWand')}</span>
+              <span>{t('removeBg.mode.color')}</span>
             </button>
-            {seedPoints.length > 0 && (
+            <button
+              style={mode === 'ai' ? activeBtnStyle : smallBtnStyle}
+              onClick={() => { setMode('ai'); setWandActive(false); }}
+              title={t('removeBg.mode.aiTitle')}
+            >
+              <span>{t('removeBg.mode.ai')}</span>
+            </button>
+            <div style={{ width: 8 }} />
+            {mode === 'color' && (
+              <button
+                style={wandActive ? activeBtnStyle : smallBtnStyle}
+                onClick={() => setWandActive(v => !v)}
+                title={t('removeBg.magicWandTitle')}
+              >
+                <Wand2 size={13} />
+                <span>{t('removeBg.magicWand')}</span>
+              </button>
+            )}
+            {mode === 'color' && seedPoints.length > 0 && (
               <button style={smallBtnStyle} onClick={resetSeeds} title={t('removeBg.resetSelectionTitle')}>
                 <RotateCcw size={13} />
                 <span>{formatMessage(t('removeBg.resetSelection'), { count: seedPoints.length })}</span>
@@ -406,7 +530,10 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
                     ref={origImgRef}
                     src={`data:image/png;base64,${originalPreview}`}
                     alt={t('removeBg.original')}
-                    onLoad={triggerMarkerUpdate}
+                    onLoad={e => {
+                      setOrigNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
+                      triggerMarkerUpdate();
+                    }}
                     draggable={false}
                     style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', display: 'block' }}
                   />
@@ -449,10 +576,60 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
                     src={`data:image/png;base64,${preview}`}
                     alt={t('removeBg.result')}
                     draggable={false}
-                    style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', display: 'block' }}
+                    style={{
+                      transform: `scale(${zoom})`,
+                      transformOrigin: 'top left',
+                      display: 'block',
+                      // AI 결과는 원본 미리보기보다 해상도가 높다 — 같은 너비로 그려 좌우를 맞춘다.
+                      // max-width(100%) 는 원본 <img> 와 똑같이 남겨 둔다: 풀면 결과 패널이
+                      // 이미지 폭만큼 늘어나 원본 패널을 찌그러뜨린다(실측).
+                      ...(mode === 'ai' && origNatural ? { width: origNatural.w, height: 'auto' } : {}),
+                    }}
                   />
                 )}
-                {!loading && !preview && !error && (
+                {mode === 'ai' && !loading && !aiReady && (
+                  <div className="flex flex-col items-center justify-center gap-2 px-4 text-center" style={{ width: '100%', minHeight: 420 }}>
+                    {aiStatus && !aiStatus.supported ? (
+                      <span className="text-xs" style={{ color: themeVars?.muted }}>
+                        {formatMessage(t('removeBg.ai.unsupported'), { reason: aiStatus.unsupportedReason ?? '' })}
+                      </span>
+                    ) : aiStatus ? (
+                      <>
+                        <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>
+                          {formatMessage(t('removeBg.ai.downloadDescription'), { size: formatMb(aiDownloadBytes) })}
+                        </span>
+                        {downloading ? (
+                          <div className="flex flex-col items-center gap-1" style={{ width: 220 }}>
+                            <div className="w-full rounded" style={{ height: 6, background: themeVars?.border ?? '#334155' }}>
+                              <div
+                                className="rounded"
+                                style={{
+                                  height: 6,
+                                  width: `${download && download.total > 0 ? Math.min(100, (download.downloaded / download.total) * 100) : 0}%`,
+                                  background: themeVars?.accent ?? '#3b82f6',
+                                }}
+                              />
+                            </div>
+                            <span className="text-[10px]" style={{ color: themeVars?.muted }}>
+                              {formatMessage(t('removeBg.ai.downloading'), {
+                                stage: download ? t(download.stage === 'runtime' ? 'removeBg.ai.stage.runtime' : 'removeBg.ai.stage.model') : '',
+                                percent: download && download.total > 0 ? Math.floor((download.downloaded / download.total) * 100) : 0,
+                              })}
+                            </span>
+                          </div>
+                        ) : (
+                          <button style={activeBtnStyle} onClick={handleAiDownload}>
+                            <Download size={13} />
+                            <span>{formatMessage(t('removeBg.ai.download'), { size: formatMb(aiDownloadBytes) })}</span>
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <Spinner themeVars={themeVars} />
+                    )}
+                  </div>
+                )}
+                {!loading && !preview && !error && !(mode === 'ai' && !aiReady) && (
                   <span className="text-xs" style={{ color: themeVars?.muted }}>{t('removeBg.noPreview')}</span>
                 )}
               </div>
@@ -494,7 +671,85 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
             </div>
           </div>
 
-          {/* Threshold 슬라이더 */}
+          {mode === 'ai' && (
+            <>
+              {/* AI 모델 */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.ai.model')}</label>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {Object.entries(AI_MODEL_LABEL_KEYS).map(([id, labelKey]) => {
+                    const status = aiStatus?.models.find(m => m.id === id);
+                    return (
+                      <button
+                        key={id}
+                        style={aiModel === id ? activeBtnStyle : smallBtnStyle}
+                        onClick={() => setAiModel(id)}
+                        disabled={downloading}
+                        title={status && !status.installed
+                          ? formatMessage(t('removeBg.ai.notDownloaded'), { size: formatMb(status.sizeBytes) })
+                          : undefined}
+                      >
+                        <span>{t(labelKey)}</span>
+                        {status && !status.installed && <Download size={11} style={{ opacity: 0.7 }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 잔여 반투명 제거 */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.ai.cutoff')}</label>
+                <input
+                  type="range" min={0} max={100} value={aiOptions.cutoff}
+                  onChange={e => setAiOptions(o => ({ ...o, cutoff: Number(e.target.value) }))}
+                  onKeyDown={e => e.stopPropagation()}
+                  className="flex-1"
+                  style={{ accentColor: themeVars?.accent ?? '#3b82f6' }}
+                />
+                <span className="w-10 text-center text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{aiOptions.cutoff}</span>
+              </div>
+
+              {/* 경계 선명도 */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.ai.sharpness')}</label>
+                <input
+                  type="range" min={0} max={100} value={aiOptions.sharpness}
+                  onChange={e => setAiOptions(o => ({ ...o, sharpness: Number(e.target.value) }))}
+                  onKeyDown={e => e.stopPropagation()}
+                  className="flex-1"
+                  style={{ accentColor: themeVars?.accent ?? '#3b82f6' }}
+                />
+                <span className="w-10 text-center text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{aiOptions.sharpness}</span>
+              </div>
+
+              {/* 보정 옵션 */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.ai.options')}</label>
+                <label className="flex items-center gap-2 cursor-pointer" title={t('removeBg.ai.decontaminateTitle')}>
+                  <input
+                    type="checkbox"
+                    checked={aiOptions.decontaminate}
+                    onChange={e => setAiOptions(o => ({ ...o, decontaminate: e.target.checked }))}
+                    style={{ accentColor: themeVars?.accent ?? '#3b82f6', width: 14, height: 14 }}
+                  />
+                  <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{t('removeBg.ai.decontaminate')}</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer" title={t('removeBg.ai.refineEdgesTitle')}>
+                  <input
+                    type="checkbox"
+                    checked={aiOptions.refineEdges}
+                    onChange={e => setAiOptions(o => ({ ...o, refineEdges: e.target.checked }))}
+                    style={{ accentColor: themeVars?.accent ?? '#3b82f6', width: 14, height: 14 }}
+                  />
+                  <span className="text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{t('removeBg.ai.refineEdges')}</span>
+                </label>
+              </div>
+            </>
+          )}
+
+          {/* Threshold 슬라이더 (색상 기반 전용) */}
+          {mode === 'color' && (<>
           <div className="flex items-center gap-3">
             <label className="text-xs flex-shrink-0" style={{ color: themeVars?.muted, width: 72 }}>{t('removeBg.threshold')}</label>
             <input
@@ -519,6 +774,7 @@ export default function RemoveWhiteBgModal({ paths, onClose, onApply, themeVars,
             />
             <span className="w-10 text-center text-xs" style={{ color: themeVars?.text ?? '#e5e7eb' }}>{feather}</span>
           </div>
+          </>)}
 
           {/* Trim 체크박스 */}
           <div className="flex items-center gap-3">

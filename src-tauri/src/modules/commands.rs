@@ -526,6 +526,39 @@ pub async fn remove_white_bg_save(
 }
 
 #[tauri::command]
+pub async fn ai_bg_status() -> Result<quickfolder_core::AiBgStatus> {
+    quickfolder_core::ai_bg_status().await
+}
+
+#[tauri::command]
+pub async fn ai_bg_install(
+    model: String,
+    on_progress: tauri::ipc::Channel<quickfolder_core::AiBgDownloadProgress>,
+) -> Result<()> {
+    let sink = crate::modules::tauri_glue::channel_sink(on_progress);
+    quickfolder_core::ai_bg_install(model, sink).await
+}
+
+#[tauri::command]
+pub async fn ai_bg_preview(
+    input: String,
+    model: String,
+    options: quickfolder_core::AiBgOptions,
+) -> Result<String> {
+    quickfolder_core::ai_bg_preview(input, model, options).await
+}
+
+#[tauri::command]
+pub async fn ai_bg_save(
+    inputs: Vec<String>,
+    model: String,
+    options: quickfolder_core::AiBgOptions,
+    trim: bool,
+) -> Result<Vec<String>> {
+    quickfolder_core::ai_bg_save(inputs, model, options, trim).await
+}
+
+#[tauri::command]
 pub async fn rename_item(
     app: tauri::AppHandle,
     old_path: String,

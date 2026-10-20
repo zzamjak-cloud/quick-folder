@@ -7,6 +7,7 @@ import type { useModalStates } from './hooks/useModalStates';
 import type { PendingDrop } from './hooks/useInternalDragDrop';
 import type { FolderSizeDialogState } from './hooks/useFileOperations';
 import type { LaigterParamsUI } from './MapMakerModal';
+import type { AiBgOptions } from '../../utils/tauriCommandDomains/mediaCommands';
 import type { TranslationKey } from '../../utils/i18n';
 import ContextMenu from './ContextMenu';
 import FileExplorerModalLayer from './FileExplorerModalLayer';
@@ -51,6 +52,7 @@ interface ExplorerModalBridgeFileOps {
     seeds: [number, number][],
     trim: boolean,
   ) => Promise<void>;
+  handleRemoveBgAiApply: (paths: string[], model: string, options: AiBgOptions, trim: boolean) => Promise<void>;
   handleBulkRenameApply: (renames: { oldPath: string; newPath: string }[]) => Promise<void>;
   handleMergeFontsComplete: (outputPath: string) => void;
 }
@@ -191,6 +193,7 @@ export default function ExplorerModalBridge({
         onPixelateApply={fileOps.handlePixelateApply}
         onMapMakerExport={fileOps.handleLaigterMapsExport}
         onRemoveWhiteBgApply={fileOps.handleRemoveWhiteBgApply}
+        onRemoveBgAiApply={fileOps.handleRemoveBgAiApply}
         onBulkRenameApply={fileOps.handleBulkRenameApply}
         onNavigate={onNavigate}
         onGlobalSearchSelect={onGlobalSearchSelect}

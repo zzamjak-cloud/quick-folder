@@ -179,6 +179,12 @@ passive로 걸어서 `preventDefault()` 가 먹지 않아 페이지가 같이 �
 |------|----------|------|
 | `remove_white_bg_preview` | `path, threshold` | 배경 제거 미리보기 |
 | `remove_white_bg_save` | `path, threshold, dest` | 배경 제거 저장 |
+| `ai_bg_status` | — | AI 런타임·모델 설치 상태 |
+| `ai_bg_install` | `model, onProgress(Channel)` | ONNX Runtime·모델 다운로드 (sha256 검증) |
+| `ai_bg_preview` | `input, model, options` | AI 배경 제거 미리보기 (base64, 긴 변 ≤ 1024) |
+| `ai_bg_save` | `inputs, model, options, trim` | AI 배경 제거 저장 (`_nobg.png`) |
+
+모달 상단에서 **색상 기반 / AI** 를 고른다. 자세한 구조·결정 근거 → [ai-background-removal.md](ai-background-removal.md)
 
 ### 드로잉 주석
 | 명령 | 파라미터 | 설명 |

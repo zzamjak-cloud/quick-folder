@@ -23,6 +23,18 @@ This product includes open source software components listed below.
 - **CPython** (PSF License) — python-build-standalone 빌드, https://github.com/indygreg/python-build-standalone
 - **fontTools** (MIT License) — https://github.com/fonttools/fonttools
 
+## 선택 설치 구성 요소 (AI 배경 제거)
+
+아래 구성 요소는 앱에 포함되지 않습니다. 사용자가 배경 제거 창의 AI 모드에서 다운로드를 누르면
+원 배포처에서 사용자 기기로 직접 내려받으며, 고정된 sha256 으로 무결성을 검증합니다.
+
+- **ONNX Runtime** 1.31.0 (MIT License, Copyright (c) Microsoft Corporation) — https://github.com/microsoft/onnxruntime
+  - 공식 릴리스: https://github.com/microsoft/onnxruntime/releases/tag/v1.31.0
+- **ISNet general-use** 모델 (Apache-2.0) — https://github.com/xuebinqin/DIS
+- **ISNet anime** 모델 (Apache-2.0) — https://github.com/SkyTNT/anime-segmentation
+- **BiRefNet** (swin tiny) 모델 (MIT License) — https://github.com/ZhengPeng7/BiRefNet
+  - 모델 ONNX 변환본 배포처: rembg (MIT License) — https://github.com/danielgatis/rembg/releases/tag/v0.0.0
+
 ## JavaScript 구성 요소 (100개)
 
 | 패키지 | 버전 | 라이선스 | 저작권/저자 |
@@ -128,7 +140,7 @@ This product includes open source software components listed below.
 | [uuid](https://github.com/uuidjs/uuid) | 13.0.0 | MIT | Copyright (c) 2010-2020 Robert Kieffer and other contributors |
 | [w3c-keyname](https://github.com/marijnh/w3c-keyname) | 2.2.8 | MIT | Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others |
 
-## Rust 구성 요소 (675개)
+## Rust 구성 요소 (678개)
 
 | 패키지 | 버전 | 라이선스 | 저작권/저자 |
 |---|---|---|---|
@@ -378,6 +390,7 @@ This product includes open source software components listed below.
 | libappindicator-sys | 0.9.0 | Apache-2.0 OR MIT |  |
 | [libc](https://github.com/rust-lang/libc) | 0.2.182 | MIT OR Apache-2.0 | copyright notice that is included in or attached to the work |
 | [libloading](https://github.com/nagisa/rust_libloading/) | 0.7.4 | ISC | Copyright © 2015, Simonas Kazlauskas |
+| [libloading](https://github.com/nagisa/rust_libloading/) | 0.9.0 | ISC | Copyright © 2015, Simonas Kazlauskas |
 | [libredox](https://gitlab.redox-os.org/redox-os/libredox.git) | 0.1.12 | MIT | Copyright (c) 2023 4lDO2 |
 | [linux-raw-sys](https://github.com/sunfishcode/linux-raw-sys) | 0.11.0 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | copyright notice that is included in or attached to the work |
 | [litemap](https://github.com/unicode-org/icu4x) | 0.8.1 | Unicode-3.0 | COPYRIGHT AND PERMISSION NOTICE |
@@ -435,6 +448,8 @@ This product includes open source software components listed below.
 | [openssl-probe](https://github.com/rustls/openssl-probe) | 0.2.1 | MIT OR Apache-2.0 | copyright notice that is included in or attached to the work |
 | [option-ext](https://github.com/soc/option-ext.git) | 0.2.0 | MPL-2.0 | (c) under Patent Claims infringed by Covered Software in the absence of |
 | [ordered-stream](https://github.com/danieldg/ordered-stream) | 0.2.0 | MIT OR Apache-2.0 | copyright notice that is included in or attached to the work |
+| [ort](https://github.com/pykeio/ort) | 2.0.0-rc.15 | MIT OR Apache-2.0 | Copyright (c) 2022 pyke.io |
+| [ort-sys](https://github.com/pykeio/ort) | 2.0.0-rc.15 | MIT OR Apache-2.0 | Copyright (c) 2022 pyke.io |
 | [os_pipe](https://github.com/oconnor663/os_pipe.rs) | 1.2.3 | MIT | Jack O'Connor |
 | [osakit](https://github.com/mdevils/rust-osakit) | 0.3.1 | MIT OR Apache-2.0 | copyright notice that is included in or attached to the work |
 | [pango](https://github.com/gtk-rs/gtk-rs-core) | 0.18.3 | MIT | The gtk-rs Project Developers |

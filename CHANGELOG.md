@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.87] - 2026-10-20
+
+### Added
+- 배경 제거에 AI 모드 추가 — 사진·복잡한 배경에서도 피사체만 분리 (색상 기반 / AI 토글)
+  - 모델 3종: 일반(ISNet), 일러스트(ISNet Anime), 고품질(BiRefNet). 모두 상업 사용 가능한 라이선스
+  - ONNX Runtime·모델은 앱에 포함하지 않고 처음 사용할 때 공식 배포처에서 내려받아 sha256 으로 검증
+  - 색 번짐 제거·경계 정밀화·잔여 반투명 제거·경계 선명도 보정, 추론 결과 캐시로 슬라이더 즉시 반영
+  - MCP `qf_image_batch` / CLI `qf image remove-bg-ai` 에 `remove_bg_ai` 연산 추가 (모델은 앱에서 미리 내려받아야 함)
+  - Intel Mac 은 ONNX Runtime 공식 배포본이 없어 지원하지 않음
+
 ## [1.27.86] - 2026-10-06
 
 ### Fixed

@@ -228,37 +228,11 @@ pub async fn remove_white_bg_save(
             let output_path = find_unique_path(parent, stem, "_nobg", ".png");
 
             // Trim: 투명 픽셀 여백 제거
-            let final_img = if trim {
-                let (w, h) = (result.width(), result.height());
-                let mut min_x = w;
-                let mut min_y = h;
-                let mut max_x = 0u32;
-                let mut max_y = 0u32;
-                for y in 0..h {
-                    for x in 0..w {
-                        if result[(x, y)][3] > 0 {
-                            min_x = min_x.min(x);
-                            min_y = min_y.min(y);
-                            max_x = max_x.max(x);
-                            max_y = max_y.max(y);
-                        }
-                    }
-                }
-                if max_x >= min_x && max_y >= min_y {
-                    let cropped = image::imageops::crop_imm(
-                        &result,
-                        min_x,
-                        min_y,
-                        max_x - min_x + 1,
-                        max_y - min_y + 1,
-                    );
-                    image::DynamicImage::ImageRgba8(cropped.to_image())
-                } else {
-                    image::DynamicImage::ImageRgba8(result)
-                }
+            let final_img = image::DynamicImage::ImageRgba8(if trim {
+                trim_transparent(result)
             } else {
-                image::DynamicImage::ImageRgba8(result)
-            };
+                result
+            });
 
             final_img.save_with_format(&output_path, image::ImageFormat::Png)?;
 
@@ -273,4 +247,29 @@ pub async fn remove_white_bg_save(
     })
     .await
     .map_err(|e| AppError::Internal(format!("배경 제거 저장 실패: {}", e)))?
+}
+
+/// 투명 픽셀 여백을 잘라낸다. 전부 투명하면 그대로 돌려준다.
+pub(super) fn trim_transparent(img: image::RgbaImage) -> image::RgbaImage {
+    let (w, h) = (img.width(), img.height());
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0u32;
+    let mut max_y = 0u32;
+    for y in 0..h {
+        for x in 0..w {
+            if img[(x, y)][3] > 0 {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+    }
+    if max_x >= min_x && max_y >= min_y {
+        image::imageops::crop_imm(&img, min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+            .to_image()
+    } else {
+        img
+    }
 }

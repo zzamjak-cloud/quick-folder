@@ -511,6 +511,7 @@ export const itLegacyTextTranslations = {
     '드래그로 영역 선택 후 헤더 PNG 저장': 'Trascina per selezionare un\'area, poi salva il PNG dall\'intestazione.',
     'ESC로 선택 영역 초기화': 'Premi ESC per reimpostare la selezione.',
     '흰 배경 자동 제거 + "여백 제거" 옵션으로 투명 가장자리 트리밍': 'Rimuove automaticamente gli sfondi bianchi e ritaglia i bordi trasparenti con l\'opzione "Rimuovi margine".',
+    'AI 모드: 사진·복잡한 배경에서도 피사체만 분리 (처음 한 번 모델 다운로드)': 'Modalità IA: isola il soggetto anche su foto e sfondi complessi (download unico del modello)',
     '결과 PNG는 원본과 동일 폴더에 새 파일로 저장': 'Il PNG risultante viene salvato come nuovo file nella stessa cartella dell\'originale.',
     '픽셀화 (Pixelate)': 'Pixelizzazione (Pixelate)',
     '우클릭 → 픽셀화. 픽셀 크기·컬러 수 조절 (출력 크기는 픽셀 크기에 따라 자동 결정)': 'Clic destro -> Pixelizza. Regola la dimensione dei pixel e il numero di colori (la dimensione di output deriva dalla dimensione dei pixel).',

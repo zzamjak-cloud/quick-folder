@@ -4,6 +4,7 @@ import type { ThemeVars } from './types';
 import type { PreviewState } from './hooks/usePreview';
 import type { useModalStates } from './hooks/useModalStates';
 import type { LaigterParamsUI } from './MapMakerModal';
+import type { AiBgOptions } from '../../utils/tauriCommandDomains/mediaCommands';
 import type { TranslationKey } from '../../utils/i18n';
 
 const PreviewModals = lazy(() => import('./PreviewModals').then(module => ({ default: module.PreviewModals })));
@@ -55,6 +56,7 @@ interface FileExplorerModalLayerProps {
     seeds: [number, number][],
     trim: boolean,
   ) => Promise<void>;
+  onRemoveBgAiApply: (paths: string[], model: string, options: AiBgOptions, trim: boolean) => Promise<void>;
   onBulkRenameApply: (renames: { oldPath: string; newPath: string }[]) => Promise<void>;
   onNavigate: (path: string) => void;
   onGlobalSearchSelect: (entry: FileEntry) => void;
@@ -78,6 +80,7 @@ export default function FileExplorerModalLayer({
   onPixelateApply,
   onMapMakerExport,
   onRemoveWhiteBgApply,
+  onRemoveBgAiApply,
   onBulkRenameApply,
   onNavigate,
   onGlobalSearchSelect,
@@ -144,6 +147,7 @@ export default function FileExplorerModalLayer({
             paths={modals.removeWhiteBgPaths}
             onClose={() => modals.setRemoveWhiteBgPaths(null)}
             onApply={onRemoveWhiteBgApply}
+            onApplyAi={onRemoveBgAiApply}
             themeVars={themeVars}
             t={t}
           />

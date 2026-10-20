@@ -110,7 +110,7 @@ claude mcp add quickfolder \
 | `qf_image_info` | 조회 | 이미지 가로·세로. "절반 크기로 줄여줘" 같은 요청에서 resize 전에 쓴다 |
 | `qf_folder_size` | 조회 | 전체 용량 + 직계 하위 용량 내림차순 |
 | `qf_extract_text` | 조회 | HWP/HWPX 본문 추출 (다른 형식은 에이전트 자체 읽기 도구로) |
-| `qf_image_batch` | 생성 | pixelate/resize/compress/crop/to_ico/to_icns/remove_white_bg |
+| `qf_image_batch` | 생성 | pixelate/resize/compress/crop/to_ico/to_icns/remove_white_bg/remove_bg_ai (AI 모델은 앱에서 먼저 내려받아야 함) |
 | `qf_maps` | 생성 | 노멀·패럴랙스·스페큘러·오클루전 맵. 아무것도 안 고르면 노멀맵만 |
 | `qf_sprite_sheet` | 생성 | pack / split |
 | `qf_video` | 생성 | compress/trim/cut/concat/to_gif/gif_to_mp4/compress_gif. ffmpeg 필요 |

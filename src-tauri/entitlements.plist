@@ -8,5 +8,9 @@
     <!-- Hardened Runtime: WebView 서명되지 않은 메모리 실행 허용 -->
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
+    <!-- Hardened Runtime: AI 배경 제거가 런타임에 내려받은 ONNX Runtime dylib 를 로드한다.
+         앱은 ad-hoc 서명이라 Team ID 가 없어, 라이브러리 검증을 끄지 않으면 외부 dylib 의 dlopen 이 거부된다 -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>

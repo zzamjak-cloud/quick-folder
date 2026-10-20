@@ -149,6 +149,14 @@ enum ImageCommand {
         #[arg(long)]
         trim: bool,
     },
+    /// AI 모델로 배경 제거 (모델은 앱에서 미리 내려받아 둬야 한다)
+    RemoveBgAi {
+        paths: Vec<PathBuf>,
+        #[arg(long, default_value = "isnet-general", value_parser = ["isnet-general", "isnet-anime", "birefnet-lite"])]
+        model: String,
+        #[arg(long)]
+        trim: bool,
+    },
 }
 
 impl ImageCommand {
@@ -203,6 +211,9 @@ impl ImageCommand {
                     trim,
                 },
             ),
+            Self::RemoveBgAi { paths, model, trim } => {
+                (paths, ImageBatchOp::RemoveBgAi { model, trim })
+            }
         }
     }
 }

@@ -147,6 +147,10 @@ struct DuplicateGroup {
 | `resize_image` | `path, w, h, dest` | 리사이즈 |
 | `remove_white_bg_preview` | `path, threshold` | 배경 제거 미리보기 |
 | `remove_white_bg_save` | `path, threshold, dest` | 배경 제거 저장 |
+| `ai_bg_status` | — | AI 런타임·모델 설치 상태 |
+| `ai_bg_install` | `model, onProgress(Channel)` | ONNX Runtime·모델 다운로드 (sha256 검증) |
+| `ai_bg_preview` | `input, model, options` | AI 배경 제거 미리보기 (base64, 긴 변 ≤ 1024) |
+| `ai_bg_save` | `inputs, model, options, trim` | AI 배경 제거 저장 (`_nobg.png`) |
 | `convert_to_ico` | `path, dest` | .ico 변환 |
 | `convert_to_icns` | `path, dest` | .icns 변환 |
 

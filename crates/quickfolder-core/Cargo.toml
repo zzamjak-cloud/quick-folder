@@ -36,11 +36,17 @@ chrono = "0.4"
 filetime = "0.2"
 lopdf = "0.36.0"
 toml_edit = "0.25.5"
+# AI 배경 제거: ONNX Runtime 은 링크하지 않고 런타임에 내려받은 dylib 를 동적 로드한다
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-31"] }
+sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 block = "0.1"
 xattr = "1"
+# AI 배경 제거 런타임(.tgz) 압축 해제
+flate2 = "1"
+tar = "0.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["shellapi", "wingdi", "winuser", "combaseapi", "objbase", "winerror", "winbase", "winreg", "unknwnbase"] }

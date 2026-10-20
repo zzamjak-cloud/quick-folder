@@ -511,6 +511,7 @@ export const deLegacyTextTranslations = {
     '드래그로 영역 선택 후 헤더 PNG 저장': 'Bereich durch Ziehen auswählen und dann im Kopfbereich als PNG speichern.',
     'ESC로 선택 영역 초기화': 'Mit ESC die Auswahl zurücksetzen.',
     '흰 배경 자동 제거 + "여백 제거" 옵션으로 투명 가장자리 트리밍': 'Weiße Hintergründe automatisch entfernen und transparente Ränder mit der Option „Ränder entfernen“ zuschneiden.',
+    'AI 모드: 사진·복잡한 배경에서도 피사체만 분리 (처음 한 번 모델 다운로드)': 'KI-Modus: stellt das Motiv auch bei Fotos und komplexen Hintergründen frei (einmaliger Modell-Download)',
     '결과 PNG는 원본과 동일 폴더에 새 파일로 저장': 'Das resultierende PNG wird als neue Datei im selben Ordner wie das Original gespeichert.',
     '픽셀화 (Pixelate)': 'Verpixeln (Pixelate)',
     '우클릭 → 픽셀화. 픽셀 크기·컬러 수 조절 (출력 크기는 픽셀 크기에 따라 자동 결정)': 'Rechtsklick → Verpixeln. Pixelgröße und Farbanzahl anpassen (die Ausgabegröße ergibt sich aus der Pixelgröße).',

@@ -13,6 +13,7 @@ import {
 import { convertBaseName, NamingCase } from '../../../utils/caseConvert';
 import type { LaigterParamsUI } from '../MapMakerModal';
 import { tauriCommands } from '../../../utils/tauriCommands';
+import type { AiBgOptions } from '../../../utils/tauriCommandDomains/mediaCommands';
 import { ensureFfmpeg as ensureFfmpegWithConsent } from '../../../utils/ffmpegSetup';
 import { remapThumbsForRename, rewriteThumbUrlsForRenamedPath } from './thumbnailCache';
 import { dispatchFilesChanged } from './filesChangedEvent';
@@ -694,6 +695,21 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     }
   }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, formatToast]);
 
+  // --- AI 배경 제거 적용 ---
+  const handleRemoveBgAiApply = useCallback(async (paths: string[], model: string, options: AiBgOptions, trim: boolean) => {
+    if (!ensureWritableContext(paths)) return;
+    const outputs = await tauriCommands.aiBgSave(paths, model, options, trim);
+    if (currentPath) {
+      const result = await tauriCommands.listDirectory(currentPath);
+      setEntries(sortEntries(result, sortBy, sortDir));
+    }
+    if (outputs.length === 1) {
+      showCopyToast(formatToast('toast.removeBgCompleteSingle', { fileName: getFileName(outputs[0]) }));
+    } else {
+      showCopyToast(formatToast('toast.removeBgCompleteMulti', { count: outputs.length }));
+    }
+  }, [currentPath, ensureWritableContext, sortBy, sortDir, sortEntries, showCopyToast, setEntries, formatToast]);
+
   // --- 스프라이트 시트 패킹 ---
   const handleSpritePack = useCallback(async (paths: string[]) => {
     if (!ensureWritableContext(paths)) return;
@@ -937,6 +953,7 @@ export function useFileOperations(config: UseFileOperationsConfig) {
     handlePixelateApply,
     handleLaigterMapsExport,
     handleRemoveWhiteBgApply,
+    handleRemoveBgAiApply,
     handleSpritePack,
     handleCompressVideo,
     handleVideoToGif,

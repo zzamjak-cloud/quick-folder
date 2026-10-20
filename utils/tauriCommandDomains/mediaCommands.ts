@@ -18,6 +18,35 @@ export interface ThumbnailBatchResult {
   error?: string | null;
 }
 
+/** AI 배경 제거 후처리 옵션 (Rust AiBgOptions 와 동일) */
+export interface AiBgOptions {
+  cutoff: number;
+  sharpness: number;
+  refineEdges: boolean;
+  decontaminate: boolean;
+}
+
+export interface AiBgModelStatus {
+  id: string;
+  sizeBytes: number;
+  installed: boolean;
+}
+
+export interface AiBgStatus {
+  supported: boolean;
+  unsupportedReason: string | null;
+  runtimeInstalled: boolean;
+  runtimeSizeBytes: number;
+  defaultModel: string;
+  models: AiBgModelStatus[];
+}
+
+export interface AiBgDownloadProgress {
+  stage: 'runtime' | 'model';
+  downloaded: number;
+  total: number;
+}
+
 export const mediaCommands = {
   pasteImageFromClipboard(destDir: string) {
     return runCommand<string | null>('paste_image_from_clipboard', { destDir });
@@ -60,6 +89,20 @@ export const mediaCommands = {
   ) {
     // 다중 이미지 일괄 처리로 오래 걸릴 수 있음 — 일반 레인 점유 방지
     return runDirectCommand<string[]>('remove_white_bg_save', { inputs, threshold, feather, seeds, trim });
+  },
+  aiBgStatus() {
+    return runCommand<AiBgStatus>('ai_bg_status');
+  },
+  // 수백 MB 다운로드 — 일반 레인을 점유하지 않도록 direct
+  aiBgInstall(model: string, onProgress: unknown) {
+    return runDirectCommand<void>('ai_bg_install', { model, onProgress });
+  },
+  // 첫 추론은 수 초 걸릴 수 있어 direct
+  aiBgPreview(input: string, model: string, options: AiBgOptions) {
+    return runDirectCommand<string>('ai_bg_preview', { input, model, options });
+  },
+  aiBgSave(inputs: string[], model: string, options: AiBgOptions, trim: boolean) {
+    return runDirectCommand<string[]>('ai_bg_save', { inputs, model, options, trim });
   },
   checkFfmpeg() {
     return runCommand<boolean>('check_ffmpeg');

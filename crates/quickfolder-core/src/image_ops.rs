@@ -2,6 +2,7 @@
 
 pub mod batch;
 mod background;
+mod background_ai;
 mod compression;
 mod convert;
 mod dimensions;
@@ -12,6 +13,10 @@ mod sprite;
 mod thumbnail;
 
 pub use background::{remove_white_bg_preview, remove_white_bg_save};
+pub use background_ai::{
+    ai_bg_install, ai_bg_preview, ai_bg_save, ai_bg_status, AiBgDownloadProgress, AiBgModelStatus,
+    AiBgOptions, AiBgStatus, DEFAULT_MODEL_ID,
+};
 pub use batch::{run_image_batch, ImageBatchOp};
 pub use heavy::{heavy_op_limit, set_heavy_op_limit};
 pub use compression::{

@@ -25,6 +25,7 @@
 | 텍스트 Diff 비교 | `wiki/special/diff-viewer.md` |
 | 스마트 폴더 병합 | `wiki/operations/folder-merge.md` |
 | 썸네일·미리보기 버그 | `wiki/preview/thumbnails.md` |
+| AI 배경 제거 (ONNX) | `wiki/image/ai-background-removal.md` |
 | Rust 명령 추가 | `wiki/rust/overview.md` → `wiki/rust/commands.md` |
 | AI 에이전트 연동(MCP)·배치 CLI | `wiki/mcp/overview.md` |
 | 폴더 우클릭 → AI 에이전트 실행 | `wiki/mcp/overview.md` |
