@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.88] - 2026-10-20
+
+### Fixed
+- macOS 릴리스 빌드 실패 수정 — evermeet.cx 가 FFmpeg 고정 다운로드 주소(`getrelease`)를 폐지(410 Gone)해, 정보 API 에서 실제 파일 주소를 읽어 받도록 변경 (릴리스 번들·앱 런타임 다운로드 폴백 모두)
+- 1.27.87 의 배경 제거 AI 모드가 macOS(Apple Silicon)에도 포함됨 (1.27.87 은 Windows 만 배포)
+
 ## [1.27.87] - 2026-10-20
 
 ### Added

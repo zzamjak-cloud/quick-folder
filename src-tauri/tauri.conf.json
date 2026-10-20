@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "QuickFolder Widget",
-  "version": "1.27.87",
+  "version": "1.27.88",
   "identifier": "com.quickfolder.widget",
   "build": {
     "frontendDist": "../dist",

@@ -75,7 +75,11 @@ jobs:
           mkdir -p src-tauri/binaries/ffmpeg-dist
 
           # x86_64 (evermeet.cx static build)
-          curl -fL "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg-x64.zip
+          # getrelease 리다이렉트 엔드포인트는 남용 문제로 폐지됨(410 Gone, 2026-10).
+          # 정보 API 가 돌려주는 정적 파일 URL 로 받는다.
+          X64_URL=$(curl -fsSL "https://evermeet.cx/ffmpeg/info/ffmpeg/release" | python3 -c "import json,sys; print(json.load(sys.stdin)['download']['zip']['url'])")
+          echo "x86_64 FFmpeg: $X64_URL"
+          curl -fL "$X64_URL" -o ffmpeg-x64.zip
           mkdir -p ffx64 && unzip -q ffmpeg-x64.zip -d ffx64
 
           # arm64 (martin-riedl.de — 고정 latest URL이 없어 인덱스에서 정식 릴리스 링크 파싱)

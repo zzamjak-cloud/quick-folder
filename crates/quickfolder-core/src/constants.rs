@@ -62,9 +62,11 @@ pub mod download_urls {
     pub const FFMPEG_WIN64_MIRROR: &str =
         "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip";
 
-    /// FFmpeg (macOS, evermeet.cx 공식 정적 빌드 — x86_64 전용, Apple Silicon은 Rosetta 필요)
+    /// FFmpeg (macOS, evermeet.cx 공식 정적 빌드 정보 API — x86_64 전용, Apple Silicon은 Rosetta 필요).
+    /// 예전 `getrelease` 리다이렉트 엔드포인트는 남용 문제로 폐지됐다(410 Gone). 이 JSON 의
+    /// `download.zip.url` 에서 실제 파일 URL 을 런타임에 읽는다.
     #[cfg(target_os = "macos")]
-    pub const FFMPEG_MACOS: &str = "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip";
+    pub const FFMPEG_MACOS_EVERMEET_INFO: &str = "https://evermeet.cx/ffmpeg/info/ffmpeg/release";
 
     /// FFmpeg (macOS, martin-riedl.de 공식 빌드 인덱스 — arm64 네이티브 빌드 제공.
     /// 최신 버전 경로는 런타임에 이 인덱스 페이지에서 파싱한다)

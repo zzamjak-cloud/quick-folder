@@ -329,6 +329,23 @@ fn resolve_martin_riedl_url() -> Option<String> {
     fallback
 }
 
+/// evermeet.cx 정보 API 에서 최신 릴리스 zip URL 을 읽는다 (x86_64 정적 빌드).
+/// 고정 다운로드 엔드포인트(`getrelease`)가 폐지돼 런타임에 해석해야 한다.
+#[cfg(target_os = "macos")]
+fn resolve_evermeet_url() -> Option<String> {
+    let mut resp = ureq::get(crate::constants::download_urls::FFMPEG_MACOS_EVERMEET_INFO)
+        .call()
+        .ok()?;
+    let body = resp
+        .body_mut()
+        .with_config()
+        .limit(1024 * 1024)
+        .read_to_string()
+        .ok()?;
+    let info: serde_json::Value = serde_json::from_str(&body).ok()?;
+    info["download"]["zip"]["url"].as_str().map(str::to_string)
+}
+
 /// 단일 출처에서 FFmpeg 다운로드·압축 해제·검증까지 수행
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn try_install_ffmpeg_from_url(url: &str, root: &std::path::Path) -> Result<()> {
@@ -412,9 +429,13 @@ fn download_ffmpeg_inner() -> Result<()> {
                 if let Some(u) = resolve_martin_riedl_url() {
                     candidates.push(u);
                 }
-                candidates.push(download_urls::FFMPEG_MACOS.to_string());
+                if let Some(u) = resolve_evermeet_url() {
+                    candidates.push(u);
+                }
             } else {
-                candidates.push(download_urls::FFMPEG_MACOS.to_string());
+                if let Some(u) = resolve_evermeet_url() {
+                    candidates.push(u);
+                }
                 if let Some(u) = resolve_martin_riedl_url() {
                     candidates.push(u);
                 }
