@@ -62,7 +62,7 @@
 ### 외부 앱
 | 단축키 | 기능 |
 |--------|------|
-| `Ctrl+Alt+O` | Photoshop에서 열기 |
+| `Ctrl+Alt+O` | PhotoCAT(이미지)/Blender(.blend)에서 열기 |
 | `Space` | 1개 선택: 미리보기 / 비교 가능한 파일 2개 선택: Diff Viewer |
 | `E` | 동영상 미리보기에서 편집 모드 토글 |
 

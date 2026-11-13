@@ -63,6 +63,7 @@ pub fn run() {
             extract_archive,
             open_with_app,
             open_in_photoshop,
+            open_in_photocat,
             open_in_blender,
             read_text_file,
             write_files_to_clipboard,

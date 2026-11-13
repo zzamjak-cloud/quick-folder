@@ -226,7 +226,7 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         return;
       }
 
-      // Ctrl+Alt+O (Cmd+Option+O): 확장자에 맞는 전용 앱에서 열기 (이미지 → Photoshop, .blend → Blender)
+      // Ctrl+Alt+O (Cmd+Option+O): 확장자에 맞는 전용 앱에서 열기 (이미지 → PhotoCAT, .blend → Blender)
       if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyO') {
         e.preventDefault();
         const imageExts = new Set([
@@ -248,8 +248,8 @@ export function useKeyboardShortcuts(config: UseKeyboardShortcutsConfig) {
         }
 
         if (imagePaths.length > 0) {
-          tauriCommands.openInPhotoshop(imagePaths).catch((err: unknown) => {
-            setError(`Photoshop 열기 실패: ${err}`);
+          tauriCommands.openInPhotoCat(imagePaths).catch((err: unknown) => {
+            setError(`PhotoCAT 열기 실패: ${err}`);
           });
         }
         if (blenderPaths.length > 0) {

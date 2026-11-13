@@ -96,7 +96,8 @@ struct ExtractResult {
 | `open_sac_settings` | — | macOS 손쉬운 사용 설정 |
 | `quick_look` | `path: String` | macOS QuickLook |
 | `open_with_app` | `path, app: String` | 특정 앱으로 열기 |
-| `open_in_photoshop` | `path: String` | Photoshop으로 열기 |
+| `open_in_photoshop` | `paths: Vec<String>` | Photoshop으로 열기 (현재 단축키 미사용) |
+| `open_in_photocat` | `paths: Vec<String>` | PhotoCAT으로 열기 (Ctrl+Alt+O 이미지) |
 | `get_app_pid_under_cursor` | `point: Option<(f64, f64)>` | 지정 좌표(CG top-left, 미지정 시 현재 커서) 아래 최상위 창의 소유 PID. 자기 창이 최상위면 `None` (macOS 전용, 그 외 `None`) |
 | `activate_app_by_pid` | `pid: i32` | 해당 PID 앱을 전면 활성화 (macOS 전용, 트레이 drag-out 후 드롭 대상 앱 유지용) |
 

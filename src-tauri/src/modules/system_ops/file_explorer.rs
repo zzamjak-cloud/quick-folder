@@ -491,6 +491,72 @@ pub async fn open_in_photoshop(paths: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+// PhotoCAT에서 이미지 파일 열기
+#[tauri::command]
+pub async fn open_in_photocat(paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let not_found = || "PhotoCAT을 찾을 수 없습니다. 설치되어 있는지 확인해주세요.".to_string();
+
+    #[cfg(target_os = "macos")]
+    {
+        // 사용자 Applications 폴더 설치도 고려
+        let home_apps = std::env::var("HOME")
+            .map(|h| format!("{}/Applications/PhotoCAT.app", h))
+            .unwrap_or_default();
+        let app = ["/Applications/PhotoCAT.app", home_apps.as_str()]
+            .into_iter()
+            .find(|p| !p.is_empty() && std::path::Path::new(p).exists())
+            .ok_or_else(not_found)?;
+
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg("-a").arg(app);
+        for p in &paths {
+            cmd.arg(p);
+        }
+        cmd.spawn()
+            .map_err(|e| format!("PhotoCAT 실행 실패: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Tauri 설치 경로(사용자별/전체) 후보에서 실행 파일 탐색
+        let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+        for var in ["LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(base) = std::env::var(var) {
+                let base = std::path::PathBuf::from(base);
+                dirs.push(base.join("PhotoCAT"));
+                dirs.push(base.join("Programs").join("PhotoCAT"));
+            }
+        }
+        let exe = dirs
+            .iter()
+            .flat_map(|d| {
+                ["PhotoCAT.exe", "PhotoCraft.exe", "photocraft-cat.exe"]
+                    .iter()
+                    .map(move |n| d.join(n))
+            })
+            .find(|p| p.exists())
+            .ok_or_else(not_found)?;
+
+        let mut cmd = std::process::Command::new(&exe);
+        for p in &paths {
+            cmd.arg(p);
+        }
+        cmd.spawn()
+            .map_err(|e| format!("PhotoCAT 실행 실패: {}", e))?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (&paths, not_found);
+        return Err("이 플랫폼에서는 PhotoCAT 열기가 지원되지 않습니다".into());
+    }
+
+    Ok(())
+}
+
 // Blender에서 파일 열기 (.blend 등)
 #[tauri::command]
 pub async fn open_in_blender(paths: Vec<String>) -> Result<(), String> {

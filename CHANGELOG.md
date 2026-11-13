@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.89] - 2026-11-13
+
+### Changed
+- Ctrl+Alt+O(macOS: Cmd+Option+O)로 이미지 파일을 열 때 Photoshop 대신 PhotoCAT으로 열리도록 변경 (`.blend` 는 기존대로 Blender)
+
 ## [1.27.88] - 2026-10-20
 
 ### Fixed

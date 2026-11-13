@@ -145,6 +145,9 @@ export const mediaCommands = {
   openInPhotoshop(paths: string[]) {
     return runDirectCommand<void>('open_in_photoshop', { paths });
   },
+  openInPhotoCat(paths: string[]) {
+    return runDirectCommand<void>('open_in_photocat', { paths });
+  },
   openInBlender(paths: string[]) {
     return runDirectCommand<void>('open_in_blender', { paths });
   },
