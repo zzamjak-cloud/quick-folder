@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.90] - 2026-11-13
+
+### Added
+- 단일 파일 우클릭 → "AI Agent 요청하기" 지원 — 파일이 든 폴더를 작업 폴더로 잡고, 요청에 대상 파일 이름을 함께 전달한다. 요청 창의 안내 문구도 파일 기준으로 바뀐다
+
 ## [1.27.89] - 2026-11-13
 
 ### Changed

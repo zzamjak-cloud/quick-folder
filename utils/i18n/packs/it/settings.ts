@@ -52,6 +52,8 @@ export const itSettingsTranslations = {
   'agentRequest.title': 'Richiesta all\'agente IA — {folder}',
   'agentRequest.promptPlaceholder': 'Descrivi cosa fare in questa cartella. Es.: Riduci tutti i PNG a metà dimensione',
   'agentRequest.scopeNotice': 'L\'agente lavora solo dentro questa cartella. Può leggere, scrivere e modificare file e usare gli strumenti di QuickFolder; i comandi shell e l\'accesso fuori dalla cartella sono bloccati.',
+  'agentRequest.promptPlaceholderFile': 'Descrivi cosa fare con questo file. Es.: Riducilo a metà dimensione',
+  'agentRequest.scopeNoticeFile': 'L\'agente lavora solo nella cartella che contiene questo file. La richiesta riguarda questo file; i comandi shell e l\'accesso fuori dalla cartella sono bloccati.',
   'agentRequest.run': 'Invia richiesta',
   'agentRequest.running': 'In corso...',
   'agentRequest.stop': 'Interrompi',

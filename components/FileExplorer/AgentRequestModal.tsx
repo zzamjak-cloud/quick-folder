@@ -9,6 +9,7 @@ import {
   getModalSectionBorderStyle,
 } from './ui/modalStyles';
 import { getFileName } from '../../utils/pathUtils';
+import { fileCommands } from '../../utils/tauriCommandDomains/fileCommands';
 import { agentCommands, type AgentId, type AgentStatus } from '../../utils/tauriCommandDomains/agentCommands';
 import { appendAgentLines, formatAgentStdout, type AgentLine } from './agentStreamFormat';
 import type { TranslationKey } from '../../utils/i18n';
@@ -45,10 +46,21 @@ export default function AgentRequestModal({ path, themeVars, onClose, t }: Agent
   const [running, setRunning] = useState(false);
   // 봉쇄가 보장되지 않는 에이전트는 사용자가 한 번 더 동의해야 실행된다
   const [acceptedRisk, setAcceptedRisk] = useState(false);
+  // 단일 파일 요청이면 안내 문구를 파일 기준으로 바꾼다
+  const [isFile, setIsFile] = useState(false);
   const requestIdRef = useRef<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const folderName = getFileName(path) || path;
+
+  useEffect(() => {
+    let cancelled = false;
+    fileCommands
+      .isDirectory(path)
+      .then(dir => { if (!cancelled) setIsFile(!dir); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [path]);
   const btnStyle = getModalButtonStyle(themeVars);
   const inputStyle = getModalInputBaseStyle(themeVars);
   const sectionBorderStyle = getModalSectionBorderStyle(themeVars);
@@ -185,7 +197,7 @@ export default function AgentRequestModal({ path, themeVars, onClose, t }: Agent
 
         <div className="flex items-start gap-2 rounded-md px-3 py-2 text-[11px]" style={logStyle}>
           <ShieldCheck size={13} style={{ color: themeVars?.accent ?? '#3b82f6', flexShrink: 0, marginTop: 1 }} />
-          <span style={{ color: themeVars?.muted ?? '#94a3b8' }}>{t('agentRequest.scopeNotice')}</span>
+          <span style={{ color: themeVars?.muted ?? '#94a3b8' }}>{t(isFile ? 'agentRequest.scopeNoticeFile' : 'agentRequest.scopeNotice')}</span>
         </div>
 
         {selected && !selected.confinesToFolder && (
@@ -216,7 +228,7 @@ export default function AgentRequestModal({ path, themeVars, onClose, t }: Agent
           rows={4}
           className="resize-none rounded-md px-2 py-1.5 text-xs outline-none"
           style={inputStyle}
-          placeholder={t('agentRequest.promptPlaceholder')}
+          placeholder={t(isFile ? 'agentRequest.promptPlaceholderFile' : 'agentRequest.promptPlaceholder')}
         />
 
         {noUsableAgent && (

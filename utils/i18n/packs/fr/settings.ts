@@ -52,6 +52,8 @@ export const frSettingsTranslations = {
   'agentRequest.title': 'Demande à l\'agent IA — {folder}',
   'agentRequest.promptPlaceholder': 'Décrivez ce qu\'il faut faire dans ce dossier. Ex. : Réduire tous les PNG de moitié',
   'agentRequest.scopeNotice': 'L\'agent travaille uniquement dans ce dossier. Il peut lire, écrire et modifier des fichiers et utiliser les outils QuickFolder ; les commandes shell et l\'accès hors du dossier sont bloqués.',
+  'agentRequest.promptPlaceholderFile': 'Décrivez ce qu\'il faut faire avec ce fichier. Ex. : Le réduire de moitié',
+  'agentRequest.scopeNoticeFile': 'L\'agent travaille uniquement dans le dossier contenant ce fichier. La demande porte sur ce fichier ; les commandes shell et l\'accès hors du dossier sont bloqués.',
   'agentRequest.run': 'Envoyer la demande',
   'agentRequest.running': 'En cours...',
   'agentRequest.stop': 'Arrêter',

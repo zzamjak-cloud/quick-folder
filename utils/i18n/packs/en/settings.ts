@@ -52,6 +52,8 @@ export const enSettingsTranslations = {
   'agentRequest.title': 'AI agent request — {folder}',
   'agentRequest.promptPlaceholder': 'Describe what to do in this folder. e.g. Resize every PNG to half size',
   'agentRequest.scopeNotice': 'The agent works only inside this folder. It can read, write and edit files and use QuickFolder tools; shell commands and access outside the folder are blocked.',
+  'agentRequest.promptPlaceholderFile': 'Describe what to do with this file. e.g. Resize it to half size',
+  'agentRequest.scopeNoticeFile': 'The agent works only inside the folder containing this file. The request targets this file; shell commands and access outside the folder are blocked.',
   'agentRequest.run': 'Send request',
   'agentRequest.running': 'Working...',
   'agentRequest.stop': 'Stop',

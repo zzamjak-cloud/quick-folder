@@ -52,6 +52,8 @@ export const jaSettingsTranslations = {
   'agentRequest.title': 'AI エージェント依頼 — {folder}',
   'agentRequest.promptPlaceholder': 'このフォルダで行う作業を入力してください。例: すべての PNG を半分のサイズに縮小して',
   'agentRequest.scopeNotice': 'エージェントはこのフォルダ内でのみ作業します。ファイルの読み書き・編集と QuickFolder のツールが使え、シェルコマンドとフォルダ外へのアクセスは遮断されます。',
+  'agentRequest.promptPlaceholderFile': 'このファイルに対して行う作業を入力してください。例: 半分のサイズに縮小して',
+  'agentRequest.scopeNoticeFile': 'エージェントはこのファイルがあるフォルダ内でのみ作業します。依頼の対象はこのファイルで、シェルコマンドとフォルダ外へのアクセスは遮断されます。',
   'agentRequest.run': '依頼する',
   'agentRequest.running': '作業中...',
   'agentRequest.stop': '中断',

@@ -52,6 +52,8 @@ export const deSettingsTranslations = {
   'agentRequest.title': 'KI-Agent-Anfrage — {folder}',
   'agentRequest.promptPlaceholder': 'Beschreibe, was in diesem Ordner getan werden soll. Z. B.: Alle PNGs auf die halbe Größe verkleinern',
   'agentRequest.scopeNotice': 'Der Agent arbeitet nur in diesem Ordner. Er kann Dateien lesen, schreiben und bearbeiten und QuickFolder-Werkzeuge nutzen; Shell-Befehle und Zugriffe außerhalb des Ordners sind blockiert.',
+  'agentRequest.promptPlaceholderFile': 'Beschreibe, was mit dieser Datei getan werden soll. Z. B.: Auf die halbe Größe verkleinern',
+  'agentRequest.scopeNoticeFile': 'Der Agent arbeitet nur im Ordner dieser Datei. Die Anfrage betrifft diese Datei; Shell-Befehle und Zugriffe außerhalb des Ordners sind blockiert.',
   'agentRequest.run': 'Anfrage senden',
   'agentRequest.running': 'Läuft...',
   'agentRequest.stop': 'Stoppen',

@@ -52,6 +52,8 @@ export const ruSettingsTranslations = {
   'agentRequest.title': 'Запрос ИИ-агенту — {folder}',
   'agentRequest.promptPlaceholder': 'Опишите, что сделать в этой папке. Например: уменьшить все PNG вдвое',
   'agentRequest.scopeNotice': 'Агент работает только внутри этой папки. Он может читать, записывать и изменять файлы и использовать инструменты QuickFolder; команды оболочки и доступ за пределы папки заблокированы.',
+  'agentRequest.promptPlaceholderFile': 'Опишите, что сделать с этим файлом. Например: уменьшить вдвое',
+  'agentRequest.scopeNoticeFile': 'Агент работает только в папке, где лежит этот файл. Запрос относится к этому файлу; команды оболочки и доступ за пределы папки заблокированы.',
   'agentRequest.run': 'Отправить запрос',
   'agentRequest.running': 'Выполняется...',
   'agentRequest.stop': 'Остановить',

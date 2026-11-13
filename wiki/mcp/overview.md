@@ -230,6 +230,12 @@ Windows %LOCALAPPDATA%/com.quickfolder.widget
 | 모달 | `components/FileExplorer/AgentRequestModal.tsx` |
 | CLI별 출력 → 표시용 줄 | `components/FileExplorer/agentStreamFormat.ts` |
 
+## 단일 파일 대상
+
+파일을 우클릭해도 요청할 수 있다. `agent_launch::resolve_target`이 파일이면 **그 파일이 든 폴더**를
+작업 폴더·축소 루트로 잡고, 프롬프트 앞에 `대상 파일: <이름>`을 붙인다. 봉쇄 단위는 여전히 폴더라
+에이전트가 같은 폴더의 다른 파일도 볼 수 있다 — 파일 하나로 가두는 수단은 CLI들에 없다.
+
 ## 봉쇄 설계
 
 1. **대상 폴더 검사** — 허용 루트 안인지 본다. 기준은 프론트엔드가 보낸 값이 아니라

@@ -88,7 +88,7 @@ interface ContextMenuTrailingAction {
 |----|------|------|------|
 | `find-duplicates` | 중복 파일 찾기 | `is_dir` 단일 선택 | `setDuplicateFinderPath(path)` → [duplicate-finder.md](duplicate-finder.md) |
 | `folder-size-check` | 폴더 용량 확인 | `is_dir` 단일 선택 | `handleInspectFolderSize` |
-| `agent-request` | AI Agent 요청하기 | `is_dir` 단일 선택 **+ MCP 등록 + 허용 루트 안** | `setAgentRequestPath(path)` → [../mcp/overview.md](../mcp/overview.md) |
+| `agent-request` | AI Agent 요청하기 | 단일 폴더·파일 선택 **+ MCP 등록 + 허용 루트 안** (파일은 상위 폴더가 작업 폴더) | `setAgentRequestPath(path)` → [../mcp/overview.md](../mcp/overview.md) |
 
 - `agent-request`는 조건부 항목이라 빌더 안에서 `useAgentAvailability()`로 노출 여부를 판단한다.
   등록 상태는 메뉴를 그릴 때마다가 아니라 `qf:mcp-changed` 이벤트로 갱신한다.

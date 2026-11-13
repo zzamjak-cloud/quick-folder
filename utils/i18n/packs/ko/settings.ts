@@ -52,6 +52,8 @@ export const koSettingsTranslations = {
   'agentRequest.title': 'AI Agent 요청 — {folder}',
   'agentRequest.promptPlaceholder': '이 폴더에서 할 일을 적어 주세요. 예: 모든 PNG를 절반 크기로 줄여 줘',
   'agentRequest.scopeNotice': '에이전트는 이 폴더 안에서만 작업합니다. 파일 읽기·쓰기·수정과 QuickFolder 도구를 쓸 수 있고, 셸 명령과 폴더 밖 접근은 차단됩니다.',
+  'agentRequest.promptPlaceholderFile': '이 파일에 대해 할 일을 적어 주세요. 예: 절반 크기로 줄여 줘',
+  'agentRequest.scopeNoticeFile': '에이전트는 이 파일이 든 폴더 안에서만 작업합니다. 요청 대상은 이 파일이며, 셸 명령과 폴더 밖 접근은 차단됩니다.',
   'agentRequest.run': '요청 보내기',
   'agentRequest.running': '작업 중...',
   'agentRequest.stop': '중단',

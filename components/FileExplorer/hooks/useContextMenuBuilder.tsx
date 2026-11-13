@@ -705,6 +705,19 @@ export function useContextMenuBuilder({
       sections.push(gdSection);
     }
 
+    // 단일 파일도 AI Agent 요청 가능 — 작업 폴더는 파일이 든 폴더로 잡힌다
+    if (isSingle && singleEntry && !singleEntry.is_dir && !isArchiveVirtualPath(singlePath) && agents.canRequest(singlePath)) {
+      sections.push({
+        id: 'file-agent',
+        items: [{
+          id: 'agent-request',
+          icon: <Bot size={13} />,
+          label: t('agentRequest.menuLabel'),
+          onClick: () => modals.setAgentRequestPath(singlePath),
+        }],
+      });
+    }
+
     // 섹션 7: 빈 공간 전용 (새로 만들기)
     if (isSingle && singleEntry?.is_dir) {
       sections.push({

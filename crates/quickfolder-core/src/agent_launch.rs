@@ -246,6 +246,45 @@ pub fn resolve_target_folder(folder: &str, allowed_roots: &[PathBuf]) -> Result<
     })
 }
 
+/// 우클릭 대상(폴더 또는 단일 파일)을 작업 폴더와 대상 파일 이름으로 나눈다.
+///
+/// 파일이면 그 파일이 든 폴더가 작업 폴더가 된다. 봉쇄 단위는 여전히 폴더라서
+/// 에이전트는 같은 폴더의 다른 파일도 볼 수 있다 — 대상 파일은 프롬프트로 알려 준다.
+pub fn resolve_target(path: &str, allowed_roots: &[PathBuf]) -> Result<(PathBuf, Option<String>)> {
+    let p = Path::new(path);
+    if !p.is_file() {
+        return Ok((resolve_target_folder(path, allowed_roots)?, None));
+    }
+    let file = path_guard::contained_in(p, allowed_roots).ok_or_else(|| {
+        AppError::Permission(format!(
+            "허용 폴더 밖입니다: {} — 설정 → AI 에이전트 연동(MCP)에서 허용 폴더에 추가해 주세요.",
+            path
+        ))
+    })?;
+    let folder = file
+        .parent()
+        .ok_or_else(|| AppError::InvalidInput(format!("상위 폴더가 없습니다: {}", path)))?;
+    let name = file
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| AppError::InvalidInput(format!("파일 이름이 없습니다: {}", path)))?;
+    // 파일이 허용 루트 바로 아래에 있어도 상위 폴더는 루트 자신이므로 다시 검사해 통과한다
+    let folder = resolve_target_folder(&folder.display().to_string(), allowed_roots)?;
+    Ok((folder, Some(name)))
+}
+
+/// 단일 파일 요청이면 대상 파일을 프롬프트 앞에 밝힌다. 빈 요청은 그대로 둬 거부되게 한다.
+fn prompt_for_target(prompt: &str, file_name: Option<&str>) -> String {
+    match file_name {
+        Some(name) if !prompt.trim().is_empty() => format!(
+            "대상 파일: {}\n(작업 폴더 안의 이 파일에 대한 요청입니다. 결과 파일이 필요하면 같은 폴더에 만드세요.)\n\n{}",
+            name,
+            prompt.trim()
+        ),
+        _ => prompt.to_string(),
+    }
+}
+
 /// Claude Code 에 켜 줄 내장 도구. 파일 작업에 필요한 것만 고른다.
 ///
 /// 끄는 쪽이 아니라 켜는 쪽을 적는 이유: Claude Code 의 내장 도구에는 `CronDelete`,
@@ -436,7 +475,8 @@ pub fn build_invocation(
     token: &str,
 ) -> Result<Invocation> {
     let launcher = find_launcher(agent_id)?;
-    let target = resolve_target_folder(folder, allowed_roots)?;
+    let (target, file_name) = resolve_target(folder, allowed_roots)?;
+    let prompt = prompt_for_target(prompt, file_name.as_deref());
     let program = find_program(launcher.program).ok_or_else(|| {
         AppError::NotFound(format!(
             "{} 실행 파일({})을 PATH 에서 찾을 수 없습니다.",
@@ -448,7 +488,7 @@ pub fn build_invocation(
         "claude-code" => claude_mcp_config(qf_mcp, &target)?,
         _ => String::new(),
     };
-    let args = build_args(agent_id, prompt, &target, qf_mcp, &mcp_config)?;
+    let args = build_args(agent_id, &prompt, &target, qf_mcp, &mcp_config)?;
 
     // Gemini 만 설정을 파일로 받는다 (인라인 JSON 을 받는 플래그가 없다)
     let (env, temp_files) = if launcher.id == "gemini-cli" {
@@ -689,6 +729,38 @@ mod tests {
         let roots = vec![std::env::temp_dir()];
         let missing = std::env::temp_dir().join("qf_agent_nope_does_not_exist");
         assert!(resolve_target_folder(missing.to_str().unwrap(), &roots).is_err());
+    }
+
+    #[test]
+    fn single_file_targets_its_parent_folder() {
+        let base = temp_target("single_file");
+        std::fs::create_dir_all(base.join("allowed")).unwrap();
+        std::fs::write(base.join("allowed").join("a.png"), b"x").unwrap();
+        std::fs::write(base.join("outside.png"), b"x").unwrap();
+        let roots = vec![base.join("allowed")];
+
+        let (folder, name) =
+            resolve_target(base.join("allowed").join("a.png").to_str().unwrap(), &roots).unwrap();
+        assert_eq!(folder, path_guard::normalize(&base.join("allowed")));
+        assert_eq!(name.as_deref(), Some("a.png"));
+        // 허용 루트 밖 파일은 거부된다
+        assert!(resolve_target(base.join("outside.png").to_str().unwrap(), &roots).is_err());
+        // 폴더는 대상 파일 없이 그대로 통과한다
+        assert_eq!(
+            resolve_target(base.join("allowed").to_str().unwrap(), &roots).unwrap().1,
+            None
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn file_prompt_names_the_target_but_keeps_empty_prompt_empty() {
+        let p = prompt_for_target("  절반으로 줄여줘 ", Some("a.png"));
+        assert!(p.starts_with("대상 파일: a.png"));
+        assert!(p.ends_with("절반으로 줄여줘"));
+        assert_eq!(prompt_for_target("   ", Some("a.png")), "   ");
+        assert_eq!(prompt_for_target("정리해줘", None), "정리해줘");
     }
 
     #[test]

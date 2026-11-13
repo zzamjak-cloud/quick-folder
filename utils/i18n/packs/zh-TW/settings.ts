@@ -52,6 +52,8 @@ export const zhTWSettingsTranslations = {
   'agentRequest.title': 'AI 代理請求 — {folder}',
   'agentRequest.promptPlaceholder': '描述要在此資料夾中完成的工作。例如：把所有 PNG 縮小一半',
   'agentRequest.scopeNotice': '代理只在此資料夾內工作。可以讀取、寫入與修改檔案並使用 QuickFolder 工具；Shell 指令與資料夾外的存取會被阻擋。',
+  'agentRequest.promptPlaceholderFile': '描述要對此檔案完成的工作。例如：縮小一半',
+  'agentRequest.scopeNoticeFile': '代理只在此檔案所在的資料夾內工作。請求對象是此檔案；Shell 指令與資料夾外的存取會被阻擋。',
   'agentRequest.run': '傳送請求',
   'agentRequest.running': '處理中...',
   'agentRequest.stop': '停止',

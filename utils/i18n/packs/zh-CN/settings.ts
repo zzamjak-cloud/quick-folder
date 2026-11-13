@@ -52,6 +52,8 @@ export const zhCNSettingsTranslations = {
   'agentRequest.title': 'AI 代理请求 — {folder}',
   'agentRequest.promptPlaceholder': '描述要在此文件夹中完成的工作。例如：把所有 PNG 缩小一半',
   'agentRequest.scopeNotice': '代理只在此文件夹内工作。可以读取、写入和修改文件并使用 QuickFolder 工具；Shell 命令和文件夹外的访问会被阻止。',
+  'agentRequest.promptPlaceholderFile': '描述要对此文件完成的工作。例如：缩小一半',
+  'agentRequest.scopeNoticeFile': '代理只在此文件所在的文件夹内工作。请求对象是此文件；Shell 命令和文件夹外的访问会被阻止。',
   'agentRequest.run': '发送请求',
   'agentRequest.running': '处理中...',
   'agentRequest.stop': '停止',
